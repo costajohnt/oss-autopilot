@@ -54,7 +54,7 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
   }, [mergedPRs, repoMetadata, sortKey, sortDir]);
 
   function renderHeader(key: SortKey, label: string, extraClass?: string) {
-    const arrow = sortKey === key ? (sortDir === 'asc' ? '\u25B2' : '\u25BC') : null;
+    const arrow = sortKey === key ? (sortDir === 'asc' ? '\u{25B2}' : '\u{25BC}') : null;
     const className = extraClass ? `${extraClass} sortable-th` : 'sortable-th';
     return (
       <th
@@ -113,7 +113,7 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
                   </td>
                   <td class="merged-table-col-stars">
                     <span class="merged-table-stars">
-                      {meta?.stars != null ? `★ ${formatStarCount(meta.stars)}` : '—'}
+                      {meta?.stars == null ? '—' : `★ ${formatStarCount(meta.stars)}`}
                     </span>
                   </td>
                   <td class="merged-table-col-language">

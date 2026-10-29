@@ -198,7 +198,7 @@ function sendError(res: http.ServerResponse, statusCode: number, message: string
  * from arbitrary error messages (#1446 item 2).
  */
 function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').trim();
+  return value.replaceAll(/[\r\n]+/g, ' ').trim();
 }
 
 /**
@@ -644,8 +644,8 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     // Decode URL, handling malformed percent-encoding
     let urlPath: string;
     try {
-      urlPath = decodeURIComponent(requestUrl.split('?')[0]);
-    } catch (_err) {
+      urlPath = decodeURIComponent(requestUrl.split('?', 1)[0]);
+    } catch {
       warn(MODULE, `Malformed URL received: ${requestUrl}`);
       sendError(res, 400, 'Malformed URL');
       return;

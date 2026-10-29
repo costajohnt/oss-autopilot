@@ -71,7 +71,7 @@ export async function main() {
     let port = 3001;
     let portRaw: string | undefined;
     if (portArg) {
-      portRaw = portArg.split('=')[1];
+      portRaw = portArg.split('=', 2)[1];
     } else if (portIdx >= 0) {
       portRaw = args[portIdx + 1];
       if (portRaw === undefined) {

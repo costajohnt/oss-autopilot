@@ -51,7 +51,7 @@ function errCode(err: unknown): string | undefined {
 export async function checkGhCli(): Promise<DoctorCheck> {
   try {
     const { stdout } = await execFileAsync('gh', ['--version'], { timeout: GH_CMD_TIMEOUT_MS });
-    const versionLine = stdout.split('\n')[0]?.trim() || 'gh present';
+    const versionLine = stdout.split('\n', 1)[0]?.trim() || 'gh present';
     return { name: 'gh CLI installed', status: 'ok', message: versionLine };
   } catch (err) {
     // Distinguish "not on PATH" (ENOENT) from "present but broken" (anything
@@ -96,7 +96,7 @@ export async function checkGhAuth(): Promise<DoctorCheck> {
 }
 
 export async function checkGitHubToken(preloadedToken?: string | null): Promise<DoctorCheck> {
-  const token = preloadedToken !== undefined ? preloadedToken : await getGitHubTokenAsync();
+  const token = preloadedToken === undefined ? await getGitHubTokenAsync() : preloadedToken;
   if (!token) {
     return {
       name: 'GitHub token resolvable',
@@ -292,7 +292,7 @@ export async function checkScoutResolvable(importer: ScoutImporter = defaultScou
 }
 
 export async function checkGitHubRateLimit(preloadedToken?: string | null): Promise<DoctorCheck> {
-  const token = preloadedToken !== undefined ? preloadedToken : await getGitHubTokenAsync();
+  const token = preloadedToken === undefined ? await getGitHubTokenAsync() : preloadedToken;
   if (!token) {
     return {
       name: 'GitHub rate limit',

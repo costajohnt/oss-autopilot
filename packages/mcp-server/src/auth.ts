@@ -11,9 +11,9 @@
  */
 
 import { promises as fs } from 'node:fs';
-import { homedir } from 'node:os';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
+import { resolveDataDir } from '@oss-autopilot/core';
 
 const TOKEN_FILE_MODE = 0o600;
 const TOKEN_DIR_MODE = 0o700;
@@ -27,7 +27,7 @@ const TOKEN_BYTES = 32; // → 64 hex chars
 export function resolveTokenPath(): string {
   const override = process.env.OSS_AUTOPILOT_MCP_TOKEN_PATH;
   if (override && override.length > 0) return override;
-  return path.join(homedir(), '.oss-autopilot', 'mcp.token');
+  return path.join(resolveDataDir(), 'mcp.token');
 }
 
 /**

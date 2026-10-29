@@ -292,17 +292,16 @@ export function isTransientNetworkError(err: unknown): boolean {
   if (typeof status === 'number' && status >= 500 && status < 600) return true;
   // Node socket-level errors expose `code`
   const code = (err as { code?: unknown }).code;
-  if (typeof code === 'string') {
-    if (
-      code === 'ECONNRESET' ||
+  if (
+    typeof code === 'string' &&
+    (code === 'ECONNRESET' ||
       code === 'ETIMEDOUT' ||
       code === 'ENETUNREACH' ||
       code === 'ENOTFOUND' ||
       code === 'ECONNREFUSED' ||
-      code === 'EAI_AGAIN'
-    ) {
-      return true;
-    }
+      code === 'EAI_AGAIN')
+  ) {
+    return true;
   }
   // Octokit's RequestError surfaces the underlying name; fetch timeout is AbortError
   const name = (err as { name?: unknown }).name;

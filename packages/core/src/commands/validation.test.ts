@@ -222,8 +222,8 @@ describe('validateGitHubUsername', () => {
     });
 
     it('should reject a whitespace-only string', () => {
-      expect(() => validateGitHubUsername('   ')).toThrow(ValidationError);
-      expect(() => validateGitHubUsername('   ')).toThrow('cannot be empty');
+      expect(() => validateGitHubUsername(' '.repeat(3))).toThrow(ValidationError);
+      expect(() => validateGitHubUsername(' '.repeat(3))).toThrow('cannot be empty');
     });
 
     it('should reject a username longer than 39 characters', () => {

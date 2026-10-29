@@ -49,6 +49,8 @@ const mockUndismissIssue = vi.fn();
 const mockGetStatusOverride = vi.fn();
 const mockAddMergedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
+const mockGetMergedPRs = vi.fn((): Array<{ url: string; title: string; mergedAt: string }> => []);
+const mockRenameRepo = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
@@ -83,6 +85,9 @@ vi.mock('../core/index.js', async (importOriginal) => {
       setLastDigest: mockSetLastDigest,
       addMergedPRs: mockAddMergedPRs,
       addClosedPRs: mockAddClosedPRs,
+      getMergedPRs: mockGetMergedPRs,
+      getClosedPRs: vi.fn(() => []),
+      renameRepo: mockRenameRepo,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
@@ -205,6 +210,7 @@ function makeMergedResult(repos: Map<string, { count: number; lastMergedAt: stri
     monthlyCounts: {},
     monthlyOpenedCounts: {},
     dailyActivityCounts: {},
+    searchedPRs: [],
   };
 }
 
@@ -215,6 +221,7 @@ function makeClosedResult(repos: Map<string, number> = new Map()) {
     monthlyCounts: {},
     monthlyOpenedCounts: {},
     dailyActivityCounts: {},
+    searchedPRs: [],
   };
 }
 
@@ -236,6 +243,7 @@ beforeEach(() => {
   mockFetchRecentlyClosedPRs.mockResolvedValue([]);
   mockFetchRecentlyMergedPRs.mockResolvedValue([]);
   mockGenerateDigest.mockReturnValue(makeDigest());
+  mockGetMergedPRs.mockReturnValue([]);
 
   // Default issue conversation response (no issues)
   mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
@@ -565,7 +573,7 @@ describe('executeDailyCheck() — output shape', () => {
     const keys = result.actionMenu.items.map((i) => i.key);
     expect(keys).toContain('search');
     expect(keys).toContain('done');
-    expect(keys[keys.length - 1]).toBe('done');
+    expect(keys.at(-1)).toBe('done');
   });
 
   it('actionMenu includes address_all when actionable issues exist', async () => {
@@ -635,6 +643,22 @@ describe('executeDailyCheck() — repo score updates', () => {
     });
   });
 
+  it('re-keys a repo the merged-count search now reports under a new name', async () => {
+    mockGetMergedPRs.mockReturnValue([
+      { url: 'https://github.com/old-owner/tool/pull/7', title: 'fix: thing', mergedAt: '2026-01-01T00:00:00Z' },
+    ]);
+    mockFetchUserMergedPRCounts.mockResolvedValue({
+      ...makeMergedResult(new Map([['new-org/tool', { count: 1, lastMergedAt: '2026-01-01T00:00:00Z' }]])),
+      searchedPRs: [{ url: 'https://github.com/new-org/tool/pull/7', title: 'fix: thing' }],
+    });
+
+    await executeDailyCheck('test-token');
+
+    expect(mockRenameRepo).toHaveBeenCalledWith('old-owner/tool', 'new-org/tool');
+    // The rename must land before the merged counts are written.
+    expect(mockRenameRepo.mock.invocationCallOrder[0]).toBeLessThan(mockUpdateRepoScore.mock.invocationCallOrder[0]);
+  });
+
   it('surfaces a repo-scores warning when only SOME merged count updates fail (#1448)', async () => {
     const mergedRepos = new Map([
       ['owner/repo-a', { count: 3, lastMergedAt: '2026-01-10T00:00:00Z' }],
@@ -693,6 +717,7 @@ describe('executeDailyCheck() — repo score updates', () => {
       monthlyCounts,
       monthlyOpenedCounts: {},
       dailyActivityCounts: {},
+      searchedPRs: [],
     });
 
     await executeDailyCheck('test-token');
@@ -707,6 +732,7 @@ describe('executeDailyCheck() — repo score updates', () => {
       monthlyCounts: monthlyClosedCounts,
       monthlyOpenedCounts: {},
       dailyActivityCounts: {},
+      searchedPRs: [],
     });
 
     await executeDailyCheck('test-token');

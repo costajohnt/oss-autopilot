@@ -184,7 +184,7 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
     repo: options.repo,
     byteSize: Buffer.byteLength(options.content, 'utf8'),
     stored: true,
-    ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    ...(gistSyncWarning && { gistSyncWarning }),
   };
 }
 
@@ -207,7 +207,7 @@ export async function runMarkExtracted(options: RepoOption): Promise<MarkExtract
     marked++;
   }
   const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE) : null;
-  return { repo: options.repo, marked, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return { repo: options.repo, marked, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
 /** Tombstone the guidelines file for `repo`. */
@@ -224,7 +224,7 @@ export async function runGuidelinesReset(options: RepoOption): Promise<Guideline
     // Push to Gist — see runGuidelinesStore note (#1200).
     gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   }
-  return { repo: options.repo, deleted: existed, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return { repo: options.repo, deleted: existed, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
 /**
@@ -324,8 +324,8 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
     prCount: bundles.length,
     skipped,
     failures,
-    ...(gistSyncWarning ? { gistSyncWarning } : {}),
-    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(gistSyncWarning && { gistSyncWarning }),
+    ...(warnings.length > 0 && { warnings }),
   };
 }
 

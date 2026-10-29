@@ -16,9 +16,7 @@ import type {
   SearchPriority,
   CapacityAssessment,
   ActionableIssue,
-  ActionableIssueType,
   CompactActionableIssue,
-  ActionMenuItem,
   ActionMenu,
 } from '../core/types.js';
 import type { ContributionStats } from '../core/stats.js';
@@ -30,14 +28,6 @@ import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } fr
 // External consumers and downstream tests have historically imported them from
 // here; the re-exports keep that surface stable while removing the cross-layer
 // dependency in core/ (#1117).
-export type {
-  CapacityAssessment,
-  ActionableIssue,
-  ActionableIssueType,
-  CompactActionableIssue,
-  ActionMenuItem,
-  ActionMenu,
-};
 
 export type ErrorCode =
   | 'AUTH_REQUIRED'
@@ -1643,7 +1633,7 @@ export function jsonSuccess<T>(data: T): JsonOutput<T> {
     success: true,
     data,
     timestamp: new Date().toISOString(),
-    ...(envelopeGistWarning && !dataCarriesGistInitWarning(data) ? { gistInitWarning: envelopeGistWarning } : {}),
+    ...(envelopeGistWarning && !dataCarriesGistInitWarning(data) && { gistInitWarning: envelopeGistWarning }),
   };
 }
 
@@ -1656,7 +1646,7 @@ export function jsonError(message: string, errorCode?: ErrorCode): JsonOutput<ne
     error: message,
     errorCode,
     timestamp: new Date().toISOString(),
-    ...(envelopeGistWarning ? { gistInitWarning: envelopeGistWarning } : {}),
+    ...(envelopeGistWarning && { gistInitWarning: envelopeGistWarning }),
   };
 }
 
@@ -1709,3 +1699,12 @@ export function formatJson<T>(schema: ZodType<T>, data: unknown): JsonOutput<T> 
 export function outputJsonValidated<T>(schema: ZodType<T>, data: unknown): void {
   console.log(JSON.stringify(formatJson(schema, data), null, 2));
 }
+
+export {
+  type ActionableIssueType,
+  type ActionMenuItem,
+  type CapacityAssessment,
+  type ActionableIssue,
+  type CompactActionableIssue,
+  type ActionMenu,
+} from '../core/types.js';

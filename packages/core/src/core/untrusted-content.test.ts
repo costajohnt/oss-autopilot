@@ -47,7 +47,7 @@ describe('wrapUntrustedContent (#1192)', () => {
     const out = wrapUntrustedContent(attack, 'pr-body');
 
     // Exactly one open-tag and one close-tag in the wrapped output.
-    const openCount = out.match(new RegExp(`<${UNTRUSTED_OPEN_TAG_NAME}\\b`, 'g'))?.length ?? 0;
+    const openCount = out.match(new RegExp(String.raw`<${UNTRUSTED_OPEN_TAG_NAME}\b`, 'g'))?.length ?? 0;
     const closeCount = out.match(new RegExp(`</${UNTRUSTED_OPEN_TAG_NAME}>`, 'g'))?.length ?? 0;
     expect(openCount).toBe(1);
     expect(closeCount).toBe(1);

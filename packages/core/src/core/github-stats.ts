@@ -24,6 +24,7 @@ const MAX_PAGINATION_PAGES = 3;
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */
 type SearchItem = {
   html_url: string;
+  title?: string;
   created_at?: string;
   closed_at: string | null;
   pull_request?: { merged_at?: string | null };
@@ -35,11 +36,17 @@ export interface PRCountsResult<R> {
   monthlyCounts: Record<string, number>;
   monthlyOpenedCounts: Record<string, number>;
   dailyActivityCounts: Record<string, number>;
+  /**
+   * Every non-own PR the search returned (before the star filter), as
+   * URL + title. Lets the daily run spot repos that were transferred or
+   * renamed since a stored PR was recorded (see findRepoTransfers).
+   */
+  searchedPRs: Array<{ url: string; title: string }>;
 }
 
 /** Returns an empty PRCountsResult. Used as the fallback when stats fetches fail or username is empty. */
 export function emptyPRCountsResult<R>(): PRCountsResult<R> {
-  return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
+  return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {}, searchedPRs: [] };
 }
 
 /** Serialized shape of a cached PRCountsResult (Map stored as entries array). */
@@ -48,6 +55,8 @@ interface CachedPRCounts {
   monthlyCounts: Record<string, number>;
   monthlyOpenedCounts: Record<string, number>;
   dailyActivityCounts: Record<string, number>;
+  /** Absent on entries cached before searchedPRs existed. */
+  searchedPRs?: Array<{ url: string; title: string }>;
 }
 
 /** Type guard for deserialized cache data — prevents crashes on corrupt/stale cache. */
@@ -97,6 +106,7 @@ async function fetchUserPRCounts<R>(
       monthlyCounts: cached.monthlyCounts,
       monthlyOpenedCounts: cached.monthlyOpenedCounts,
       dailyActivityCounts: cached.dailyActivityCounts,
+      searchedPRs: Array.isArray(cached.searchedPRs) ? cached.searchedPRs : [],
     };
   }
 
@@ -106,6 +116,7 @@ async function fetchUserPRCounts<R>(
   const monthlyCounts: Record<string, number> = {};
   const monthlyOpenedCounts: Record<string, number> = {};
   const dailyActivityCounts: Record<string, number> = {};
+  const searchedPRs: Array<{ url: string; title: string }> = [];
   let page = 1;
   let fetched = 0;
   let totalCount!: number;
@@ -133,6 +144,8 @@ async function fetchUserPRCounts<R>(
 
       // Skip own repos (PRs to your own repos aren't OSS contributions)
       if (isOwnRepo(owner, githubUsername)) continue;
+
+      searchedPRs.push({ url: item.html_url, title: item.title ?? '' });
 
       // Skip repos below the minimum star threshold (#576).
       // Repos with unknown star counts (not yet fetched) are also excluded (fail-closed).
@@ -191,9 +204,10 @@ async function fetchUserPRCounts<R>(
     monthlyCounts,
     monthlyOpenedCounts,
     dailyActivityCounts,
+    searchedPRs,
   });
 
-  return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
+  return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts, searchedPRs };
 }
 
 /**
@@ -296,7 +310,7 @@ async function fetchRecentPRs<T>(
 
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - days);
-  const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const since = sinceDate.toISOString().split('T', 1)[0]; // YYYY-MM-DD
 
   debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 

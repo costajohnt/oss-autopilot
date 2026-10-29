@@ -3,6 +3,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, 'dist/**'],
+    setupFiles: ['src/test-lib/isolate-home.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary'],

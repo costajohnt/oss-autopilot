@@ -16,8 +16,6 @@ interface LocalReposOptions {
   paths?: string[];
 }
 
-export type { LocalReposOutput, LocalRepoInfo };
-
 /** Default directories to scan for local clones */
 const DEFAULT_SCAN_PATHS = [
   path.join(os.homedir(), 'Documents', 'oss'),
@@ -194,3 +192,5 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
     fromCache: false,
   };
 }
+
+export { type LocalReposOutput, type LocalRepoInfo } from '../formatters/json.js';

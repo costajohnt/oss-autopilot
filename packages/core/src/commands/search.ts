@@ -60,6 +60,14 @@ interface SearchOptions {
    * an interactive search rather than a scheduled one.
    */
   full?: boolean;
+  /**
+   * Persist the seen-set and rotation cursor (default true). A headless search
+   * on a second machine that shares the Gist state must pass false: otherwise
+   * every issue it surfaces is hidden from the user's interactive searches for
+   * the seen-set TTL. With false nothing is checkpointed, so the rotation
+   * cursor does not advance either; pair it with `full`.
+   */
+  record?: boolean;
 }
 
 /**
@@ -218,32 +226,35 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
 
   const result = await scout.search({
     maxResults: options.maxResults,
-    ...(options.strategies ? { strategies: options.strategies } : {}),
-    ...(options.full ? { full: true } : {}),
+    ...(options.strategies && { strategies: options.strategies }),
+    ...(options.full && { full: true }),
     preferLanguages,
     preferRepos,
     diversityRatio: SEARCH_DIVERSITY_RATIO,
     // Pinned so searchSeen's retention (state-prune.ts) always outlives it.
     recentlySurfacedTtlDays: SCOUT_ROTATION_TTL_DAYS,
-    ...(interPhaseDelayMs !== undefined ? { interPhaseDelayMs } : {}),
-    ...(broadPhaseDelayMs !== undefined ? { broadPhaseDelayMs } : {}),
+    ...(interPhaseDelayMs !== undefined && { interPhaseDelayMs }),
+    ...(broadPhaseDelayMs !== undefined && { broadPhaseDelayMs }),
   });
 
   // Record everything scout surfaced this round into the durable seen-set so
   // the next search rotates past it (#1528). Done before the own-PR filter so
   // hidden-but-surfaced issues also rotate out. Persists to AgentState.
-  recordSearchSeen(
-    stateManager,
-    result.candidates.map((c) => c.issue.url),
-  );
-  // Scout advanced its broad-phase language cursor in its own (provided,
-  // non-persisted) state; copy it back so the next run starts from the next
-  // language slice instead of offset 0 every time (#1630).
-  stateManager.setSearchRotation(scout.getState().searchRotation);
-  // In Gist mode setSearchSeen only writes the local cache; without a
-  // checkpoint the seen-set never reaches the Gist and the next startup's
-  // Gist refetch overwrites the cache with the empty remote copy (#1629).
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  let gistSyncWarning: string | null = null;
+  if (options.record !== false) {
+    recordSearchSeen(
+      stateManager,
+      result.candidates.map((c) => c.issue.url),
+    );
+    // Scout advanced its broad-phase language cursor in its own (provided,
+    // non-persisted) state; copy it back so the next run starts from the next
+    // language slice instead of offset 0 every time (#1630).
+    stateManager.setSearchRotation(scout.getState().searchRotation);
+    // In Gist mode setSearchSeen only writes the local cache; without a
+    // checkpoint the seen-set never reaches the Gist and the next startup's
+    // Gist refetch overwrites the cache with the empty remote copy (#1629).
+    gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  }
 
   // #1354: never surface issues the user already has an open PR for. Uses
   // scout's structured linked-PR metadata when present; candidates without it
@@ -314,15 +325,14 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
               lastMergedAt: repoScoreRecord.lastMergedAt,
             }
           : undefined,
-        ...(linkedPR ? { linkedPR } : {}),
+        ...(linkedPR && { linkedPR }),
         // Scout 1.0 folded the boostScore/boostReasons/diversitySlot trio into a
         // single `personalization` field (#158). Derive the flat output fields
         // from it so this command's JSON shape is unchanged.
-        ...(c.personalization?.kind === 'boosted' ? { boostScore: c.personalization.score } : {}),
-        ...(c.personalization?.kind === 'boosted' && c.personalization.reasons.length > 0
-          ? { boostReasons: c.personalization.reasons }
-          : {}),
-        ...(c.personalization?.kind === 'diversity' ? { diversitySlot: true } : {}),
+        ...(c.personalization?.kind === 'boosted' && { boostScore: c.personalization.score }),
+        ...(c.personalization?.kind === 'boosted' &&
+          c.personalization.reasons.length > 0 && { boostReasons: c.personalization.reasons }),
+        ...(c.personalization?.kind === 'diversity' && { diversitySlot: true }),
       };
     }),
     excludedRepos: result.excludedRepos,

@@ -452,7 +452,8 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
 
     if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
       throw error;
-    } else if (statusCode === 404) {
+    }
+    if (statusCode === 404) {
       // Repo might not have CI configured, this is normal
       debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
     } else {

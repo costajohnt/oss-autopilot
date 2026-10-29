@@ -197,10 +197,11 @@ export function makeStateManagerMock(
     setLocalRepoCache: () => {},
     getMergedPRs: () => [],
     addMergedPRs: () => {},
-    getMergedPRWatermark: () => undefined,
+    getMergedPRWatermark: () => {},
     getClosedPRs: () => [],
     addClosedPRs: () => {},
-    getClosedPRWatermark: () => undefined,
+    getClosedPRWatermark: () => {},
+    renameRepo: () => {},
     updateConfig: () => {},
     addIssue: () => {},
     addTrustedProject: () => {},
@@ -213,10 +214,10 @@ export function makeStateManagerMock(
     isPRShelved: () => false,
     dismissIssue: () => false,
     undismissIssue: () => false,
-    getIssueDismissedAt: () => undefined,
+    getIssueDismissedAt: () => {},
     setStatusOverride: () => {},
     clearStatusOverride: () => false,
-    getStatusOverride: () => undefined,
+    getStatusOverride: () => {},
     getSearchSeen: () => state.searchSeen ?? [],
     setSearchSeen: (seen: AgentState['searchSeen']) => {
       state.searchSeen = seen;
@@ -229,7 +230,7 @@ export function makeStateManagerMock(
     setSearchRotation: (rotation: NonNullable<AgentState['searchRotation']>) => {
       state.searchRotation = rotation;
     },
-    getRepoScore: () => undefined,
+    getRepoScore: () => {},
     updateRepoScore: () => {},
     incrementMergedCount: () => {},
     incrementClosedCount: () => {},

@@ -2,7 +2,7 @@ import type { AttentionBucket, FetchedPR, FetchedPRStatus } from './types';
 
 /** Strip brackets from core display labels, e.g. "[CI Failing]" → "CI Failing". */
 export function stripBrackets(label: string): string {
-  return label.replace(/^\[|\]$/g, '');
+  return label.replaceAll(/^\[|\]$/g, '');
 }
 
 /** Map a display label to a pill color CSS class. */

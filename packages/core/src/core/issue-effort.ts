@@ -33,17 +33,23 @@ export type IssueEffort = 'small' | 'medium' | 'large';
 export function computeIssueEffort(type: ActionableIssueType, hintCount: number): IssueEffort {
   const hints = Math.max(0, hintCount);
   switch (type) {
-    case 'needs_response':
+    case 'needs_response': {
       return hints <= 1 ? 'small' : 'medium';
-    case 'incomplete_checklist':
+    }
+    case 'incomplete_checklist': {
       return 'small';
-    case 'needs_changes':
+    }
+    case 'needs_changes': {
       return hints >= 3 ? 'large' : 'medium';
-    case 'ci_failing':
+    }
+    case 'ci_failing': {
       return 'medium';
-    case 'merge_conflict':
+    }
+    case 'merge_conflict': {
       return 'large';
-    default:
+    }
+    default: {
       return 'medium';
+    }
   }
 }

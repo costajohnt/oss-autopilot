@@ -77,7 +77,7 @@ describe('search --json contract', () => {
           signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
         };
       }
-      return undefined;
+      return;
     });
   });
 

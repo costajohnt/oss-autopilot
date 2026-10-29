@@ -94,7 +94,7 @@ export function shouldDraftResponse(input: CommentDecisionInput): CommentDecisio
     if (alwaysDraftCategories.has(item.category)) {
       return {
         shouldDraft: true,
-        reason: `${item.category.replace(/_/g, ' ')} — diff alone cannot address this`,
+        reason: `${item.category.replaceAll('_', ' ')} — diff alone cannot address this`,
       };
     }
   }

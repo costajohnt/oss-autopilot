@@ -604,15 +604,14 @@ describe('IssueConversationMonitor', () => {
         return Promise.resolve({
           data: [makeComment('testuser', 'I can help', '2026-02-01T10:00:00Z')],
         });
-      } else {
-        // Issue 2: user commented, maintainer responded
-        return Promise.resolve({
-          data: [
-            makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
-            makeComment('maintainer', 'Yes please!', '2026-02-02T10:00:00Z', 'MEMBER'),
-          ],
-        });
       }
+      // Issue 2: user commented, maintainer responded
+      return Promise.resolve({
+        data: [
+          makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+          makeComment('maintainer', 'Yes please!', '2026-02-02T10:00:00Z', 'MEMBER'),
+        ],
+      });
     });
 
     const monitor = new IssueConversationMonitor('fake-token');

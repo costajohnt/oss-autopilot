@@ -49,7 +49,7 @@ describe('dashboard-process PID file', () => {
         pid: 1234,
         port: 3000,
         startedAt: '2026-05-09T12:00:00.000Z',
-        lastBrowserOpenedAt: 12345, // wrong type
+        lastBrowserOpenedAt: 12_345, // wrong type
       }),
     );
 

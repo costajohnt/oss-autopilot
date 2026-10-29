@@ -158,7 +158,7 @@ describe('issueReference check', () => {
 
 describe('description check', () => {
   it('fails on empty body', () => {
-    expect(computeComplianceScore(meta({ body: '   ' })).checks.description.status).toBe('fail');
+    expect(computeComplianceScore(meta({ body: ' '.repeat(3) })).checks.description.status).toBe('fail');
   });
   it('passes on a summary heading without a test plan', () => {
     const body = '## Summary\nx\n(no why, no test plan)';

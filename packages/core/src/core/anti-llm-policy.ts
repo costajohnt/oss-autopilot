@@ -113,7 +113,7 @@ function makeExcerpt(text: string, matchIndex: number, matchLength: number): str
   const end = Math.min(text.length, matchIndex + matchLength + EXCERPT_RADIUS);
   const prefix = start > 0 ? '…' : '';
   const suffix = end < text.length ? '…' : '';
-  return `${prefix}${text.slice(start, end).replace(/\s+/g, ' ').trim()}${suffix}`;
+  return `${prefix}${text.slice(start, end).replaceAll(/\s+/g, ' ').trim()}${suffix}`;
 }
 
 /**
@@ -125,8 +125,8 @@ function makeExcerpt(text: string, matchIndex: number, matchLength: number): str
 function normalizeText(text: string): string {
   return text
     .normalize('NFKC')
-    .replace(/\u00A0/g, ' ')
-    .replace(/[\u2010-\u2015]/g, '-');
+    .replaceAll('\u{A0}', ' ')
+    .replaceAll(/[\u2010-\u2015]/g, '-');
 }
 
 export function scanForAntiLLMPolicy(text: string): AntiLLMScanResult {

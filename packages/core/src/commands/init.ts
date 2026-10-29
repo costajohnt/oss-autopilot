@@ -37,6 +37,6 @@ export async function runInit(options: { username: string }): Promise<InitOutput
   return {
     username: options.username,
     message: 'Username saved. Run `daily` to fetch your open PRs from GitHub.',
-    ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    ...(gistSyncWarning && { gistSyncWarning }),
   };
 }

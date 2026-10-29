@@ -47,7 +47,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   GUIDELINES_PROVENANCE_NOTE: (await importOriginal<typeof import('@oss-autopilot/core')>()).GUIDELINES_PROVENANCE_NOTE,
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   splitRepo: (fullName: string) => {
-    const [owner, repo] = fullName.split('/');
+    const [owner, repo] = fullName.split('/', 2);
     return { owner, repo };
   },
   getGitHubTokenAsync: vi.fn().mockResolvedValue(null),

@@ -353,8 +353,7 @@ export async function cachedRequest<T>(
   const cleanup = cache.setInflight(url, promise);
 
   try {
-    const result = await promise;
-    return result;
+    return await promise;
   } finally {
     cleanup();
   }

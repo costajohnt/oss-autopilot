@@ -100,7 +100,7 @@ const WAIT_DISPLAY: Record<WaitReason, { label: string; description: (pr: Fetche
 function labelToPlainText(reason: ActionReason): string {
   const label = ACTION_DISPLAY[reason]?.label;
   if (!label) return reason;
-  return label.replace(/[[\]]/g, '').toLowerCase();
+  return label.replaceAll(/[[\]]/g, '').toLowerCase();
 }
 
 /** Compute display label and description for a FetchedPR (#79). */
