@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/preact';
+import { render, act } from '@testing-library/preact';
 
 // Mock Chart.js so the tests can observe instance lifecycle: chart-panel must
 // create each Chart exactly once and update it in place on data refreshes
@@ -122,7 +122,10 @@ describe('ChartPanel', () => {
     const { unmount } = render(<ChartPanel monthlyMerged={{ '2026-01': 3 }} topRepos={topRepos} theme="dark" />);
     const [line, bar] = chartMock.instances;
 
-    unmount();
+    // Preact 11 defers useEffect cleanup until after paint; act() flushes it.
+    act(() => {
+      unmount();
+    });
 
     expect(line!.destroy).toHaveBeenCalledTimes(1);
     expect(bar!.destroy).toHaveBeenCalledTimes(1);

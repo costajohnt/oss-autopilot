@@ -43,11 +43,11 @@ function ChartSkeleton() {
     <div class="chart-panel" aria-busy="true" aria-label="Loading charts">
       <div class="chart-card">
         <h3 class="chart-card-title">Monthly Activity</h3>
-        <div class="chart-canvas-wrapper" style={{ minHeight: 240 }} />
+        <div class="chart-canvas-wrapper" style={{ minHeight: '240px' }} />
       </div>
       <div class="chart-card">
         <h3 class="chart-card-title">Top Repos</h3>
-        <div class="chart-canvas-wrapper" style={{ minHeight: 240 }} />
+        <div class="chart-canvas-wrapper" style={{ minHeight: '240px' }} />
       </div>
     </div>
   );
