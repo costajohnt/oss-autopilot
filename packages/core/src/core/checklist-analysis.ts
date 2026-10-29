@@ -11,7 +11,7 @@ import { FetchedPR } from './types.js';
  * Conservative — only skips items with clear conditional language.
  */
 const CONDITIONAL_CHECKLIST_PATTERN =
-  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
+  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b|\((?:not run|skipped|not done)\s*[:—-]/;
 
 export function isConditionalChecklistItem(line: string): boolean {
   return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
@@ -27,6 +27,12 @@ const HEADING_RE = /^#{1,6}\s+(\S.*)/;
  * prose like "Complete one of the following only if it applies". (#1760)
  */
 const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|pick\s+one|choose\s+one)[^>]*-->/i;
+
+/**
+ * Matches a prose line that states a condition for the checkbox run below it,
+ * e.g. "If the code communicates with devices:" (#1796).
+ */
+const CONDITIONAL_LEAD_IN_RE = /^\s*(?:if|when|only if)\s.*:\s*$/i;
 
 /** Matches any checkbox line (checked or unchecked). */
 const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
@@ -90,7 +96,7 @@ function hasLeaveUncheckedNote(section: CheckboxSection): boolean {
 
 /**
  * Mark unchecked lines in a single pick-one run as exempt if exactly one box is
- * checked. Extracted to keep `collectPickOneExemptLineIndices` within complexity
+ * checked. Extracted to keep `collectRunExemptLineIndices` within complexity
  * limits.
  */
 function markPickOneRunExempt(lines: string[], runStart: number, runEnd: number, exempt: Set<number>): void {
@@ -101,24 +107,38 @@ function markPickOneRunExempt(lines: string[], runStart: number, runEnd: number,
   }
 }
 
+/** Mark every unchecked line in a run under a conditional lead-in as exempt (#1796). */
+function markConditionalRunExempt(lines: string[], runStart: number, runEnd: number, exempt: Set<number>): void {
+  for (let k = runStart; k < runEnd; k++) {
+    if (/- \[ \]/.test(lines[k])) exempt.add(k);
+  }
+}
+
+type RunMarker = (lines: string[], runStart: number, runEnd: number, exempt: Set<number>) => void;
+
 /**
- * Returns the set of line indices (within `lines`) that are unchecked checkbox lines
- * belonging to a satisfied pick-one group. A pick-one group is a contiguous checkbox
- * run immediately following an HTML comment matching PICK_ONE_COMMENT_RE. The group is
- * satisfied when exactly one box in the run is checked; in that case the unchecked
- * alternatives are intentional and must not be counted as incomplete. (#1760)
+ * Returns the set of line indices (within `lines`) of unchecked checkbox lines that
+ * are intentionally unchecked because of the line introducing their run:
+ * - a pick-one HTML comment (PICK_ONE_COMMENT_RE) whose run has exactly one box
+ *   checked, so the unchecked alternatives are intentional (#1760);
+ * - a conditional lead-in line (CONDITIONAL_LEAD_IN_RE), so the whole run is
+ *   conditional like an "(if ...)" item (#1796).
+ * A run is the contiguous checkbox lines after the introducing line, past blanks.
  */
-function collectPickOneExemptLineIndices(lines: string[]): ReadonlySet<number> {
+function collectRunExemptLineIndices(lines: string[]): ReadonlySet<number> {
   const exempt = new Set<number>();
   let i = 0;
 
   while (i < lines.length) {
-    if (!PICK_ONE_COMMENT_RE.test(lines[i])) {
+    let mark: RunMarker | undefined;
+    if (PICK_ONE_COMMENT_RE.test(lines[i])) mark = markPickOneRunExempt;
+    else if (CONDITIONAL_LEAD_IN_RE.test(lines[i])) mark = markConditionalRunExempt;
+    if (!mark) {
       i++;
       continue;
     }
 
-    // Advance past the comment, skipping any blank lines before the checkbox run
+    // Advance past the introducing line, skipping any blank lines before the checkbox run
     let j = i + 1;
     while (j < lines.length && lines[j].trim() === '') j++;
 
@@ -126,7 +146,7 @@ function collectPickOneExemptLineIndices(lines: string[]): ReadonlySet<number> {
     const runStart = j;
     while (j < lines.length && ANY_CHECKBOX_RE.test(lines[j])) j++;
 
-    markPickOneRunExempt(lines, runStart, j, exempt);
+    mark(lines, runStart, j, exempt);
     i = j;
   }
 
@@ -155,11 +175,11 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
   const isTypeOfChange = section.heading !== null && TYPE_OF_CHANGE_RE.test(section.heading);
   if (isTypeOfChange && checked >= 1) return { checked, nonConditionalUnchecked: 0 };
 
-  // Pick-one groups: unchecked alternatives in a satisfied pick-one group are exempt. (#1760)
-  const pickOneExempt = collectPickOneExemptLineIndices(section.lines);
+  // Pick-one groups (#1760) and runs under a conditional lead-in line (#1796).
+  const runExempt = collectRunExemptLineIndices(section.lines);
 
   const nonConditionalUnchecked = section.lines.filter(
-    (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !pickOneExempt.has(idx),
+    (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !runExempt.has(idx),
   );
   return { checked, nonConditionalUnchecked: nonConditionalUnchecked.length };
 }
@@ -176,6 +196,8 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
  * - Sections whose heading matches "type of change" / "kind of change" / "category"
  *   are treated as single-select radio groups: satisfied when at least one box is
  *   checked, so the remaining unchecked boxes are not counted as incomplete.
+ * - Unchecked boxes in a run under a conditional lead-in line ("If ...:") are
+ *   treated as conditional (#1796).
  */
 export function analyzeChecklist(body: string): {
   hasIncompleteChecklist: boolean;

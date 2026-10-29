@@ -257,4 +257,67 @@ describe('analyzeChecklist', () => {
       expect(result.hasIncompleteChecklist).toBe(false);
     });
   });
+
+  describe('conditional lead-in lines and inline annotations (#1796)', () => {
+    const leadInTemplate = [
+      '## Checklist',
+      '',
+      '- [x] The code change is tested and works locally.',
+      '- [x] Tests have been added to verify that the new code works.',
+      '',
+      'If user exposed functionality or configuration variables are added/changed:',
+      '',
+      '- [ ] Documentation added/updated for the docs site',
+      '',
+      'If the code communicates with devices, web services, or third-party tools:',
+      '',
+      '- [ ] The manifest file has all fields filled out correctly.',
+      '- [ ] New or updated dependencies have been added to the requirements file.',
+      '- [ ] For the updated dependencies a diff between library versions is added to the PR description.',
+    ];
+
+    it('exempts unchecked boxes under an "If ...:" lead-in line', () => {
+      const result = analyzeChecklist(leadInTemplate.join('\n'));
+      expect(result.hasIncompleteChecklist).toBe(false);
+      expect(result.checklistStats).toEqual({ checked: 2, total: 2 });
+    });
+
+    it('still counts an honor-system box under a non-conditional lead-in', () => {
+      const body = [
+        ...leadInTemplate,
+        '',
+        'To help with the load of incoming pull requests:',
+        '',
+        '- [ ] I have reviewed two other open pull requests in this repository.',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+      expect(result.checklistStats).toEqual({ checked: 2, total: 3 });
+    });
+
+    it('recognises "When" and "Only if" lead-ins', () => {
+      const body = [
+        '## Checklist',
+        '- [x] Tests pass',
+        'When adding a new integration:',
+        '- [ ] Added to the integrations index',
+        'Only if the schema changed:',
+        '- [ ] Ran the migration',
+      ].join('\n');
+      expect(analyzeChecklist(body).hasIncompleteChecklist).toBe(false);
+    });
+
+    it('exempts a box the author annotated "(Not run: ...)" or "(Skipped: ...)"', () => {
+      const body = [
+        '## Checklist',
+        '- [x] Tests pass',
+        '- [x] Lint passes',
+        '- [ ] Passed the story run for the changes. (Not run: no visual change, covered by the new UI test.)',
+        '- [ ] Benchmarks (Skipped - no hot path touched)',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+      expect(result.checklistStats).toEqual({ checked: 2, total: 2 });
+    });
+  });
 });
