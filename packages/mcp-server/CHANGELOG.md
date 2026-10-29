@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.9](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.8...mcp-v5.7.9) (2026-10-29)
+
+
+### Bug Fixes
+
+* isolate tests from the real ~/.oss-autopilot state and GitHub token ([#1816](https://github.com/costajohnt/oss-autopilot/issues/1816)) ([52b8126](https://github.com/costajohnt/oss-autopilot/commit/52b8126126ea4d6cb41a31c896032f9ea1fc8cd8))
+
 ## [5.7.8](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.7...mcp-v5.7.8) (2026-10-28)
 
 
