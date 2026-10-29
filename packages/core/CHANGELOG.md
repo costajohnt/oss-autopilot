@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.33.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.33.0...core-v3.33.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* exempt checklist boxes under change-conditional lead-ins and 'Not run:' notes ([#1817](https://github.com/costajohnt/oss-autopilot/issues/1817)) ([2f73848](https://github.com/costajohnt/oss-autopilot/commit/2f738487824411075541c999be79d5077017beb8))
+* isolate tests from the real ~/.oss-autopilot state and GitHub token ([#1816](https://github.com/costajohnt/oss-autopilot/issues/1816)) ([52b8126](https://github.com/costajohnt/oss-autopilot/commit/52b8126126ea4d6cb41a31c896032f9ea1fc8cd8))
+* **review:** run devils-advocate as a judge before resolving diff-mode findings ([#1819](https://github.com/costajohnt/oss-autopilot/issues/1819)) ([57b8411](https://github.com/costajohnt/oss-autopilot/commit/57b8411ab0230ff0e9edf36ae9b741c34d8d0c39))
+
 ## [3.33.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.32.0...core-v3.33.0) (2026-10-28)
 
 
