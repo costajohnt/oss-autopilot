@@ -223,7 +223,7 @@ export const commands: CLICommandDef[] = [
               return runStatus({ offline: options.offline });
             },
             (data) => {
-              console.log('\n\ud83d\udcca OSS Status\n');
+              console.log('\n\u{1F4CA} OSS Status\n');
               console.log(`Merged PRs: ${data.stats.mergedPRs}`);
               console.log(`Closed PRs: ${data.stats.closedPRs}`);
               console.log(`Merge Rate: ${data.stats.mergeRate}`);
@@ -649,10 +649,10 @@ export const commands: CLICommandDef[] = [
               for (const result of data.results) {
                 const status =
                   result.listStatus === 'still_available'
-                    ? '\u2705'
+                    ? '\u{2705}'
                     : result.listStatus === 'error'
-                      ? '\u274c'
-                      : '\u26a0\ufe0f';
+                      ? '\u{274C}'
+                      : '\u{26A0}\u{FE0F}';
                 const annotation =
                   result.listStatus === 'has_stalled_pr'
                     ? ' (stalled PR, revive opportunity)'
@@ -767,7 +767,10 @@ export const commands: CLICommandDef[] = [
           await executeAction(
             options,
             async () => {
-              const result = await (
+              // Not-found now throws ValidationError inside the command (#1406),
+              // so library and CLI consumers see the same failure — no CLI-layer
+              // re-throw needed (mirrors list-move-tier after #1355).
+              return await (
                 await import('./commands/list-mark-done.js')
               ).runMarkIssueListItemDone({
                 issueUrl,
@@ -775,10 +778,6 @@ export const commands: CLICommandDef[] = [
                 prStatus: options.prStatus,
                 listPath: options.listPath,
               });
-              // Not-found now throws ValidationError inside the command (#1406),
-              // so library and CLI consumers see the same failure — no CLI-layer
-              // re-throw needed (mirrors list-move-tier after #1355).
-              return result;
             },
             (data) => {
               if (data.marked) {
@@ -840,7 +839,7 @@ export const commands: CLICommandDef[] = [
             async () => (await import('./commands/compliance-score.js')).runComplianceScore({ prUrl }),
             (data) => {
               console.log(`\n${data.emoji} PR ${data.pr.repo}#${data.pr.number}: ${data.pr.title}`);
-              console.log(`Score: ${data.score}/100 — ${data.rating.replace(/_/g, ' ')}\n`);
+              console.log(`Score: ${data.score}/100 — ${data.rating.replaceAll('_', ' ')}\n`);
               console.log('Checks:');
               for (const [name, check] of Object.entries(data.checks)) {
                 const icon = check.status === 'pass' ? 'OK ' : check.status === 'warn' ? 'WARN' : 'FAIL';
@@ -888,7 +887,7 @@ export const commands: CLICommandDef[] = [
                   const time = review.submittedAt ? formatRelativeTime(review.submittedAt) : '';
                   console.log(`${state} **@${review.user}** (${review.state}) - ${time}`);
                   if (review.body) {
-                    console.log(`> ${safeExtractFromFence(review.body).split('\n').join('\n> ')}\n`);
+                    console.log(`> ${safeExtractFromFence(review.body).replaceAll('\n', '\n> ')}\n`);
                   }
                 }
               }
@@ -898,7 +897,7 @@ export const commands: CLICommandDef[] = [
                 for (const comment of data.reviewComments) {
                   const time = formatRelativeTime(comment.createdAt);
                   console.log(`**@${comment.user}** on \`${comment.path}\` - ${time}`);
-                  console.log(`> ${safeExtractFromFence(comment.body).split('\n').join('\n> ')}`);
+                  console.log(`> ${safeExtractFromFence(comment.body).replaceAll('\n', '\n> ')}`);
                   console.log('');
                 }
               }
@@ -909,7 +908,7 @@ export const commands: CLICommandDef[] = [
                   const time = formatRelativeTime(comment.createdAt);
                   console.log(`**@${comment.user}** - ${time}`);
                   console.log(
-                    `> ${comment.body == null ? '' : safeExtractFromFence(comment.body).split('\n').join('\n> ')}\n`,
+                    `> ${comment.body == null ? '' : safeExtractFromFence(comment.body).replaceAll('\n', '\n> ')}\n`,
                   );
                 }
               }
@@ -1020,7 +1019,7 @@ export const commands: CLICommandDef[] = [
                 }
                 console.log('');
               } else if ('config' in data) {
-                console.log('\n\u2699\ufe0f Current Configuration:\n');
+                console.log('\n\u{2699}\u{FE0F} Current Configuration:\n');
                 console.log(JSON.stringify(data.config, null, 2));
               } else {
                 console.log(`Set ${data.key} to: ${data.value}`);
@@ -1075,7 +1074,7 @@ export const commands: CLICommandDef[] = [
               if ('success' in data) {
                 // --set mode
                 for (const [key, value] of Object.entries(data.settings)) {
-                  console.log(`\u2713 ${key}: ${value}`);
+                  console.log(`\u{2713} ${key}: ${value}`);
                 }
                 if (data.warnings) {
                   for (const w of data.warnings) {
@@ -1084,8 +1083,8 @@ export const commands: CLICommandDef[] = [
                 }
               } else if ('setupComplete' in data && data.setupComplete) {
                 // Already complete
-                console.log('\n\u2699\ufe0f  OSS Autopilot Setup\n');
-                console.log('\u2713 Setup already complete!\n');
+                console.log('\n\u{2699}\u{FE0F}  OSS Autopilot Setup\n');
+                console.log('\u{2713} Setup already complete!\n');
                 console.log('Current settings:');
                 console.log(`  GitHub username:    ${data.config.githubUsername || '(not set)'}`);
                 console.log(`  Max active PRs:     ${data.config.maxActivePRs}`);
@@ -1096,7 +1095,7 @@ export const commands: CLICommandDef[] = [
                 console.log(`\nRun 'setup --reset' to reconfigure.`);
               } else if ('setupRequired' in data) {
                 // Needs setup
-                console.log('\n\u2699\ufe0f  OSS Autopilot Setup\n');
+                console.log('\n\u{2699}\u{FE0F}  OSS Autopilot Setup\n');
                 console.log('SETUP_REQUIRED');
                 console.log('---');
                 console.log('Please configure the following settings:\n');
@@ -1195,7 +1194,7 @@ export const commands: CLICommandDef[] = [
             async (data) => {
               const path = await import('node:path');
               const resolvedPath = path.resolve(filePath);
-              console.log(`\n\ud83d\udccb Issue List: ${resolvedPath}\n`);
+              console.log(`\n\u{1F4CB} Issue List: ${resolvedPath}\n`);
               console.log(
                 `Available: ${data.availableCount} | Completed: ${data.completedCount} | Blocked: ${data.blockedCount}\n`,
               );
@@ -1245,10 +1244,10 @@ export const commands: CLICommandDef[] = [
                 console.log('\nNo new code files to check.');
                 return;
               }
-              console.log(`\n\ud83d\udd0d Integration Check (base: ${options.base})\n`);
+              console.log(`\n\u{1F50D} Integration Check (base: ${options.base})\n`);
               console.log(`New files: ${data.newFiles.length} | Unreferenced: ${data.unreferencedCount}\n`);
               for (const file of data.newFiles) {
-                const status = file.isIntegrated ? '\u2705' : '\u26a0\ufe0f';
+                const status = file.isIntegrated ? '\u{2705}' : '\u{26A0}\u{FE0F}';
                 console.log(`${status} ${file.path}`);
                 if (file.isIntegrated) {
                   console.log(`   Referenced by: ${file.referencedBy.join(', ')}`);
@@ -1321,7 +1320,7 @@ export const commands: CLICommandDef[] = [
               }),
             (data) => {
               if (data.fromCache) {
-                console.log(`\n\ud83d\udcc1 Local Repos (cached ${data.cachedAt})\n`);
+                console.log(`\n\u{1F4C1} Local Repos (cached ${data.cachedAt})\n`);
                 printRepos(data.repos);
               } else {
                 console.log(`Found ${Object.keys(data.repos).length} repos:\n`);

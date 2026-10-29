@@ -160,7 +160,10 @@ describe('useTheme', () => {
   it('cleans up matchMedia listener on unmount', () => {
     const { mql } = mockMatchMedia(false);
     const { unmount } = renderHook(() => useTheme());
-    unmount();
+    // Preact 11 defers useEffect cleanup until after paint; act() flushes it.
+    act(() => {
+      unmount();
+    });
     expect(mql.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
   });
 });

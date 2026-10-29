@@ -222,7 +222,7 @@ describe('buildPrepRef', () => {
     'a?',
     'a*',
     'a[b',
-    'a\\b',
+    String.raw`a\b`,
     'a@{1}',
     'a.lock',
     'a\nb',

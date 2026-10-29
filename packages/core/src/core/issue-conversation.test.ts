@@ -270,7 +270,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
-        makeComment('random-user', 'Me too', '2026-02-02T10:00:00Z', 'NONE'),
+        makeComment('random-user', 'Me too', '2026-02-02T10:00:00Z'),
       ],
     });
 
@@ -316,7 +316,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
-        makeComment('random-user', 'Hey @testuser, I found a workaround', '2026-02-02T10:00:00Z', 'NONE'),
+        makeComment('random-user', 'Hey @testuser, I found a workaround', '2026-02-02T10:00:00Z'),
       ],
     });
 
@@ -342,7 +342,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
-        makeComment('someone', 'FYI @TestUser this is related', '2026-02-02T10:00:00Z', 'NONE'),
+        makeComment('someone', 'FYI @TestUser this is related', '2026-02-02T10:00:00Z'),
       ],
     });
 
@@ -604,15 +604,14 @@ describe('IssueConversationMonitor', () => {
         return Promise.resolve({
           data: [makeComment('testuser', 'I can help', '2026-02-01T10:00:00Z')],
         });
-      } else {
-        // Issue 2: user commented, maintainer responded
-        return Promise.resolve({
-          data: [
-            makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
-            makeComment('maintainer', 'Yes please!', '2026-02-02T10:00:00Z', 'MEMBER'),
-          ],
-        });
       }
+      // Issue 2: user commented, maintainer responded
+      return Promise.resolve({
+        data: [
+          makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+          makeComment('maintainer', 'Yes please!', '2026-02-02T10:00:00Z', 'MEMBER'),
+        ],
+      });
     });
 
     const monitor = new IssueConversationMonitor('fake-token');

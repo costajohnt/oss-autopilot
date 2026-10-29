@@ -12,8 +12,6 @@ interface ParseListOptions {
   filePath: string;
 }
 
-export type { ParseIssueListOutput, ParsedIssueItem };
-
 /**
  * Extract a GitHub issue URL from a markdown line.
  *
@@ -32,17 +30,17 @@ function extractGitHubUrl(line: string): { repo: string; number: number; url: st
 /** Extract issue title from a markdown line (text after URL or checkbox) */
 function extractTitle(line: string): string {
   // Remove markdown link syntax: [title](url) -> title
-  let cleaned = line.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  let cleaned = line.replaceAll(/\[([^\]]+)\]\([^)]+\)/g, '$1');
   // Remove bare URLs
-  cleaned = cleaned.replace(/https?:\/\/\S+/g, '');
+  cleaned = cleaned.replaceAll(/https?:\/\/\S+/g, '');
   // Remove list markers (-, *, +, numbered)
   cleaned = cleaned.replace(/^\s*[-*+]\s*/, '').replace(/^\s*\d+\.\s*/, '');
   // Remove checkboxes
   cleaned = cleaned.replace(/\[[ x]\]\s*/i, '');
   // Remove strikethrough markers
-  cleaned = cleaned.replace(/~~/g, '');
+  cleaned = cleaned.replaceAll('~~', '');
   // Remove "Done" markers
-  cleaned = cleaned.replace(/\bdone\b/gi, '');
+  cleaned = cleaned.replaceAll(/\bdone\b/gi, '');
   // Remove leading/trailing punctuation and whitespace
   cleaned = cleaned.replace(/^[\s\-\u2013\u2014:]+/, '').replace(/[\s\-\u2013\u2014:]+$/, '');
   return cleaned.trim();
@@ -185,7 +183,7 @@ function isBlockedSection(heading: string): boolean {
 
 /** Leading-whitespace width with tabs expanded to two columns. */
 function indentWidth(line: string): number {
-  return line.match(/^\s*/)![0].replace(/\t/g, '  ').length;
+  return line.match(/^\s*/)![0].replaceAll('\t', '  ').length;
 }
 
 /** Parse a markdown string into structured issue items */
@@ -274,7 +272,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       number: ghUrl.number,
       title: title || `#${ghUrl.number}`,
       tier: currentTier,
-      ...(currentGroup !== undefined ? { group: currentGroup } : {}),
+      ...(currentGroup !== undefined && { group: currentGroup }),
       url: ghUrl.url,
     };
 
@@ -386,7 +384,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
     }
 
     // Skip cruft lines: "Skip (N issues)", standalone "---", old "Removed" labels
-    if (/^\s*skip\s*\(\d+\s*issues?\)/i.test(line.replace(/[#*]/g, '').trim())) {
+    if (/^\s*skip\s*\(\d+\s*issues?\)/i.test(line.replaceAll(/[#*]/g, '').trim())) {
       continue;
     }
     if (/^---\s*$/.test(line)) {
@@ -457,3 +455,5 @@ export async function runParseList(options: ParseListOptions): Promise<ParseIssu
 
   return parseIssueList(content);
 }
+
+export { type ParseIssueListOutput, type ParsedIssueItem } from '../formatters/json.js';

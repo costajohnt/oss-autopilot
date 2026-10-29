@@ -40,7 +40,7 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
   const added = stateManager.dismissIssue(options.url, new Date().toISOString());
   const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
-  return { dismissed: added, url: options.url, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return { dismissed: added, url: options.url, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
 /**
@@ -59,5 +59,5 @@ export async function runUndismiss(options: { url: string }): Promise<UndismissO
   const removed = stateManager.undismissIssue(options.url);
   const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
-  return { undismissed: removed, url: options.url, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return { undismissed: removed, url: options.url, ...(gistSyncWarning && { gistSyncWarning }) };
 }

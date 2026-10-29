@@ -108,7 +108,7 @@ export function extractOwnerRepo(url: string): { owner: string; repo: string } |
  * @throws {Error} If the input is not in the form `"owner/repo"`.
  */
 export function splitRepo(repoFullName: string): { owner: string; repo: string } {
-  const [owner, repo] = repoFullName.split('/');
+  const [owner, repo] = repoFullName.split('/', 2);
   if (!owner || !repo) {
     throw new Error(`Invalid repo format: expected "owner/repo", got "${repoFullName}"`);
   }

@@ -194,7 +194,7 @@ describe('MergedPRList', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
     const arrow = container.querySelector('.sort-arrow');
     expect(arrow).toBeTruthy();
-    expect(arrow?.textContent).toBe('\u25BC'); // ▼ desc
+    expect(arrow?.textContent).toBe('\u{25BC}'); // ▼ desc
   });
 
   it('handles sorting without repoMetadata', () => {

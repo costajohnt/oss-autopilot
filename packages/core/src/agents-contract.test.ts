@@ -270,10 +270,10 @@ function extractInvocations(file: string): CliInvocation[] {
   for (const match of prose.matchAll(INLINE_SPAN)) {
     const span = match[1];
     if (!span.includes(MARKER)) continue;
-    const argv = parseArgv(span.replace(/\s+/g, ' ').trim());
+    const argv = parseArgv(span.replaceAll(/\s+/g, ' ').trim());
     if (!argv) continue;
     const lineNo = prose.slice(0, match.index).split('\n').length;
-    invocations.push({ file: rel, lineNo, raw: span.replace(/\s+/g, ' ').trim(), argv });
+    invocations.push({ file: rel, lineNo, raw: span.replaceAll(/\s+/g, ' ').trim(), argv });
   }
 
   return invocations;
@@ -330,7 +330,7 @@ function validateInvocation(inv: CliInvocation, topLevel: Map<string, CommandInf
   const { argv } = inv;
   let i = 0;
   // Allow global flags before the command name (e.g. `--debug daily`).
-  while (i < argv.length && isFlag(argv[i]) && GLOBAL_FLAGS.has(argv[i].split('=')[0])) i++;
+  while (i < argv.length && isFlag(argv[i]) && GLOBAL_FLAGS.has(argv[i].split('=', 1)[0])) i++;
   if (i >= argv.length) return [];
   if (isPlaceholder(argv[i])) return []; // `<prefix> <command> …` — unresolvable, skip
   const top = argv[i];
@@ -369,7 +369,7 @@ function validateInvocation(inv: CliInvocation, topLevel: Map<string, CommandInf
     const t = argv[k];
     if (t === '--') break; // end-of-options marker: everything after is positional
     if (!isFlag(t)) continue;
-    const flag = t.split('=')[0];
+    const flag = t.split('=', 1)[0];
     if (cur.flags.has(flag)) continue;
     const hint = nearest(flag, cur.flags);
     errors.push(
@@ -639,7 +639,7 @@ describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
         offenders.push(`${agent.name}: no model-tier table row in agents/README.md`);
         continue;
       }
-      const cell = row.split('|')[2]?.trim().replace(/`/g, '');
+      const cell = row.split('|', 3)[2]?.trim().replaceAll('`', '');
       if (cell !== model) {
         offenders.push(`${agent.name}: README tier table says "${cell}" but frontmatter model is "${model}"`);
       }

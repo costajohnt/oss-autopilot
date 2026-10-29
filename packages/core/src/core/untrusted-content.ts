@@ -56,7 +56,7 @@ export const UNTRUSTED_CLOSE_TAG = `</${UNTRUSTED_OPEN_TAG_NAME}>`;
  */
 const AMP_ESCAPE = '&amp;';
 const CLOSE_TAG_ESCAPE = `&lt;/${UNTRUSTED_OPEN_TAG_NAME}&gt;`;
-const OPEN_TAG_PATTERN = new RegExp(`<${UNTRUSTED_OPEN_TAG_NAME}\\b`, 'g');
+const OPEN_TAG_PATTERN = new RegExp(String.raw`<${UNTRUSTED_OPEN_TAG_NAME}\b`, 'g');
 const OPEN_TAG_ESCAPE = `&lt;${UNTRUSTED_OPEN_TAG_NAME}`;
 
 export interface UntrustedContentMeta {
@@ -73,12 +73,12 @@ function escapeAttr(value: string): string {
   // but they visually fragment the open tag in the prompt text the LLM
   // reads, so encode them as numeric entities for defense-in-depth.
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '&#10;')
-    .replace(/\r/g, '&#13;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('\n', '&#10;')
+    .replaceAll('\r', '&#13;');
 }
 
 /**
@@ -99,7 +99,7 @@ export function wrapUntrustedContent(text: string, label: string, meta: Untruste
     .join(AMP_ESCAPE)
     .split(UNTRUSTED_CLOSE_TAG)
     .join(CLOSE_TAG_ESCAPE)
-    .replace(OPEN_TAG_PATTERN, OPEN_TAG_ESCAPE);
+    .replaceAll(OPEN_TAG_PATTERN, OPEN_TAG_ESCAPE);
   const attrs: string[] = [`label="${escapeAttr(label)}"`];
   if (meta.author !== undefined) attrs.push(`author="${escapeAttr(meta.author)}"`);
   if (meta.association !== undefined) attrs.push(`association="${escapeAttr(meta.association)}"`);
@@ -114,7 +114,7 @@ export function wrapUntrustedContent(text: string, label: string, meta: Untruste
  * markdown with this; it's for tests + symmetric reasoning only.
  */
 export function extractFromFence(fenced: string): string {
-  const openMatch = fenced.match(new RegExp(`^<${UNTRUSTED_OPEN_TAG_NAME}\\b[^>]*>`));
+  const openMatch = fenced.match(new RegExp(String.raw`^<${UNTRUSTED_OPEN_TAG_NAME}\b[^>]*>`));
   if (!openMatch) {
     throw new Error('extractFromFence: input does not start with a <github-content> open tag');
   }

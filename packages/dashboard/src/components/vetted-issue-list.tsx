@@ -26,7 +26,7 @@ function parseTierMeta(tier: string): { stars?: number; language?: string } {
   }
   // Language: last parenthesized text in the heading, e.g., (TypeScript), (Rust), (JS)
   const langMatches = [...tier.matchAll(/\(([^\d)★][^)]*)\)/g)];
-  const lastMatch = langMatches[langMatches.length - 1];
+  const lastMatch = langMatches.at(-1);
   const language = lastMatch?.[1]?.trim();
   return { stars, language };
 }
@@ -109,7 +109,7 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
                   </td>
                   <td class="merged-table-col-stars">
                     <span class="merged-table-stars">
-                      {stars != null ? `\u2605 ${formatStarCount(stars)}` : '\u2014'}
+                      {stars == null ? '\u{2014}' : `\u{2605} ${formatStarCount(stars)}`}
                     </span>
                   </td>
                   <td class="merged-table-col-language">
@@ -122,14 +122,14 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
                         {language}
                       </span>
                     ) : (
-                      <span class="merged-table-language">{'\u2014'}</span>
+                      <span class="merged-table-language">{'\u{2014}'}</span>
                     )}
                   </td>
                   <td class="vetted-col-score">
-                    {item.score != null ? (
-                      <span class={`vetted-score ${scoreColorClass(item.score)}`}>{item.score}/10</span>
+                    {item.score == null ? (
+                      <span class="vetted-score">{'\u{2014}'}</span>
                     ) : (
-                      <span class="vetted-score">{'\u2014'}</span>
+                      <span class={`vetted-score ${scoreColorClass(item.score)}`}>{item.score}/10</span>
                     )}
                   </td>
                 </tr>

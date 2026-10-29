@@ -251,7 +251,7 @@ export function computeStrategy(state: AgentState): StrategyResult | null {
     tests: 0,
     other: 0,
   };
-  const cutoff = Date.now() - RECENT_WINDOW_DAYS * 86400000;
+  const cutoff = Date.now() - RECENT_WINDOW_DAYS * 86_400_000;
   for (const pr of merged) {
     const mergedAt = Date.parse(pr.mergedAt);
     if (Number.isNaN(mergedAt) || mergedAt < cutoff) continue;
@@ -373,12 +373,11 @@ export function shouldComputeStrategy(state: AgentState, nowIso: string): boolea
 function deriveIssueTypePreferences(distribution: StrategyPatterns['prTypeDistribution']): string[] {
   // Recommend the user's two strongest PR types — they have a track
   // record there, so issues in those buckets are higher-yield.
-  const ranked = Object.entries(distribution)
+  return Object.entries(distribution)
     .filter(([type]) => type !== 'other')
     .sort((a, b) => b[1] - a[1])
     .slice(0, 2)
     .map(([type]) => type);
-  return ranked;
 }
 
 function deriveAvoidPatterns(capacity: StrategyCapacity, patterns: StrategyPatterns): string[] {

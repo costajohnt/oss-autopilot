@@ -20,7 +20,7 @@ import type { RepoVetOutput } from '../formatters/json.js';
 
 const MODULE = 'repo-vet';
 
-const DAY_MS = 86400000;
+const DAY_MS = 86_400_000;
 const COMMUNITY_HEALTH_PATHS = [
   // Each entry can live at the repo root OR under .github/. We probe both
   // because some repos prefer the visible-at-root convention and some
@@ -226,7 +226,7 @@ function summarizeCommits(
  */
 export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutput> {
   validateRepoIdentifier(options.repo);
-  const [owner, repo] = options.repo.split('/');
+  const [owner, repo] = options.repo.split('/', 2);
 
   const token = requireGitHubToken();
   const octokit = getOctokit(token);
@@ -319,6 +319,6 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
     communityHealth: { ...communityHealth, incomplete: communityHealthSummary.incomplete },
     maintainerActivity: { ...maintainerActivity, releasesIncomplete },
     ...rest,
-    ...(historyScore !== undefined ? { historyScore } : {}),
+    ...(historyScore !== undefined && { historyScore }),
   };
 }

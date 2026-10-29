@@ -26,7 +26,7 @@ const ref = (owner: string, repo: string, number: number): PRRef => ({
 /** Minimal well-formed GraphQL PR node with sensible empty defaults. */
 function makeNode(overrides: Record<string, unknown> = {}): any {
   return {
-    databaseId: 12345,
+    databaseId: 12_345,
     number: 7,
     title: 'Add feature',
     url: 'https://github.com/o/r/pull/7',
@@ -109,7 +109,7 @@ describe('normalizePRNode', () => {
     if (outcome.kind !== 'ok') return;
     const d = outcome.data;
 
-    expect(d.id).toBe(12345);
+    expect(d.id).toBe(12_345);
     expect(d.body).toBe('Fixes #1');
     expect(d.hasMergeConflict).toBe(true); // CONFLICTING
     expect(d.comments).toEqual([
@@ -537,7 +537,7 @@ describe('GraphQL vs REST status parity', () => {
       owner: 'o',
       repo: 'r',
       number: 7,
-      id: 12345,
+      id: 12_345,
       title: 'PR',
       body: '',
       createdAt: '2026-02-01T00:00:00Z',
@@ -612,7 +612,7 @@ describe('GraphQL vs REST status parity', () => {
       owner: 'o',
       repo: 'r',
       number: 7,
-      id: 12345,
+      id: 12_345,
       title: 'PR',
       body: '',
       createdAt: '2026-02-01T00:00:00Z',
@@ -628,7 +628,7 @@ describe('GraphQL vs REST status parity', () => {
         statuses: [{ context: 'ci', state: 'success', description: null }],
       }),
     };
-    const prRest = await assembleFetchedPR(restSignals, CONFIG, async () => undefined);
+    const prRest = await assembleFetchedPR(restSignals, CONFIG, async () => {});
 
     expect(prGraphql).toEqual(prRest);
     // Merge conflict takes priority in the needs_addressing tree.

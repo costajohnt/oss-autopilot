@@ -152,7 +152,7 @@ export function pickImplementCandidate(
   openPRs: { repo: string }[],
   attempts: OvernightImplementAttempt[],
   listPath: string,
-  languageOf: (repo: string) => string | null | undefined = () => undefined,
+  languageOf: (repo: string) => string | null | undefined = () => {},
 ): OvernightImplementItem | null {
   const busyRepos = new Set(openPRs.map((p) => p.repo.toLowerCase()));
   const tried = new Set(attempts.map((a) => a.url));
@@ -187,7 +187,7 @@ function loadListItems(): { items: ReturnType<typeof parseIssueList>['available'
 /** Pure: split the daily check into prepare vs judgment items. */
 export function bucketize(
   daily: Pick<DailyOutput, 'actionableIssues' | 'commentedIssues'>,
-  languageOf: (repo: string) => string | null | undefined = () => undefined,
+  languageOf: (repo: string) => string | null | undefined = () => {},
 ): {
   prepare: OvernightItem[];
   judgment: OvernightItem[];
@@ -259,28 +259,24 @@ export function writePreparedSection(reportPath: string, prepared: OvernightPrep
 /** Pure: the morning report. Prepared branches are appended by `record`. */
 export function renderReport(out: ReportBody, prepared: OvernightPrepared[] = []): string {
   const lines: string[] = [];
-  lines.push(`# Overnight report — ${reportDateFor(new Date(out.runAt))}`, '');
-  lines.push(`Run at ${out.runAt}. Nothing was pushed, posted, or merged.`, '');
   lines.push(
+    `# Overnight report — ${reportDateFor(new Date(out.runAt))}`,
+    '',
+    `Run at ${out.runAt}. Nothing was pushed, posted, or merged.`,
+    '',
     `Attention: ${out.attention.needsAttention} need attention, ${out.attention.stuckCI} stuck CI, ${out.attention.dormantFollowup} dormant, ${out.attention.waiting} waiting.`,
     '',
   );
 
-  lines.push(renderPreparedSection(prepared));
-
-  lines.push(`## Implement tonight (${out.implement ? 1 : 0})`, '');
+  lines.push(renderPreparedSection(prepared), `## Implement tonight (${out.implement ? 1 : 0})`, '');
   if (out.implement)
     lines.push(`- ${out.implement.repo}#${out.implement.number} ${out.implement.url} — ${out.implement.reason}`);
   else
     lines.push('_No list issue queued: the Pursue tier is empty, exhausted, or every repo has an open PR of yours._');
-  lines.push('');
-
-  lines.push(`## Queued for preparation (${out.prepare.length})`, '');
+  lines.push('', `## Queued for preparation (${out.prepare.length})`, '');
   if (out.prepare.length === 0) lines.push('_Nothing to prepare._');
   for (const i of out.prepare) lines.push(`- ${i.label} ${i.url} — ${i.reason}`);
-  lines.push('');
-
-  lines.push(`## Needs your judgment (${out.judgment.length})`, '');
+  lines.push('', `## Needs your judgment (${out.judgment.length})`, '');
   if (out.judgment.length === 0) lines.push('_Nothing waiting on you._');
   for (const i of out.judgment) lines.push(`- ${i.label} ${i.url} — ${i.reason}`);
   lines.push('');
@@ -342,7 +338,7 @@ export async function runOvernight(): Promise<OvernightOutput> {
     prepareCount: prepare.length,
     judgmentCount: judgment.length,
     prepared: carried,
-    ...(implement ? { implementUrl: implement.url } : {}),
+    ...(implement && { implementUrl: implement.url }),
     implementAttempts: attempts,
   };
   sm.setLastOvernight(record);
@@ -362,8 +358,8 @@ export async function runOvernight(): Promise<OvernightOutput> {
     ...body,
     reportPath,
     carriedPrepared: carried.length,
-    ...(gistSyncWarning ? { gistSyncWarning } : {}),
-    ...(daily.pendingLearnings ? { pendingLearnings: daily.pendingLearnings } : {}),
+    ...(gistSyncWarning && { gistSyncWarning }),
+    ...(daily.pendingLearnings && { pendingLearnings: daily.pendingLearnings }),
   };
 }
 
@@ -440,7 +436,7 @@ export async function runOvernightImplementBlocked(
   const dropDir = handoffDir();
   if (dropDir) exportHandoff(dropDir, { ...last, implementAttempts });
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
-  return { url: options.url, attemptCount: implementAttempts.length, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return { url: options.url, attemptCount: implementAttempts.length, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
 export interface OvernightRecordOptions {
@@ -508,8 +504,8 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   return {
     reportPath: last.reportPath,
     preparedCount: prepared.length,
-    ...(reportRecreated ? { reportRecreated: true as const } : {}),
-    ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    ...(reportRecreated && { reportRecreated: true as const }),
+    ...(gistSyncWarning && { gistSyncWarning }),
   };
 }
 
@@ -730,7 +726,7 @@ export const OVERNIGHT_ALLOWED_TOOLS = [
 ].join(',');
 
 function xmlEscape(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 /**

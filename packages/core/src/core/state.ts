@@ -454,7 +454,7 @@ export class StateManager {
         mode: 'gist',
         degraded: {
           cause: 'bootstrap-degraded',
-          ...(this.staleness ? { since: this.staleness.detectedAt } : {}),
+          ...(this.staleness && { since: this.staleness.detectedAt }),
           recoverable: true,
         },
       };
@@ -845,7 +845,7 @@ export class StateManager {
   private static matchesExclusion(repo: string, repos: string[], orgs?: string[]): boolean {
     const repoLower = repo.toLowerCase();
     if (repos.some((r) => r.toLowerCase() === repoLower)) return true;
-    if (orgs?.some((o) => o.toLowerCase() === repoLower.split('/')[0])) return true;
+    if (orgs?.some((o) => o.toLowerCase() === repoLower.split('/', 1)[0])) return true;
     return false;
   }
 

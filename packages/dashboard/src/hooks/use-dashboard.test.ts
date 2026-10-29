@@ -538,13 +538,13 @@ describe('useDashboard', () => {
       const updated = makeDashboardData({ shelvedPRUrls: ['https://github.com/o/r/pull/1'] });
 
       // Mock 1: mount GET /api/data
-      mockFetchOk(data, 'test-token');
+      mockFetchOk(data);
       // Mock 2: first POST /api/action → 409 conflict
       mockFetchConflict();
       // Mock 3: re-prime GET /api/data
-      mockFetchOk(data, 'test-token');
+      mockFetchOk(data);
       // Mock 4: retry POST /api/action → success
-      mockFetchOk(updated, 'test-token');
+      mockFetchOk(updated);
 
       const { result } = renderHook(() => useDashboard());
       await vi.waitFor(() => expect(result.current.loading).toBe(false));
@@ -570,15 +570,15 @@ describe('useDashboard', () => {
       const data = makeDashboardData();
 
       // Mock 1: mount GET /api/data
-      mockFetchOk(data, 'test-token');
+      mockFetchOk(data);
       // Mock 2: first POST /api/action → 409
       mockFetchConflict();
       // Mock 3: re-prime GET /api/data
-      mockFetchOk(data, 'test-token');
+      mockFetchOk(data);
       // Mock 4: retry POST /api/action → 409 again (sustained contention)
       mockFetchConflict();
       // Mock 5: performAction's post-failure re-sync GET /api/data
-      mockFetchOk(data, 'test-token');
+      mockFetchOk(data);
 
       const { result } = renderHook(() => useDashboard());
       await vi.waitFor(() => expect(result.current.loading).toBe(false));

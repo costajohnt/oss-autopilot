@@ -353,8 +353,8 @@ function proseOf(body: string): string {
   return (
     uncommented
       // A heading is a short title line, not a sentence that starts with "# ".
-      .replace(/^ {0,3}#{1,6}[ \t]+[^\n]{0,60}$/gm, (line) => (/[.!?。]\s*$/.test(line) ? line : ''))
-      .replace(CLOSING_REF, '')
+      .replaceAll(/^ {0,3}#{1,6}[ \t]+[^\n]{0,60}$/gm, (line) => (/[.!?。]\s*$/.test(line) ? line : ''))
+      .replaceAll(CLOSING_REF, '')
       .trim()
   );
 }

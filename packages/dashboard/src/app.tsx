@@ -377,8 +377,8 @@ function AppContent() {
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
         {banners}
-        <main id="main-content" class="dashboard-main" role="alert">
-          <div class="merged-view merged-view--full-width">
+        <main id="main-content" class="dashboard-main">
+          <div class="merged-view merged-view--full-width" role="alert">
             <div class="merged-view-header">
               <button class="merged-view-back" onClick={() => route('/')} type="button">
                 &larr; Back to dashboard

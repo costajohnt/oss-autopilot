@@ -16,7 +16,7 @@ const version: string = (() => {
   try {
     // In CJS bundle: __dirname is defined by esbuild
     // In ESM (dev via tsx): use import.meta.url
-    const dir = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+    const dir = typeof __dirname === 'undefined' ? dirname(fileURLToPath(import.meta.url)) : __dirname;
     const pkg = JSON.parse(readFileSync(join(dir, '..', 'package.json'), 'utf8'));
     return pkg.version;
   } catch (e) {

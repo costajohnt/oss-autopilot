@@ -232,5 +232,5 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
   // Without this the change only hits the local cache and the next
   // bootstrap reverts it from the Gist (#1440).
   const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
-  return { success: true, key: options.key, value, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return { success: true, key: options.key, value, ...(gistSyncWarning && { gistSyncWarning }) };
 }

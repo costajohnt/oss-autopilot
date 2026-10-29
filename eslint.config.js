@@ -33,6 +33,25 @@ function downgradeToWarn(config) {
   };
 }
 
+// Helper: keep only the rules of a preset that can run on JS/TS files.
+// Since unicorn 77, `recommended` also enables rules written for other
+// languages (JSON, Markdown, CSS, YAML, ...) that are meant to be paired with
+// the per-language `recommended-*` presets. ESLint hard-errors when a rule is
+// applied to a language it does not support ("does not support the language
+// js/js"). Each rule declares its languages in meta.languages; rules without
+// that field are JS rules.
+function jsRulesOnly(config, plugin, prefix) {
+  return {
+    ...config,
+    rules: Object.fromEntries(
+      Object.entries(config.rules ?? {}).filter(([rule]) => {
+        const languages = plugin.rules[rule.slice(prefix.length)]?.meta?.languages;
+        return !languages || languages.includes('*') || languages.includes('js/js');
+      }),
+    ),
+  };
+}
+
 export default tseslint.config(
   eslint.configs.recommended,
   // Type-aware preset for source files only (test files are excluded from
@@ -47,7 +66,7 @@ export default tseslint.config(
   regexp.configs['flat/recommended'],
   // Unicorn + SonarJS as warnings — opinionated rule sets we want to surface
   // gradually rather than gate CI on. See downgradeToWarn comment.
-  downgradeToWarn(unicorn.configs.recommended),
+  downgradeToWarn(jsRulesOnly(unicorn.configs.recommended, unicorn, 'unicorn/')),
   downgradeToWarn(sonarjs.configs.recommended),
   eslintConfigPrettier,
   {
@@ -148,10 +167,13 @@ export default tseslint.config(
       // Same bikeshed as catch-error-name, wider net: flags every `err`, `e`,
       // `args`, `opts`. Was the single largest warning source (~1,200).
       'unicorn/name-replacements': 'off',
-      // Comment layout only: leading ` * ` in JSDoc bodies and `/* x */` vs
-      // `// x`. Prettier leaves comments alone and so do we (~1,650 combined).
+      // Comment layout only: leading ` * ` in JSDoc bodies, `/* x */` vs
+      // `// x`, and hand-wrapped comment lines (unicorn 79's autofix joins each
+      // paragraph into one 200+ column line). Prettier leaves comments alone
+      // and so do we (~1,830 combined).
       'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
       'unicorn/single-line-block-comment-style': 'off',
+      'unicorn/no-manually-wrapped-comments': 'off',
       // `() => x` vs `() => { return x; }` — style, no defect class behind it.
       'unicorn/consistent-arrow-return-style': 'off',
       // Temporal is not available in the Node versions we support (>=22).
@@ -166,24 +188,6 @@ export default tseslint.config(
       'unicorn/prefer-combined-guards': 'off',
       'unicorn/prefer-early-return': 'off',
       'unicorn/prefer-continue': 'off',
-      // CSS-only rules (prefer-explicit-viewport-units added in unicorn 73,
-      // the rest in 76) that recommended turns on for every language. ESLint 10
-      // hard-errors when a rule is applied to a language it does not support,
-      // so leaving any of them on fails the whole lint run on "js/js". We lint
-      // no CSS, so turn them off rather than scope them to a files glob. (CSS
-      // rules carry meta.languages: ['css/css']; if this list keeps growing per
-      // major, filter recommended on that instead.)
-      'unicorn/prefer-explicit-viewport-units': 'off',
-      'unicorn/no-deprecated-css-features': 'off',
-      'unicorn/no-duplicate-css-selectors': 'off',
-      'unicorn/no-duplicate-font-family-names': 'off',
-      'unicorn/no-invalid-media-features': 'off',
-      'unicorn/no-nesting-with-mixed-specificity': 'off',
-      'unicorn/no-redundant-nested-style-rules': 'off',
-      'unicorn/no-unknown-css-annotations': 'off',
-      'unicorn/no-unknown-pseudo-selectors': 'off',
-      'unicorn/no-unscoped-css-nesting-selector': 'off',
-      'unicorn/prefer-media-feature-range-syntax': 'off',
       // wants `(arg) => ...` over `arg => ...` — prettier already enforces
       'sonarjs/arrow-function-convention': 'off',
       // flags any string literal repeated 3+ times — false positive heaven

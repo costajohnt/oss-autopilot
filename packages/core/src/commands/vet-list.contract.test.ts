@@ -71,7 +71,7 @@ function verified(
   verdict: IssueAvailabilityVerdict,
   overrides: Partial<NonNullable<BatchVerificationResult['verification']>> = {},
 ): BatchVerificationResult {
-  const [owner, name] = repo.split('/');
+  const [owner, name] = repo.split('/', 2);
   return {
     params: { owner, repo: name, number },
     verification: {
