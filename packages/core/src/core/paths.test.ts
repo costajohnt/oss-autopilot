@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { getCLIVersion, getDataDir } from './paths.js';
+import { getCLIVersion, getDataDir, resolveDataDir, stateFileExists } from './paths.js';
+
+// userInfo stays real; one test makes it throw (no passwd entry, #1801).
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, userInfo: vi.fn(actual.userInfo) };
+});
 
 // getCLIVersion locates package.json from process.argv[1]. Installed from npm
 // that argv entry is the node_modules/.bin symlink, not the bundle (#1664).
@@ -60,7 +66,8 @@ describe('test isolation from the real data dir (#1801)', () => {
     expect(fs.realpathSync(os.homedir()).startsWith(fs.realpathSync(os.tmpdir()))).toBe(true);
   });
 
-  it('runs with no GitHub token in the environment', () => {
+  // The nightly live-API run keeps its token on purpose (isolate-home.ts).
+  it.skipIf(process.env.OSS_AUTOPILOT_NIGHTLY === '1')('runs with no GitHub token in the environment', () => {
     expect(process.env.GITHUB_TOKEN).toBeUndefined();
     expect(process.env.GH_TOKEN).toBeUndefined();
   });
@@ -69,5 +76,14 @@ describe('test isolation from the real data dir (#1801)', () => {
     vi.stubEnv('HOME', os.userInfo().homedir);
     vi.stubEnv('USERPROFILE', os.userInfo().homedir);
     expect(() => getDataDir()).toThrow(/real home directory/);
+    expect(() => resolveDataDir()).toThrow(/real home directory/);
+    expect(() => stateFileExists()).toThrow(/real home directory/);
+  });
+
+  it('treats a missing passwd entry as "not the real home"', () => {
+    vi.mocked(os.userInfo).mockImplementationOnce(() => {
+      throw new Error('ENOENT: no passwd entry');
+    });
+    expect(resolveDataDir()).toBe(path.join(os.homedir(), '.oss-autopilot'));
   });
 });

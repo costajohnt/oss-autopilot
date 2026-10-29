@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./vitest.setup.ts'],
+    // isolate-home: temp HOME + no GitHub token, as in core (#1801).
+    setupFiles: ['./vitest.setup.ts', '../core/src/test-lib/isolate-home.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary'],

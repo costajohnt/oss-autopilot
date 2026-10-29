@@ -11,6 +11,30 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
+/** The passwd home directory, independent of `$HOME`; null when there is no passwd entry. */
+function realHomeDir(): string | null {
+  try {
+    return os.userInfo().homedir;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve `~/.oss-autopilot` without creating it. Every path under the data
+ * directory goes through here. Tests run under a temp HOME
+ * (test-lib/isolate-home.ts); resolving the real one under vitest means a test
+ * escaped it and could clobber the user's state, so it throws (#1801).
+ */
+export function resolveDataDir(): string {
+  const home = os.homedir();
+  const realHome = process.env.VITEST ? realHomeDir() : null;
+  if (realHome !== null && path.resolve(home) === path.resolve(realHome)) {
+    throw new Error(`Refusing to use the real home directory (${home}) under vitest`);
+  }
+  return path.join(home, '.oss-autopilot');
+}
+
 /**
  * Returns the oss-autopilot data directory path, creating it if it does not exist.
  *
@@ -24,13 +48,7 @@ import * as os from 'node:os';
  * // "/Users/you/.oss-autopilot"
  */
 export function getDataDir(): string {
-  const home = os.homedir();
-  // Tests run under a temp HOME (test-lib/isolate-home.ts); reaching the real
-  // one means a test escaped it and could clobber the user's state (#1801).
-  if (process.env.VITEST && path.resolve(home) === path.resolve(os.userInfo().homedir)) {
-    throw new Error(`Refusing to use the real home directory (${home}) under vitest`);
-  }
-  const dir = path.join(home, '.oss-autopilot');
+  const dir = resolveDataDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
@@ -128,8 +146,7 @@ export function getStateCachePath(): string {
  * `~/.oss-autopilot/` just to check if the user has ever run the tool.
  */
 export function stateFileExists(): boolean {
-  const stateFile = path.join(os.homedir(), '.oss-autopilot', 'state.json');
-  return fs.existsSync(stateFile);
+  return fs.existsSync(path.join(resolveDataDir(), 'state.json'));
 }
 
 // Replaced with the core package version by scripts/bundle.mjs (esbuild `define`).
