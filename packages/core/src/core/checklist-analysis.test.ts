@@ -259,6 +259,8 @@ describe('analyzeChecklist', () => {
   });
 
   describe('conditional lead-in lines and inline annotations (#1796)', () => {
+    const incomplete = (body: string[]): boolean => analyzeChecklist(body.join('\n')).hasIncompleteChecklist;
+
     const leadInTemplate = [
       '## Checklist',
       '',
@@ -313,11 +315,49 @@ describe('analyzeChecklist', () => {
         '- [x] Tests pass',
         '- [x] Lint passes',
         '- [ ] Passed the story run for the changes. (Not run: no visual change, covered by the new UI test.)',
-        '- [ ] Benchmarks (Skipped - no hot path touched)',
+        '- [ ] Benchmarks (Skipped: no hot path touched)',
       ].join('\n');
       const result = analyzeChecklist(body);
       expect(result.hasIncompleteChecklist).toBe(false);
       expect(result.checklistStats).toEqual({ checked: 2, total: 2 });
+    });
+
+    it('applies with no blank line between the lead-in and its run', () => {
+      expect(
+        incomplete([
+          '## Checklist',
+          '- [x] Tests pass',
+          'If the code adds a dependency:',
+          '- [ ] Updated requirements',
+        ]),
+      ).toBe(false);
+    });
+
+    it('still counts required boxes under a help lead-in', () => {
+      const body = [
+        '## Checklist',
+        '- [x] Tests pass',
+        '',
+        'If you have questions:',
+        '- [ ] I have read CONTRIBUTING and signed the CLA',
+      ];
+      expect(incomplete(body)).toBe(true);
+    });
+
+    it('still counts boxes under lead-ins that do not condition on the change', () => {
+      expect(
+        incomplete(['## Checklist', '- [x] Tests pass', 'If you are a maintainer:', '- [ ] Ran release script']),
+      ).toBe(true);
+      expect(
+        incomplete(['## Checklist', '- [x] Tests pass', '', 'When filing a bug:', '', '- [ ] Signed the CLA']),
+      ).toBe(true);
+    });
+
+    it('still counts a box marked "(not done ...)" or "(Skipped: )" with no reason', () => {
+      expect(
+        incomplete(['## Checklist', '- [x] Tests pass', '- [ ] Docs updated (not done - will add before merge)']),
+      ).toBe(true);
+      expect(incomplete(['## Checklist', '- [x] Tests pass', '- [ ] I signed the CLA (Skipped: )'])).toBe(true);
     });
   });
 });

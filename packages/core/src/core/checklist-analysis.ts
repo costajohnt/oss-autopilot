@@ -11,7 +11,7 @@ import { FetchedPR } from './types.js';
  * Conservative — only skips items with clear conditional language.
  */
 const CONDITIONAL_CHECKLIST_PATTERN =
-  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b|\((?:not run|skipped|not done)\s*[:—-]/;
+  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b|\((?:not run|skipped)\s*:\s*[^\s)][^)]*\)/;
 
 export function isConditionalChecklistItem(line: string): boolean {
   return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
@@ -29,10 +29,20 @@ const HEADING_RE = /^#{1,6}\s+(\S.*)/;
 const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|pick\s+one|choose\s+one)[^>]*-->/i;
 
 /**
- * Matches a prose line that states a condition for the checkbox run below it,
- * e.g. "If the code communicates with devices:" (#1796).
+ * A prose line that states a condition on the change for the checkbox run below
+ * it, e.g. "If the code communicates with devices:" (#1796). It must start with
+ * If/When/Only if, end with ":", and name what the PR changes; help lead-ins
+ * ("If you have questions:") and role lead-ins ("If you are a maintainer:") do
+ * not qualify, so required boxes under them still count.
  */
 const CONDITIONAL_LEAD_IN_RE = /^\s*(?:if|when|only if)\s.*:\s*$/i;
+const LEAD_IN_CHANGE_RE =
+  /\b(?:add(?:s|ed|ing)?|chang(?:e|es|ed|ing)|modif(?:y|ies|ied|ying)|updat(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|introduc(?:e|es|ed|ing)|touch(?:es|ed|ing)?|this (?:pr|change)|the code)\b|\/changed\b/i;
+const LEAD_IN_HELP_RE = /\b(?:questions?|help|unsure|stuck|in doubt)\b/i;
+
+function isConditionalLeadIn(line: string): boolean {
+  return CONDITIONAL_LEAD_IN_RE.test(line) && LEAD_IN_CHANGE_RE.test(line) && !LEAD_IN_HELP_RE.test(line);
+}
 
 /** Matches any checkbox line (checked or unchecked). */
 const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
@@ -121,7 +131,7 @@ type RunMarker = (lines: string[], runStart: number, runEnd: number, exempt: Set
  * are intentionally unchecked because of the line introducing their run:
  * - a pick-one HTML comment (PICK_ONE_COMMENT_RE) whose run has exactly one box
  *   checked, so the unchecked alternatives are intentional (#1760);
- * - a conditional lead-in line (CONDITIONAL_LEAD_IN_RE), so the whole run is
+ * - a conditional lead-in line ({@link isConditionalLeadIn}), so the whole run is
  *   conditional like an "(if ...)" item (#1796).
  * A run is the contiguous checkbox lines after the introducing line, past blanks.
  */
@@ -132,7 +142,7 @@ function collectRunExemptLineIndices(lines: string[]): ReadonlySet<number> {
   while (i < lines.length) {
     let mark: RunMarker | undefined;
     if (PICK_ONE_COMMENT_RE.test(lines[i])) mark = markPickOneRunExempt;
-    else if (CONDITIONAL_LEAD_IN_RE.test(lines[i])) mark = markConditionalRunExempt;
+    else if (isConditionalLeadIn(lines[i])) mark = markConditionalRunExempt;
     if (!mark) {
       i++;
       continue;
