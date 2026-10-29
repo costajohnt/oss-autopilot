@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -32,6 +32,17 @@ describe('auth.resolveTokenPath', () => {
   it('ignores an empty OSS_AUTOPILOT_MCP_TOKEN_PATH', () => {
     process.env.OSS_AUTOPILOT_MCP_TOKEN_PATH = '';
     expect(resolveTokenPath()).toBe(path.join(os.homedir(), '.oss-autopilot', 'mcp.token'));
+  });
+
+  it('refuses the real home directory under vitest (#1801)', () => {
+    delete process.env.OSS_AUTOPILOT_MCP_TOKEN_PATH;
+    vi.stubEnv('HOME', os.userInfo().homedir);
+    vi.stubEnv('USERPROFILE', os.userInfo().homedir);
+    try {
+      expect(() => resolveTokenPath()).toThrow(/real home directory/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
