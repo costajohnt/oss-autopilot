@@ -55,7 +55,15 @@ export {
 export { getOctokit, checkRateLimit, type RateLimitInfo } from './github.js';
 export { parseGitHubUrl, splitRepo, isOwnRepo } from './urls.js';
 export { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';
-export { getCLIVersion, getDataDir, getStatePath, getBackupDir, getCacheDir, stateFileExists } from './paths.js';
+export {
+  getCLIVersion,
+  getDataDir,
+  resolveDataDir,
+  getStatePath,
+  getBackupDir,
+  getCacheDir,
+  stateFileExists,
+} from './paths.js';
 export {
   getGitHubToken,
   getGitHubTokenAsync,
