@@ -667,7 +667,7 @@ describe('report publishing (#1698)', () => {
   it('publishReport stages the file as the Gist document only in Gist mode', () => {
     const reportPath = path.join(dir, 'r.md');
     fs.writeFileSync(reportPath, '# report');
-    const local = fakeStateManager(undefined, false);
+    const local = fakeStateManager(undefined);
     publishReport(local, reportPath);
     expect(local.setOvernightReportDocument).not.toHaveBeenCalled();
 

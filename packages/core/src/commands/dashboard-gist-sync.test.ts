@@ -179,7 +179,7 @@ describe('GistSyncCoordinator', () => {
 
     it('a token-less probe attempts nothing and does not burn the retry window', async () => {
       currentManager = makeDegradedLocalManager();
-      const sync = makeCoordinator(null);
+      const sync = makeCoordinator();
       const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
       try {
         await sync.maybeRecoverGist();

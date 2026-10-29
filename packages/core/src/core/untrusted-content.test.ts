@@ -65,7 +65,7 @@ describe('wrapUntrustedContent (#1192)', () => {
   });
 
   it('preserves multibyte and zero-width characters losslessly', () => {
-    const tricky = 'résumé​‌‍ 你好 🦀';
+    const tricky = 'résumé\u{200B}‌‍ 你好 🦀';
     const out = wrapUntrustedContent(tricky, 'pr-body');
     expect(extractFromFence(out)).toBe(tricky);
   });
