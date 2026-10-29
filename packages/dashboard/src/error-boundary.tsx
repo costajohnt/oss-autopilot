@@ -63,11 +63,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         role="alert"
         aria-live="assertive"
         style={{
-          maxWidth: 640,
+          maxWidth: '640px',
           margin: '2rem auto',
           padding: '1.5rem',
           border: '1px solid var(--error, #c0392b)',
-          borderRadius: 6,
+          borderRadius: '6px',
           background: 'var(--surface, #fff)',
           color: 'var(--text-primary, #111)',
           fontFamily: 'system-ui, -apple-system, sans-serif',
