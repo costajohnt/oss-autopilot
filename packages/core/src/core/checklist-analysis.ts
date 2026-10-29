@@ -11,7 +11,10 @@ import { FetchedPR } from './types.js';
  * Conservative — only skips items with clear conditional language.
  */
 const CONDITIONAL_CHECKLIST_PATTERN =
-  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b|\((?:not run|skipped)\s*:\s*[^\s)][^)]*\)/;
+  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
+
+/** An author's reason for leaving a box unchecked: "(Not run: ...)" or "(Skipped: ...)" (#1796). */
+const UNCHECKED_REASON_RE = /\((?:not run|skipped)\s*:\s*[^\s)][^)]*\)/i;
 
 /**
  * Boxes about agreements (CLA, code of conduct, licence, sign-off) are never
@@ -20,7 +23,8 @@ const CONDITIONAL_CHECKLIST_PATTERN =
 const NEVER_EXEMPT_RE = /\b(?:cla|code of conduct|agree\w*|sign|signed|licen[cs]\w*)\b/i;
 
 export function isConditionalChecklistItem(line: string): boolean {
-  return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase()) && !NEVER_EXEMPT_RE.test(line);
+  const lower = line.toLowerCase();
+  return (CONDITIONAL_CHECKLIST_PATTERN.test(lower) || UNCHECKED_REASON_RE.test(line)) && !NEVER_EXEMPT_RE.test(line);
 }
 
 // Matches markdown headings; `\S` after whitespace prevents backtracking with `.*` (#1718)
@@ -40,8 +44,18 @@ const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|pick\s+one|choose\s+one)[
  * The subject and the change verb must open the line, so "If this PR is a
  * draft:" or "If the code of conduct applies:" do not qualify.
  */
-const CONDITIONAL_LEAD_IN_RE =
-  /^(?:if|when|only if)\s+(?:(?:you|this change)\s+(?:add|change|modif|updat|remov|introduc|touch)\w*|(?:the\s+)?(?:pr|change|code)\s+(?:adds|changes|modifies|updates|removes|introduces|touches))\b[^:]*:\s*$/i;
+const LEAD_IN_OPENER_RE = /^(?:if|when|only if)\s+/i;
+const LEAD_IN_YOU_VERB_RE = /^(?:you|this change)\s+(?:add|change|modif|updat|remov|introduc|touch)\w*\b/i;
+const LEAD_IN_SUBJECT_VERB_RE =
+  /^(?:the\s+)?(?:pr|change|code)\s+(?:adds|changes|modifies|updates|removes|introduces|touches)\b/i;
+const ENDS_WITH_ONLY_COLON_RE = /^[^:]*:\s*$/;
+
+function isConditionalLeadIn(line: string): boolean {
+  const opener = LEAD_IN_OPENER_RE.exec(line);
+  if (!opener || !ENDS_WITH_ONLY_COLON_RE.test(line)) return false;
+  const rest = line.slice(opener[0].length);
+  return LEAD_IN_YOU_VERB_RE.test(rest) || LEAD_IN_SUBJECT_VERB_RE.test(rest);
+}
 
 /** An unindented checkbox line; nested boxes end a conditional run. */
 const TOP_LEVEL_CHECKBOX_RE = /^- \[[ x]\]/i;
@@ -136,12 +150,19 @@ interface RunRule {
 const PICK_ONE_RUN: RunRule = { skipBlanks: true, inRun: ANY_CHECKBOX_RE, mark: markPickOneRunExempt };
 const CONDITIONAL_RUN: RunRule = { skipBlanks: false, inRun: TOP_LEVEL_CHECKBOX_RE, mark: markConditionalRunExempt };
 
+/** The run rule a line introduces, if any. */
+function runRuleFor(line: string): RunRule | undefined {
+  if (PICK_ONE_COMMENT_RE.test(line)) return PICK_ONE_RUN;
+  if (isConditionalLeadIn(line)) return CONDITIONAL_RUN;
+  return undefined;
+}
+
 /**
  * Returns the set of line indices (within `lines`) of unchecked checkbox lines that
  * are intentionally unchecked because of the line introducing their run:
  * - a pick-one HTML comment (PICK_ONE_COMMENT_RE) whose run has exactly one box
  *   checked, so the unchecked alternatives are intentional (#1760);
- * - a conditional lead-in line (CONDITIONAL_LEAD_IN_RE), so its run is
+ * - a conditional lead-in line ({@link isConditionalLeadIn}), so its run is
  *   conditional like an "(if ...)" item, except NEVER_EXEMPT_RE boxes (#1796).
  * A pick-one run is the contiguous checkbox lines after the comment, past blanks;
  * a conditional run is the unindented boxes directly below the lead-in.
@@ -151,9 +172,7 @@ function collectRunExemptLineIndices(lines: string[]): ReadonlySet<number> {
   let i = 0;
 
   while (i < lines.length) {
-    let rule: RunRule | undefined;
-    if (PICK_ONE_COMMENT_RE.test(lines[i])) rule = PICK_ONE_RUN;
-    else if (CONDITIONAL_LEAD_IN_RE.test(lines[i])) rule = CONDITIONAL_RUN;
+    const rule = runRuleFor(lines[i]);
     if (!rule) {
       i++;
       continue;

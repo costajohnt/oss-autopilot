@@ -257,104 +257,101 @@ describe('analyzeChecklist', () => {
       expect(result.hasIncompleteChecklist).toBe(false);
     });
   });
+});
 
-  describe('conditional lead-in lines and inline annotations (#1796)', () => {
-    const H = ['## Checklist', '- [x] Tests pass'];
-    const stats = (body: string[]) => analyzeChecklist(body.join('\n'));
-    const incomplete = (body: string[]): boolean => stats(body).hasIncompleteChecklist;
+const H = ['## Checklist', '- [x] Tests pass'];
+const stats = (body: string[]) => analyzeChecklist(body.join('\n'));
+const isIncomplete = (body: string[]): boolean => stats(body).hasIncompleteChecklist;
 
-    describe('lead-ins that condition on the change exempt the boxes directly below', () => {
-      it.each([
-        'If you add a dependency:',
-        'If you changed the public API:',
-        'When this change touches the schema:',
-        'Only if you modified the manifest:',
-        'If the PR adds a new integration:',
-        'If the code adds a dependency:',
-        'IF THE CODE ADDS X:',
-      ])('%s', (leadIn) => {
-        expect(stats([...H, leadIn, '- [ ] Updated docs', '- [ ] Updated requirements'])).toEqual({
-          hasIncompleteChecklist: false,
-          checklistStats: { checked: 1, total: 1 },
-        });
-      });
-    });
-
-    describe('everything else still counts', () => {
-      it.each([
-        ['a help lead-in', [...H, 'If you have questions:', '- [ ] I have read CONTRIBUTING']],
-        [
-          'a help lead-in with a change verb later',
-          [...H, 'If you need help adding a feature:', '- [ ] Ran the tests'],
-        ],
-        ['a role lead-in', [...H, 'If you are a maintainer:', '- [ ] Ran release script']],
-        ['a non-change lead-in', [...H, 'When filing a bug:', '- [ ] Attached logs']],
-        ['"this PR" without a change verb', [...H, 'If this PR is a draft:', '- [ ] Ran the tests']],
-        ['"the code of conduct"', [...H, 'If the code of conduct applies to you:', '- [ ] Read the docs']],
-        [
-          'the subject is not you/PR/change/code',
-          [...H, 'Only if the schema changed, run it:', '- [ ] Ran the migration'],
-        ],
-        ['a blank line after the lead-in', [...H, 'If you add a dependency:', '', '- [ ] Updated requirements']],
-        [
-          'five blank lines after the lead-in',
-          [...H, 'If the code adds a dependency:', '', '', '', '', '', '- [ ] Docs'],
-        ],
-        ['a plain bullet before the box', [...H, 'If the code adds X:', '- Note: see docs', '- [ ] Updated docs']],
-        [
-          'a nested box below the run',
-          [...H, 'If the code adds a dependency:', '- [ ] Updated requirements', '  - [ ] Ran the audit'],
-        ],
-        [
-          'an honor-system box after a blank',
-          [...H, 'To help with the load of incoming pull requests:', '', '- [ ] Reviewed two PRs'],
-        ],
-      ])('%s', (_name, body) => {
-        expect(incomplete(body)).toBe(true);
-      });
-
-      it('counts only the nested box, not the top-level run above it', () => {
-        expect(
-          stats([...H, 'If the code adds a dependency:', '- [ ] Updated requirements', '  - [ ] Ran the audit'])
-            .checklistStats,
-        ).toEqual({ checked: 1, total: 2 });
-      });
-    });
-
-    describe('agreement boxes are never exempt', () => {
-      it.each([
-        ['under a change lead-in', [...H, 'If you changed the API, I signed the CLA:', '- [ ] I signed the CLA']],
-        [
-          'code of conduct under a change lead-in',
-          [...H, 'If you add a feature:', '- [ ] I agree to the Code of Conduct'],
-        ],
-        ['licence under a change lead-in', [...H, 'If the PR adds files:', '- [ ] New files carry the license header']],
-        ['with a "(Not run: ...)" annotation', [...H, '- [ ] Signed the CLA (Not run: will do later)']],
-        ['with a nested-paren "(Skipped: ...)"', [...H, '- [ ] Signed the CLA (Skipped: no, really (see notes))']],
-        ['with "(if applicable)"', [...H, '- [ ] I signed the CLA (if applicable)']],
-      ])('%s', (_name, body) => {
-        expect(incomplete(body)).toBe(true);
-      });
-    });
-
-    it('exempts a box annotated "(Not run: <reason>)" or "(Skipped: <reason>)"', () => {
-      expect(
-        stats([
-          ...H,
-          '- [x] Lint passes',
-          '- [ ] Passed the story run for the changes. (Not run: no visual change, covered by the new UI test.)',
-          '- [ ] Benchmarks (Skipped: no hot path touched)',
-        ]),
-      ).toEqual({ hasIncompleteChecklist: false, checklistStats: { checked: 2, total: 2 } });
-    });
-
+describe('analyzeChecklist: conditional lead-in lines and inline annotations (#1796)', () => {
+  describe('lead-ins that condition on the change exempt the boxes directly below', () => {
     it.each([
-      '- [ ] Docs updated (not done - will add before merge)',
-      '- [ ] Benchmarks (Skipped: )',
-      '- [ ] Benchmarks (Skipped - no hot path)',
-      '- [ ] Ran the e2e suite. Not run: needs token',
-    ])('still counts %s', (box) => {
-      expect(incomplete([...H, box])).toBe(true);
+      'If you add a dependency:',
+      'If you changed the public API:',
+      'When this change touches the schema:',
+      'Only if you modified the manifest:',
+      'If the PR adds a new integration:',
+      'If the code adds a dependency:',
+      'IF THE CODE ADDS X:',
+    ])('%s', (leadIn) => {
+      expect(stats([...H, leadIn, '- [ ] Updated docs', '- [ ] Updated requirements'])).toEqual({
+        hasIncompleteChecklist: false,
+        checklistStats: { checked: 1, total: 1 },
+      });
     });
+  });
+
+  describe('everything else still counts', () => {
+    it.each([
+      ['a help lead-in', [...H, 'If you have questions:', '- [ ] I have read CONTRIBUTING']],
+      ['a help lead-in with a change verb later', [...H, 'If you need help adding a feature:', '- [ ] Ran the tests']],
+      ['a role lead-in', [...H, 'If you are a maintainer:', '- [ ] Ran release script']],
+      ['a non-change lead-in', [...H, 'When filing a bug:', '- [ ] Attached logs']],
+      ['"this PR" without a change verb', [...H, 'If this PR is a draft:', '- [ ] Ran the tests']],
+      ['"the code of conduct"', [...H, 'If the code of conduct applies to you:', '- [ ] Read the docs']],
+      [
+        'the subject is not you/PR/change/code',
+        [...H, 'Only if the schema changed, run it:', '- [ ] Ran the migration'],
+      ],
+      ['a blank line after the lead-in', [...H, 'If you add a dependency:', '', '- [ ] Updated requirements']],
+      [
+        'five blank lines after the lead-in',
+        [...H, 'If the code adds a dependency:', '', '', '', '', '', '- [ ] Docs'],
+      ],
+      ['a plain bullet before the box', [...H, 'If the code adds X:', '- Note: see docs', '- [ ] Updated docs']],
+      [
+        'a nested box below the run',
+        [...H, 'If the code adds a dependency:', '- [ ] Updated requirements', '  - [ ] Ran the audit'],
+      ],
+      [
+        'an honor-system box after a blank',
+        [...H, 'To help with the load of incoming pull requests:', '', '- [ ] Reviewed two PRs'],
+      ],
+    ])('%s', (_name, body) => {
+      expect(isIncomplete(body)).toBe(true);
+    });
+
+    it('counts only the nested box, not the top-level run above it', () => {
+      expect(
+        stats([...H, 'If the code adds a dependency:', '- [ ] Updated requirements', '  - [ ] Ran the audit'])
+          .checklistStats,
+      ).toEqual({ checked: 1, total: 2 });
+    });
+  });
+
+  describe('agreement boxes are never exempt', () => {
+    it.each([
+      ['under a change lead-in', [...H, 'If you changed the API, I signed the CLA:', '- [ ] I signed the CLA']],
+      [
+        'code of conduct under a change lead-in',
+        [...H, 'If you add a feature:', '- [ ] I agree to the Code of Conduct'],
+      ],
+      ['licence under a change lead-in', [...H, 'If the PR adds files:', '- [ ] New files carry the license header']],
+      ['with a "(Not run: ...)" annotation', [...H, '- [ ] Signed the CLA (Not run: will do later)']],
+      ['with a nested-paren "(Skipped: ...)"', [...H, '- [ ] Signed the CLA (Skipped: no, really (see notes))']],
+      ['with "(if applicable)"', [...H, '- [ ] I signed the CLA (if applicable)']],
+    ])('%s', (_name, body) => {
+      expect(isIncomplete(body)).toBe(true);
+    });
+  });
+
+  it('exempts a box annotated "(Not run: <reason>)" or "(Skipped: <reason>)"', () => {
+    expect(
+      stats([
+        ...H,
+        '- [x] Lint passes',
+        '- [ ] Passed the story run for the changes. (Not run: no visual change, covered by the new UI test.)',
+        '- [ ] Benchmarks (Skipped: no hot path touched)',
+      ]),
+    ).toEqual({ hasIncompleteChecklist: false, checklistStats: { checked: 2, total: 2 } });
+  });
+
+  it.each([
+    '- [ ] Docs updated (not done - will add before merge)',
+    '- [ ] Benchmarks (Skipped: )',
+    '- [ ] Benchmarks (Skipped - no hot path)',
+    '- [ ] Ran the e2e suite. Not run: needs token',
+  ])('still counts %s', (box) => {
+    expect(isIncomplete([...H, box])).toBe(true);
   });
 });
