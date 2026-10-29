@@ -168,7 +168,42 @@ describe('description check', () => {
     const body = 'Fixes the off-by-one in the pager so the last page is no longer dropped when the count is exact.';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
-  it('warns on a short body with no headings', () => {
+  it.each([
+    'Fixes paging so the last page is kept.',
+    '## Summary\nFixes paging so the last page is kept.',
+    '## Change\nKeep the last page.\n\n## Reason\nAvoid dropping results.',
+    'ページが欠落しないように修正しました。',
+  ])('gives full description credit independent of headings: %s', (body) => {
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('accepts a completed repository template without adding generic sections', () => {
+    const body = '## Change\nKeep the last page to avoid missing results.\n\nCloses #1';
+    const result = computeComplianceScore(meta({ body }));
+    expect(result.checks.description.status).toBe('pass');
+    expect(result.score).toBe(100);
+  });
+  it('preserves unrelated compliance failures for a clear description', () => {
+    const result = computeComplianceScore(
+      meta({
+        body: 'Fixes paging so the last page is kept.\n\nCloses #1',
+        title: 'WIP',
+        branch: 'main',
+        filesChangedCount: 21,
+        files: ['src/paging.ts'],
+      }),
+      { linkedIssues: [{ number: 1, repo: 'owner/repo', crossRepo: false, state: 'not_found' }] },
+    );
+    expect(result.checks).toMatchObject({
+      description: { status: 'pass', weight: 25 },
+      issueReference: { status: 'fail', weight: 25 },
+      focusedChanges: { status: 'fail', weight: 20 },
+      tests: { status: 'warn', weight: 15 },
+      title: { status: 'fail', weight: 10 },
+      branch: { status: 'fail', weight: 5 },
+    });
+    expect(result.score).toBe(33);
+  });
+  it('warns when the body contains only an issue reference', () => {
     expect(computeComplianceScore(meta({ body: 'Closes #42' })).checks.description.status).toBe('warn');
   });
   it('warns on a template left unfilled (headings and placeholder comments only)', () => {

@@ -263,9 +263,6 @@ function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): Compl
   };
 }
 
-const SECTION_WHAT = /(?:^|\n)#{1,3}\s*(?:summary|overview|what(?:\s+changed)?)\b/i;
-const SECTION_WHY = /(?:^|\n)#{1,3}\s*(?:why|motivation|context|background|rationale)\b/i;
-
 const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+/gi;
 
 // The body minus template scaffolding (HTML comments, headings) and closing
@@ -368,11 +365,14 @@ function checkDescription(meta: PRMetadata): ComplianceCheckResult {
     return { status: 'fail', weight, detail: 'description is empty' };
   }
   const prose = proseOf(meta.body);
-  const hasHeading = SECTION_WHAT.test(meta.body) || SECTION_WHY.test(meta.body);
-  if (prose.length >= 80 || (hasHeading && /\p{L}/u.test(prose))) {
+  if (/\p{L}/u.test(prose)) {
     return { status: 'pass', weight, detail: 'describes the change' };
   }
-  return { status: 'warn', weight, detail: 'short description; say what changed and why' };
+  return {
+    status: 'warn',
+    weight,
+    detail: 'no description beyond scaffolding or references; say what changed and why',
+  };
 }
 
 function checkFocusedChanges(meta: PRMetadata): ComplianceCheckResult {
