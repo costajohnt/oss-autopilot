@@ -138,7 +138,6 @@ export {
 // (#1208 M7). Re-exported here for backward compatibility with anyone
 // importing from this module.
 import { buildStarFilter, firstMaintainerResponseFromDigest } from '../core/daily-logic.js';
-export { buildStarFilter };
 
 /**
  * Internal result of the daily check, using full (non-deduplicated) types.
@@ -816,8 +815,8 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     strategySummary: result.strategySummary,
     // Conditional spread (not a plain assignment) so merge-free runs carry
     // no `listUpdates` key at all — serialized output and goldens unchanged.
-    ...(result.listUpdates ? { listUpdates: result.listUpdates } : {}),
-    ...(result.pendingLearnings ? { pendingLearnings: result.pendingLearnings } : {}),
+    ...(result.listUpdates && { listUpdates: result.listUpdates }),
+    ...(result.pendingLearnings && { pendingLearnings: result.pendingLearnings }),
   };
 }
 
@@ -1116,3 +1115,5 @@ export async function runDailyForDisplay(): Promise<DailyCheckResult> {
   const token = requireGitHubToken();
   return executeDailyCheckInternal(token);
 }
+
+export { buildStarFilter } from '../core/daily-logic.js';

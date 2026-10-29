@@ -13,8 +13,6 @@ interface CheckIntegrationOptions {
   base: string;
 }
 
-export type { CheckIntegrationOutput, NewFileInfo };
-
 /** File extensions we consider "code" that should be imported/referenced */
 const CODE_EXTENSIONS = new Set([
   '.ts',
@@ -184,3 +182,5 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   const unreferencedCount = results.filter((r) => !r.isIntegrated).length;
   return { newFiles: results, unreferencedCount };
 }
+
+export { type CheckIntegrationOutput, type NewFileInfo } from '../formatters/json.js';

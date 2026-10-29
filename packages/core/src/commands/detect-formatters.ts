@@ -10,8 +10,6 @@ import type { DetectFormattersOutput } from '../formatters/json.js';
 import { detectFormatters, diagnoseCIFormatterFailure } from '../core/formatter-detection.js';
 import { errorMessage } from '../core/errors.js';
 
-export type { DetectFormattersOutput };
-
 export async function runDetectFormatters(options: {
   repoPath?: string;
   ciLog?: string;
@@ -32,3 +30,5 @@ export async function runDetectFormatters(options: {
 
   return output;
 }
+
+export { type DetectFormattersOutput } from '../formatters/json.js';

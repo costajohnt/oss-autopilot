@@ -648,7 +648,7 @@ describe('computeActionMenu (core)', () => {
 
   it('should always end with done', () => {
     const menu = computeActionMenu([], makeCapacity());
-    expect(menu.items[menu.items.length - 1].key).toBe('done');
+    expect(menu.items.at(-1)?.key).toBe('done');
   });
 
   it('should always include search', () => {

@@ -310,7 +310,7 @@ async function fetchRecentPRs<T>(
 
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - days);
-  const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const since = sinceDate.toISOString().split('T', 1)[0]; // YYYY-MM-DD
 
   debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 

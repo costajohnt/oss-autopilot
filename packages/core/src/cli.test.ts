@@ -722,7 +722,7 @@ describe('cli.ts parses asynchronously (#1386)', () => {
     // UnhandledPromiseRejection stacks instead of actionable messages.
     const source = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
     expect(source).toContain('program.parseAsync()');
-    expect(source).toMatch(/parseAsync\(\)\s*\.catch\(/s);
+    expect(source).toMatch(/parseAsync\(\)\s*\.catch\(/);
     expect(source).toContain('handleCommandError(err');
     expect(source).not.toMatch(/^program\.parse\(\);/m);
   });

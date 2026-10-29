@@ -272,6 +272,6 @@ export class DashboardCache {
       allClosedPRs,
       this.mergeWarnings(this.cachedPartialFailures),
     );
-    this.cachedIssueListMtimeMs = issueListMtimeMs !== undefined ? issueListMtimeMs : getIssueListMtimeMs();
+    this.cachedIssueListMtimeMs = issueListMtimeMs === undefined ? getIssueListMtimeMs() : issueListMtimeMs;
   }
 }

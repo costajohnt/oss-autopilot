@@ -6,8 +6,6 @@
  */
 
 import type {
-  AttentionBucket,
-  FetchedPRStatus,
   ShelvedPRRef,
   FetchedPR,
   CommentedIssue,
@@ -17,31 +15,10 @@ import type {
   RepoMetadataEntry,
 } from '@oss-autopilot/core/types';
 
-import type {
-  ParsedIssueItem,
-  ParseIssueListOutput,
-  DashboardStats,
-  DashboardActionType,
-  ActionRequest,
-} from '@oss-autopilot/core/commands';
+import type { ParseIssueListOutput, DashboardStats } from '@oss-autopilot/core/commands';
 
 // Re-export shared types so consumers keep using `import { X } from '../types'`
-export type {
-  AttentionBucket,
-  FetchedPRStatus,
-  ShelvedPRRef,
-  FetchedPR,
-  CommentedIssue,
-  CommentedIssueWithResponse,
-  MergedPR,
-  ClosedPR,
-  RepoMetadataEntry,
-  ParsedIssueItem,
-  ParseIssueListOutput,
-  DashboardStats,
-  DashboardActionType,
-  ActionRequest,
-};
+export type { ClosedPR, RepoMetadataEntry, ParseIssueListOutput, DashboardStats };
 
 /** The shape of the GET /api/data response from the dashboard server. */
 export interface DashboardData {
@@ -71,3 +48,14 @@ export interface DashboardData {
    */
   partialFailures?: string[];
 }
+
+export {
+  type AttentionBucket,
+  type FetchedPRStatus,
+  type ShelvedPRRef,
+  type FetchedPR,
+  type CommentedIssue,
+  type CommentedIssueWithResponse,
+  type MergedPR,
+} from '@oss-autopilot/core/types';
+export { type ParsedIssueItem, type DashboardActionType, type ActionRequest } from '@oss-autopilot/core/commands';

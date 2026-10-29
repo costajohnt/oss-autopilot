@@ -189,7 +189,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
       inlineCommentCount: relevantReviewComments.length,
       discussionCommentCount: relevantIssueComments.length,
     },
-    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(warnings.length > 0 && { warnings }),
   };
 }
 
@@ -336,7 +336,7 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   return {
     commentUrl: comment.html_url,
     issueUrl: options.issueUrl,
-    ...(gistSyncWarning ? { gistSyncWarning } : {}),
-    ...(stateSaveWarning ? { stateSaveWarning } : {}),
+    ...(gistSyncWarning && { gistSyncWarning }),
+    ...(stateSaveWarning && { stateSaveWarning }),
   };
 }

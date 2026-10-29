@@ -404,7 +404,7 @@ describe('getGitHubTokenAsync', () => {
 
   it('should fall back to gh CLI asynchronously when no env var', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'ghp_async_token\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -420,7 +420,7 @@ describe('getGitHubTokenAsync', () => {
 
   it('should cache the token on subsequent calls', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'ghp_async_cached\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -433,7 +433,7 @@ describe('getGitHubTokenAsync', () => {
 
   it('should return null when gh CLI fails', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');
       return {} as ReturnType<typeof execFile>;
     });
@@ -443,7 +443,7 @@ describe('getGitHubTokenAsync', () => {
 
   it('should not retry after a failed attempt', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');
       return {} as ReturnType<typeof execFile>;
     });
@@ -530,7 +530,7 @@ describe('detectGitHubUsername', () => {
 
   it('should return username when gh api succeeds', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'octocat\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -546,7 +546,7 @@ describe('detectGitHubUsername', () => {
 
   it('should return null when gh command fails', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');
       return {} as ReturnType<typeof execFile>;
     });
@@ -556,7 +556,7 @@ describe('detectGitHubUsername', () => {
 
   it('should return null for empty output', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, '   \n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -566,7 +566,7 @@ describe('detectGitHubUsername', () => {
 
   it('should return null for invalid username pattern', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, '-invalid-start\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -576,7 +576,7 @@ describe('detectGitHubUsername', () => {
 
   it('should return null for username with consecutive hyphens', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'bad--name\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -586,7 +586,7 @@ describe('detectGitHubUsername', () => {
 
   it('should accept valid usernames with hyphens', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'my-username-42\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -596,7 +596,7 @@ describe('detectGitHubUsername', () => {
 
   it('should accept single character usernames', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'x\n');
       return {} as ReturnType<typeof execFile>;
     });
@@ -606,7 +606,7 @@ describe('detectGitHubUsername', () => {
 
   it('should reject usernames longer than 39 characters', async () => {
     mockedExecFile.mockImplementation((...args: any[]) => {
-      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      const cb = args.at(-1) as (error: Error | null, stdout: string) => void;
       cb(null, 'a'.repeat(40) + '\n');
       return {} as ReturnType<typeof execFile>;
     });

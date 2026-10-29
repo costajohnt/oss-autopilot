@@ -191,7 +191,7 @@ export async function fetchPRCommentBundle(
         body: fence(c.body ?? '', 'pr-issue-comment', c.user?.login ?? '', c.author_association ?? 'NONE'),
         createdAt: c.created_at ?? '',
       })),
-    ...(truncated ? { truncated: true } : {}),
+    ...(truncated && { truncated: true }),
   };
 }
 

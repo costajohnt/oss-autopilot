@@ -117,7 +117,7 @@ async function verifyLinkedIssues(
           return { number, repo: fullRepo, crossRepo, state: 'open' as const };
         }
         const closedAt = data.closed_at ? new Date(data.closed_at) : null;
-        const closedDaysAgo = closedAt ? Math.floor((now.getTime() - closedAt.getTime()) / 86400000) : undefined;
+        const closedDaysAgo = closedAt ? Math.floor((now.getTime() - closedAt.getTime()) / 86_400_000) : undefined;
         return { number, repo: fullRepo, crossRepo, state: 'closed' as const, closedDaysAgo };
       } catch (err) {
         const status = (err as { status?: number }).status;

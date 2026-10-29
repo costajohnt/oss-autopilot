@@ -518,9 +518,7 @@ export function computeActionMenu(
       searchItem.capacityWarning = `You have ${capacity.criticalIssueCount} critical issue(s) needing attention. Resolve them before claiming new issues.`;
     }
   }
-  items.push(searchItem);
-
-  items.push({
+  items.push(searchItem, {
     key: 'done',
     label: 'Done for now',
     description: 'End session with summary',

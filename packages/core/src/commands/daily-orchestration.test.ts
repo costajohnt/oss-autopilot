@@ -573,7 +573,7 @@ describe('executeDailyCheck() — output shape', () => {
     const keys = result.actionMenu.items.map((i) => i.key);
     expect(keys).toContain('search');
     expect(keys).toContain('done');
-    expect(keys[keys.length - 1]).toBe('done');
+    expect(keys.at(-1)).toBe('done');
   });
 
   it('actionMenu includes address_all when actionable issues exist', async () => {

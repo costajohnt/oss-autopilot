@@ -11,6 +11,9 @@ import {
   getOctokit,
   CRITICAL_STATUSES,
   applyStatusOverrides,
+  toShelvedPRRef,
+  buildStarFilter,
+  firstMaintainerResponseFromDigest,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -31,7 +34,6 @@ import {
   type RepoMetadataEntry,
 } from '../core/types.js';
 import type { ParseIssueListOutput } from '../formatters/json.js';
-import { toShelvedPRRef, buildStarFilter, firstMaintainerResponseFromDigest } from '../core/index.js';
 
 const MODULE = 'dashboard-data';
 
@@ -108,16 +110,16 @@ export function buildDashboardStats(
   // Merged: use the higher of stored count vs repoScores aggregate to avoid regressions
   // when the stored list hasn't caught up yet (initial fetch caps at 300 PRs)
   const mergedPRs =
-    storedMergedCount !== undefined
-      ? Math.max(storedMergedCount, summary.totalMergedAllTime)
-      : summary.totalMergedAllTime;
+    storedMergedCount === undefined
+      ? summary.totalMergedAllTime
+      : Math.max(storedMergedCount, summary.totalMergedAllTime);
   // Closed: same anti-regression strategy — use the higher of stored count vs repoScores aggregate
   const aggregateClosedCount = Object.values(state.repoScores || {}).reduce(
     (sum, s) => sum + (isBelowMinStars(s.stargazersCount, minStars) ? 0 : s.closedWithoutMergeCount || 0),
     0,
   );
   const closedPRs =
-    storedClosedCount !== undefined ? Math.max(storedClosedCount, aggregateClosedCount) : aggregateClosedCount;
+    storedClosedCount === undefined ? aggregateClosedCount : Math.max(storedClosedCount, aggregateClosedCount);
   return {
     activePRs: summary.totalActivePRs,
     shelvedPRs: (digest.shelvedPRs || []).length,

@@ -68,10 +68,8 @@ export function getLatestChangesRequestedDate(
 ): string | undefined {
   let latest: string | undefined;
   for (const review of reviews) {
-    if (review.state === 'CHANGES_REQUESTED' && review.submitted_at) {
-      if (!latest || review.submitted_at > latest) {
-        latest = review.submitted_at;
-      }
+    if (review.state === 'CHANGES_REQUESTED' && review.submitted_at && (!latest || review.submitted_at > latest)) {
+      latest = review.submitted_at;
     }
   }
   return latest;
@@ -200,16 +198,14 @@ export function checkUnrespondedComments(
 
     // For inline-only COMMENTED reviews, skip pure self-replies (#199).
     // CHANGES_REQUESTED reviews are always actionable regardless of self-replies.
-    if (!body && review.state === 'COMMENTED' && review.id != null) {
-      if (isAllSelfReplies(review.id, reviewComments)) {
-        continue;
-      }
+    if (!body && review.state === 'COMMENTED' && review.id != null && isAllSelfReplies(review.id, reviewComments)) {
+      continue;
     }
 
     // Resolve body: prefer actual text, then inline comment text, then synthetic placeholder
     const resolvedBody =
       body ||
-      (review.id != null ? getInlineCommentBody(review.id, reviewComments) : undefined) ||
+      (review.id == null ? undefined : getInlineCommentBody(review.id, reviewComments)) ||
       (review.state === 'CHANGES_REQUESTED'
         ? '(requested changes via inline review comments)'
         : '(posted inline review comments)');

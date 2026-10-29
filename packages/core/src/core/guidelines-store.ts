@@ -34,7 +34,7 @@ export function guidelinesFilename(repo: string): string {
     throw new OssAutopilotError(`Invalid repo identifier "${repo}". Expected "owner/repo" format.`, 'INVALID_REPO_ID');
   }
   // GitHub forbids `/` in owner and repo, so the only `/` is the separator.
-  const [owner, name] = repo.split('/');
+  const [owner, name] = repo.split('/', 2);
   return `${GUIDELINES_FILE_PREFIX}${owner}--${name}${GUIDELINES_FILE_SUFFIX}`;
 }
 
@@ -81,7 +81,7 @@ export class GuidelinesNotAvailableError extends OssAutopilotError {
 export class GuidelinesTooLargeError extends OssAutopilotError {
   constructor(byteSize: number, max: number = GUIDELINES_MAX_BYTES) {
     super(
-      `Guidelines content is ${byteSize} bytes, exceeding the ${max}-byte cap. ` + `Trim or split across categories.`,
+      `Guidelines content is ${byteSize} bytes, exceeding the ${max}-byte cap. Trim or split across categories.`,
       'GUIDELINES_TOO_LARGE',
     );
     this.name = 'GuidelinesTooLargeError';

@@ -226,15 +226,15 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
 
   const result = await scout.search({
     maxResults: options.maxResults,
-    ...(options.strategies ? { strategies: options.strategies } : {}),
-    ...(options.full ? { full: true } : {}),
+    ...(options.strategies && { strategies: options.strategies }),
+    ...(options.full && { full: true }),
     preferLanguages,
     preferRepos,
     diversityRatio: SEARCH_DIVERSITY_RATIO,
     // Pinned so searchSeen's retention (state-prune.ts) always outlives it.
     recentlySurfacedTtlDays: SCOUT_ROTATION_TTL_DAYS,
-    ...(interPhaseDelayMs !== undefined ? { interPhaseDelayMs } : {}),
-    ...(broadPhaseDelayMs !== undefined ? { broadPhaseDelayMs } : {}),
+    ...(interPhaseDelayMs !== undefined && { interPhaseDelayMs }),
+    ...(broadPhaseDelayMs !== undefined && { broadPhaseDelayMs }),
   });
 
   // Record everything scout surfaced this round into the durable seen-set so
@@ -325,15 +325,14 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
               lastMergedAt: repoScoreRecord.lastMergedAt,
             }
           : undefined,
-        ...(linkedPR ? { linkedPR } : {}),
+        ...(linkedPR && { linkedPR }),
         // Scout 1.0 folded the boostScore/boostReasons/diversitySlot trio into a
         // single `personalization` field (#158). Derive the flat output fields
         // from it so this command's JSON shape is unchanged.
-        ...(c.personalization?.kind === 'boosted' ? { boostScore: c.personalization.score } : {}),
-        ...(c.personalization?.kind === 'boosted' && c.personalization.reasons.length > 0
-          ? { boostReasons: c.personalization.reasons }
-          : {}),
-        ...(c.personalization?.kind === 'diversity' ? { diversitySlot: true } : {}),
+        ...(c.personalization?.kind === 'boosted' && { boostScore: c.personalization.score }),
+        ...(c.personalization?.kind === 'boosted' &&
+          c.personalization.reasons.length > 0 && { boostReasons: c.personalization.reasons }),
+        ...(c.personalization?.kind === 'diversity' && { diversitySlot: true }),
       };
     }),
     excludedRepos: result.excludedRepos,

@@ -27,7 +27,7 @@ vi.mock('../core/index.js', async () => {
     requireGitHubToken: () => 'fake-token',
     verifyIssuesBatch: mockVerifyIssuesBatch,
     getStateManager: () => ({
-      getRepoScore: () => undefined,
+      getRepoScore: () => {},
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
     }),
   };

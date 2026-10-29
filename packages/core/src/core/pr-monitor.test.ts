@@ -28,7 +28,7 @@ vi.mock('./http-cache.js', async () => {
       get: () => null,
       set: () => {},
       hasInflight: () => false,
-      getInflight: () => undefined,
+      getInflight: () => {},
       setInflight: () => () => {},
     })),
   };
@@ -1953,7 +1953,7 @@ describe('fetchUserOpenPRs auto-repairs known placeholder usernames', () => {
       users: {
         // Whitespace-only login — treat as unusable rather than swapping one
         // broken config for another.
-        getAuthenticated: vi.fn().mockResolvedValue({ data: { login: '   ' } }),
+        getAuthenticated: vi.fn().mockResolvedValue({ data: { login: ' '.repeat(3) } }),
       },
     };
 
@@ -3308,7 +3308,7 @@ describe('fetchUserOpenPRs assembles PRs from the batched GraphQL path', () => {
     const graphql = vi.fn().mockResolvedValue({
       pr0: {
         pullRequest: {
-          databaseId: 12345,
+          databaseId: 12_345,
           number: 7,
           title: 'Add feature',
           url: prUrl,

@@ -982,7 +982,7 @@ describe('pruneIssueList', () => {
 
 `;
     const { pruned } = pruneIssueList(content);
-    expect(pruned).not.toContain('\n\n\n');
+    expect(pruned).not.toContain('\n'.repeat(3));
   });
 
   it('removes strikethrough list items without URLs', () => {
