@@ -13,8 +13,18 @@ import { FetchedPR } from './types.js';
 const CONDITIONAL_CHECKLIST_PATTERN =
   /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
 
+/** An author's reason for leaving a box unchecked: "(Not run: ...)" or "(Skipped: ...)" (#1796). */
+const UNCHECKED_REASON_RE = /\((?:not run|skipped)\s*:\s*[^\s)][^)]*\)/i;
+
+/**
+ * Boxes about agreements (CLA, code of conduct, licence, sign-off) are never
+ * exempt, whatever lead-in or annotation surrounds them (#1796).
+ */
+const NEVER_EXEMPT_RE = /\b(?:cla|code of conduct|agree\w*|sign|signed|licen[cs]\w*)\b/i;
+
 export function isConditionalChecklistItem(line: string): boolean {
-  return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
+  const lower = line.toLowerCase();
+  return (CONDITIONAL_CHECKLIST_PATTERN.test(lower) || UNCHECKED_REASON_RE.test(line)) && !NEVER_EXEMPT_RE.test(line);
 }
 
 // Matches markdown headings; `\S` after whitespace prevents backtracking with `.*` (#1718)
@@ -27,6 +37,28 @@ const HEADING_RE = /^#{1,6}\s+(\S.*)/;
  * prose like "Complete one of the following only if it applies". (#1760)
  */
 const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|pick\s+one|choose\s+one)[^>]*-->/i;
+
+/**
+ * A prose line that conditions the checkbox run directly below it on the change,
+ * e.g. "If you add a dependency:" or "If the PR changes the schema:" (#1796).
+ * The subject and the change verb must open the line, so "If this PR is a
+ * draft:" or "If the code of conduct applies:" do not qualify.
+ */
+const LEAD_IN_OPENER_RE = /^(?:if|when|only if)\s+/i;
+const LEAD_IN_YOU_VERB_RE = /^(?:you|this change)\s+(?:add|change|modif|updat|remov|introduc|touch)\w*\b/i;
+const LEAD_IN_SUBJECT_VERB_RE =
+  /^(?:the\s+)?(?:pr|change|code)\s+(?:adds|changes|modifies|updates|removes|introduces|touches)\b/i;
+const ENDS_WITH_ONLY_COLON_RE = /^[^:]*:\s*$/;
+
+function isConditionalLeadIn(line: string): boolean {
+  const opener = LEAD_IN_OPENER_RE.exec(line);
+  if (!opener || !ENDS_WITH_ONLY_COLON_RE.test(line)) return false;
+  const rest = line.slice(opener[0].length);
+  return LEAD_IN_YOU_VERB_RE.test(rest) || LEAD_IN_SUBJECT_VERB_RE.test(rest);
+}
+
+/** An unindented checkbox line; nested boxes end a conditional run. */
+const TOP_LEVEL_CHECKBOX_RE = /^- \[[ x]\]/i;
 
 /** Matches any checkbox line (checked or unchecked). */
 const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
@@ -90,7 +122,7 @@ function hasLeaveUncheckedNote(section: CheckboxSection): boolean {
 
 /**
  * Mark unchecked lines in a single pick-one run as exempt if exactly one box is
- * checked. Extracted to keep `collectPickOneExemptLineIndices` within complexity
+ * checked. Extracted to keep `collectRunExemptLineIndices` within complexity
  * limits.
  */
 function markPickOneRunExempt(lines: string[], runStart: number, runEnd: number, exempt: Set<number>): void {
@@ -101,32 +133,60 @@ function markPickOneRunExempt(lines: string[], runStart: number, runEnd: number,
   }
 }
 
+/** Mark the unchecked lines in a run under a conditional lead-in as exempt (#1796). */
+function markConditionalRunExempt(lines: string[], runStart: number, runEnd: number, exempt: Set<number>): void {
+  for (let k = runStart; k < runEnd; k++) {
+    if (/- \[ \]/.test(lines[k]) && !NEVER_EXEMPT_RE.test(lines[k])) exempt.add(k);
+  }
+}
+
+interface RunRule {
+  /** Blank lines allowed between the introducing line and the run. */
+  skipBlanks: boolean;
+  inRun: RegExp;
+  mark: (lines: string[], runStart: number, runEnd: number, exempt: Set<number>) => void;
+}
+
+const PICK_ONE_RUN: RunRule = { skipBlanks: true, inRun: ANY_CHECKBOX_RE, mark: markPickOneRunExempt };
+const CONDITIONAL_RUN: RunRule = { skipBlanks: false, inRun: TOP_LEVEL_CHECKBOX_RE, mark: markConditionalRunExempt };
+
+/** The run rule a line introduces, if any. */
+function runRuleFor(line: string): RunRule | undefined {
+  if (PICK_ONE_COMMENT_RE.test(line)) return PICK_ONE_RUN;
+  if (isConditionalLeadIn(line)) return CONDITIONAL_RUN;
+  return undefined;
+}
+
 /**
- * Returns the set of line indices (within `lines`) that are unchecked checkbox lines
- * belonging to a satisfied pick-one group. A pick-one group is a contiguous checkbox
- * run immediately following an HTML comment matching PICK_ONE_COMMENT_RE. The group is
- * satisfied when exactly one box in the run is checked; in that case the unchecked
- * alternatives are intentional and must not be counted as incomplete. (#1760)
+ * Returns the set of line indices (within `lines`) of unchecked checkbox lines that
+ * are intentionally unchecked because of the line introducing their run:
+ * - a pick-one HTML comment (PICK_ONE_COMMENT_RE) whose run has exactly one box
+ *   checked, so the unchecked alternatives are intentional (#1760);
+ * - a conditional lead-in line ({@link isConditionalLeadIn}), so its run is
+ *   conditional like an "(if ...)" item, except NEVER_EXEMPT_RE boxes (#1796).
+ * A pick-one run is the contiguous checkbox lines after the comment, past blanks;
+ * a conditional run is the unindented boxes directly below the lead-in.
  */
-function collectPickOneExemptLineIndices(lines: string[]): ReadonlySet<number> {
+function collectRunExemptLineIndices(lines: string[]): ReadonlySet<number> {
   const exempt = new Set<number>();
   let i = 0;
 
   while (i < lines.length) {
-    if (!PICK_ONE_COMMENT_RE.test(lines[i])) {
+    const rule = runRuleFor(lines[i]);
+    if (!rule) {
       i++;
       continue;
     }
 
-    // Advance past the comment, skipping any blank lines before the checkbox run
+    // Advance past the introducing line, skipping any blank lines before the checkbox run
     let j = i + 1;
-    while (j < lines.length && lines[j].trim() === '') j++;
+    while (rule.skipBlanks && j < lines.length && lines[j].trim() === '') j++;
 
     // Collect the contiguous checkbox run
     const runStart = j;
-    while (j < lines.length && ANY_CHECKBOX_RE.test(lines[j])) j++;
+    while (j < lines.length && rule.inRun.test(lines[j])) j++;
 
-    markPickOneRunExempt(lines, runStart, j, exempt);
+    rule.mark(lines, runStart, j, exempt);
     i = j;
   }
 
@@ -155,11 +215,11 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
   const isTypeOfChange = section.heading !== null && TYPE_OF_CHANGE_RE.test(section.heading);
   if (isTypeOfChange && checked >= 1) return { checked, nonConditionalUnchecked: 0 };
 
-  // Pick-one groups: unchecked alternatives in a satisfied pick-one group are exempt. (#1760)
-  const pickOneExempt = collectPickOneExemptLineIndices(section.lines);
+  // Pick-one groups (#1760) and runs under a conditional lead-in line (#1796).
+  const runExempt = collectRunExemptLineIndices(section.lines);
 
   const nonConditionalUnchecked = section.lines.filter(
-    (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !pickOneExempt.has(idx),
+    (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !runExempt.has(idx),
   );
   return { checked, nonConditionalUnchecked: nonConditionalUnchecked.length };
 }
@@ -176,6 +236,9 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
  * - Sections whose heading matches "type of change" / "kind of change" / "category"
  *   are treated as single-select radio groups: satisfied when at least one box is
  *   checked, so the remaining unchecked boxes are not counted as incomplete.
+ * - Unchecked boxes directly under a conditional lead-in line ("If you add ...:")
+ *   are treated as conditional (#1796).
+ * Agreement boxes (CLA, code of conduct, licence, sign-off) always count.
  */
 export function analyzeChecklist(body: string): {
   hasIncompleteChecklist: boolean;
