@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.9.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.8.1...mcp-v5.9.0) (2026-10-30)
+
+
+### Features
+
+* cap open PRs in repos where you have no merges yet ([#1841](https://github.com/costajohnt/oss-autopilot/issues/1841)) ([4ac6b28](https://github.com/costajohnt/oss-autopilot/commit/4ac6b28cc4a6a5b8f9b106f9fa51836be8127d16))
+
 ## [5.8.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.8.0...mcp-v5.8.1) (2026-10-30)
 
 
