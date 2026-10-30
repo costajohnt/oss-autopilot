@@ -84,17 +84,17 @@ export function getRepoCapStatus(
   // parsed AgentState always has these defaults.
   const config: Partial<AgentState['config']> = state.config ?? {};
   const openPRCount = live?.openPRCount ?? openPRCountsByRepo(state).get(repo.toLowerCase()) ?? 0;
-  const mergedPRCount = mergedCount(state, repo);
-  const isCold = mergedPRCount === 0;
-  const cap = applicableCap(config, isCold);
+  const merged = mergedCount(state, repo);
+  const isCold = merged === 0;
+  const limit = applicableCap(config, isCold);
   const status = {
     repo,
     openPRCount,
     countSource: live ? ('github' as const) : ('digest' as const),
-    mergedPRCount,
+    mergedPRCount: merged,
     cold: isCold,
-    cap,
-    atCap: cap > 0 && openPRCount >= cap,
+    cap: limit,
+    atCap: limit > 0 && openPRCount >= limit,
     excluded: (config.excludeRepos ?? []).some((r) => r.toLowerCase() === repo.toLowerCase()),
   };
   const reason = capReason(status);
