@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.8.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.8.0...mcp-v5.8.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **mcp:** pick up core 3.35.0 so MCP servers keep newer state fields ([#1836](https://github.com/costajohnt/oss-autopilot/issues/1836)) ([1d61495](https://github.com/costajohnt/oss-autopilot/commit/1d614959c8f0f81335193964193a36780cc8472a))
+
 ## [5.8.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.9...mcp-v5.8.0) (2026-10-30)
 
 
