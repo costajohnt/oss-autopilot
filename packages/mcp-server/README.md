@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 30 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `track`, `compliance-score`, `repo-vet`, `strategy`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Tools** | 31 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `track`, `compliance-score`, `repo-vet`, `strategy`, `eval`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
 | **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
 | **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
@@ -117,13 +117,14 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `status` | Show current PR tracking status | Yes |
 | `search` | Search GitHub for contributable issues | Yes |
 | `features` | Find feature-scoped opportunities in repos with 3+ merged PRs (relationship-anchored) | Yes |
-| `vet` | Analyze an issue for contribution suitability | Yes |
+| `vet` | Analyze an issue for contribution suitability; records the vet-time prediction for calibration (#1824) | No |
 | `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting | Yes |
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
 | `track` | Inspect a PR: read-only metadata lookup (nothing is tracked or persisted) | Yes |
 | `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
 | `repo-vet` | Compute the repo health rubric (1–10 + verdict) for `owner/repo` (#1271) | Yes |
 | `strategy` | On-demand contribution strategy snapshot via `computeStrategy()` (#1243) | Yes |
+| `eval` | Calibration and outcome report from the outcome ledger (#1825) | Yes |
 | `comments` | Fetch and display PR comments | Yes |
 | `post` | Post a comment on an issue or PR | No |
 | `claim` | Claim an issue by posting a comment | No |
