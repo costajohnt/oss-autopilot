@@ -5,16 +5,17 @@
  * and `closeReason` have none of them, so the eval report (#1825) would have
  * no history to calibrate against. This fills what can still be recovered:
  *
- * - `openedAt` and `issueUrl` (GitHub's `closingIssuesReferences`) for every
- *   entry missing them, in batched GraphQL queries.
+ * - `openedAt` and `issueUrl` (GitHub's `closingIssuesReferences`) via
+ *   batched GraphQL; each answered PR is stamped `backfilledAt` so later
+ *   runs only query new entries.
  * - `closeReason` for closed-unmerged entries, from who closed the PR and its
  *   last comments (core/close-reason.ts).
- * - `pick` from the curated issue list and its sibling archives: an entry
- *   whose status line links the PR carries the vet score as `**Tier (N/10)**`.
+ * - `pick` for entries with no vet-time snapshot, from the curated issue list
+ *   and its sibling archives: an entry whose status line links the PR carries
+ *   the vet score as `**Tier (N/10)**`.
  *
  * Only missing fields are filled (addMergedPRs/addClosedPRs never overwrite),
- * so the command is safe to re-run; the weekly eval job runs it first so new
- * closures get a reason.
+ * so the command is safe to re-run; the weekly eval job runs it first.
  */
 
 import * as fs from 'node:fs';
@@ -23,7 +24,6 @@ import type { Octokit } from '@octokit/rest';
 import { classifyCloseReason } from '../core/close-reason.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { getOctokit, requireGitHubToken, getStateManager, parseGitHubUrl } from '../core/index.js';
-import { warn } from '../core/logger.js';
 import { isGraphqlRateLimited } from '../core/pr-graphql.js';
 import { maybeCheckpoint } from '../core/state.js';
 import type { PickSnapshot, StoredClosedPR, StoredMergedPR } from '../core/types.js';
@@ -31,38 +31,48 @@ import { detectIssueListPath } from './locate-issue-list.js';
 import { findListEntryUrlByPrUrl } from './merge-loop.js';
 import { parseIssueList } from './parse-list.js';
 
-const MODULE = 'ledger-backfill';
 const BATCH_SIZE = 40;
+/** The curated list keeps issues scored at least this (see /oss-search's score filter). */
+const LIST_KEEP_SCORE = 6;
 
 export interface LedgerBackfillOutput {
-  /** Ledger PRs sent to GitHub because a recoverable field was missing. */
+  /** Ledger PRs sent to GitHub because they had not been backfilled yet. */
   queried: number;
   /** Entries that gained each field in this run. */
   filled: { openedAt: number; issueUrl: number; closeReason: number; pick: number };
   /** Curated-list files scanned for vet scores. */
   listFiles: string[];
-  /** PRs GitHub returned nothing for (deleted repo, private, transient error). */
+  /** PRs GitHub returned nothing for this run; retried next run. */
   unresolved: number;
+  /** Partial failures: failed batches, missing PRs by error type, unreadable list files. */
+  warnings: string[];
   gistSyncWarning?: string;
+}
+
+interface Login {
+  __typename?: string;
+  login: string;
 }
 
 interface PRNode {
   createdAt?: string;
-  author?: { login: string } | null;
+  author?: Login | null;
   closingIssuesReferences?: { nodes: Array<{ url: string } | null> };
-  timelineItems?: { nodes: Array<{ actor?: { login: string } | null } | null> };
-  comments?: { nodes: Array<{ author?: { login: string } | null; body: string } | null> };
+  timelineItems?: { nodes: Array<{ actor?: Login | null } | null> };
+  comments?: { nodes: Array<{ author?: Login | null; body: string } | null> };
 }
 
 const PR_FIELDS = `
   createdAt
-  author { login }
+  author { __typename login }
   closingIssuesReferences(first: 1) { nodes { url } }
-  timelineItems(itemTypes: [CLOSED_EVENT], last: 1) { nodes { ... on ClosedEvent { actor { login } } } }
-  comments(last: 5) { nodes { author { login } body } }`;
+  timelineItems(itemTypes: [CLOSED_EVENT], last: 1) { nodes { ... on ClosedEvent { actor { __typename login } } } }
+  comments(last: 5) { nodes { author { __typename login } body } }`;
 
-/** One aliased GraphQL query for a batch of PR URLs. */
-async function fetchBatch(octokit: Octokit, urls: string[]): Promise<Map<string, PRNode>> {
+type GraphqlError = { type?: string; path?: Array<string | number> };
+
+/** One aliased GraphQL query for a batch of PR URLs. Fatal errors rethrow; null means the batch failed outright. */
+async function fetchBatch(octokit: Octokit, urls: string[], warnings: string[]): Promise<Map<string, PRNode> | null> {
   const varDefs: string[] = [];
   const selections: string[] = [];
   const variables: Record<string, string | number> = {};
@@ -82,12 +92,18 @@ async function fetchBatch(octokit: Octokit, urls: string[]): Promise<Map<string,
     data = await octokit.graphql<Response>(query, variables);
   } catch (err) {
     if (isRateLimitOrAuthError(err) || isGraphqlRateLimited(err)) throw err;
-    // Partial data: some aliases failed (repo deleted or made private).
     const partial = (err as { data?: Response }).data;
     if (!partial) {
-      warn(MODULE, `GraphQL batch failed: ${errorMessage(err)}`);
-      return new Map();
+      warnings.push(`batch of ${urls.length} PRs failed: ${errorMessage(err)}`);
+      return null;
     }
+    // Some aliases failed (repo deleted, made private, SSO-gated): count by type.
+    const types = new Map<string, number>();
+    for (const e of (err as { errors?: GraphqlError[] }).errors ?? []) {
+      const type = e.type ?? 'ERROR';
+      types.set(type, (types.get(type) ?? 0) + 1);
+    }
+    warnings.push(`PRs GitHub did not return: ${[...types].map(([t, n]) => `${t} x${n}`).join(', ') || 'unknown'}`);
     data = partial;
   }
   const out = new Map<string, PRNode>();
@@ -98,29 +114,38 @@ async function fetchBatch(octokit: Octokit, urls: string[]): Promise<Map<string,
   return out;
 }
 
-/** The curated list plus its `potential-issue-list*.md`-style sibling archives. */
-function findListFiles(issueListPath: string | undefined): string[] {
-  if (!issueListPath || !fs.existsSync(issueListPath)) return [];
+/** The curated list plus sibling files sharing its name stem (`<stem>-archive-*.md`). */
+function readListFiles(issueListPath: string, warnings: string[]): Array<{ file: string; content: string }> {
   const dir = path.dirname(issueListPath);
   const stem = path.basename(issueListPath, '.md');
   return fs
     .readdirSync(dir)
     .filter((f) => f.startsWith(stem) && f.endsWith('.md'))
-    .map((f) => path.join(dir, f))
-    .sort();
+    .sort()
+    .flatMap((f) => {
+      const file = path.join(dir, f);
+      try {
+        return [{ file, content: fs.readFileSync(file, 'utf8') }];
+      } catch (err) {
+        warnings.push(`skipped list file ${file}: ${errorMessage(err)}`);
+        return [];
+      }
+    });
 }
 
 /** The list's vet score for the issue whose entry links `prUrl`, if any. */
-function listPick(lists: Array<{ content: string; capturedAt: string }>, prUrl: string): PickSnapshot | undefined {
-  for (const { content, capturedAt } of lists) {
+function listPick(lists: Array<{ content: string }>, prUrl: string): PickSnapshot | undefined {
+  for (const { content } of lists) {
     const issueUrl = findListEntryUrlByPrUrl(content, prUrl);
-    if (!issueUrl) continue;
+    // The entry line's first URL can be a PR when an entry tracks one directly.
+    if (!issueUrl?.includes('/issues/')) continue;
     const parsed = parseIssueList(content);
     const item = [...parsed.available, ...parsed.completed, ...parsed.blocked].find(
       (i) => i.url === issueUrl && i.score !== undefined,
     );
     if (item?.score !== undefined) {
-      return { issueUrl, grade: item.score, recommendation: item.tier, source: 'list', capturedAt };
+      const recommendation = item.score >= LIST_KEEP_SCORE ? 'approve' : 'skip';
+      return { issueUrl, grade: item.score, recommendation, source: 'list' };
     }
   }
   return undefined;
@@ -137,61 +162,88 @@ function countFilled(entries: Array<StoredMergedPR | StoredClosedPR>) {
 
 export async function runLedgerBackfill(options: { issueListPath?: string } = {}): Promise<LedgerBackfillOutput> {
   const stateManager = getStateManager();
-  const merged = stateManager.getMergedPRs();
-  const closed = stateManager.getClosedPRs();
-  const before = countFilled([...merged, ...closed]);
+  const warnings: string[] = [];
 
-  // 1. GitHub: openedAt, closing issue, close reason.
-  const needsFetch = [
-    ...merged.filter((e) => !e.openedAt || !e.issueUrl),
-    ...closed.filter((e) => !e.openedAt || !e.issueUrl || !e.closeReason),
-  ].map((e) => e.url);
+  // Lists first: a bad path should fail before any GitHub work.
+  if (options.issueListPath && !fs.existsSync(options.issueListPath)) {
+    throw new Error(`Issue list not found: ${options.issueListPath}`);
+  }
+  const listPath = options.issueListPath ?? detectIssueListPath()?.path;
+  if (!listPath) warnings.push('no curated issue list found; list vet scores were not imported');
+  const lists = listPath ? readListFiles(listPath, warnings) : [];
+
+  // 1. GitHub: openedAt, closing issue, close reason, for entries not yet backfilled.
+  const needsFetch = [...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()]
+    .filter((e) => !e.backfilledAt)
+    .map((e) => e.url);
   const nodes = new Map<string, PRNode>();
+  let fatal: Error | undefined;
   if (needsFetch.length > 0) {
     const octokit = getOctokit(requireGitHubToken());
+    let failedBatches = 0;
     for (let i = 0; i < needsFetch.length; i += BATCH_SIZE) {
-      for (const [url, node] of await fetchBatch(octokit, needsFetch.slice(i, i + BATCH_SIZE))) {
-        nodes.set(url, node);
+      try {
+        const batch = await fetchBatch(octokit, needsFetch.slice(i, i + BATCH_SIZE), warnings);
+        if (!batch) failedBatches++;
+        for (const [url, node] of batch ?? []) nodes.set(url, node);
+      } catch (err) {
+        // Rate limit or auth: keep what earlier batches got, persist it, then rethrow.
+        fatal = err as Error;
+        break;
       }
+    }
+    if (!fatal && failedBatches === Math.ceil(needsFetch.length / BATCH_SIZE)) {
+      throw new Error(`Every GitHub batch failed: ${warnings.join('; ')}`);
     }
   }
 
-  // 2. Curated list scores for entries with no prediction yet.
-  const listFiles = findListFiles(options.issueListPath ?? detectIssueListPath()?.path);
-  const lists = listFiles.map((f) => ({
-    content: fs.readFileSync(f, 'utf8'),
-    capturedAt: fs.statSync(f).mtime.toISOString(),
-  }));
+  // 2. Merge into fresh state: the GitHub phase can take a while, and upgrades
+  // only fill missing fields, so re-applying them to reloaded state is safe.
+  stateManager.reloadIfChanged();
+  const merged = stateManager.getMergedPRs();
+  const closed = stateManager.getClosedPRs();
+  const before = countFilled([...merged, ...closed]);
+  const snapshotFor = (issueUrl: string | undefined) =>
+    issueUrl && stateManager.getPickSnapshots().some((p) => p.issueUrl.toLowerCase() === issueUrl.toLowerCase());
+  const now = new Date().toISOString();
 
   const recovered = (entry: StoredMergedPR | StoredClosedPR) => {
     const node = nodes.get(entry.url);
-    const pick = entry.pick ? undefined : listPick(lists, entry.url);
-    return {
-      openedAt: node?.createdAt,
-      issueUrl: node?.closingIssuesReferences?.nodes[0]?.url ?? pick?.issueUrl,
-      pick,
-    };
+    const fromList = entry.pick ? undefined : listPick(lists, entry.url);
+    const issueUrl = node?.closingIssuesReferences?.nodes[0]?.url ?? entry.pick?.issueUrl ?? fromList?.issueUrl;
+    // A vet-time snapshot (joined by addMergedPRs/addClosedPRs) beats the list
+    // score, and a list score for a different issue than the PR closes is dropped.
+    const pick = fromList && fromList.issueUrl === issueUrl && !snapshotFor(issueUrl) ? fromList : undefined;
+    return { openedAt: node?.createdAt, issueUrl, pick, ...(node && { backfilledAt: now }) };
   };
 
-  stateManager.addMergedPRs(merged.map((e) => ({ url: e.url, title: e.title, mergedAt: e.mergedAt, ...recovered(e) })));
-  stateManager.addClosedPRs(
-    closed.map((e) => {
-      const node = nodes.get(e.url);
-      const closeReason = node
-        ? classifyCloseReason({
-            author: node.author?.login,
-            closer: node.timelineItems?.nodes.at(-1)?.actor?.login,
-            comments: (node.comments?.nodes ?? []).flatMap((c) =>
-              c ? [{ author: c.author?.login, body: c.body }] : [],
-            ),
-          })
-        : undefined;
-      return { url: e.url, title: e.title, closedAt: e.closedAt, ...recovered(e), closeReason };
-    }),
-  );
+  stateManager.batch(() => {
+    stateManager.addMergedPRs(
+      merged.map((e) => ({ url: e.url, title: e.title, mergedAt: e.mergedAt, ...recovered(e) })),
+    );
+    stateManager.addClosedPRs(
+      closed.map((e) => {
+        const node = nodes.get(e.url);
+        const closedEvent = node?.timelineItems?.nodes.at(-1);
+        // No closed event in the answer: leave the reason unset rather than guess.
+        const closeReason = closedEvent
+          ? classifyCloseReason({
+              author: node?.author?.login,
+              closer: closedEvent.actor?.login,
+              closerIsBot: closedEvent.actor?.__typename === 'Bot',
+              comments: (node?.comments?.nodes ?? []).flatMap((c) =>
+                c ? [{ author: c.author?.login, isBot: c.author?.__typename === 'Bot', body: c.body }] : [],
+              ),
+            })
+          : undefined;
+        return { url: e.url, title: e.title, closedAt: e.closedAt, ...recovered(e), closeReason };
+      }),
+    );
+  });
 
   const after = countFilled([...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()]);
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, 'ledger-backfill');
+  if (fatal) throw fatal;
   return {
     queried: needsFetch.length,
     filled: {
@@ -200,8 +252,9 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
       closeReason: after.closeReason - before.closeReason,
       pick: after.pick - before.pick,
     },
-    listFiles,
+    listFiles: lists.map((l) => l.file),
     unresolved: needsFetch.length - nodes.size,
+    warnings,
     ...(gistSyncWarning && { gistSyncWarning }),
   };
 }

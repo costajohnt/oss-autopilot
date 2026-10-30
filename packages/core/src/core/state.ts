@@ -87,6 +87,7 @@ const LEDGER_FIELDS = [
   'pick',
   'lastReviewDecision',
   'lastCiStatus',
+  'backfilledAt',
   'closeReason',
 ] as const;
 type LedgerFields = Partial<Pick<StoredMergedPR, Exclude<(typeof LEDGER_FIELDS)[number], 'closeReason'>>> &

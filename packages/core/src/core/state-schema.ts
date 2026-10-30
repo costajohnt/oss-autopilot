@@ -66,7 +66,8 @@ export const PickSnapshotSchema = z.object({
   stargazersCount: z.number().optional(),
   /** `list`: the curated list's `**Tier (N/10)**` score, imported by ledger-backfill. */
   source: z.enum(['vet', 'vet-list', 'list']),
-  capturedAt: z.string(),
+  /** When the vet ran. Absent for `list` picks: the list does not record vet dates reliably. */
+  capturedAt: z.string().optional(),
 });
 
 /**
@@ -82,6 +83,8 @@ const LedgerPredictionFields = {
   lastReviewDecision: z.string().optional(),
   /** CI status from the last digest that saw the PR open. */
   lastCiStatus: z.string().optional(),
+  /** When ledger-backfill got GitHub's answer for this PR; later runs skip it. */
+  backfilledAt: z.string().optional(),
 };
 
 export const StoredMergedPRSchema = z.object({
