@@ -89,9 +89,11 @@ const LEDGER_FIELDS = [
   'lastCiStatus',
   'backfilledAt',
   'closeReason',
+  'selfCloseReason',
 ] as const;
-type LedgerFields = Partial<Pick<StoredMergedPR, Exclude<(typeof LEDGER_FIELDS)[number], 'closeReason'>>> &
-  Partial<Pick<StoredClosedPR, 'closeReason'>>;
+type ClosedOnlyField = 'closeReason' | 'selfCloseReason';
+type LedgerFields = Partial<Pick<StoredMergedPR, Exclude<(typeof LEDGER_FIELDS)[number], ClosedOnlyField>>> &
+  Partial<Pick<StoredClosedPR, ClosedOnlyField>>;
 
 /**
  * Fill outcome-ledger fields (#1461, #1824) missing on an existing stored PR
