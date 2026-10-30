@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.35.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.34.0...core-v3.35.0) (2026-10-30)
+
+
+### Features
+
+* record why authors close their own PRs ([#1835](https://github.com/costajohnt/oss-autopilot/issues/1835)) ([85bd8cd](https://github.com/costajohnt/oss-autopilot/commit/85bd8cd9375d0af1b52e09b61658013bf6538df4))
+
+
+### Bug Fixes
+
+* keep state fields from newer releases instead of stripping them ([#1832](https://github.com/costajohnt/oss-autopilot/issues/1832)) ([7fb614b](https://github.com/costajohnt/oss-autopilot/commit/7fb614b5310d9dc51295356d966cc28bafd5f761))
+
 ## [3.34.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.33.1...core-v3.34.0) (2026-10-30)
 
 
