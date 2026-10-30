@@ -505,11 +505,10 @@ describe('legacy state cleanup on load', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
 
-    // Zod strips unknown keys in memory — snoozedPRs is absent from parsed state
+    // Retired config key, dropped explicitly by AgentConfigSchema's transform (#1831)
     expect((state.config as unknown as Record<string, unknown>).snoozedPRs).toBeUndefined();
 
-    // Note: the stale field persists on disk until the next saveState() call.
-    // Unlike the old isValidState() cleanup, Zod stripping is in-memory only.
+    // The stale field persists on disk until the next saveState() call.
     const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(onDisk.config.snoozedPRs).toBeDefined();
   });
