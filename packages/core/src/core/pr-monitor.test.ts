@@ -47,6 +47,7 @@ const {
 const { getCIStatus } = await import('./ci-analysis.js');
 const { isBotAuthor, isAcknowledgmentComment } = await import('./comment-utils.js');
 const { getStateManager } = await import('./state.js');
+const { getOctokit } = await import('./github.js');
 
 // Import extracted module functions (pure logic, no mocks needed)
 const { analyzeChecklist } = await import('./checklist-analysis.js');
@@ -3467,19 +3468,21 @@ describe('fetchPRDetails maintainer-activity dormancy clock (REST path)', () => 
   });
 
   it('counts a maintainer force-push and a maintainer commit as maintainer activity', async () => {
-    mockOctokitInstance = makeMocks({
-      timeline: [
-        { event: 'committed', created_at: daysAgo(100) },
-        { event: 'head_ref_force_pushed', actor: { login: 'maintainer', type: 'User' }, created_at: daysAgo(4) },
-      ],
-      commits: [
-        {
-          author: { login: 'maintainer', type: 'User' },
-          committer: { login: 'maintainer', type: 'User' },
-          commit: { author: { date: daysAgo(65) }, committer: { date: daysAgo(65) } },
-        },
-      ],
-    });
+    vi.mocked(getOctokit).mockReturnValueOnce(
+      makeMocks({
+        timeline: [
+          { event: 'committed', created_at: daysAgo(100) },
+          { event: 'head_ref_force_pushed', actor: { login: 'maintainer', type: 'User' }, created_at: daysAgo(4) },
+        ],
+        commits: [
+          {
+            author: { login: 'maintainer', type: 'User' },
+            committer: { login: 'maintainer', type: 'User' },
+            commit: { author: { date: daysAgo(65) }, committer: { date: daysAgo(65) } },
+          },
+        ],
+      }) as never,
+    );
 
     const monitor = new PRMonitor('fake-token');
     const { prs } = await monitor.fetchUserOpenPRs();
@@ -3490,17 +3493,19 @@ describe('fetchPRDetails maintainer-activity dormancy clock (REST path)', () => 
   });
 
   it('ignores Copilot (user.type Bot) review comments and contributor commits', async () => {
-    mockOctokitInstance = makeMocks({
-      timeline: [],
-      commits: [
-        {
-          author: { login: 'testuser', type: 'User' },
-          committer: { login: 'web-flow', type: 'User' },
-          commit: { author: { date: daysAgo(2) }, committer: { date: daysAgo(2) } },
-        },
-      ],
-      reviewComments: [{ id: 1, user: { login: 'Copilot', type: 'Bot' }, body: 'nit', created_at: daysAgo(3) }],
-    });
+    vi.mocked(getOctokit).mockReturnValueOnce(
+      makeMocks({
+        timeline: [],
+        commits: [
+          {
+            author: { login: 'testuser', type: 'User' },
+            committer: { login: 'web-flow', type: 'User' },
+            commit: { author: { date: daysAgo(2) }, committer: { date: daysAgo(2) } },
+          },
+        ],
+        reviewComments: [{ id: 1, user: { login: 'Copilot', type: 'Bot' }, body: 'nit', created_at: daysAgo(3) }],
+      }) as never,
+    );
 
     const monitor = new PRMonitor('fake-token');
     const { prs } = await monitor.fetchUserOpenPRs();
