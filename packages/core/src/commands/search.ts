@@ -17,6 +17,7 @@ import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-gradi
 import { computeStrategy } from '../core/strategy.js';
 import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
+import { getRepoCapStatus, openPRCountsByRepo, type RepoCapStatus } from '../core/repo-cap.js';
 import { SCOUT_ROTATION_TTL_DAYS, SEARCH_SEEN_RETENTION_DAYS } from '../core/state-prune.js';
 
 export { type SearchOutput } from '../formatters/json.js';
@@ -264,12 +265,27 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   if (userLogin === '') {
     warn(MODULE, 'githubUsername not configured — the own-PR filter (#1354) cannot run; hiddenOwnPRCount will be 0');
   }
-  const visibleCandidates = result.candidates.filter(
+  const notOwnPR = result.candidates.filter(
     (c) => classifyLinkedPR({ linkedPR: adaptScoutLinkedPR(c.vettingResult?.linkedPR), userLogin }) !== 'user_open',
   );
-  const hiddenOwnPRCount = result.candidates.length - visibleCandidates.length;
+  const hiddenOwnPRCount = result.candidates.length - notOwnPR.length;
   if (hiddenOwnPRCount > 0) {
     debug(MODULE, `Hid ${hiddenOwnPRCount} candidate(s) with the user's own open PR (#1354)`);
+  }
+
+  // Per-repo open-PR cap: hide candidates from repos where the user already
+  // has as many open PRs as the cap allows (counted after the own-PR filter).
+  const state = stateManager.getState();
+  const openCounts = openPRCountsByRepo(state);
+  const capped = new Map<string, RepoCapStatus>();
+  const visibleCandidates = notOwnPR.filter((c) => {
+    const status = getRepoCapStatus(state, c.issue.repo, openCounts);
+    if (status.atCap) capped.set(c.issue.repo.toLowerCase(), status);
+    return !status.atCap;
+  });
+  const hiddenRepoCapCount = notOwnPR.length - visibleCandidates.length;
+  if (hiddenRepoCapCount > 0) {
+    debug(MODULE, `Hid ${hiddenRepoCapCount} candidate(s) from repos at the open-PR cap`);
   }
 
   const searchOutput: SearchOutput = {
@@ -338,6 +354,8 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     excludedRepos: result.excludedRepos,
     aiPolicyBlocklist: result.aiPolicyBlocklist,
     hiddenOwnPRCount,
+    hiddenRepoCapCount,
+    ...(capped.size > 0 && { reposAtCap: [...capped.values()] }),
   };
   if (gistSyncWarning) {
     searchOutput.gistSyncWarning = gistSyncWarning;

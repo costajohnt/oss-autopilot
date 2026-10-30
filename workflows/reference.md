@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`.
+Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `repo-cap`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -135,6 +135,10 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 
 # Fetch the target repo's PR description template (used by the draft-first workflow)
 <prefix> pr-template <owner/repo> --json
+
+# Check owner/repo against the per-repo open-PR cap (maxOpenPRsPerRepo / maxOpenPRsColdRepo)
+# and excludeRepos; open counts come from the last daily run. Local only
+<prefix> repo-cap <owner/repo> --json
 
 # Compute the fresh repo health rubric (1–10 rubricScore + verdict) for owner/repo;
 # includes the cached historyScore when one exists (#1271, #1465 — docs/repo-scores.md)

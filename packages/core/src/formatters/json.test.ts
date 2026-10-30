@@ -515,12 +515,31 @@ describe('SearchOutputSchema (#1147)', () => {
       excludedRepos: ['stale/abandoned'],
       aiPolicyBlocklist: ['anti-ai/repo'],
       hiddenOwnPRCount: 1,
+      hiddenRepoCapCount: 1,
+      reposAtCap: [
+        {
+          repo: 'busy/repo',
+          openPRCount: 1,
+          mergedPRCount: 0,
+          cold: true,
+          cap: 1,
+          atCap: true,
+          excluded: false,
+          reason: 'busy/repo has 1 open PR(s), at the cap of 1',
+        },
+      ],
     };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 
   it('round-trips an empty result', () => {
-    const data = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [], hiddenOwnPRCount: 0 };
+    const data = {
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      hiddenOwnPRCount: 0,
+      hiddenRepoCapCount: 0,
+    };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 
@@ -541,7 +560,13 @@ describe('SearchOutputSchema (#1147)', () => {
   it('accepts a candidate without optional repoScore', () => {
     const candidate = makeSearchCandidate() as unknown as Record<string, unknown>;
     delete candidate.repoScore;
-    const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [], hiddenOwnPRCount: 0 };
+    const data = {
+      candidates: [candidate],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      hiddenOwnPRCount: 0,
+      hiddenRepoCapCount: 0,
+    };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 });

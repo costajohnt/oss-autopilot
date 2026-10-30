@@ -143,6 +143,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(maxPRs);
             break;
           }
+          case 'maxOpenPRsPerRepo':
+          case 'maxOpenPRsColdRepo': {
+            const cap = parseNonNegativeInt(value, key);
+            stateManager.updateConfig({ [key]: cap });
+            results[key] = String(cap);
+            break;
+          }
           case 'dormantDays': {
             const dormant = parsePositiveInt(value, 'dormantDays');
             stateManager.updateConfig({ dormantThresholdDays: dormant });

@@ -106,6 +106,15 @@ describe('runSetup', () => {
     );
   });
 
+  it('sets the per-repo open-PR caps and rejects negatives', async () => {
+    const result = (await runSetup({ set: ['maxOpenPRsPerRepo=3', 'maxOpenPRsColdRepo=0'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ maxOpenPRsPerRepo: 3 });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ maxOpenPRsColdRepo: 0 });
+    expect(result.settings).toEqual({ maxOpenPRsPerRepo: '3', maxOpenPRsColdRepo: '0' });
+    await expect(runSetup({ set: ['maxOpenPRsPerRepo=-1'] })).rejects.toThrow();
+  });
+
   it('should handle languages setting with comma-separated values', async () => {
     await runSetup({ set: ['languages=python,rust,go'] });
 

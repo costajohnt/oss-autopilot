@@ -20,6 +20,7 @@ import type {
   ActionMenu,
 } from '../core/types.js';
 import type { ContributionStats } from '../core/stats.js';
+import type { RepoCapStatus } from '../core/repo-cap.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } from '../core/issue-verification.js';
@@ -672,11 +673,25 @@ const SearchCandidateSchema = z.object({
   diversitySlot: z.boolean().optional(),
 });
 
+/** Per-repo open-PR cap status (core/repo-cap.ts). */
+export const RepoCapStatusSchema = z.object({
+  repo: z.string(),
+  openPRCount: z.number().int().nonnegative(),
+  mergedPRCount: z.number().int().nonnegative(),
+  cold: z.boolean(),
+  cap: z.number().int().nonnegative(),
+  atCap: z.boolean(),
+  excluded: z.boolean(),
+  reason: z.string().optional(),
+});
+
 export const SearchOutputSchema = z.object({
   candidates: z.array(SearchCandidateSchema),
   excludedRepos: z.array(z.string()),
   aiPolicyBlocklist: z.array(z.string()),
   hiddenOwnPRCount: z.number().int().nonnegative(),
+  hiddenRepoCapCount: z.number().int().nonnegative(),
+  reposAtCap: z.array(RepoCapStatusSchema).optional(),
   rateLimitWarning: z.string().optional(),
   // Skip file unreadable — search ran with an empty skip list (#1448).
   // Optional: absent on clean runs.
@@ -1220,6 +1235,11 @@ export interface SearchOutput {
   /** Candidates dropped because the authenticated user already has an open PR
    * linked to the issue (#1354). Surfaced as a count so the filter is visible. */
   hiddenOwnPRCount: number;
+  /** Candidates dropped because their repo is at the per-repo open-PR cap
+   * (`maxOpenPRsPerRepo` / `maxOpenPRsColdRepo`). */
+  hiddenRepoCapCount: number;
+  /** The capped repos behind `hiddenRepoCapCount`; absent when it is 0. */
+  reposAtCap?: RepoCapStatus[];
   /** Set when the seen-set write could not be pushed to the Gist (#1629);
    * the local cache has it but the next startup's Gist refetch will drop it. */
   gistSyncWarning?: string;
@@ -1527,6 +1547,11 @@ export interface VetOutput {
     score: number;
     reason: string;
   };
+  /**
+   * Present only when the issue's repo is at the per-repo open-PR cap or is
+   * in `excludeRepos`; `reason` says which.
+   */
+  repoCap?: RepoCapStatus;
   /** Set when the vet-time prediction (#1824) could not be saved locally. */
   pickRecordError?: string;
   /** Set when the saved prediction could not be pushed to the Gist. */

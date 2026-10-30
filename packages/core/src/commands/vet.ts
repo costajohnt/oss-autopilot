@@ -7,6 +7,7 @@ import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
+import { repoCapField } from '../core/repo-cap.js';
 import { getStateManager, classifyLinkedPR, pickSnapshotFromVet, persistPickSnapshots } from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
@@ -61,6 +62,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     ...(linkedPR && { linkedPR }),
     slmTriage: candidate.slmTriage ?? null,
     grade,
+    ...repoCapField(getStateManager().getState(), candidate.issue.repo),
   };
 
   const pick = pickSnapshotFromVet(output, 'vet');

@@ -79,7 +79,7 @@ describe('runSearch', () => {
 
   it('with record: false, writes no seen-set or rotation and skips the Gist checkpoint', async () => {
     mockSearch.mockResolvedValue({
-      candidates: [{ issue: { url: 'https://github.com/o/r/issues/1' } }],
+      candidates: [{ issue: { url: 'https://github.com/o/r/issues/1', repo: 'o/r' } }],
       excludedRepos: [],
       aiPolicyBlocklist: [],
       strategiesUsed: ['broad'],
@@ -747,6 +747,73 @@ describe('runSearch', () => {
       const result = await runSearch({ maxResults: 5 });
 
       expect(result.hiddenOwnPRCount).toBe(0);
+      expect(result.candidates).toHaveLength(1);
+    });
+  });
+
+  describe('per-repo open-PR cap', () => {
+    function candidate(repo: string, number: number) {
+      return {
+        issue: { repo, number, title: 't', url: `https://github.com/${repo}/issues/${number}`, labels: [] },
+        recommendation: 'approve',
+        reasonsToApprove: [],
+        reasonsToSkip: [],
+        searchPriority: 'normal',
+        viabilityScore: 50,
+      };
+    }
+
+    function stateWithOpenPRs(openRepos: string[], repoScores: Record<string, { mergedPRCount: number }> = {}) {
+      mockGetStateManager.mockReturnValue({
+        getState: vi.fn().mockReturnValue({
+          config: { excludeRepos: [], aiPolicyBlocklist: [], maxOpenPRsPerRepo: 2, maxOpenPRsColdRepo: 1 },
+          repoScores,
+          lastDigest: { openPRs: openRepos.map((repo) => ({ repo })) },
+        }),
+        getRepoScore: vi.fn().mockReturnValue(null),
+        getSearchSeen: vi.fn().mockReturnValue([]),
+        setSearchSeen: vi.fn(),
+        setSearchRotation: vi.fn(),
+      } as any);
+    }
+
+    it('hides candidates from capped repos and reports them', async () => {
+      // cold/repo: 1 open, 0 merged -> at cold cap 1. warm/repo: 1 open, merged -> under cap 2.
+      stateWithOpenPRs(['cold/repo', 'warm/repo'], { 'warm/repo': { mergedPRCount: 2 } });
+      mockSearch.mockResolvedValue({
+        candidates: [
+          candidate('cold/repo', 1),
+          candidate('warm/repo', 2),
+          candidate('cold/repo', 3),
+          candidate('new/repo', 4),
+        ],
+        excludedRepos: [],
+        aiPolicyBlocklist: [],
+        strategiesUsed: ['broad'],
+      });
+
+      const result = await runSearch({ maxResults: 5 });
+
+      expect(result.candidates.map((c) => c.issue.number)).toEqual([2, 4]);
+      expect(result.hiddenRepoCapCount).toBe(2);
+      expect(result.reposAtCap).toEqual([
+        expect.objectContaining({ repo: 'cold/repo', openPRCount: 1, cap: 1, cold: true, atCap: true }),
+      ]);
+    });
+
+    it('hides nothing and omits reposAtCap when no repo is capped', async () => {
+      stateWithOpenPRs([]);
+      mockSearch.mockResolvedValue({
+        candidates: [candidate('a/b', 1)],
+        excludedRepos: [],
+        aiPolicyBlocklist: [],
+        strategiesUsed: ['broad'],
+      });
+
+      const result = await runSearch({ maxResults: 5 });
+
+      expect(result.hiddenRepoCapCount).toBe(0);
+      expect(result.reposAtCap).toBeUndefined();
       expect(result.candidates).toHaveLength(1);
     });
   });

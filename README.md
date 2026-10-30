@@ -228,6 +228,8 @@ oss-autopilot config maxActivePRs 5      # set one value
 |---------|---------|-------------|
 | `githubUsername` | (detected) | Your GitHub username |
 | `maxActivePRs` | 10 | Open-PR count at which the tool suggests finishing before starting more |
+| `maxOpenPRsPerRepo` | 2 | Search hides issues from a repo once you have this many open PRs there, and the PR workflow warns before opening another (0 = off) |
+| `maxOpenPRsColdRepo` | 1 | Same cap, applied while none of your PRs in that repo have merged yet (0 = off) |
 | `dormantDays` | 30 | Days without activity before a PR is marked dormant |
 | `minStars` | 50 | Minimum repo stars to count in stats and charts |
 | `languages` | (chosen at setup) | Languages for issue search |

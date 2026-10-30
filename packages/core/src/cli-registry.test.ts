@@ -55,6 +55,7 @@ vi.mock('./formatters/json.js', () => ({
   MoveOutputSchema: { name: 'MoveOutputSchema' },
   VerifyIssueOutputSchema: { name: 'VerifyIssueOutputSchema' },
   PRTemplateOutputSchema: { name: 'PRTemplateOutputSchema' },
+  RepoCapStatusSchema: { name: 'RepoCapStatusSchema' },
   ParseIssueListOutputSchema: { name: 'ParseIssueListOutputSchema' },
   CheckIntegrationOutputSchema: { name: 'CheckIntegrationOutputSchema' },
   DetectFormattersOutputSchema: { name: 'DetectFormattersOutputSchema' },
@@ -179,6 +180,8 @@ vi.mock('./commands/doctor.js', () => ({ runDoctor: mockRunDoctor }));
 const mockRunStartup = vi.fn();
 vi.mock('./commands/startup.js', () => ({ runStartup: mockRunStartup }));
 
+const mockRunRepoCap = vi.fn();
+vi.mock('./commands/repo-cap.js', () => ({ runRepoCap: mockRunRepoCap }));
 const mockRunPRTemplate = vi.fn();
 vi.mock('./commands/pr-template.js', () => ({ runPRTemplate: mockRunPRTemplate }));
 
@@ -249,6 +252,7 @@ import {
   OvernightPushPrepOutputSchema,
   ParseIssueListOutputSchema,
   PRTemplateOutputSchema,
+  RepoCapStatusSchema,
   RepoVetOutputSchema,
   SetupOutputSchema,
 } from './formatters/json.js';
@@ -454,6 +458,8 @@ describe('search text-mode display', () => {
       excludedRepos: [],
       aiPolicyBlocklist: [],
       hiddenOwnPRCount: 2,
+      hiddenRepoCapCount: 1,
+      reposAtCap: [{ repo: 'octo/busy', openPRCount: 1, cap: 1 }],
     });
     const program = buildProgram('search');
 
@@ -461,6 +467,7 @@ describe('search text-mode display', () => {
 
     const lines = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]);
     expect(lines).toContain('Hidden: 2 candidate(s) were issues you already have open PRs for.');
+    expect(lines).toContain('Hidden: 1 candidate(s) from repos at your open-PR cap (octo/busy 1/1).');
     expect(lines).toContain('  Why surfaced: merged PR history, preferred org');
     expect(lines).toContain('  Diversity slot: outside your usual languages/repos');
     expect(lines).toContain('Found 2 candidates:\n');
@@ -2030,6 +2037,44 @@ describe('pr-template command', () => {
     await buildProgram('pr-template').parseAsync(['node', 'cli', 'pr-template', 'octo/alpha', '--json']);
 
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(PRTemplateOutputSchema, data);
+  });
+});
+
+describe('repo-cap command', () => {
+  it('prints the counts and the warning when capped', async () => {
+    mockRunRepoCap.mockReturnValueOnce({
+      repo: 'octo/alpha',
+      openPRCount: 1,
+      mergedPRCount: 0,
+      cold: true,
+      cap: 1,
+      atCap: true,
+      excluded: false,
+      reason: 'octo/alpha has 1 open PR(s), at the cap of 1',
+    });
+    await buildProgram('repo-cap').parseAsync(['node', 'cli', 'repo-cap', 'octo/alpha']);
+    expect(mockRunRepoCap).toHaveBeenCalledWith({ repo: 'octo/alpha' });
+    expect(consoleLogSpy).toHaveBeenCalledWith('\nocto/alpha: 1/1 open PRs, 0 merged');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: octo/alpha has 1 open PR(s), at the cap of 1');
+
+    mockRunRepoCap.mockReturnValueOnce({
+      repo: 'octo/alpha',
+      openPRCount: 3,
+      mergedPRCount: 2,
+      cold: false,
+      cap: 0,
+      atCap: false,
+      excluded: false,
+    });
+    await buildProgram('repo-cap').parseAsync(['node', 'cli', 'repo-cap', 'octo/alpha']);
+    expect(consoleLogSpy).toHaveBeenCalledWith('\nocto/alpha: 3 (no cap) open PRs, 2 merged');
+  });
+
+  it('--json routes through outputJsonValidated', async () => {
+    const data = { repo: 'o/r', openPRCount: 0, mergedPRCount: 0, cold: true, cap: 1, atCap: false, excluded: false };
+    mockRunRepoCap.mockReturnValue(data);
+    await buildProgram('repo-cap').parseAsync(['node', 'cli', 'repo-cap', 'o/r', '--json']);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(RepoCapStatusSchema, data);
   });
 });
 

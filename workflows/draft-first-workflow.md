@@ -549,6 +549,14 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 
 **If the command fails** (network, auth): Note "Could not re-verify the issue — proceeding with caution." Continue to "2. Show PR Summary".
 
+#### Repo cap / excluded repo check
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" repo-cap {upstream-repo} --json
+```
+
+**If `data.reason` is absent or the command fails:** continue silently. **If present** (the repo is in `excludeRepos`, or `data.atCap` with `data.openPRCount`/`data.cap` open PRs), show `data.reason` and ask one AskUserQuestion: "Open another PR in {upstream-repo} anyway?" with "Continue" and "Stop here" ("Branch `{branchName}` stays local; return to the core router").
+
 ### 2. Show PR Summary
 
 ```
