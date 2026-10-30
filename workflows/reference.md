@@ -136,6 +136,10 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # Fetch the target repo's PR description template (used by the draft-first workflow)
 <prefix> pr-template <owner/repo> --json
 
+# Check owner/repo against the per-repo open-PR cap (maxOpenPRsColdRepo / maxOpenPRsPerRepo)
+# and excludeRepos; counts your open PRs there live from GitHub (used before pushing a new PR)
+<prefix> repo-cap <owner/repo> --json
+
 # Compute the fresh repo health rubric (1–10 rubricScore + verdict) for owner/repo;
 # includes the cached historyScore when one exists (#1271, #1465 — docs/repo-scores.md)
 <prefix> repo-vet <owner/repo> --json

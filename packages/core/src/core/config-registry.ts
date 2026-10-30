@@ -47,6 +47,20 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'non-negative integer (0 = no limit)',
   },
   {
+    key: 'maxOpenPRsPerRepo',
+    description:
+      'Discovery leaves out a repo once you have this many open PRs there, and the pre-push check warns. Default 0 (off).',
+    settableVia: 'setup',
+    valueHint: 'non-negative integer (0 = no limit)',
+  },
+  {
+    key: 'maxOpenPRsColdRepo',
+    description:
+      'Per-repo open-PR cap while none of your PRs in that repo have merged (default 1). Discovery leaves the repo out and the pre-push check warns. 0 disables.',
+    settableVia: 'setup',
+    valueHint: 'non-negative integer (0 = no limit)',
+  },
+  {
     key: 'dormantDays',
     description: 'Alias for dormantThresholdDays: days of inactivity before a PR is considered dormant.',
     settableVia: 'setup',

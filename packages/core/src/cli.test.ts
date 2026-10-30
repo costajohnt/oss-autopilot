@@ -134,6 +134,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'init',
     'claim',
     'pr-template',
+    'repo-cap',
     'state',
   ];
 
@@ -416,6 +417,7 @@ describe('Command registration', () => {
       'dismiss',
       'undismiss',
       'pr-template',
+      'repo-cap',
       'repo-vet',
       'stats',
       'state',

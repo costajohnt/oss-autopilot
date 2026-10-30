@@ -84,5 +84,6 @@
   "aiPolicyBlocklist": [
     "anti-llm-org/anti-llm-repo"
   ],
-  "hiddenOwnPRCount": 0
+  "hiddenOwnPRCount": 0,
+  "reposAtCap": []
 }

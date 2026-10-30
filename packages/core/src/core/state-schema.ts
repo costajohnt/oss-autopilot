@@ -288,6 +288,15 @@ export const AgentConfigSchema = z
     persistence: z.enum(['local', 'gist']).default('local'),
 
     maxActivePRs: z.number().default(10),
+    /**
+     * Per-repo open-PR caps (core/repo-cap.ts). Discovery leaves out a repo
+     * once the user has this many open PRs there; the cold cap applies while
+     * none of their PRs in the repo have merged (first PRs merge less often).
+     * The warm cap is off by default so it never blocks repos that merge.
+     * 0 disables either.
+     */
+    maxOpenPRsPerRepo: z.number().int().min(0).default(0),
+    maxOpenPRsColdRepo: z.number().int().min(0).default(1),
     dormantThresholdDays: z.number().default(30),
     approachingDormantDays: z.number().default(25),
     maxIssueAgeDays: z.number().default(90),

@@ -69,7 +69,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    verify-issue, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
- *    pr-template, repo-vet, detect-formatters.
+ *    pr-template, repo-cap, repo-vet, detect-formatters.
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
@@ -420,6 +420,9 @@ export const commands: CLICommandDef[] = [
             (data) => {
               if (data.hiddenOwnPRCount > 0) {
                 console.log(`Hidden: ${data.hiddenOwnPRCount} candidate(s) were issues you already have open PRs for.`);
+              }
+              if (data.reposAtCap.length > 0) {
+                console.log(`Skipped repos at your open-PR cap: ${data.reposAtCap.join(', ')}.`);
               }
               if (data.candidates.length === 0) {
                 if (data.rateLimitWarning) {
@@ -1531,6 +1534,33 @@ export const commands: CLICommandDef[] = [
               }
             },
             PRTemplateOutputSchema,
+          );
+        });
+    },
+  },
+
+  // ── Repo Cap ─────────────────────────────────────────────────────────
+  {
+    name: 'repo-cap',
+    register(program) {
+      program
+        .command('repo-cap <repo>')
+        .description(
+          'Check `owner/repo` against your per-repo open-PR cap (live open-PR count from GitHub) and excludeRepos',
+        )
+        .option('--json', 'Output as JSON')
+        .action(async (repo: string, options: { json?: boolean }) => {
+          const { RepoCapStatusSchema } = await import('./formatters/json.js');
+          const { runRepoCap } = await import('./commands/repo-cap.js');
+          await executeAction(
+            options,
+            () => runRepoCap({ repo }),
+            (data) => {
+              const capText = data.cap > 0 ? `${data.openPRCount}/${data.cap}` : `${data.openPRCount} (no cap)`;
+              console.log(`\n${data.repo}: ${capText} open PRs, ${data.mergedPRCount} merged`);
+              if (data.reason) console.log(`  Warning: ${data.reason}`);
+            },
+            RepoCapStatusSchema,
           );
         });
     },

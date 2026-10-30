@@ -3,6 +3,7 @@
  * Maps state fields and creates scout instances for search/vet commands.
  */
 
+import { reposAtCap } from '../core/repo-cap.js';
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
 import { getStateManager, isLinkedPRStalled, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
@@ -144,6 +145,12 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
   // channel by which bias can reach the features path.
   const strategy = computeStrategy(state);
 
+  // Repos at the per-repo open-PR cap (core/repo-cap.ts) are excluded like
+  // excludeRepos, so they use no result slots or rotation entries in search
+  // and features, and are dropped from the affinity bias.
+  const cappedRepos = reposAtCap(state);
+  const cappedSet = new Set(cappedRepos.map((r) => r.toLowerCase()));
+
   return {
     version: 1,
     // Scout 1.8.1 made this required on the inferred ScoutState type. Scout
@@ -155,7 +162,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       languages: config.languages,
       labels: config.labels,
       scope: config.scope,
-      excludeRepos: config.excludeRepos,
+      excludeRepos: [...config.excludeRepos, ...cappedRepos],
       excludeOrgs: config.excludeOrgs ?? [],
       preferredOrgs: config.preferredOrgs ?? [],
       aiPolicyBlocklist: config.aiPolicyBlocklist,
@@ -191,7 +198,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       // command uses per-call; avoidRepos/boostIssueTypes are user settings
       // (config-registry keys); diversityRatio matches the search policy.
       preferLanguages: strategy?.recommendations.languages ?? [],
-      preferRepos: strategy?.recommendations.repos ?? [],
+      preferRepos: (strategy?.recommendations.repos ?? []).filter((r) => !cappedSet.has(r.toLowerCase())),
       diversityRatio: SEARCH_DIVERSITY_RATIO,
       avoidRepos: config.avoidRepos ?? [],
       boostIssueTypes: config.boostIssueTypes ?? [],

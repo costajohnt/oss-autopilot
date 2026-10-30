@@ -159,6 +159,46 @@ describe('buildScoutState', () => {
     expect(result.preferences.diversityRatio).toBe(0.2);
   });
 
+  it('excludes repos at the open-PR cap and drops them from preferRepos', () => {
+    // owner/fav: 10 merges, warm cap 2 (set here), 2 open -> capped.
+    // cold/repo: 0 merges, cold cap 1 (default), 1 open -> capped.
+    // owner/ok: 0 merges, no open PRs -> not capped.
+    const mergedPRs = Array.from({ length: 10 }, (_, i) => ({
+      url: `https://github.com/owner/fav/pull/${i + 1}`,
+      title: `fix: thing ${i + 1}`,
+      mergedAt: '2026-02-01T00:00:00Z',
+    }));
+    const state = makeAgentState({
+      mergedPRs,
+      config: { excludeRepos: ['owner/excluded'], maxOpenPRsPerRepo: 2 },
+      repoScores: {
+        'owner/fav': {
+          repo: 'owner/fav',
+          score: 8,
+          mergedPRCount: 10,
+          closedWithoutMergeCount: 0,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2026-02-01T00:00:00Z',
+          language: 'TypeScript',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+      },
+      lastDigest: makeDailyDigest({
+        openPRs: [
+          makeFetchedPR({ repo: 'owner/fav', number: 11 }),
+          makeFetchedPR({ repo: 'owner/fav', number: 12 }),
+          makeFetchedPR({ repo: 'cold/repo', number: 1 }),
+        ],
+      }),
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.preferences.excludeRepos).toEqual(['owner/excluded', 'owner/fav', 'cold/repo']);
+    expect(result.preferences.preferRepos).toEqual([]);
+  });
+
   it('falls back to no-bias preferences below the strategy merged-PR floor (#1464)', () => {
     const state = makeAgentState();
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));

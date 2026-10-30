@@ -14,6 +14,7 @@ import {
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
+import { repoCapField } from '../core/repo-cap.js';
 import { ValidationError } from '../core/errors.js';
 import {
   getStateManager,
@@ -309,6 +310,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       ...(linkedPR && { linkedPR }),
       slmTriage: candidate.slmTriage ?? null,
       grade,
+      ...repoCapField(getStateManager().getState(), candidate.issue.repo),
     };
     const pick = recordPick ? pickSnapshotFromVet(vetResult, 'vet-list') : undefined;
     if (pick) picks.push(pick);

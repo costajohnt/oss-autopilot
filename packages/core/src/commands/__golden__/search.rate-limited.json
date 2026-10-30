@@ -3,5 +3,6 @@
   "excludedRepos": [],
   "aiPolicyBlocklist": [],
   "hiddenOwnPRCount": 0,
+  "reposAtCap": [],
   "rateLimitWarning": "GitHub Search API rate-limited; retry in 60 seconds."
 }
