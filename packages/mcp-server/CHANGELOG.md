@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.8.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.9...mcp-v5.8.0) (2026-10-30)
+
+
+### Features
+
+* add eval report for pick calibration and outcomes ([#1829](https://github.com/costajohnt/oss-autopilot/issues/1829)) ([296b4ad](https://github.com/costajohnt/oss-autopilot/commit/296b4adb125a18b07111afd479dea499739aa25e))
+* record vet-time predictions on the outcome ledger ([#1826](https://github.com/costajohnt/oss-autopilot/issues/1826)) ([cba1eea](https://github.com/costajohnt/oss-autopilot/commit/cba1eea294aaf54d4501ec93aff49fc27d7cebe1))
+
 ## [5.7.9](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.8...mcp-v5.7.9) (2026-10-29)
 
 
