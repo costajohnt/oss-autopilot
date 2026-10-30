@@ -489,7 +489,7 @@ After implementation, the flow proceeds through the **draft-first workflow** (`$
 5. Step 5 offers manual testing prompt (build/run locally)
 6. Step 6 presents final diff for human review
 7. Step 7 squashes commits and rewords message
-8. Step 8 pushes and creates PR (ready or draft, user's choice)
+8. Step 8 re-checks the issue for competing work, then pushes and creates PR (ready or draft, user's choice)
 9. Step 9 runs compliance check
 10. Step 10 offers list updates (if issue came from curated list)
 
