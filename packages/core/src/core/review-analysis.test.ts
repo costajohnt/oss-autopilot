@@ -11,6 +11,7 @@ import {
   reviewHasInlineComments,
   checkUnrespondedComments,
   getFirstMaintainerResponseAt,
+  getLastMaintainerActivity,
 } from './review-analysis.js';
 
 describe('getFirstMaintainerResponseAt (#1461)', () => {
@@ -512,6 +513,66 @@ describe('checkUnrespondedComments', () => {
           pull_request_review_id: 200,
         },
       ],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+});
+
+describe('getLastMaintainerActivity', () => {
+  const created = '2026-01-01T00:00:00Z';
+
+  it('falls back to createdAt when only the contributor has commented', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2026-02-01T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-03-01T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity(comments, [], [], 'contributor', created)).toEqual({
+      lastMaintainerActivityAt: created,
+      authorPingsSinceMaintainerActivity: 2,
+    });
+  });
+
+  it("does not let the contributor's own ping reset the clock", () => {
+    const comments = [
+      { user: { login: 'maintainer' }, created_at: '2026-01-05T00:00:00Z' },
+      { user: { login: 'Contributor' }, created_at: '2026-03-01T00:00:00Z' },
+    ];
+    const result = getLastMaintainerActivity(comments, [], [], 'contributor', created);
+    expect(result.lastMaintainerActivityAt).toBe('2026-01-05T00:00:00Z');
+    expect(result.authorPingsSinceMaintainerActivity).toBe(1);
+  });
+
+  it('ignores bots and counts reviews and inline review comments', () => {
+    const comments = [{ user: { login: 'miq-bot' }, created_at: '2026-04-01T00:00:00Z' }];
+    const reviews = [{ user: { login: 'maintainer' }, submitted_at: '2026-02-01T00:00:00Z' }];
+    const reviewComments = [{ user: { login: 'reviewer' }, created_at: '2026-02-10T00:00:00Z' }];
+    expect(
+      getLastMaintainerActivity(comments, reviews, reviewComments, 'contributor', created).lastMaintainerActivityAt,
+    ).toBe('2026-02-10T00:00:00Z');
+  });
+
+  it('only counts contributor pings after the last maintainer activity', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2026-01-02T00:00:00Z' },
+      { user: { login: 'maintainer' }, created_at: '2026-01-03T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-02-01T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity(comments, [], [], 'contributor', created).authorPingsSinceMaintainerActivity).toBe(
+      1,
+    );
+  });
+});
+
+describe('checkUnrespondedComments bot filtering', () => {
+  it('does not flag a needs-response for a user-account bot like miq-bot', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T09:00:00Z' },
+        { user: { login: 'miq-bot' }, body: 'Checked commits: 1 offense detected', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [],
+      [],
       'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);

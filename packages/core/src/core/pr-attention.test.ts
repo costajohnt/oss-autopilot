@@ -8,6 +8,7 @@ import {
   summarizeAttentionBuckets,
   STUCK_CI_THRESHOLD_DAYS,
   DORMANT_FOLLOWUP_THRESHOLD_DAYS,
+  shouldSuggestClose,
   type AttentionInput,
 } from './pr-attention.js';
 
@@ -95,5 +96,30 @@ describe('summarizeAttentionBuckets', () => {
       dormantFollowup: 0,
       waiting: 0,
     });
+  });
+});
+
+describe('shouldSuggestClose', () => {
+  const base = {
+    status: 'waiting_on_maintainer',
+    stalenessTier: 'dormant',
+    authorPingsSinceMaintainerActivity: 2,
+  } as const;
+
+  it('suggests closing a dormant waiting PR pinged twice with no reply', () => {
+    expect(shouldSuggestClose(base)).toBe(true);
+  });
+
+  it('does not suggest closing after only one ping', () => {
+    expect(shouldSuggestClose({ ...base, authorPingsSinceMaintainerActivity: 1 })).toBe(false);
+  });
+
+  it('does not suggest closing when not dormant or when the contributor owes action', () => {
+    expect(shouldSuggestClose({ ...base, stalenessTier: 'approaching_dormant' })).toBe(false);
+    expect(shouldSuggestClose({ ...base, status: 'needs_addressing' })).toBe(false);
+  });
+
+  it('treats a missing ping count (older payloads) as zero', () => {
+    expect(shouldSuggestClose({ status: 'waiting_on_maintainer', stalenessTier: 'dormant' })).toBe(false);
   });
 });

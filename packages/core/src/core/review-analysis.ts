@@ -264,3 +264,44 @@ export function checkUnrespondedComments(
     lastMaintainerComment,
   };
 }
+
+/**
+ * Latest activity by someone other than the contributor and not a bot
+ * (maintainer comment, review, or inline review comment), falling back to
+ * the PR's `createdAt` when nobody else has engaged. Also counts the
+ * contributor's own issue comments ("pings") posted after that point.
+ *
+ * Staleness is measured from this timestamp rather than `updatedAt`, because
+ * `updatedAt` is bumped by the contributor's own follow-ups and rebases, so a
+ * PR the maintainers have ignored for months never looked dormant. Computed
+ * from data already fetched (zero extra API calls). The GraphQL path fetches
+ * the `last` N comments/reviews, so the newest activity is always in hand.
+ */
+export function getLastMaintainerActivity(
+  comments: Array<{ user?: { login?: string } | null; created_at: string }>,
+  reviews: Array<{ user?: { login?: string } | null; submitted_at?: string | null }>,
+  reviewComments: Array<{ user?: { login?: string } | null; created_at: string }>,
+  username: string,
+  createdAt: string,
+): { lastMaintainerActivityAt: string; authorPingsSinceMaintainerActivity: number } {
+  const usernameLower = username.toLowerCase();
+  let latest = createdAt;
+  let latestMs = Date.parse(createdAt);
+  const consider = (author: string | undefined | null, at: string | undefined | null) => {
+    if (!author || !at) return;
+    if (author.toLowerCase() === usernameLower || isBotAuthor(author)) return;
+    const ms = Date.parse(at);
+    if (ms > latestMs) {
+      latest = at;
+      latestMs = ms;
+    }
+  };
+  for (const c of comments) consider(c.user?.login, c.created_at);
+  for (const r of reviews) consider(r.user?.login, r.submitted_at);
+  for (const c of reviewComments) consider(c.user?.login, c.created_at);
+
+  const authorPingsSinceMaintainerActivity = comments.filter(
+    (c) => c.user?.login?.toLowerCase() === usernameLower && Date.parse(c.created_at) > latestMs,
+  ).length;
+  return { lastMaintainerActivityAt: latest, authorPingsSinceMaintainerActivity };
+}

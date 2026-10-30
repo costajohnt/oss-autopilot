@@ -21,10 +21,13 @@ const KNOWN_BOT_USERNAMES = new Set([
 
 /**
  * Check if a comment author is a bot account.
- * Matches the [bot] suffix convention and known bot usernames (case-insensitive).
+ * Matches the [bot] suffix convention (GitHub Apps; the GraphQL path maps
+ * `__typename: 'Bot'` to it), user-account bots named `*-bot` (e.g.
+ * `miq-bot`), and known bot usernames (case-insensitive).
  */
 export function isBotAuthor(author: string): boolean {
-  return author.includes('[bot]') || KNOWN_BOT_USERNAMES.has(author.toLowerCase());
+  const lower = author.toLowerCase();
+  return lower.includes('[bot]') || lower.endsWith('-bot') || KNOWN_BOT_USERNAMES.has(lower);
 }
 
 /**

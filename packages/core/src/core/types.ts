@@ -145,6 +145,12 @@ export interface DetermineStatusInput {
   hasIncompleteChecklist: boolean;
   reviewDecision: ReviewDecision;
   daysSinceActivity: number;
+  /**
+   * Days since the last activity by someone other than the contributor and
+   * not a bot (or since PR creation). Drives `stalenessTier`. Falls back to
+   * `daysSinceActivity` when omitted.
+   */
+  daysSinceMaintainerActivity?: number;
   dormantThreshold: number;
   approachingThreshold: number;
   latestCommitDate?: string;
@@ -226,7 +232,7 @@ export interface FetchedPR {
   waitReason?: WaitReason;
   /** All applicable action reasons, ordered by priority. Primary reason is first. */
   actionReasons?: ActionReason[];
-  /** How stale the PR is based on activity age. Independent of status — a PR can be both needs_addressing and dormant. */
+  /** How stale the PR is, from `daysSinceMaintainerActivity` (not the contributor's own activity). Independent of status — a PR can be both needs_addressing and dormant. */
   stalenessTier: StalenessTier;
   /** Unified attention bucket (#1352), computed by `classifyAttentionBucket()`
    * from status/ciStatus/reviewDecision/daysSinceActivity. Stamped by the
@@ -252,8 +258,28 @@ export interface FetchedPR {
    */
   firstMaintainerResponseAt?: string;
 
-  /** Calendar days since the most recent activity (comment, commit, review). */
+  /**
+   * Calendar days since the most recent activity of any kind (`updatedAt`),
+   * including the contributor's own comments, pushes and rebases. Used for
+   * follow-up timing (don't nudge right after a ping) and stale-CI demotion.
+   * NOT used for `stalenessTier`; see `daysSinceMaintainerActivity`.
+   */
   daysSinceActivity: number;
+
+  /**
+   * Timestamp of the latest comment/review/inline comment by someone other
+   * than the contributor and not a bot, or `createdAt` when nobody else has
+   * engaged. Optional: absent on payloads from older producers.
+   */
+  lastMaintainerActivityAt?: string;
+  /**
+   * Calendar days since `lastMaintainerActivityAt`. This is the dormancy
+   * clock: `stalenessTier` is computed from it, so the contributor's own
+   * pings and rebases no longer keep an ignored PR "active".
+   */
+  daysSinceMaintainerActivity?: number;
+  /** Contributor issue comments posted after `lastMaintainerActivityAt` (unanswered pings). */
+  authorPingsSinceMaintainerActivity?: number;
 
   // CI and merge status
   ciStatus: CIStatus;

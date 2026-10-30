@@ -390,13 +390,23 @@ describe('determineStatus — remaining paths', () => {
     });
   });
 
-  it('should return incomplete_checklist when checklist is incomplete', () => {
+  it('should treat an incomplete checklist as informational, not needs_addressing', () => {
+    // The draft-first workflow leaves template boxes unchecked on purpose, so
+    // the checklist alone must not make the PR actionable.
     expect(callDetermineStatus({ hasIncompleteChecklist: true })).toEqual({
-      status: 'needs_addressing',
-      actionReason: 'incomplete_checklist',
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_review',
       stalenessTier: 'active',
-      actionReasons: ['incomplete_checklist'],
     });
+  });
+
+  it('should compute stalenessTier from daysSinceMaintainerActivity, not daysSinceActivity', () => {
+    // Contributor pinged yesterday (daysSinceActivity 1) but maintainers have
+    // been silent 40 days: the PR is dormant.
+    expect(callDetermineStatus({ daysSinceActivity: 1, daysSinceMaintainerActivity: 40 }).stalenessTier).toBe(
+      'dormant',
+    );
+    expect(callDetermineStatus({ daysSinceActivity: 40, daysSinceMaintainerActivity: 2 }).stalenessTier).toBe('active');
   });
 
   it('should return dormant stalenessTier when days exceed dormant threshold', () => {
@@ -506,7 +516,7 @@ describe('determineStatus — remaining paths', () => {
     });
   });
 
-  it('should prioritize merge_conflict over incomplete_checklist', () => {
+  it('should report merge_conflict without listing incomplete_checklist as an action reason', () => {
     expect(
       callDetermineStatus({
         hasMergeConflict: true,
@@ -516,7 +526,7 @@ describe('determineStatus — remaining paths', () => {
       status: 'needs_addressing',
       actionReason: 'merge_conflict',
       stalenessTier: 'active',
-      actionReasons: ['merge_conflict', 'incomplete_checklist'],
+      actionReasons: ['merge_conflict'],
     });
   });
 
@@ -784,7 +794,7 @@ describe('determineStatus multiple action reasons (#675)', () => {
     expect(result.actionReason).toBe('failing_ci');
   });
 
-  it('should collect CI + merge conflict + incomplete checklist', () => {
+  it('should collect CI + merge conflict and skip the informational checklist', () => {
     const result = callDetermineStatus({
       ciStatus: 'failing',
       hasActionableCIFailure: true,
@@ -792,7 +802,7 @@ describe('determineStatus multiple action reasons (#675)', () => {
       hasIncompleteChecklist: true,
       daysSinceActivity: 2,
     });
-    expect(result.actionReasons).toEqual(['failing_ci', 'merge_conflict', 'incomplete_checklist']);
+    expect(result.actionReasons).toEqual(['failing_ci', 'merge_conflict']);
   });
 
   it('should return single-element actionReasons for single issue', () => {

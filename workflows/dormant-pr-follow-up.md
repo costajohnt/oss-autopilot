@@ -16,12 +16,16 @@ Reachable via:
 
 From `data.daily.digest.openPRs`, select PRs where **all** of:
 - `status === 'waiting_on_maintainer'` — the PR is blocked on the maintainer, not the contributor.
-- `daysSinceActivity >= 7` — the 7-day lower bound from the skill's cadence.
+- `daysSinceMaintainerActivity >= 7` — the 7-day lower bound from the skill's cadence. Fall back to `daysSinceActivity` when the field is absent.
 
-Bucket into tiers by `daysSinceActivity`:
+`daysSinceMaintainerActivity` counts from the last comment or review by someone other than you and not a bot (or from PR creation). Your own pings and rebases do not reset it. `daysSinceActivity` does include them, so use it only for the hygiene check in step 6.
+
+Bucket into tiers by `daysSinceMaintainerActivity`:
 - **7–13 days:** light check-in tier.
 - **14–29 days:** direct follow-up tier.
 - **30+ days:** final check / consider-closing tier.
+
+**Close candidates:** a PR with `stalenessTier === 'dormant'` and `authorPingsSinceMaintainerActivity >= 2` has already been pinged twice with no reply. Mark it `(suggest closing)` in the list; another ping won't help. These PRs are usually auto-shelved, so they are included here even though they are not in the active list (the CLI's `follow_up` menu item counts them as "close-candidate").
 
 If no PRs match, report: "No dormant PRs at the moment — nothing to follow up on." and return to the router.
 
@@ -31,15 +35,16 @@ If no PRs match, report: "No dormant PRs at the moment — nothing to follow up 
 Dormant PRs awaiting maintainer response:
 
 Light check-in (7–13 days):
-- {repo}#{number} — {title} ({daysSinceActivity}d since activity)
+- {repo}#{number} — {title} ({daysSinceMaintainerActivity}d since maintainer activity)
   {url}
 
 Direct follow-up (14–29 days):
-- {repo}#{number} — {title} ({daysSinceActivity}d)
+- {repo}#{number} — {title} ({daysSinceMaintainerActivity}d)
   {url}
 
 Final check (30+ days):
-- {repo}#{number} — {title} ({daysSinceActivity}d)
+- {repo}#{number} — {title} ({daysSinceMaintainerActivity}d)
+- {repo}#{number} — {title} ({daysSinceMaintainerActivity}d, {authorPingsSinceMaintainerActivity} unanswered pings) (suggest closing)
   {url}
 ```
 
@@ -70,6 +75,9 @@ Select the tier-specific template based on the PR's bucket and paraphrase — do
 | 7–13 days | Light check-in | "Anything else needed from my side on this?" |
 | 14–29 days | Direct follow-up | "Still on your radar? Happy to make changes or help move this along." |
 | 30+ days | Final check | "Totally understand if priorities shifted. Let me know if this is still on the table or if I should close it out." |
+| Close candidate | Close with offer to reopen | "Closing this to keep your queue tidy since it hasn't been picked up. Happy to reopen and rebase if it's still wanted." |
+
+For a close candidate, offer the close-with-offer-to-reopen draft by default instead of another ping. The draft is a comment only: the user closes the PR themselves (`gh pr close <url>`) after posting. Never close the PR on their behalf.
 
 **Every draft MUST:**
 - Be short (1–2 sentences).
@@ -87,7 +95,7 @@ Return to the router.
 
 ## 6. Follow-up Hygiene
 
-Per the skill: **only one follow-up per timeframe.** The workflow does not track prior follow-ups itself; it relies on the user's judgment. If the user visibly pinged the maintainer within the last week and the PR hasn't moved tiers, suggest "Skip for now" instead of drafting a second ping.
+Per the skill: **only one follow-up per timeframe.** If `daysSinceActivity < 7` (you pinged or pushed within the last week) and the PR is not a close candidate, suggest "Skip for now" instead of drafting another ping.
 
 ## Scope / Out-of-Scope
 

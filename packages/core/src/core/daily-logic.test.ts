@@ -709,6 +709,15 @@ describe('computeActionMenu (core)', () => {
     expect(followUp!.label).toBe('Follow up on 1 stuck-CI and 2 dormant PRs');
   });
 
+  it('should include close candidates in follow_up even when no active bucket is non-zero', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 0, dormantFollowup: 0, closeSuggested: 1 });
+    const followUp = menu.items.find((i) => i.key === 'follow_up');
+
+    expect(followUp).toBeDefined();
+    expect(followUp!.label).toBe('Follow up on 1 close-candidate PR');
+    expect(followUp!.description).toContain('offer to reopen');
+  });
+
   it('should omit follow_up when both buckets are zero', () => {
     const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 0, dormantFollowup: 0 });
     expect(menu.items.find((i) => i.key === 'follow_up')).toBeUndefined();

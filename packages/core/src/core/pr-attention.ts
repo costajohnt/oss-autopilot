@@ -60,6 +60,30 @@ export function classifyAttentionBucket(pr: AttentionInput): AttentionBucket {
   return 'waiting';
 }
 
+/**
+ * Unanswered contributor pings after which a dormant PR becomes a
+ * close-with-offer-to-reopen candidate instead of another nudge.
+ */
+export const CLOSE_SUGGESTION_MIN_PINGS = 2;
+
+/**
+ * True when a PR is dormant on the maintainer clock (`stalenessTier`, which
+ * ignores the contributor's own activity), still waiting on the maintainer,
+ * and the contributor has already pinged at least
+ * {@link CLOSE_SUGGESTION_MIN_PINGS} times with no reply. Surfaced through
+ * the dormant follow-up workflow as a suggestion only; nothing is closed or
+ * posted automatically.
+ */
+export function shouldSuggestClose(
+  pr: Pick<FetchedPR, 'status' | 'stalenessTier' | 'authorPingsSinceMaintainerActivity'>,
+): boolean {
+  return (
+    pr.status === 'waiting_on_maintainer' &&
+    pr.stalenessTier === 'dormant' &&
+    (pr.authorPingsSinceMaintainerActivity ?? 0) >= CLOSE_SUGGESTION_MIN_PINGS
+  );
+}
+
 export interface AttentionSummary {
   needsAttention: number;
   stuckCI: number;

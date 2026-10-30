@@ -444,3 +444,17 @@ describe('categorizeCIStatus (#1272)', () => {
     expect(r.summary.length).toBeLessThan(180);
   });
 });
+
+describe('classifyCICheck label/triage gates', () => {
+  it('classifies maintainer-only label and triage gates as auth_gate', () => {
+    expect(classifyCICheck('check PR labels')).toBe('auth_gate');
+    expect(classifyCICheck('Check PR type labels')).toBe('auth_gate');
+    expect(classifyCICheck('needs-triage')).toBe('auth_gate');
+    expect(classifyCICheck('Require label')).toBe('auth_gate');
+  });
+
+  it('keeps ordinary checks actionable', () => {
+    expect(classifyCICheck('test (ubuntu-latest)')).toBe('actionable');
+    expect(classifyCICheck('lint-labelstudio-sdk')).toBe('actionable');
+  });
+});

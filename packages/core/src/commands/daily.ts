@@ -25,6 +25,7 @@ import {
   formatBriefSummary,
   formatSummary,
   summarizeAttentionBuckets,
+  shouldSuggestClose,
   type AttentionSummary,
   type DailyDigest,
   type FetchedPR,
@@ -714,11 +715,14 @@ function generateDigestOutput(
   // the same buckets per-PR, so the headline counts cannot diverge.
   const attention = summarizeAttentionBuckets(activePRs);
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length, attention);
+  // Close candidates are usually dormant and auto-shelved, so count them over
+  // all open PRs (digest.openPRs includes shelved), not activePRs.
+  const closeSuggested = digest.openPRs.filter(shouldSuggestClose).length;
   const actionMenu = computeActionMenu(
     actionableIssues,
     capacity,
     filteredCommentedIssues,
-    attention,
+    { ...attention, closeSuggested },
     unextractedMergeCount,
   );
   const repoGroups = groupPRsByRepo(activePRs);

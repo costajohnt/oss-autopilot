@@ -28,6 +28,12 @@ describe('isBotAuthor', () => {
     expect(isBotAuthor('claassistant')).toBe(true);
   });
 
+  it('should detect user-account bots with a -bot suffix', () => {
+    expect(isBotAuthor('miq-bot')).toBe(true);
+    expect(isBotAuthor('Some-Org-Bot')).toBe(true);
+    expect(isBotAuthor('Dependabot[BOT]')).toBe(true);
+  });
+
   it('should be case-insensitive for known bot usernames', () => {
     expect(isBotAuthor('Renovate')).toBe(true);
     expect(isBotAuthor('NETLIFY')).toBe(true);

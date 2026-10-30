@@ -30,7 +30,7 @@ Your curated issue list has {blockedCount} queued, all blocked. Time to find new
 
 When there are actionable issues, display them **before asking the user anything**.
 
-Issues are listed in priority order based on issue `type`: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist`. This matches the ordering from `collectActionableIssues()` in the CLI. All PRs shown here have `status: "needs_addressing"` — the issue `type` field provides the specific reason. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
+Issues are listed in priority order based on issue `type`: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict`. (An incomplete PR-body checklist is informational only: it shows as a note in the PR's `displayDescription` and never makes a PR actionable by itself.) This matches the ordering from `collectActionableIssues()` in the CLI. All PRs shown here have `status: "needs_addressing"` — the issue `type` field provides the specific reason. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
 
 For each issue, look up the full PR from `digest.openPRs` using the issue's `prUrl`:
 
