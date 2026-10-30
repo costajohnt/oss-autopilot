@@ -37,8 +37,13 @@ const STALE_RE = /marked as stale|clos(?:e|ing) (?:this )?(?:as|due to) (?:stale
 
 // The author's own explanation, phrased the way real closing comments are:
 // "v0.6 covers this", "#1684 landed the same fix", "#1408 is in", "in favor of #6087".
-const AUTHOR_SUPERSEDED_RE =
-  /already (?:been )?(?:fixed|merged|addressed|resolved|implemented|landed|applied|several)|cover(?:s|ed) (?:this|everything|the same)|(?:landed|fixed|ships?) the same|same (?:one-line )?fix|has (?:landed|shipped)|is in and|(?:fixed|addressed|resolved|landed|applied) (?:upstream|elsewhere)|upstream (?:upgrade|commit|fix)|supersed|in favou?r of|replaced by|duplicate|no longer (?:needed|relevant|reproduc|applies)/i;
+const AUTHOR_SUPERSEDED = [
+  /already (?:been )?(?:fixed|merged|addressed|resolved|implemented|landed|applied|several)/i,
+  /cover(?:s|ed) (?:this|everything|the same)|same (?:one-line )?fix|(?:landed|fixed|ships?) the same/i,
+  /has (?:landed|shipped)|is in and|(?:fixed|addressed|resolved|landed|applied) (?:upstream|elsewhere)/i,
+  /upstream (?:upgrade|commit|fix)|supersed|in favou?r of|replaced by|duplicate/i,
+  /no longer (?:needed|relevant|reproduc|applies)/i,
+];
 // Withdrawn because nobody picked it up.
 const NO_TRACTION_RE =
   /traction|(?:been )?quiet|unmaintained|actively (?:reviewing|maintained)|not maintained|no (?:response|activity)|keep the queue tidy|sitting in (?:your|the) queue|stale/i;
@@ -49,7 +54,7 @@ const NO_TRACTION_RE =
  */
 export function classifySelfClose({ author, comments }: CloseContext): SelfCloseReason {
   const own = comments.filter((c) => !c.isBot && c.author === author).map((c) => c.body);
-  if (own.some((b) => AUTHOR_SUPERSEDED_RE.test(b))) return 'superseded';
+  if (own.some((b) => AUTHOR_SUPERSEDED.some((re) => re.test(b)))) return 'superseded';
   if (own.some((b) => NO_TRACTION_RE.test(b))) return 'no-traction';
   return comments.some((c) => !c.isBot && c.author !== author) ? 'after-feedback' : 'no-response';
 }

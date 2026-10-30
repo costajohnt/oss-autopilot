@@ -44,13 +44,13 @@ describe('classifyCloseReason (#1824)', () => {
   });
 });
 
-describe('classifySelfClose (#1824)', () => {
-  const self = (...comments: Array<[string, string, boolean?]>): CloseContext => ({
-    author: 'me',
-    closer: 'me',
-    comments: comments.map(([author, body, isBot]) => ({ author, body, isBot })),
-  });
+const selfClosed = (...comments: Array<[string, string, boolean?]>): CloseContext => ({
+  author: 'me',
+  closer: 'me',
+  comments: comments.map(([author, body, isBot]) => ({ author, body, isBot })),
+});
 
+describe('classifySelfClose (#1824)', () => {
   // Phrasings taken from real author closing comments.
   it.each([
     ['Closing since v0.6.12 covers this (dbe720e). Thanks for the fix!', 'superseded'],
@@ -62,14 +62,14 @@ describe('classifySelfClose (#1824)', () => {
     ["Closing this since the repo doesn't seem to be actively reviewing PRs.", 'no-traction'],
     ["Closing this since it's been quiet for a while.", 'no-traction'],
   ])('%j is %s', (body, expected) => {
-    expect(classifySelfClose(self(['me', body]))).toBe(expected);
+    expect(classifySelfClose(selfClosed(['me', body]))).toBe(expected);
   });
 
   it('falls back to whether anyone human engaged before the close', () => {
-    expect(classifySelfClose(self(['maint', 'Not sure this is the right direction'], ['me', 'Fair, closing']))).toBe(
-      'after-feedback',
-    );
-    expect(classifySelfClose(self(['coderabbitai', 'auto-generated summary', true]))).toBe('no-response');
-    expect(classifySelfClose(self())).toBe('no-response');
+    expect(
+      classifySelfClose(selfClosed(['maint', 'Not sure this is the right direction'], ['me', 'Fair, closing'])),
+    ).toBe('after-feedback');
+    expect(classifySelfClose(selfClosed(['coderabbitai', 'auto-generated summary', true]))).toBe('no-response');
+    expect(classifySelfClose(selfClosed())).toBe('no-response');
   });
 });
