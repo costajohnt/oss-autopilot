@@ -12,8 +12,11 @@ import {
   ShelvedPRRefSchema,
   RepoScoreSchema,
   TrackedIssueSchema,
+  unknownStateKeys,
+  type AgentConfig,
 } from './state-schema.js';
 import { makeFetchedPR } from './test-utils.js';
+import { serializeState } from './state-prune.js';
 
 describe('AgentStateSchema', () => {
   describe('missing optional fields get defaults', () => {
@@ -66,27 +69,60 @@ describe('AgentStateSchema', () => {
     });
   });
 
-  describe('unknown keys stripped', () => {
-    it('should strip unknown top-level keys', () => {
-      const result = AgentStateSchema.parse({
+  describe('unknown keys pass through (#1831)', () => {
+    it('keeps unknown top-level, config and ledger keys so an older client cannot drop them', () => {
+      const raw = {
         version: 4,
-        snoozedPRs: { foo: 'bar' },
-        extraField: true,
-      });
+        fromNewerRelease: { a: 1 },
+        config: { githubUsername: 'u', newerConfigFlag: true },
+        mergedPRs: [
+          { url: 'https://github.com/o/r/pull/1', title: 't', mergedAt: '2026-01-01T00:00:00Z', newerLedgerField: 3 },
+        ],
+      };
+      const result = AgentStateSchema.parse(raw);
+      const roundTrip = JSON.parse(serializeState(result));
 
-      expect(result).not.toHaveProperty('snoozedPRs');
-      expect(result).not.toHaveProperty('extraField');
-      expect(result.version).toBe(4);
+      expect(roundTrip.fromNewerRelease).toEqual({ a: 1 });
+      expect(roundTrip.config.newerConfigFlag).toBe(true);
+      expect(roundTrip.mergedPRs[0].newerLedgerField).toBe(3);
+      expect(unknownStateKeys(raw)).toEqual(['fromNewerRelease']);
     });
 
-    it('should strip unknown keys from nested config', () => {
-      const result = AgentStateSchema.parse({
+    it('accepts enum values from a newer release instead of rejecting the state', () => {
+      const result = AgentStateSchema.safeParse({
         version: 4,
-        config: { githubUsername: '', legacyField: 42 },
+        closedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/2',
+            title: 't',
+            closedAt: '2026-01-01T00:00:00Z',
+            closeReason: 'brand-new-reason',
+          },
+        ],
       });
+      expect(result.success).toBe(true);
+    });
 
-      expect(result.config).not.toHaveProperty('legacyField');
-      expect(result.config.githubUsername).toBe('');
+    it('keeps newer overnight and search-rotation fields', () => {
+      const raw = {
+        version: 4,
+        lastOvernight: { runAt: 'x', reportPath: 'p', prepareCount: 0, judgmentCount: 0, newerOvernightField: 1 },
+        searchRotation: { languageOffset: 0, newerCursor: 7 },
+      };
+      const roundTrip = JSON.parse(serializeState(AgentStateSchema.parse(raw)));
+      expect(roundTrip.lastOvernight.newerOvernightField).toBe(1);
+      expect(roundTrip.searchRotation.newerCursor).toBe(7);
+    });
+
+    it('keeps typo protection on the inferred types', () => {
+      const config = AgentStateSchema.parse({ version: 4 }).config as AgentConfig;
+      // @ts-expect-error a misspelled config key must not compile
+      expect(config.githubUsrname).toBeUndefined();
+    });
+
+    it('still drops retired config keys', () => {
+      const result = AgentStateSchema.parse({ version: 4, config: { githubUsername: '', snoozedPRs: { x: 'y' } } });
+      expect(result.config).not.toHaveProperty('snoozedPRs');
     });
   });
 

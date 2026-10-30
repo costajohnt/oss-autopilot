@@ -48,7 +48,7 @@
 
 import * as fs from 'node:fs';
 import { AgentState } from './types.js';
-import { AgentStateSchema } from './state-schema.js';
+import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import {
   atomicWriteFileSync,
@@ -877,6 +877,8 @@ export class GistStateStore {
         if ((obj as Record<string, unknown>).version === 3) obj = migrateV3ToV4(obj as Record<string, unknown>);
       }
 
+      const newer = unknownStateKeys(obj);
+      if (newer.length > 0) warn(MODULE, `Gist state (fields: ${newer.join(', ')}) ${NEWER_WRITER_HINT}`);
       return AgentStateSchema.parse(obj);
     } catch (err) {
       const rejectedPath = preserveRejectedGistContent(raw, this.gistId ?? 'unknown');

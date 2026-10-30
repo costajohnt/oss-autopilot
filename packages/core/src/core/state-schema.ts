@@ -6,10 +6,23 @@
  * re-exported through types.ts.
  *
  * Schemas are defined bottom-up (leaf types first, composites last).
- * Unknown keys are stripped by default (Zod 4 behavior).
+ * Unknown keys are stripped by default (Zod 4 behavior), EXCEPT on the schemas
+ * marked `.passthrough()` (#1831): see the note above AgentStateSchema.
  */
 import { z } from 'zod';
 import { CLOSE_REASONS } from './close-reason.js';
+
+/**
+ * An enum that also accepts values it does not know (#1831): a newer release
+ * may add a value, and a strict enum would make this release reject the whole
+ * state. Known values keep editor completion; read sites must handle others.
+ */
+function openEnum<const T extends readonly string[]>(_values: T) {
+  return z.custom<T[number] | (string & {})>((v) => typeof v === 'string');
+}
+
+/** Drops the `[k: string]: unknown` index signature `.passthrough()` adds to an inferred type. */
+type KnownKeys<T> = { [K in keyof T as string extends K ? never : K]: T[K] };
 import type { FetchedPR } from './types.js';
 
 // ── 1. Enum / union schemas ───────────────────────────────────────────
@@ -39,18 +52,20 @@ export const RepoSignalsSchema = z.object({
   hasHostileComments: z.boolean(),
 });
 
-export const RepoScoreSchema = z.object({
-  repo: z.string(),
-  score: z.number(),
-  mergedPRCount: z.number(),
-  closedWithoutMergeCount: z.number(),
-  avgResponseDays: z.number().nullable(),
-  lastMergedAt: z.string().optional(),
-  lastEvaluatedAt: z.string(),
-  signals: RepoSignalsSchema,
-  stargazersCount: z.number().optional(),
-  language: z.string().nullable().optional(),
-});
+export const RepoScoreSchema = z
+  .object({
+    repo: z.string(),
+    score: z.number(),
+    mergedPRCount: z.number(),
+    closedWithoutMergeCount: z.number(),
+    avgResponseDays: z.number().nullable(),
+    lastMergedAt: z.string().optional(),
+    lastEvaluatedAt: z.string(),
+    signals: RepoSignalsSchema,
+    stargazersCount: z.number().optional(),
+    language: z.string().nullable().optional(),
+  })
+  .passthrough();
 
 /**
  * What the tool predicted about an issue when it was vetted (#1824). Recorded
@@ -58,17 +73,19 @@ export const RepoScoreSchema = z.object({
  * ledger entry of the PR that closes that issue, so outcomes can be compared
  * against the prediction that picked them (calibration).
  */
-export const PickSnapshotSchema = z.object({
-  issueUrl: z.string(),
-  /** Success-likelihood grade (1-10) from issue-grading. */
-  grade: z.number(),
-  recommendation: z.string(),
-  stargazersCount: z.number().optional(),
-  /** `list`: the curated list's `**Tier (N/10)**` score, imported by ledger-backfill. */
-  source: z.enum(['vet', 'vet-list', 'list']),
-  /** When the vet ran. Absent for `list` picks: the list does not record vet dates reliably. */
-  capturedAt: z.string().optional(),
-});
+export const PickSnapshotSchema = z
+  .object({
+    issueUrl: z.string(),
+    /** Success-likelihood grade (1-10) from issue-grading. */
+    grade: z.number(),
+    recommendation: z.string(),
+    stargazersCount: z.number().optional(),
+    /** `list`: the curated list's `**Tier (N/10)**` score, imported by ledger-backfill. */
+    source: openEnum(['vet', 'vet-list', 'list'] as const),
+    /** When the vet ran. Absent for `list` picks: the list does not record vet dates reliably. */
+    capturedAt: z.string().optional(),
+  })
+  .passthrough();
 
 /**
  * Outcome-ledger fields added by #1824, shared by merged and closed entries.
@@ -87,54 +104,58 @@ const LedgerPredictionFields = {
   backfilledAt: z.string().optional(),
 };
 
-export const StoredMergedPRSchema = z.object({
-  url: z.string(),
-  title: z.string(),
-  mergedAt: z.string(),
-  /**
-   * When the PR was opened (#1461). Optional: entries persisted before the
-   * outcome ledger existed don't carry it. Sourced from the Search API's
-   * `created_at` at merge-detection time — zero extra API calls.
-   */
-  openedAt: z.string().optional(),
-  /**
-   * Earliest maintainer (non-bot, non-author) comment or review on the
-   * PR (#1461). Best-effort: only derivable when the PR was enriched while
-   * open (looked up from the previous run's persisted digest at detection
-   * time), so it is absent for PRs that merged before ever appearing in an
-   * enriched run.
-   */
-  firstMaintainerResponseAt: z.string().optional(),
-  /** When the raw review-comment bundle for this PR was last fetched (#867). */
-  // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
-  // poisoning state through the stamping API (#1209 L4).
-  commentsFetchedAt: z.string().datetime().optional(),
-  /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
-  learningsExtractedAt: z.string().datetime().optional(),
-  ...LedgerPredictionFields,
-});
+export const StoredMergedPRSchema = z
+  .object({
+    url: z.string(),
+    title: z.string(),
+    mergedAt: z.string(),
+    /**
+     * When the PR was opened (#1461). Optional: entries persisted before the
+     * outcome ledger existed don't carry it. Sourced from the Search API's
+     * `created_at` at merge-detection time — zero extra API calls.
+     */
+    openedAt: z.string().optional(),
+    /**
+     * Earliest maintainer (non-bot, non-author) comment or review on the
+     * PR (#1461). Best-effort: only derivable when the PR was enriched while
+     * open (looked up from the previous run's persisted digest at detection
+     * time), so it is absent for PRs that merged before ever appearing in an
+     * enriched run.
+     */
+    firstMaintainerResponseAt: z.string().optional(),
+    /** When the raw review-comment bundle for this PR was last fetched (#867). */
+    // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
+    // poisoning state through the stamping API (#1209 L4).
+    commentsFetchedAt: z.string().datetime().optional(),
+    /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
+    learningsExtractedAt: z.string().datetime().optional(),
+    ...LedgerPredictionFields,
+  })
+  .passthrough();
 
-export const StoredClosedPRSchema = z.object({
-  url: z.string(),
-  title: z.string(),
-  closedAt: z.string(),
-  /** When the PR was opened (#1461). See StoredMergedPRSchema.openedAt. */
-  openedAt: z.string().optional(),
-  /**
-   * Earliest maintainer response (#1461). See
-   * StoredMergedPRSchema.firstMaintainerResponseAt.
-   */
-  firstMaintainerResponseAt: z.string().optional(),
-  /** When the raw review-comment bundle for this PR was last fetched (#867). */
-  // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
-  // poisoning state through the stamping API (#1209 L4).
-  commentsFetchedAt: z.string().datetime().optional(),
-  /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
-  learningsExtractedAt: z.string().datetime().optional(),
-  ...LedgerPredictionFields,
-  /** Why it closed unmerged (#1824), set by ledger-backfill. */
-  closeReason: z.enum(CLOSE_REASONS).optional(),
-});
+export const StoredClosedPRSchema = z
+  .object({
+    url: z.string(),
+    title: z.string(),
+    closedAt: z.string(),
+    /** When the PR was opened (#1461). See StoredMergedPRSchema.openedAt. */
+    openedAt: z.string().optional(),
+    /**
+     * Earliest maintainer response (#1461). See
+     * StoredMergedPRSchema.firstMaintainerResponseAt.
+     */
+    firstMaintainerResponseAt: z.string().optional(),
+    /** When the raw review-comment bundle for this PR was last fetched (#867). */
+    // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
+    // poisoning state through the stamping API (#1209 L4).
+    commentsFetchedAt: z.string().datetime().optional(),
+    /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
+    learningsExtractedAt: z.string().datetime().optional(),
+    ...LedgerPredictionFields,
+    /** Why it closed unmerged (#1824), set by ledger-backfill. */
+    closeReason: openEnum(CLOSE_REASONS).optional(),
+  })
+  .passthrough();
 
 export const AnalyzedIssueConversationSchema = z.object({
   url: z.string(),
@@ -257,137 +278,142 @@ export const StatusOverrideSchema = z.object({
 
 // ── 5. Config schema ─────────────────────────────────────────────────
 
-export const AgentConfigSchema = z.object({
-  setupComplete: z.boolean().default(false),
-  setupCompletedAt: z.string().optional(),
+export const AgentConfigSchema = z
+  .object({
+    setupComplete: z.boolean().default(false),
+    setupCompletedAt: z.string().optional(),
 
-  persistence: z.enum(['local', 'gist']).default('local'),
+    persistence: z.enum(['local', 'gist']).default('local'),
 
-  maxActivePRs: z.number().default(10),
-  dormantThresholdDays: z.number().default(30),
-  approachingDormantDays: z.number().default(25),
-  maxIssueAgeDays: z.number().default(90),
-  // Skip the broad discovery phase once this many candidates from NEW repos are
-  // found (0 disables — broad always runs). Affinity/starred-repo candidates do
-  // not count, so the broad phase still surfaces repos you haven't touched.
-  skipBroadWhenSufficientResults: z.number().min(0).default(8),
+    maxActivePRs: z.number().default(10),
+    dormantThresholdDays: z.number().default(30),
+    approachingDormantDays: z.number().default(25),
+    maxIssueAgeDays: z.number().default(90),
+    // Skip the broad discovery phase once this many candidates from NEW repos are
+    // found (0 disables — broad always runs). Affinity/starred-repo candidates do
+    // not count, so the broad phase still surfaces repos you haven't touched.
+    skipBroadWhenSufficientResults: z.number().min(0).default(8),
 
-  languages: z.array(z.string()).default(['typescript', 'javascript']),
-  labels: z.array(z.string()).default(['good first issue', 'help wanted']),
-  scope: z.array(IssueScopeSchema).optional(),
-  excludeRepos: z.array(z.string()).default([]),
-  excludeOrgs: z.array(z.string()).optional(),
-  /**
-   * Orgs whose PRs are left out of PR tracking (open, recently closed and
-   * recently merged lists), e.g. an employer's public repos. Unlike
-   * `excludeOrgs`, which only affects discovery (#591).
-   */
-  untrackedOrgs: z.array(z.string()).default([]),
+    languages: z.array(z.string()).default(['typescript', 'javascript']),
+    labels: z.array(z.string()).default(['good first issue', 'help wanted']),
+    scope: z.array(IssueScopeSchema).optional(),
+    excludeRepos: z.array(z.string()).default([]),
+    excludeOrgs: z.array(z.string()).optional(),
+    /**
+     * Orgs whose PRs are left out of PR tracking (open, recently closed and
+     * recently merged lists), e.g. an employer's public repos. Unlike
+     * `excludeOrgs`, which only affects discovery (#591).
+     */
+    untrackedOrgs: z.array(z.string()).default([]),
 
-  /**
-   * Repos (owner/repo) to softly downrank in discovery results (#1464).
-   * Milder than `excludeRepos`' hard filter: scout pushes matches below
-   * equally-recommended candidates but does not remove them, and a strong
-   * affinity boost can still outweigh the penalty (scout #168).
-   * Threaded to scout via `scout-bridge.ts`.
-   */
-  avoidRepos: z.array(z.string()).default([]),
+    /**
+     * Repos (owner/repo) to softly downrank in discovery results (#1464).
+     * Milder than `excludeRepos`' hard filter: scout pushes matches below
+     * equally-recommended candidates but does not remove them, and a strong
+     * affinity boost can still outweigh the penalty (scout #168).
+     * Threaded to scout via `scout-bridge.ts`.
+     */
+    avoidRepos: z.array(z.string()).default([]),
 
-  /**
-   * Issue label types (e.g. "bug", "good first issue") to softly boost in
-   * discovery ranking, matched case-insensitively against issue labels
-   * (scout #168 / #1464). Does not filter results or change viability
-   * scores. Threaded to scout via `scout-bridge.ts`.
-   */
-  boostIssueTypes: z.array(z.string()).default([]),
+    /**
+     * Issue label types (e.g. "bug", "good first issue") to softly boost in
+     * discovery ranking, matched case-insensitively against issue labels
+     * (scout #168 / #1464). Does not filter results or change viability
+     * scores. Threaded to scout via `scout-bridge.ts`.
+     */
+    boostIssueTypes: z.array(z.string()).default([]),
 
-  trustedProjects: z.array(z.string()).default([]),
+    trustedProjects: z.array(z.string()).default([]),
 
-  githubUsername: z.string().default(''),
+    githubUsername: z.string().default(''),
 
-  minRepoScoreThreshold: z.number().default(4),
+    minRepoScoreThreshold: z.number().default(4),
 
-  starredRepos: z.array(z.string()).default([]),
-  starredReposLastFetched: z.string().optional(),
+    starredRepos: z.array(z.string()).default([]),
+    starredReposLastFetched: z.string().optional(),
 
-  squashByDefault: z.union([z.boolean(), z.literal('ask')]).default(true),
+    squashByDefault: z.union([z.boolean(), z.literal('ask')]).default(true),
 
-  localRepoScanPaths: z.array(z.string()).optional(),
+    localRepoScanPaths: z.array(z.string()).optional(),
 
-  minStars: z.number().default(50),
+    minStars: z.number().default(50),
 
-  includeDocIssues: z.boolean().default(true),
+    includeDocIssues: z.boolean().default(true),
 
-  aiPolicyBlocklist: z.array(z.string()).default(['matplotlib/matplotlib']),
+    aiPolicyBlocklist: z.array(z.string()).default(['matplotlib/matplotlib']),
 
-  shelvedPRUrls: z.array(z.string()).default([]),
+    shelvedPRUrls: z.array(z.string()).default([]),
 
-  dismissedIssues: z.record(z.string(), z.string()).default({}),
+    dismissedIssues: z.record(z.string(), z.string()).default({}),
 
-  statusOverrides: z.record(z.string(), StatusOverrideSchema).optional(),
+    statusOverrides: z.record(z.string(), StatusOverrideSchema).optional(),
 
-  issueListPath: z.string().optional(),
+    issueListPath: z.string().optional(),
 
-  skippedIssuesPath: z.string().optional(),
+    skippedIssuesPath: z.string().optional(),
 
-  projectCategories: z.array(ProjectCategorySchema).default([]),
+    projectCategories: z.array(ProjectCategorySchema).default([]),
 
-  preferredOrgs: z.array(z.string()).default([]),
+    preferredOrgs: z.array(z.string()).default([]),
 
-  diffTool: DiffToolSchema.default('inline'),
-  diffToolCustomCommand: z.string().optional(),
+    diffTool: DiffToolSchema.default('inline'),
+    diffToolCustomCommand: z.string().optional(),
 
-  /**
-   * Extract per-repo learnings from freshly merged PRs automatically at
-   * `/oss` startup and in `/oss-overnight` (#1696). When false, `daily`
-   * offers the extraction as an `extract_learnings` action-menu item instead.
-   */
-  autoExtractLearnings: z.boolean().default(true),
+    /**
+     * Extract per-repo learnings from freshly merged PRs automatically at
+     * `/oss` startup and in `/oss-overnight` (#1696). When false, `daily`
+     * offers the extraction as an `extract_learnings` action-menu item instead.
+     */
+    autoExtractLearnings: z.boolean().default(true),
 
-  /**
-   * No effect since the hook was removed in #1642; kept for state-file
-   * compatibility.
-   */
-  autoFormatBeforePush: z.boolean().default(false),
+    /**
+     * No effect since the hook was removed in #1642; kept for state-file
+     * compatibility.
+     */
+    autoFormatBeforePush: z.boolean().default(false),
 
-  /**
-   * No effect since the hook was removed in #1642; kept for state-file
-   * compatibility.
-   */
-  trustOwnRepoWrites: z.boolean().default(false),
+    /**
+     * No effect since the hook was removed in #1642; kept for state-file
+     * compatibility.
+     */
+    trustOwnRepoWrites: z.boolean().default(false),
 
-  /**
-   * No effect since the hook was removed in #1642; kept for state-file
-   * compatibility.
-   */
-  healthCheckFreshnessMinutes: z.number().int().positive().default(30),
+    /**
+     * No effect since the hook was removed in #1642; kept for state-file
+     * compatibility.
+     */
+    healthCheckFreshnessMinutes: z.number().int().positive().default(30),
 
-  /**
-   * Convergence cap for the multi-agent review loop in
-   * `workflows/dispatch-review.md` (#1275). When unset, the workflow
-   * falls back to per-mode defaults (5 for diff, 3 for plan). Lower
-   * values shorten the loop at the cost of skipping later iterations
-   * if findings persist; higher values give the loop more chances to
-   * converge before bailing. Optional — leave unset to use the
-   * defaults.
-   */
-  reviewMaxPasses: z.number().int().positive().optional(),
+    /**
+     * Convergence cap for the multi-agent review loop in
+     * `workflows/dispatch-review.md` (#1275). When unset, the workflow
+     * falls back to per-mode defaults (5 for diff, 3 for plan). Lower
+     * values shorten the loop at the cost of skipping later iterations
+     * if findings persist; higher values give the loop more chances to
+     * converge before bailing. Optional — leave unset to use the
+     * defaults.
+     */
+    reviewMaxPasses: z.number().int().positive().optional(),
 
-  /**
-   * Optional Ollama model for SLM pre-triage during issue vetting (#1122).
-   * Empty disables the feature. Recommended: `gemma4:e4b` (default for
-   * capable hardware), `gemma4:e2b` or `qwen3:1.7b` for low-RAM machines.
-   * Threaded through to scout via the bridge in `scout-bridge.ts`.
-   */
-  slmTriageModel: z.string().default(''),
+    /**
+     * Optional Ollama model for SLM pre-triage during issue vetting (#1122).
+     * Empty disables the feature. Recommended: `gemma4:e4b` (default for
+     * capable hardware), `gemma4:e2b` or `qwen3:1.7b` for low-RAM machines.
+     * Threaded through to scout via the bridge in `scout-bridge.ts`.
+     */
+    slmTriageModel: z.string().default(''),
 
-  /**
-   * Optional Ollama HTTP host override. Defaults to `http://127.0.0.1:11434`
-   * when empty. Useful when Ollama runs on a different machine on the
-   * local network.
-   */
-  slmTriageHost: z.string().default(''),
-});
+    /**
+     * Optional Ollama HTTP host override. Defaults to `http://127.0.0.1:11434`
+     * when empty. Useful when Ollama runs on a different machine on the
+     * local network.
+     */
+    slmTriageHost: z.string().default(''),
+  })
+  // Passthrough (#1831): a newer release's config fields survive this
+  // version's load/save. Retired fields must be dropped explicitly instead.
+  .passthrough()
+  .transform(({ snoozedPRs: _retired, ...config }) => config);
 
 // ── 6. Cache schemas ─────────────────────────────────────────────────
 
@@ -534,20 +560,22 @@ export const SearchSeenEntrySchema = z.object({
  * run; `overnight push-prep` (#1698) may later stage it under `prep/*` on the
  * user's fork and fills in `pushedRef`, `pushedAt` and `compareUrl`.
  */
-export const OvernightPreparedSchema = z.object({
-  url: z.string(),
-  branch: z.string(),
-  worktree: z.string().optional(),
-  note: z.string().optional(),
-  recordedAt: z.string(),
-  /** Branch name on the fork (`prep/<branch>`), set by `overnight push-prep`. */
-  pushedRef: z.string().optional(),
-  pushedAt: z.string().optional(),
-  /** `<fork>/compare/<pr-head>...prep/<branch>`; absent when the PR head could not be read. */
-  compareUrl: z.string().optional(),
-  /** Why the last `overnight push-prep` did not push this branch; cleared once it is pushed. */
-  pushProblem: z.string().optional(),
-});
+export const OvernightPreparedSchema = z
+  .object({
+    url: z.string(),
+    branch: z.string(),
+    worktree: z.string().optional(),
+    note: z.string().optional(),
+    recordedAt: z.string(),
+    /** Branch name on the fork (`prep/<branch>`), set by `overnight push-prep`. */
+    pushedRef: z.string().optional(),
+    pushedAt: z.string().optional(),
+    /** `<fork>/compare/<pr-head>...prep/<branch>`; absent when the PR head could not be read. */
+    compareUrl: z.string().optional(),
+    /** Why the last `overnight push-prep` did not push this branch; cleared once it is pushed. */
+    pushProblem: z.string().optional(),
+  })
+  .passthrough();
 
 /** The latest overnight run (#1574); `startup` surfaces its freshness. */
 /**
@@ -555,122 +583,141 @@ export const OvernightPreparedSchema = z.object({
  * runs so a blocked issue is not retried every night; cleared when the
  * issue leaves the list.
  */
-export const OvernightImplementAttemptSchema = z.object({
-  url: z.string(),
-  attemptedAt: z.string(),
-  outcome: z.enum(['prepared', 'blocked']),
-  note: z.string().optional(),
-});
+export const OvernightImplementAttemptSchema = z
+  .object({
+    url: z.string(),
+    attemptedAt: z.string(),
+    outcome: z.enum(['prepared', 'blocked']),
+    note: z.string().optional(),
+  })
+  .passthrough();
 
-export const OvernightRecordSchema = z.object({
-  runAt: z.string(),
-  reportPath: z.string(),
-  prepareCount: z.number().int().nonnegative(),
-  judgmentCount: z.number().int().nonnegative(),
-  prepared: z.array(OvernightPreparedSchema).default([]),
-  /** The one curated-list issue picked for implementation this run, if any (#1715). */
-  implementUrl: z.string().optional(),
-  implementAttempts: z.array(OvernightImplementAttemptSchema).optional(),
-});
+export const OvernightRecordSchema = z
+  .object({
+    runAt: z.string(),
+    reportPath: z.string(),
+    prepareCount: z.number().int().nonnegative(),
+    judgmentCount: z.number().int().nonnegative(),
+    prepared: z.array(OvernightPreparedSchema).default([]),
+    /** The one curated-list issue picked for implementation this run, if any (#1715). */
+    implementUrl: z.string().optional(),
+    implementAttempts: z.array(OvernightImplementAttemptSchema).optional(),
+  })
+  .passthrough();
 
 /**
  * Mirrors oss-scout's `searchRotation`: the broad-phase language cursor, the
  * repo-window cursors of the capped phases, and the round-robin strategy
- * cursor (oss-scout 1.7.0). Every field must be listed: z.object strips
- * unknown keys, so a cursor missing here would be dropped on every load and
- * scout's rotation would restart from 0 each search.
+ * cursor (oss-scout 1.7.0). List every cursor so it gets its default;
+ * passthrough (#1831) keeps a cursor added by a newer bundled scout instead of
+ * resetting it to 0 on this release's next save.
  */
-export const SearchRotationSchema = z.object({
-  languageOffset: z.number().int().nonnegative().default(0),
-  phase0Offset: z.number().int().nonnegative().default(0),
-  starredOffset: z.number().int().nonnegative().default(0),
-  maintainedOffset: z.number().int().nonnegative().default(0),
-  strategyOffset: z.number().int().nonnegative().default(0),
-  lastRotatedAt: z.string().optional(),
-});
+export const SearchRotationSchema = z
+  .object({
+    languageOffset: z.number().int().nonnegative().default(0),
+    phase0Offset: z.number().int().nonnegative().default(0),
+    starredOffset: z.number().int().nonnegative().default(0),
+    maintainedOffset: z.number().int().nonnegative().default(0),
+    strategyOffset: z.number().int().nonnegative().default(0),
+    lastRotatedAt: z.string().optional(),
+  })
+  .passthrough();
 
-export const AgentStateSchema = z.object({
-  version: z.literal(4),
-  gistId: z.string().optional(),
+/**
+ * Forward compatibility (#1831). The state Gist is shared by clients on
+ * different releases, and a strict parse let an older client drop a newer
+ * release's fields on its next save. Schemas for data that is written once and
+ * kept (root, config, repoScores, the outcome ledger and pick snapshots,
+ * lastOvernight, searchRotation) are `.passthrough()`; schemas regenerated on
+ * every run (lastDigest) or rarely extended still strip. Persisted enums that
+ * grow (closeReason, pick source) accept unknown strings via {@link openEnum}.
+ * Inferred types drop the passthrough index signature ({@link KnownKeys}) so a
+ * misspelled key still fails to compile.
+ */
+export const AgentStateSchema = z
+  .object({
+    version: z.literal(4),
+    gistId: z.string().optional(),
 
-  repoScores: z.record(z.string(), RepoScoreSchema).default({}),
+    repoScores: z.record(z.string(), RepoScoreSchema).default({}),
 
-  config: AgentConfigSchema.default(() => AgentConfigSchema.parse({})),
+    config: AgentConfigSchema.default(() => AgentConfigSchema.parse({})),
 
-  lastRunAt: z.string().default(() => new Date().toISOString()),
+    lastRunAt: z.string().default(() => new Date().toISOString()),
 
-  lastDigestAt: z.string().optional(),
+    lastDigestAt: z.string().optional(),
 
-  /**
-   * ISO timestamp of the most recent {@link computeStrategy} invocation
-   * embedded in a daily run output (#1270). The cadence gate in
-   * `daily.ts` consults this — strategy snapshots fire every 30 days OR
-   * when 5+ PRs have merged since the last snapshot, whichever comes
-   * first. Below {@link STRATEGY_MIN_PRS} merged PRs the gate stays
-   * silent regardless of cadence.
-   */
-  lastStrategyAt: z.string().optional(),
+    /**
+     * ISO timestamp of the most recent {@link computeStrategy} invocation
+     * embedded in a daily run output (#1270). The cadence gate in
+     * `daily.ts` consults this — strategy snapshots fire every 30 days OR
+     * when 5+ PRs have merged since the last snapshot, whichever comes
+     * first. Below {@link STRATEGY_MIN_PRS} merged PRs the gate stays
+     * silent regardless of cadence.
+     */
+    lastStrategyAt: z.string().optional(),
 
-  lastDigest: DailyDigestSchema.optional(),
+    lastDigest: DailyDigestSchema.optional(),
 
-  monthlyMergedCounts: z.record(z.string(), z.number()).optional(),
-  monthlyClosedCounts: z.record(z.string(), z.number()).optional(),
-  monthlyOpenedCounts: z.record(z.string(), z.number()).optional(),
+    monthlyMergedCounts: z.record(z.string(), z.number()).optional(),
+    monthlyClosedCounts: z.record(z.string(), z.number()).optional(),
+    monthlyOpenedCounts: z.record(z.string(), z.number()).optional(),
 
-  localRepoCache: LocalRepoCacheSchema.optional(),
+    localRepoCache: LocalRepoCacheSchema.optional(),
 
-  mergedPRs: z.array(StoredMergedPRSchema).optional(),
-  closedPRs: z.array(StoredClosedPRSchema).optional(),
+    mergedPRs: z.array(StoredMergedPRSchema).optional(),
+    closedPRs: z.array(StoredClosedPRSchema).optional(),
 
-  analyzedIssueConversations: z.array(AnalyzedIssueConversationSchema).optional(),
+    analyzedIssueConversations: z.array(AnalyzedIssueConversationSchema).optional(),
 
-  activeIssues: z.array(TrackedIssueSchema).default([]),
+    activeIssues: z.array(TrackedIssueSchema).default([]),
 
-  /**
-   * Per-PR follow-up history (#1277). Keyed by PR URL. Each entry
-   * records a tier-bucketed follow-up that the user drafted (and
-   * presumably posted via `draft-review-post`). The dormant-pr
-   * workflow reads this before drafting to enforce the
-   * one-follow-up-per-timeframe rule documented in
-   * `skills/pr-etiquette/SKILL.md`.
-   */
-  prFollowUpHistory: z.record(z.string(), z.array(FollowUpEntrySchema)).optional(),
+    /**
+     * Per-PR follow-up history (#1277). Keyed by PR URL. Each entry
+     * records a tier-bucketed follow-up that the user drafted (and
+     * presumably posted via `draft-review-post`). The dormant-pr
+     * workflow reads this before drafting to enforce the
+     * one-follow-up-per-timeframe rule documented in
+     * `skills/pr-etiquette/SKILL.md`.
+     */
+    prFollowUpHistory: z.record(z.string(), z.array(FollowUpEntrySchema)).optional(),
 
-  /**
-   * Pause-point snapshot for resumable workflows (#1280). Set when
-   * the user picks "Done for now" mid-workflow; cleared when the
-   * workflow completes or the user explicitly discards. The router
-   * reads this on every `/oss` invocation and offers Resume /
-   * Restart / Discard when present.
-   */
-  workflowState: WorkflowStateSchema.optional(),
+    /**
+     * Pause-point snapshot for resumable workflows (#1280). Set when
+     * the user picks "Done for now" mid-workflow; cleared when the
+     * workflow completes or the user explicitly discards. The router
+     * reads this on every `/oss` invocation and offers Resume /
+     * Restart / Discard when present.
+     */
+    workflowState: WorkflowStateSchema.optional(),
 
-  /**
-   * Durable search seen-set for result rotation (#1528). Issue URLs surfaced
-   * by recent searches, with the timestamp they were last surfaced. Fed into
-   * oss-scout as `savedResults` so its rotation excludes recently-surfaced
-   * issues, and updated after each search. Culled past the rotation window so
-   * it cannot grow without bound.
-   */
-  searchSeen: z.array(SearchSeenEntrySchema).default([]),
+    /**
+     * Durable search seen-set for result rotation (#1528). Issue URLs surfaced
+     * by recent searches, with the timestamp they were last surfaced. Fed into
+     * oss-scout as `savedResults` so its rotation excludes recently-surfaced
+     * issues, and updated after each search. Culled past the rotation window so
+     * it cannot grow without bound.
+     */
+    searchSeen: z.array(SearchSeenEntrySchema).default([]),
 
-  /**
-   * Vet-time predictions keyed by issue URL (#1824), newest last. Joined onto
-   * outcome-ledger entries at merge/close detection. Capped at
-   * MAX_PICK_SNAPSHOTS so it cannot grow without bound.
-   */
-  pickSnapshots: z.array(PickSnapshotSchema).default([]),
+    /**
+     * Vet-time predictions keyed by issue URL (#1824), newest last. Joined onto
+     * outcome-ledger entries at merge/close detection. Capped at
+     * MAX_PICK_SNAPSHOTS so it cannot grow without bound.
+     */
+    pickSnapshots: z.array(PickSnapshotSchema).default([]),
 
-  /** Latest overnight run (#1574). Absent until the first `overnight`. */
-  lastOvernight: OvernightRecordSchema.optional(),
-  /**
-   * Broad-phase language rotation cursor (#1630), oss-scout's `searchRotation`.
-   * Scout advances it after every search whose broad phase ran; autopilot runs
-   * scout in persistence:'provided', so the advanced cursor is written back
-   * here and fed into the next scout state. Absent until the first search.
-   */
-  searchRotation: SearchRotationSchema.optional(),
-});
+    /** Latest overnight run (#1574). Absent until the first `overnight`. */
+    lastOvernight: OvernightRecordSchema.optional(),
+    /**
+     * Broad-phase language rotation cursor (#1630), oss-scout's `searchRotation`.
+     * Scout advances it after every search whose broad phase ran; autopilot runs
+     * scout in persistence:'provided', so the advanced cursor is written back
+     * here and fed into the next scout state. Absent until the first search.
+     */
+    searchRotation: SearchRotationSchema.optional(),
+  })
+  .passthrough();
 
 // ── Inferred types ───────────────────────────────────────────────────
 
@@ -680,15 +727,15 @@ export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
 export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
-export type PickSnapshot = z.infer<typeof PickSnapshotSchema>;
-export type OvernightPrepared = z.infer<typeof OvernightPreparedSchema>;
-export type OvernightRecord = z.infer<typeof OvernightRecordSchema>;
-export type OvernightImplementAttempt = z.infer<typeof OvernightImplementAttemptSchema>;
-export type SearchRotation = z.infer<typeof SearchRotationSchema>;
+export type PickSnapshot = KnownKeys<z.infer<typeof PickSnapshotSchema>>;
+export type OvernightPrepared = KnownKeys<z.infer<typeof OvernightPreparedSchema>>;
+export type OvernightRecord = KnownKeys<z.infer<typeof OvernightRecordSchema>>;
+export type OvernightImplementAttempt = KnownKeys<z.infer<typeof OvernightImplementAttemptSchema>>;
+export type SearchRotation = KnownKeys<z.infer<typeof SearchRotationSchema>>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
-export type RepoScore = z.infer<typeof RepoScoreSchema>;
-export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;
-export type StoredClosedPR = z.infer<typeof StoredClosedPRSchema>;
+export type RepoScore = KnownKeys<z.infer<typeof RepoScoreSchema>>;
+export type StoredMergedPR = KnownKeys<z.infer<typeof StoredMergedPRSchema>>;
+export type StoredClosedPR = KnownKeys<z.infer<typeof StoredClosedPRSchema>>;
 export type AnalyzedIssueConversation = z.infer<typeof AnalyzedIssueConversationSchema>;
 
 export type ContributionGuidelines = z.infer<typeof ContributionGuidelinesSchema>;
@@ -698,7 +745,7 @@ export type TrackedIssue = z.infer<typeof TrackedIssueSchema>;
 export type ShelvedPRRef = z.infer<typeof ShelvedPRRefSchema>;
 export type StatusOverride = z.infer<typeof StatusOverrideSchema>;
 
-export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type AgentConfig = KnownKeys<z.infer<typeof AgentConfigSchema>>;
 
 export type LocalRepoCache = z.infer<typeof LocalRepoCacheSchema>;
 
@@ -707,4 +754,28 @@ export type MergedPR = z.infer<typeof MergedPRSchema>;
 export type DailyDigestSummary = z.infer<typeof DailyDigestSummarySchema>;
 export type DailyDigest = z.infer<typeof DailyDigestSchema>;
 
-export type AgentState = z.infer<typeof AgentStateSchema>;
+type RawAgentState = z.infer<typeof AgentStateSchema>;
+export type AgentState = Omit<
+  KnownKeys<RawAgentState>,
+  'config' | 'repoScores' | 'mergedPRs' | 'closedPRs' | 'pickSnapshots' | 'lastOvernight' | 'searchRotation'
+> & {
+  config: AgentConfig;
+  repoScores: Record<string, RepoScore>;
+  mergedPRs?: StoredMergedPR[];
+  closedPRs?: StoredClosedPR[];
+  pickSnapshots: PickSnapshot[];
+  lastOvernight?: OvernightRecord;
+  searchRotation?: SearchRotation;
+};
+
+/** Top-level state keys this release does not know, i.e. written by another (usually newer) release (#1831). */
+export function unknownStateKeys(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const known = new Set(Object.keys(AgentStateSchema.shape));
+  return Object.keys(raw).filter((k) => !known.has(k));
+}
+
+/** Warning tail for state written by a newer release (#1831), shared by the Gist and local loaders. */
+export const NEWER_WRITER_HINT =
+  'was written by a different oss-autopilot release (usually a newer one); this version keeps those fields ' +
+  'but cannot use them. If you are not on the latest release, update with `claude plugin update oss-autopilot@oss-autopilot` and restart Claude Code.';

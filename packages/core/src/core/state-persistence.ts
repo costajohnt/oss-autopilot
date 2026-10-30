@@ -7,7 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
-import { AgentStateSchema } from './state-schema.js';
+import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
 import { errorMessage, ConcurrencyError } from './errors.js';
@@ -449,7 +449,10 @@ export function loadState(): LoadStateResult {
         }
       }
 
-      // Validate through Zod schema (strips unknown keys in memory; stale keys persist on disk until next save)
+      // Validate through Zod schema. Unknown keys pass through (#1831): they
+      // come from a newer release and must survive this version's next save.
+      const newer = unknownStateKeys(raw);
+      if (newer.length > 0) warn(MODULE, `State file (fields: ${newer.join(', ')}) ${NEWER_WRITER_HINT}`);
       const parsed = AgentStateSchema.safeParse(raw);
       if (!parsed.success) {
         const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
