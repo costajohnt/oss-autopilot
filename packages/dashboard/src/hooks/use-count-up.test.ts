@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/preact';
+import { renderHook, act, cleanup } from '@testing-library/preact';
 import { useCountUp } from './use-count-up';
 
 describe('useCountUp', () => {
@@ -8,6 +8,8 @@ describe('useCountUp', () => {
   });
 
   afterEach(() => {
+    // Unmount while the fake cancelAnimationFrame still exists (see animated-value.test.tsx).
+    cleanup();
     vi.useRealTimers();
   });
 

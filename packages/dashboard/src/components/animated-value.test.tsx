@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act } from '@testing-library/preact';
+import { render, act, cleanup } from '@testing-library/preact';
 import { AnimatedValue } from './animated-value';
 
 describe('AnimatedValue', () => {
@@ -8,6 +8,9 @@ describe('AnimatedValue', () => {
   });
 
   afterEach(() => {
+    // Unmount while the fake cancelAnimationFrame still exists: jsdom has no
+    // real one, and auto-cleanup would otherwise run after useRealTimers.
+    cleanup();
     vi.useRealTimers();
   });
 
