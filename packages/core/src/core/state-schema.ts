@@ -9,6 +9,7 @@
  * Unknown keys are stripped by default (Zod 4 behavior).
  */
 import { z } from 'zod';
+import { CLOSE_REASONS } from './close-reason.js';
 import type { FetchedPR } from './types.js';
 
 // ── 1. Enum / union schemas ───────────────────────────────────────────
@@ -63,8 +64,10 @@ export const PickSnapshotSchema = z.object({
   grade: z.number(),
   recommendation: z.string(),
   stargazersCount: z.number().optional(),
-  source: z.enum(['vet', 'vet-list']),
-  capturedAt: z.string(),
+  /** `list`: the curated list's `**Tier (N/10)**` score, imported by ledger-backfill. */
+  source: z.enum(['vet', 'vet-list', 'list']),
+  /** When the vet ran. Absent for `list` picks: the list does not record vet dates reliably. */
+  capturedAt: z.string().optional(),
 });
 
 /**
@@ -80,6 +83,8 @@ const LedgerPredictionFields = {
   lastReviewDecision: z.string().optional(),
   /** CI status from the last digest that saw the PR open. */
   lastCiStatus: z.string().optional(),
+  /** When ledger-backfill got GitHub's answer for this PR; later runs skip it. */
+  backfilledAt: z.string().optional(),
 };
 
 export const StoredMergedPRSchema = z.object({
@@ -127,6 +132,8 @@ export const StoredClosedPRSchema = z.object({
   /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
   learningsExtractedAt: z.string().datetime().optional(),
   ...LedgerPredictionFields,
+  /** Why it closed unmerged (#1824), set by ledger-backfill. */
+  closeReason: z.enum(CLOSE_REASONS).optional(),
 });
 
 export const AnalyzedIssueConversationSchema = z.object({

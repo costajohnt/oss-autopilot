@@ -75,7 +75,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    interface and its `*.contract.test.ts` golden snapshot is the only
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
- *    Commands: state (show/sync/unlink), vet, vet-list, track, comments,
+ *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, track, comments,
  *    startup, dismiss, undismiss, stats, and the five
  *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
@@ -671,6 +671,38 @@ export const commands: CLICommandDef[] = [
               if (data.pruneResult) {
                 console.log(`\nPruned ${data.pruneResult.removedCount} items from issue list.`);
               }
+            },
+          ),
+        );
+    },
+  },
+
+  // ── Ledger Backfill ────────────────────────────────────────────────────
+  {
+    name: 'ledger-backfill',
+    register(program) {
+      program
+        .command('ledger-backfill')
+        .description(
+          'Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824)',
+        )
+        .option('--path <file>', 'Path to issue list file (auto-detected if not specified)')
+        .option('--json', 'Output as JSON')
+        .action((options) =>
+          executeAction(
+            options,
+            async () => {
+              const { runLedgerBackfill } = await import('./commands/ledger-backfill.js');
+              return runLedgerBackfill({ issueListPath: options.path });
+            },
+            (data) => {
+              console.log(`\nQueried ${data.queried} ledger PRs (${data.unresolved} unresolved).`);
+              const f = data.filled;
+              console.log(
+                `  Filled: openedAt ${f.openedAt}, issueUrl ${f.issueUrl}, closeReason ${f.closeReason}, pick ${f.pick}`,
+              );
+              console.log(`  List files scanned: ${data.listFiles.length}`);
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
             },
           ),
         );
