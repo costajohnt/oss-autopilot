@@ -235,7 +235,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `languages` | (chosen at setup) | Languages for issue search |
 | `labels` | (chosen at setup) | Issue labels for issue search |
 | `squashByDefault` | `true` | Squash commits before merge (`true`, `false`, or `"ask"`) |
-| `excludeRepos` | `[]` | Repos to leave out of everything |
+| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push repo-cap check warns before opening a new one |
 | `excludeOrgs` | `[]` | Orgs to leave out of everything (for example, your employer) |
 | `avoidRepos` | `[]` | Repos to rank lower in search without excluding them |
 | `boostIssueTypes` | `[]` | Issue label types to rank higher in search (for example `bug`) |
