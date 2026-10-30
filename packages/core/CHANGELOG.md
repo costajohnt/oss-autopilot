@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.36.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.35.0...core-v3.36.0) (2026-10-30)
+
+
+### Features
+
+* cap open PRs in repos where you have no merges yet ([#1841](https://github.com/costajohnt/oss-autopilot/issues/1841)) ([4ac6b28](https://github.com/costajohnt/oss-autopilot/commit/4ac6b28cc4a6a5b8f9b106f9fa51836be8127d16))
+* **workflows:** re-verify issue for competing work before opening PR ([#1838](https://github.com/costajohnt/oss-autopilot/issues/1838)) ([488d6c8](https://github.com/costajohnt/oss-autopilot/commit/488d6c8bab82f76edd86d87ee5d5816e7eb4a3b1))
+
+
+### Bug Fixes
+
+* measure PR dormancy from maintainer activity and cut false needs_addressing ([#1842](https://github.com/costajohnt/oss-autopilot/issues/1842)) ([97a8e60](https://github.com/costajohnt/oss-autopilot/commit/97a8e60a73ec0da27f3d7cf48de2b5c7c9e93297))
+
 ## [3.35.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.34.0...core-v3.35.0) (2026-10-30)
 
 
