@@ -17,6 +17,7 @@ import {
   StoredMergedPR,
   StoredClosedPR,
   SearchSeenEntry,
+  PickSnapshot,
   OvernightRecord,
   SearchRotation,
 } from './types.js';
@@ -78,28 +79,37 @@ function filterValidUrlEntries<T extends { url: string }>(
   return { valid, dropped };
 }
 
+/** Optional outcome-ledger fields (#1461, #1824) that a re-seen entry may fill in. */
+const LEDGER_FIELDS = [
+  'openedAt',
+  'firstMaintainerResponseAt',
+  'issueUrl',
+  'pick',
+  'lastReviewDecision',
+  'lastCiStatus',
+] as const;
+type LedgerFields = Partial<Pick<StoredMergedPR, (typeof LEDGER_FIELDS)[number]>>;
+
 /**
- * Fill outcome-ledger timestamps (#1461) missing on an existing stored PR
+ * Fill outcome-ledger fields (#1461, #1824) missing on an existing stored PR
  * from a richer re-seen entry. Only fills absent fields — never overwrites —
  * so an earlier enriched write (and stamps like commentsFetchedAt that live
  * solely on the stored entry) cannot be clobbered by a later minimal one.
  * @returns true when at least one field was filled
  */
-function upgradeLedgerFields(
-  existing: { openedAt?: string; firstMaintainerResponseAt?: string },
-  incoming: { openedAt?: string; firstMaintainerResponseAt?: string },
-): boolean {
+function upgradeLedgerFields(existing: LedgerFields, incoming: LedgerFields): boolean {
   let changed = false;
-  if (incoming.openedAt && !existing.openedAt) {
-    existing.openedAt = incoming.openedAt;
-    changed = true;
-  }
-  if (incoming.firstMaintainerResponseAt && !existing.firstMaintainerResponseAt) {
-    existing.firstMaintainerResponseAt = incoming.firstMaintainerResponseAt;
-    changed = true;
+  for (const key of LEDGER_FIELDS) {
+    if (incoming[key] !== undefined && existing[key] === undefined) {
+      (existing as Record<string, unknown>)[key] = incoming[key];
+      changed = true;
+    }
   }
   return changed;
 }
+
+/** Cap on `state.pickSnapshots` (#1824): ~180 bytes each, so ~55 KB at the cap. */
+export const MAX_PICK_SNAPSHOTS = 300;
 
 /**
  * Push state to the backing Gist when Gist mode is active. Best-effort:
@@ -686,7 +696,9 @@ export class StateManager {
    */
   addMergedPRs(prs: StoredMergedPR[]): { added: number; dropped: number } {
     if (prs.length === 0) return { added: 0, dropped: 0 };
-    const { valid, dropped } = filterValidUrlEntries(prs, 'merged');
+    const filtered = filterValidUrlEntries(prs, 'merged');
+    const valid = filtered.valid.map((pr) => this.withPick(pr));
+    const { dropped } = filtered;
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.mergedPRs) this.state.mergedPRs = [];
     const byUrl = new Map(this.state.mergedPRs.map((pr) => [pr.url, pr]));
@@ -707,6 +719,18 @@ export class StateManager {
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
     this.autoSave();
     return { added: newPRs.length, dropped };
+  }
+
+  /**
+   * Copy the vet-time prediction for the PR's closing issue onto a ledger
+   * entry (#1824). Returns the entry unchanged when it has no issueUrl, already
+   * carries a pick, or no snapshot was recorded for that issue.
+   */
+  private withPick<T extends LedgerFields>(pr: T): T {
+    if (!pr.issueUrl || pr.pick) return pr;
+    const key = pr.issueUrl.toLowerCase();
+    const pick = this.getPickSnapshots().find((p) => p.issueUrl.toLowerCase() === key);
+    return pick ? { ...pr, pick } : pr;
   }
 
   /** Returns the most recent merge date, used as a watermark for incremental fetching. */
@@ -735,7 +759,9 @@ export class StateManager {
    */
   addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
     if (prs.length === 0) return { added: 0, dropped: 0 };
-    const { valid, dropped } = filterValidUrlEntries(prs, 'closed');
+    const filtered = filterValidUrlEntries(prs, 'closed');
+    const valid = filtered.valid.map((pr) => this.withPick(pr));
+    const { dropped } = filtered;
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
     const byUrl = new Map(this.state.closedPRs.map((pr) => [pr.url, pr]));
@@ -999,6 +1025,23 @@ export class StateManager {
    * searches, fed into oss-scout for result rotation. Returns `[]` when none
    * recorded yet.
    */
+  /** Vet-time predictions awaiting a ledger join (#1824), oldest first. */
+  getPickSnapshots(): PickSnapshot[] {
+    return this.state.pickSnapshots ?? [];
+  }
+
+  /**
+   * Record vet-time predictions (#1824). Re-vetting an issue replaces its
+   * snapshot; the oldest entries are dropped past {@link MAX_PICK_SNAPSHOTS}.
+   */
+  recordPickSnapshots(snapshots: PickSnapshot[]): void {
+    if (snapshots.length === 0) return;
+    const replaced = new Set(snapshots.map((p) => p.issueUrl.toLowerCase()));
+    const kept = this.getPickSnapshots().filter((p) => !replaced.has(p.issueUrl.toLowerCase()));
+    this.state.pickSnapshots = [...kept, ...snapshots].slice(-MAX_PICK_SNAPSHOTS);
+    this.autoSave();
+  }
+
   getSearchSeen(): SearchSeenEntry[] {
     return this.state.searchSeen ?? [];
   }

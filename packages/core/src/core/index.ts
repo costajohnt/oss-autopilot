@@ -101,6 +101,7 @@ export {
   toShelvedPRRef,
   buildStarFilter,
   firstMaintainerResponseFromDigest,
+  lastReviewStateFromDigest,
   formatActionHint,
   formatBriefSummary,
   formatSummary,

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { StateManager, getStateManager, resetStateManager, maybeCheckpoint } from './state.js';
+import { StateManager, getStateManager, resetStateManager, maybeCheckpoint, MAX_PICK_SNAPSHOTS } from './state.js';
 import { GistConcurrencyError, GistFileSizeError } from './errors.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -667,6 +667,66 @@ describe('StateManager merged PRs', () => {
       const prs = [{ url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' }];
       stateManager.addMergedPRs(prs);
       expect(stateManager.getMergedPRs()).toEqual(prs);
+    });
+  });
+
+  describe('pick snapshots (#1824)', () => {
+    const issueUrl = 'https://github.com/a/b/issues/7';
+    const snap = (url: string, grade = 7) => ({
+      issueUrl: url,
+      grade,
+      recommendation: 'approve',
+      source: 'vet' as const,
+      capturedAt: '2025-06-01T00:00:00Z',
+    });
+
+    it('re-vetting an issue replaces its snapshot (case-insensitive)', () => {
+      stateManager.recordPickSnapshots([snap(issueUrl, 5)]);
+      stateManager.recordPickSnapshots([snap('https://github.com/A/B/issues/7', 8)]);
+      expect(stateManager.getPickSnapshots()).toHaveLength(1);
+      expect(stateManager.getPickSnapshots()[0].grade).toBe(8);
+    });
+
+    it('drops the oldest snapshots past MAX_PICK_SNAPSHOTS', () => {
+      const many = Array.from({ length: MAX_PICK_SNAPSHOTS + 5 }, (_, i) => snap(`https://github.com/a/b/issues/${i}`));
+      stateManager.recordPickSnapshots(many);
+      const kept = stateManager.getPickSnapshots();
+      expect(kept).toHaveLength(MAX_PICK_SNAPSHOTS);
+      expect(kept[0].issueUrl).toBe('https://github.com/a/b/issues/5');
+    });
+
+    it('attaches the snapshot to merged and closed entries that close a vetted issue', () => {
+      stateManager.recordPickSnapshots([snap(issueUrl)]);
+      stateManager.addMergedPRs([
+        { url: 'https://github.com/a/b/pull/1', title: 'm', mergedAt: '2025-06-10T00:00:00Z', issueUrl },
+        { url: 'https://github.com/a/b/pull/2', title: 'other', mergedAt: '2025-06-09T00:00:00Z' },
+      ]);
+      stateManager.addClosedPRs([
+        { url: 'https://github.com/a/b/pull/3', title: 'c', closedAt: '2025-06-10T00:00:00Z', issueUrl },
+      ]);
+      const [linked, unlinked] = stateManager.getMergedPRs();
+      expect(linked.pick?.grade).toBe(7);
+      expect(unlinked.pick).toBeUndefined();
+      expect(stateManager.getClosedPRs()[0].pick?.issueUrl).toBe(issueUrl);
+    });
+
+    it('fills issueUrl, pick and review state on a re-seen entry without overwriting', () => {
+      const url = 'https://github.com/a/b/pull/1';
+      stateManager.addMergedPRs([{ url, title: 'm', mergedAt: '2025-06-10T00:00:00Z', lastCiStatus: 'passing' }]);
+      stateManager.recordPickSnapshots([snap(issueUrl)]);
+      stateManager.addMergedPRs([
+        {
+          url,
+          title: 'm',
+          mergedAt: '2025-06-10T00:00:00Z',
+          issueUrl,
+          lastReviewDecision: 'approved',
+          lastCiStatus: 'failing',
+        },
+      ]);
+      const [entry] = stateManager.getMergedPRs();
+      expect(entry).toMatchObject({ issueUrl, lastReviewDecision: 'approved', lastCiStatus: 'passing' });
+      expect(entry.pick?.grade).toBe(7);
     });
   });
 

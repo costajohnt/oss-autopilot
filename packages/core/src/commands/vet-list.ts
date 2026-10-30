@@ -26,6 +26,11 @@ import {
   type IssueAvailabilityVerdict,
   type IssueVerification,
 } from '../core/index.js';
+import { maybeCheckpoint } from '../core/state.js';
+import type { PickSnapshot } from '../core/types.js';
+import { pickSnapshotFromVet } from './vet.js';
+
+const MODULE = 'vet-list';
 
 const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
@@ -265,6 +270,8 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
 
   // 3. Vet only the issues still in play; build each row.
   const scout = await createAutopilotScout();
+  // Vet-time predictions for calibration (#1824), recorded once after the fan-out.
+  const picks: PickSnapshot[] = [];
 
   /** Run scout's grade/health vet for an issue (the search-driven path). */
   async function runScoutVet(item: ParsedIssueItem): Promise<{ vetResult: VetOutput; skipReason?: ScoutSkipReason }> {
@@ -299,6 +306,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       slmTriage: candidate.slmTriage ?? null,
       grade,
     };
+    picks.push(pickSnapshotFromVet(vetResult, 'vet-list'));
     return { vetResult, skipReason: extractSkipReason(candidate) };
   }
 
@@ -385,6 +393,10 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   // Start `concurrency` workers (bounds the scout-vet fan-out).
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => processNext());
   await Promise.all(workers);
+  if (picks.length > 0) {
+    getStateManager().recordPickSnapshots(picks);
+    await maybeCheckpoint(getStateManager(), MODULE);
+  }
 
   // 4. Compute summary
   const summary = {

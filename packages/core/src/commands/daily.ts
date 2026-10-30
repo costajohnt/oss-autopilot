@@ -137,7 +137,7 @@ export {
 // reuse it without crossing the commands → sibling-command boundary
 // (#1208 M7). Re-exported here for backward compatibility with anyone
 // importing from this module.
-import { buildStarFilter, firstMaintainerResponseFromDigest } from '../core/daily-logic.js';
+import { buildStarFilter, firstMaintainerResponseFromDigest, lastReviewStateFromDigest } from '../core/daily-logic.js';
 
 /**
  * Internal result of the daily check, using full (non-deduplicated) types.
@@ -948,6 +948,8 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
             mergedAt: pr.mergedAt,
             openedAt: pr.openedAt,
             firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+            issueUrl: pr.issueUrl,
+            ...lastReviewStateFromDigest(previousDigest, pr.url),
           })),
         );
       }
@@ -959,6 +961,8 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
             closedAt: pr.closedAt,
             openedAt: pr.openedAt,
             firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+            issueUrl: pr.issueUrl,
+            ...lastReviewStateFromDigest(previousDigest, pr.url),
           })),
         );
       }

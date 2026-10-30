@@ -21,6 +21,26 @@ export const PR_COUNTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  */
 const MAX_PAGINATION_PAGES = 3;
 
+/**
+ * Issue URL a PR closes, from the first GitHub closing keyword in its body
+ * (#1824): `Fixes #12`, `closes owner/repo#12`, or `resolves <issue url>`.
+ * Joins the outcome ledger to vet-time predictions at zero API cost.
+ *
+ * ponytail: first keyword wins; a PR closing several issues links only the
+ * first. Switch to GraphQL `closingIssuesReferences` if that ever matters.
+ */
+const CLOSING_KEYWORD_RE =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|([\w.-]+\/[\w.-]+)?#(\d+))/i;
+
+export function closingIssueUrl(body: string | null | undefined, prUrl: string): string | undefined {
+  const m = body?.match(CLOSING_KEYWORD_RE);
+  if (!m) return undefined;
+  // A bare `#12` refers to the PR's own repo: owner/repo from its URL.
+  const target = m[1] ?? m[3] ?? prUrl.split('/').slice(3, 5).join('/');
+  const number = m[2] ?? m[4];
+  return `https://github.com/${target}/issues/${number}`;
+}
+
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */
 type SearchItem = {
   html_url: string;
@@ -294,6 +314,7 @@ async function fetchRecentPRs<T>(
       title: string;
       created_at?: string | null;
       closed_at: string | null;
+      body?: string | null;
       pull_request?: { merged_at?: string | null };
     },
     parsed: { owner: string; repo: string; number: number },
@@ -370,6 +391,7 @@ export async function fetchRecentlyClosedPRs(
       closedAt: item.closed_at || '',
       // Free on the search result — feeds the outcome ledger (#1461).
       openedAt: item.created_at || undefined,
+      issueUrl: closingIssueUrl(item.body, item.html_url),
     }),
     (item) => item.closed_at,
   );
@@ -406,6 +428,7 @@ export async function fetchRecentlyMergedPRs(
         mergedAt: mergedAt || item.closed_at || '',
         // Free on the search result — feeds the outcome ledger (#1461).
         openedAt: item.created_at || undefined,
+        issueUrl: closingIssueUrl(item.body, item.html_url),
       };
     },
     (item) => item.pull_request?.merged_at || item.closed_at,
@@ -438,6 +461,7 @@ type SearchItemForPRs = {
   title: string;
   created_at?: string | null;
   closed_at?: string | null;
+  body?: string | null;
   pull_request?: { merged_at?: string | null } | null;
 };
 
@@ -531,6 +555,7 @@ export async function fetchMergedPRsSince(
         mergedAt: date,
         // Free on the search result — feeds the outcome ledger (#1461).
         openedAt: item.created_at || undefined,
+        issueUrl: closingIssueUrl(item.body, item.html_url),
       }),
     },
     since,
@@ -562,6 +587,7 @@ export async function fetchClosedPRsSince(
         closedAt: date,
         // Free on the search result — feeds the outcome ledger (#1461).
         openedAt: item.created_at || undefined,
+        issueUrl: closingIssueUrl(item.body, item.html_url),
       }),
     },
     since,

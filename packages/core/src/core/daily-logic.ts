@@ -227,6 +227,20 @@ export function firstMaintainerResponseFromDigest(
 }
 
 /**
+ * Review decision and CI status from the previous run's persisted digest for
+ * a just-merged/closed PR (#1824): the last state the PR was seen in while
+ * open. Same best-effort lookup and read-before-overwrite contract as
+ * {@link firstMaintainerResponseFromDigest}; empty when the PR never appeared.
+ */
+export function lastReviewStateFromDigest(
+  digest: { openPRs: FetchedPR[] } | undefined,
+  url: string,
+): { lastReviewDecision?: string; lastCiStatus?: string } {
+  const pr = digest?.openPRs.find((p) => p.url === url);
+  return pr ? { lastReviewDecision: pr.reviewDecision, lastCiStatus: pr.ciStatus } : {};
+}
+
+/**
  * Group PRs by repository (#80).
  * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
  *

@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockVetIssue = vi.fn();
 const mockGetRepoScore = vi.fn();
+const mockRecordPickSnapshots = vi.fn();
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -24,6 +25,8 @@ vi.mock('../core/index.js', async () => {
     getStateManager: () => ({
       getRepoScore: mockGetRepoScore,
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+      recordPickSnapshots: mockRecordPickSnapshots,
+      isGistMode: () => false,
     }),
   };
 });
@@ -65,6 +68,31 @@ describe('runVet', () => {
       slmTriage: null,
       grade: { score: 10, reason: expect.stringMatching(/respons|merge|commit/i) },
     });
+  });
+
+  it('records the vet-time prediction for calibration (#1824)', async () => {
+    mockVetIssue.mockResolvedValue({
+      issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
+      recommendation: 'approve' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+      projectHealth: { avgIssueResponseDays: 1, daysSinceLastCommit: 1, stargazersCount: 1200 },
+      vettingResult: {},
+    });
+    mockGetRepoScore.mockReturnValue(undefined);
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockRecordPickSnapshots).toHaveBeenCalledWith([
+      {
+        issueUrl: TEST_ISSUE_URL,
+        grade: result.grade.score,
+        recommendation: result.recommendation,
+        stargazersCount: 1200,
+        source: 'vet',
+        capturedAt: expect.any(String),
+      },
+    ]);
   });
 
   it('includes grade with unknown merge rate when no repo score exists', async () => {
