@@ -17,7 +17,9 @@
         "updatedAt": "2025-06-15T00:00:00Z",
         "daysSinceActivity": 2,
         "ciStatus": "failing",
-        "failingCheckNames": ["Node 20 / ubuntu-latest"],
+        "failingCheckNames": [
+          "Node 20 / ubuntu-latest"
+        ],
         "classifiedChecks": [],
         "ciCategorization": {
           "category": "all_passing",
@@ -59,8 +61,12 @@
         "maintainerActionHints": []
       }
     ],
-    "needsAddressingPRs": ["https://github.com/octocat/spoon-knife/pull/42"],
-    "waitingOnMaintainerPRs": ["https://github.com/octocat/spoon-knife/pull/43"],
+    "needsAddressingPRs": [
+      "https://github.com/octocat/spoon-knife/pull/42"
+    ],
+    "waitingOnMaintainerPRs": [
+      "https://github.com/octocat/spoon-knife/pull/43"
+    ],
     "recentlyClosedPRs": [],
     "recentlyMergedPRs": [],
     "shelvedPRs": [],
@@ -126,7 +132,10 @@
   "repoGroups": [
     {
       "repo": "octocat/spoon-knife",
-      "prUrls": ["https://github.com/octocat/spoon-knife/pull/42", "https://github.com/octocat/spoon-knife/pull/43"]
+      "prUrls": [
+        "https://github.com/octocat/spoon-knife/pull/42",
+        "https://github.com/octocat/spoon-knife/pull/43"
+      ]
     }
   ],
   "failures": [],
