@@ -7,8 +7,7 @@
  * the denominator, so stalled work cannot flatter the number.
  */
 
-import type { CloseReason } from './close-reason.js';
-import type { AgentState } from './types.js';
+import type { AgentState, StoredClosedPR } from './types.js';
 
 type Outcome = 'merged' | 'closed' | 'dormant';
 
@@ -23,7 +22,8 @@ interface OutcomeRow {
   stars?: number;
   hoursToMerge?: number;
   hoursToFirstResponse?: number;
-  closeReason?: CloseReason;
+  /** Open enum: a newer release may record reasons this one does not know (#1831). */
+  closeReason?: StoredClosedPR['closeReason'];
   changesRequested?: boolean;
   ciFailing?: boolean;
 }
