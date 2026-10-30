@@ -32,7 +32,7 @@ import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
 import { getCIStatus } from './ci-analysis.js';
-import { type ReviewComment } from './review-analysis.js';
+import { type ActivityEvent, type ReviewComment } from './review-analysis.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import { batchFetchPRDetails, type PRRef, type NormalizedPRData, type BatchPRResult } from './pr-graphql.js';
 import {
@@ -443,6 +443,7 @@ export class PRMonitor {
 
     const ghPR = prResponse.data;
     const reviews = reviewsResult.items;
+    const activityEvents = await this.fetchActivityEvents(owner, repo, number);
 
     const ciStatus = await getCIStatus(this.octokit, owner, repo, ghPR.head.sha);
 
@@ -469,11 +470,37 @@ export class PRMonitor {
         comments,
         reviews,
         reviewComments,
+        activityEvents,
         ciStatus,
       },
       config,
       commitInfo,
     );
+  }
+
+  /**
+   * REST counterpart of the GraphQL `timelineItems` selection: commits (author
+   * and committer) plus force-push / review-request / label events, used for
+   * the maintainer-activity dormancy clock. Non-critical: rate-limit and auth
+   * errors propagate, anything else degrades to no events (comments and
+   * reviews still drive the clock).
+   */
+  private async fetchActivityEvents(owner: string, repo: string, number: number): Promise<ActivityEvent[]> {
+    try {
+      const [timeline, commits] = await Promise.all([
+        paginateAllDetailed((page) =>
+          this.octokit.issues.listEventsForTimeline({ owner, repo, page, issue_number: number, per_page: 100 }),
+        ),
+        paginateAllDetailed((page) =>
+          this.octokit.pulls.listCommits({ owner, repo, page, pull_number: number, per_page: 100 }),
+        ),
+      ]);
+      return restActivityEvents(timeline.items, commits.items);
+    } catch (err) {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch timeline for ${owner}/${repo}#${number}: ${errorMessage(err)}`);
+      return [];
+    }
   }
 
   /**
@@ -527,6 +554,7 @@ export class PRMonitor {
         comments: data.comments,
         reviews: data.reviews,
         reviewComments: data.reviewComments,
+        activityEvents: data.activityEvents,
         ciStatus: data.ciStatus,
       },
       config,
@@ -694,4 +722,33 @@ export class PRMonitor {
       this.stateManager.incrementClosedCount(repo);
     }
   }
+}
+
+/** Timeline event kinds whose actor marks maintainer engagement. */
+const ACTIVITY_TIMELINE_EVENTS: ReadonlySet<string> = new Set(['head_ref_force_pushed', 'review_requested', 'labeled']);
+
+interface RestTimelineEvent {
+  event?: string;
+  created_at?: string;
+  actor?: { login?: string; type?: string } | null;
+}
+
+interface RestPRCommit {
+  author?: { login?: string; type?: string } | null;
+  committer?: { login?: string; type?: string } | null;
+  commit: { author?: { date?: string } | null; committer?: { date?: string } | null };
+}
+
+/** Map REST timeline events and PR commits into {@link ActivityEvent}s (mirrors the GraphQL mapping). */
+export function restActivityEvents(timeline: RestTimelineEvent[], commits: RestPRCommit[]): ActivityEvent[] {
+  const events: ActivityEvent[] = timeline
+    .filter((e) => e.event && ACTIVITY_TIMELINE_EVENTS.has(e.event))
+    .map((e) => ({ login: e.actor?.login, type: e.actor?.type, at: e.created_at }));
+  for (const c of commits) {
+    events.push(
+      { login: c.author?.login, type: c.author?.type, at: c.commit.author?.date },
+      { login: c.committer?.login, type: c.committer?.type, at: c.commit.committer?.date },
+    );
+  }
+  return events;
 }

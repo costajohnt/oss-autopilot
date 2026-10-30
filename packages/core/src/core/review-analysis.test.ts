@@ -527,7 +527,7 @@ describe('getLastMaintainerActivity', () => {
       { user: { login: 'contributor' }, created_at: '2026-02-01T00:00:00Z' },
       { user: { login: 'contributor' }, created_at: '2026-03-01T00:00:00Z' },
     ];
-    expect(getLastMaintainerActivity(comments, [], [], 'contributor', created)).toEqual({
+    expect(getLastMaintainerActivity(comments, [], [], [], 'contributor', created)).toEqual({
       lastMaintainerActivityAt: created,
       authorPingsSinceMaintainerActivity: 2,
     });
@@ -538,7 +538,7 @@ describe('getLastMaintainerActivity', () => {
       { user: { login: 'maintainer' }, created_at: '2026-01-05T00:00:00Z' },
       { user: { login: 'Contributor' }, created_at: '2026-03-01T00:00:00Z' },
     ];
-    const result = getLastMaintainerActivity(comments, [], [], 'contributor', created);
+    const result = getLastMaintainerActivity(comments, [], [], [], 'contributor', created);
     expect(result.lastMaintainerActivityAt).toBe('2026-01-05T00:00:00Z');
     expect(result.authorPingsSinceMaintainerActivity).toBe(1);
   });
@@ -548,8 +548,71 @@ describe('getLastMaintainerActivity', () => {
     const reviews = [{ user: { login: 'maintainer' }, submitted_at: '2026-02-01T00:00:00Z' }];
     const reviewComments = [{ user: { login: 'reviewer' }, created_at: '2026-02-10T00:00:00Z' }];
     expect(
-      getLastMaintainerActivity(comments, reviews, reviewComments, 'contributor', created).lastMaintainerActivityAt,
+      getLastMaintainerActivity(comments, reviews, reviewComments, [], 'contributor', created).lastMaintainerActivityAt,
     ).toBe('2026-02-10T00:00:00Z');
+  });
+
+  it('counts maintainer commits and force-pushes as maintainer activity', () => {
+    const events = [
+      { login: 'contributor', at: '2026-09-01T00:00:00Z' },
+      { login: 'maintainer', at: '2026-08-26T00:00:00Z' }, // maintainer commit
+      { login: 'maintainer', type: 'User', at: '2026-10-26T00:00:00Z' }, // force-push
+      { login: 'github-actions[bot]', type: 'Bot', at: '2026-10-28T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity([], [], [], events, 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-10-26T00:00:00Z',
+    );
+  });
+
+  it('only counts OWNER / MEMBER / COLLABORATOR comments when the association is known', () => {
+    const comments = [
+      { user: { login: 'maintainer' }, author_association: 'MEMBER', created_at: '2026-02-01T00:00:00Z' },
+      { user: { login: 'drive-by' }, author_association: 'NONE', created_at: '2026-03-01T00:00:00Z' },
+      { user: { login: 'other' }, author_association: 'CONTRIBUTOR', created_at: '2026-03-02T00:00:00Z' },
+    ];
+    const reviews = [{ user: { login: 'passer' }, author_association: 'NONE', submitted_at: '2026-03-03T00:00:00Z' }];
+    expect(getLastMaintainerActivity(comments, reviews, [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-02-01T00:00:00Z',
+    );
+  });
+
+  it('falls back to any non-contributor non-bot author when the association is missing', () => {
+    const comments = [{ user: { login: 'someone' }, created_at: '2026-03-01T00:00:00Z' }];
+    expect(getLastMaintainerActivity(comments, [], [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-03-01T00:00:00Z',
+    );
+  });
+
+  it('ignores REST user.type Bot and -robot accounts (Copilot, k8s-ci-robot)', () => {
+    const reviewComments = [{ user: { login: 'Copilot', type: 'Bot' }, created_at: '2026-03-01T00:00:00Z' }];
+    const comments = [{ user: { login: 'k8s-ci-robot', type: 'User' }, created_at: '2026-03-02T00:00:00Z' }];
+    expect(
+      getLastMaintainerActivity(comments, [], reviewComments, [], 'contributor', created).lastMaintainerActivityAt,
+    ).toBe(created);
+  });
+
+  it('does not count a same-day reply to a maintainer as a ping', () => {
+    // Maintainer comments, contributor replies 4h later (conversation), then
+    // nudges once 10 days later: one real ping, not two.
+    const comments = [
+      { user: { login: 'maintainer' }, created_at: '2026-01-10T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-10T04:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-20T04:00:00Z' },
+    ];
+    expect(
+      getLastMaintainerActivity(comments, [], [], [], 'contributor', created).authorPingsSinceMaintainerActivity,
+    ).toBe(1);
+  });
+
+  it('requires a 7-day gap between consecutive pings', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2026-01-10T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-12T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-25T00:00:00Z' },
+    ];
+    expect(
+      getLastMaintainerActivity(comments, [], [], [], 'contributor', created).authorPingsSinceMaintainerActivity,
+    ).toBe(2);
   });
 
   it('only counts contributor pings after the last maintainer activity', () => {
@@ -558,9 +621,9 @@ describe('getLastMaintainerActivity', () => {
       { user: { login: 'maintainer' }, created_at: '2026-01-03T00:00:00Z' },
       { user: { login: 'contributor' }, created_at: '2026-02-01T00:00:00Z' },
     ];
-    expect(getLastMaintainerActivity(comments, [], [], 'contributor', created).authorPingsSinceMaintainerActivity).toBe(
-      1,
-    );
+    expect(
+      getLastMaintainerActivity(comments, [], [], [], 'contributor', created).authorPingsSinceMaintainerActivity,
+    ).toBe(1);
   });
 });
 
@@ -572,6 +635,44 @@ describe('checkUnrespondedComments bot filtering', () => {
         { user: { login: 'miq-bot' }, body: 'Checked commits: 1 offense detected', created_at: '2026-02-07T10:00:00Z' },
       ],
       [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('does not flag a needs-response for a REST user.type Bot reviewer', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T09:00:00Z' }],
+      [
+        {
+          user: { login: 'Copilot', type: 'Bot' },
+          body: 'Consider renaming this',
+          submitted_at: '2026-02-07T10:00:00Z',
+          state: 'COMMENTED',
+          id: 1,
+        },
+      ],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+});
+
+describe('checkUnrespondedComments REST bot type', () => {
+  it('does not flag a needs-response for a REST user.type Bot reviewer', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T09:00:00Z' }],
+      [
+        {
+          user: { login: 'Copilot', type: 'Bot' },
+          body: 'Consider renaming this',
+          submitted_at: '2026-02-07T10:00:00Z',
+          state: 'COMMENTED',
+          id: 1,
+        },
+      ],
       [],
       'testuser',
     );

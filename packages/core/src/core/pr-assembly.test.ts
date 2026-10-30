@@ -73,6 +73,26 @@ describe('assembleFetchedPR dormancy clock', () => {
     expect(shouldSuggestClose(pr)).toBe(false);
   });
 
+  it('counts a maintainer force-push and commit (activityEvents) as maintainer activity', async () => {
+    // uutils/coreutils#13331 shape: no maintainer comments for months, but a
+    // maintainer committed and later force-pushed to the PR branch.
+    const pr = await assembleFetchedPR(
+      signals({
+        createdAt: daysAgo(120),
+        updatedAt: daysAgo(1),
+        comments: [{ user: { login: 'contributor' }, body: 'ping', created_at: daysAgo(1) }],
+        activityEvents: [
+          { login: 'maintainer', at: daysAgo(65) },
+          { login: 'maintainer', type: 'User', at: daysAgo(4) },
+        ],
+      }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.daysSinceMaintainerActivity).toBeLessThanOrEqual(4);
+    expect(pr.stalenessTier).toBe('active');
+  });
+
   it('measures from PR creation when nobody else has engaged', async () => {
     const pr = await assembleFetchedPR(signals({ createdAt: daysAgo(40), updatedAt: daysAgo(2) }), CONFIG, undefined);
     expect(pr.lastMaintainerActivityAt).toBe(pr.createdAt);

@@ -26,7 +26,7 @@
 import type { Octokit } from '@octokit/rest';
 import { CIStatusResult } from './types.js';
 import { computeCIStatus, type RawCheckRun, type RawCombinedStatus } from './ci-analysis.js';
-import type { ReviewComment } from './review-analysis.js';
+import type { ActivityEvent, ReviewComment } from './review-analysis.js';
 import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
 import { warn } from './logger.js';
@@ -47,6 +47,10 @@ export const THREAD_COMMENTS_CAP = 20;
  *  contexts than this is sent to REST so a failing check beyond the cap can't be
  *  silently dropped and mislabel the PR as passing. */
 export const CI_CONTEXTS_CAP = 100;
+/** Newest timeline events (commits, force-pushes, review requests, labels)
+ *  requested per PR. Only the newest non-contributor event matters for the
+ *  dormancy clock, so overflow is not routed to REST. */
+export const TIMELINE_CAP = 50;
 
 /** A single PR to enrich. */
 export interface PRRef {
@@ -74,6 +78,7 @@ export interface NormalizedPRData {
   comments: AssemblyComment[];
   reviews: AssemblyReview[];
   reviewComments: ReviewComment[];
+  activityEvents: ActivityEvent[];
   ciStatus: CIStatusResult;
   commitInfo: CommitInfo;
 }
@@ -101,6 +106,44 @@ interface GraphQLActor {
  */
 function restLogin(actor: GraphQLActor): string {
   return actor.__typename === 'Bot' && !actor.login.endsWith('[bot]') ? `${actor.login}[bot]` : actor.login;
+}
+
+/** REST-shaped `user` (login + type) for a GraphQL actor, so REST and GraphQL agree on bots. */
+function restUser(actor: GraphQLActor | null): { login: string; type?: string } | null {
+  return actor ? { login: restLogin(actor), type: actor.__typename } : null;
+}
+
+type GraphQLGitActor = { user: { login: string } | null } | null;
+
+type GraphQLTimelineNode =
+  | {
+      __typename: 'PullRequestCommit';
+      commit: {
+        authoredDate: string | null;
+        committedDate: string | null;
+        author: GraphQLGitActor;
+        committer: GraphQLGitActor;
+      } | null;
+    }
+  | {
+      __typename: 'HeadRefForcePushedEvent' | 'ReviewRequestedEvent' | 'LabeledEvent';
+      createdAt: string;
+      actor: GraphQLActor | null;
+    };
+
+/** Flatten timeline nodes into activity events (commits yield author and committer). */
+function toActivityEvents(nodes: GraphQLTimelineNode[]): ActivityEvent[] {
+  return nodes.flatMap((n): ActivityEvent[] => {
+    if (n.__typename === 'PullRequestCommit') {
+      const c = n.commit;
+      if (!c) return [];
+      return [
+        { login: c.author?.user?.login, at: c.authoredDate },
+        { login: c.committer?.user?.login, at: c.committedDate },
+      ];
+    }
+    return [{ login: n.actor ? restLogin(n.actor) : null, type: n.actor?.__typename, at: n.createdAt }];
+  });
 }
 
 interface GraphQLCheckRunNode {
@@ -144,7 +187,12 @@ interface GraphQLPullRequestNode {
   updatedAt: string;
   comments: {
     totalCount: number;
-    nodes: Array<{ author: GraphQLActor | null; body: string | null; createdAt: string }>;
+    nodes: Array<{
+      author: GraphQLActor | null;
+      authorAssociation?: string | null;
+      body: string | null;
+      createdAt: string;
+    }>;
   };
   reviews: {
     totalCount: number;
@@ -154,6 +202,7 @@ interface GraphQLPullRequestNode {
       body: string | null;
       submittedAt: string | null;
       author: GraphQLActor | null;
+      authorAssociation?: string | null;
     }>;
   };
   reviewThreads: {
@@ -166,6 +215,7 @@ interface GraphQLPullRequestNode {
           body: string | null;
           createdAt: string;
           author: GraphQLActor | null;
+          authorAssociation?: string | null;
           replyTo: { databaseId: number | null } | null;
           pullRequestReview: { databaseId: number | null } | null;
         }>;
@@ -175,6 +225,8 @@ interface GraphQLPullRequestNode {
   commits: {
     nodes: Array<{ commit: GraphQLCommitNode }>;
   };
+  /** Optional so nodes from older fixtures/producers still normalize. */
+  timelineItems?: { nodes: GraphQLTimelineNode[] } | null;
 }
 
 /** Shape of the aliased batch response: `{ pr0: { pullRequest }, pr1: { ... }, ... }`. */
@@ -191,11 +243,11 @@ const PR_FIELDS = `
   updatedAt
   comments(last: ${COMMENTS_CAP}) {
     totalCount
-    nodes { author { login __typename } body createdAt }
+    nodes { author { login __typename } authorAssociation body createdAt }
   }
   reviews(last: ${REVIEWS_CAP}) {
     totalCount
-    nodes { databaseId state body submittedAt author { login __typename } }
+    nodes { databaseId state body submittedAt author { login __typename } authorAssociation }
   }
   reviewThreads(last: ${REVIEW_THREADS_CAP}) {
     totalCount
@@ -207,10 +259,20 @@ const PR_FIELDS = `
           body
           createdAt
           author { login __typename }
+          authorAssociation
           replyTo { databaseId }
           pullRequestReview { databaseId }
         }
       }
+    }
+  }
+  timelineItems(last: ${TIMELINE_CAP}, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, LABELED_EVENT]) {
+    nodes {
+      __typename
+      ... on PullRequestCommit { commit { authoredDate committedDate author { user { login } } committer { user { login } } } }
+      ... on HeadRefForcePushedEvent { createdAt actor { login __typename } }
+      ... on ReviewRequestedEvent { createdAt actor { login __typename } }
+      ... on LabeledEvent { createdAt actor { login __typename } }
     }
   }
   commits(last: 1) {
@@ -321,7 +383,8 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   }
 
   const comments: AssemblyComment[] = node.comments.nodes.map((c) => ({
-    user: c.author ? { login: restLogin(c.author) } : null,
+    user: restUser(c.author),
+    author_association: c.authorAssociation,
     body: c.body,
     created_at: c.createdAt,
   }));
@@ -331,7 +394,8 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   const reviews: AssemblyReview[] = node.reviews.nodes
     .filter((r) => r.state !== 'PENDING')
     .map((r) => ({
-      user: r.author ? { login: restLogin(r.author) } : null,
+      user: restUser(r.author),
+      author_association: r.authorAssociation,
       body: r.body,
       submitted_at: r.submittedAt,
       state: r.state,
@@ -341,7 +405,8 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   const reviewComments: ReviewComment[] = node.reviewThreads.nodes.flatMap((thread) =>
     thread.comments.nodes.map((c) => ({
       id: c.databaseId ?? 0,
-      user: c.author ? { login: restLogin(c.author) } : null,
+      user: restUser(c.author),
+      author_association: c.authorAssociation,
       body: c.body,
       created_at: c.createdAt,
       in_reply_to_id: c.replyTo?.databaseId ?? undefined,
@@ -368,6 +433,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
       comments,
       reviews,
       reviewComments,
+      activityEvents: toActivityEvents(node.timelineItems?.nodes ?? []),
       ciStatus: toCIStatus(commit),
       commitInfo,
     },

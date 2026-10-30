@@ -47,7 +47,10 @@ const AUTH_GATE_PATTERNS: RegExp[] = [
   /approval/i,
   /\bcla\b/i,
   /license\/cla/i,
-  /\blabel(?:s|ed|er)?\b/i,
+  // Anchored to gate wording so real checks like "label-studio / build" or
+  // "e2e-label-tests" stay actionable.
+  /\b(?:pr|type|require[sd]?|check|missing)[\s-]+(?:\w+[\s-]+)?labels?\b/i,
+  /\blabeler\b/i,
   /\btriage\b/i,
 ];
 

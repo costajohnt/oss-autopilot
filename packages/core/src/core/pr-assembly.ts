@@ -20,6 +20,7 @@ import {
   checkUnrespondedComments,
   getFirstMaintainerResponseAt,
   getLastMaintainerActivity,
+  type ActivityEvent,
 } from './review-analysis.js';
 import { analyzeChecklist } from './checklist-analysis.js';
 import { extractMaintainerActionHints } from './maintainer-analysis.js';
@@ -28,14 +29,16 @@ import { computeDisplayLabel } from './display-utils.js';
 
 /** Issue comment in the shape `checkUnrespondedComments`/`getFirstMaintainerResponseAt` read. */
 export interface AssemblyComment {
-  user?: { login?: string } | null;
+  user?: { login?: string; type?: string | null } | null;
+  author_association?: string | null;
   body?: string | null;
   created_at: string;
 }
 
 /** Submitted review in the shape the review-analysis helpers read. */
 export interface AssemblyReview {
-  user?: { login?: string } | null;
+  user?: { login?: string; type?: string | null } | null;
+  author_association?: string | null;
   body?: string | null;
   submitted_at?: string | null;
   state?: string | null;
@@ -64,6 +67,12 @@ export interface PRSignals {
   comments: AssemblyComment[];
   reviews: AssemblyReview[];
   reviewComments: ReviewComment[];
+  /**
+   * Non-comment activity that can mark maintainer engagement: commits (by
+   * author and committer), force-pushes, review requests, labels. Optional;
+   * absent means comments/reviews alone drive the dormancy clock.
+   */
+  activityEvents?: ActivityEvent[];
   ciStatus: CIStatusResult;
 }
 
@@ -147,6 +156,7 @@ export async function assembleFetchedPR(
     comments,
     reviews,
     reviewComments,
+    signals.activityEvents ?? [],
     config.githubUsername,
     signals.createdAt,
   );

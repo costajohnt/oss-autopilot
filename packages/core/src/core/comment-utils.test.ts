@@ -32,6 +32,13 @@ describe('isBotAuthor', () => {
     expect(isBotAuthor('miq-bot')).toBe(true);
     expect(isBotAuthor('Some-Org-Bot')).toBe(true);
     expect(isBotAuthor('Dependabot[BOT]')).toBe(true);
+    expect(isBotAuthor('k8s-ci-robot')).toBe(true);
+    expect(isBotAuthor('Copilot')).toBe(true);
+  });
+
+  it('should treat REST user.type Bot as a bot regardless of login', () => {
+    expect(isBotAuthor('some-app', 'Bot')).toBe(true);
+    expect(isBotAuthor('octocat', 'User')).toBe(false);
   });
 
   it('should be case-insensitive for known bot usernames', () => {

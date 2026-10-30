@@ -253,6 +253,63 @@ describe('normalizePRNode', () => {
     expect(outcome.data.reviewComments[0].user?.login).toBe('boring-cyborg[bot]');
   });
 
+  it('maps authorAssociation, actor type and timeline events for the dormancy clock', () => {
+    const node = makeNode({
+      comments: {
+        totalCount: 1,
+        nodes: [
+          {
+            author: { login: 'maintainer', __typename: 'User' },
+            authorAssociation: 'MEMBER',
+            body: 'ok',
+            createdAt: '2026-02-04T00:00:00Z',
+          },
+        ],
+      },
+      timelineItems: {
+        nodes: [
+          {
+            __typename: 'PullRequestCommit',
+            commit: {
+              authoredDate: '2026-02-02T00:00:00Z',
+              committedDate: '2026-02-03T00:00:00Z',
+              author: { user: { login: 'maintainer' } },
+              committer: { user: null },
+            },
+          },
+          {
+            __typename: 'HeadRefForcePushedEvent',
+            createdAt: '2026-02-05T00:00:00Z',
+            actor: { login: 'maintainer', __typename: 'User' },
+          },
+          {
+            __typename: 'LabeledEvent',
+            createdAt: '2026-02-06T00:00:00Z',
+            actor: { login: 'labeler', __typename: 'Bot' },
+          },
+        ],
+      },
+    });
+    const outcome = normalizePRNode(node);
+    if (outcome.kind !== 'ok') throw new Error('expected ok');
+    expect(outcome.data.comments[0]).toMatchObject({
+      user: { login: 'maintainer', type: 'User' },
+      author_association: 'MEMBER',
+    });
+    expect(outcome.data.activityEvents).toEqual([
+      { login: 'maintainer', at: '2026-02-02T00:00:00Z' },
+      { login: undefined, at: '2026-02-03T00:00:00Z' },
+      { login: 'maintainer', type: 'User', at: '2026-02-05T00:00:00Z' },
+      { login: 'labeler[bot]', type: 'Bot', at: '2026-02-06T00:00:00Z' },
+    ]);
+  });
+
+  it('requests timeline items and author associations in the batch query', () => {
+    const { query } = buildBatchQuery([ref('o', 'r', 1)]);
+    expect(query).toContain('timelineItems(last: 50, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT');
+    expect(query).toContain('authorAssociation');
+  });
+
   it('signals overflow when any connection exceeds its cap', () => {
     expect(normalizePRNode(makeNode({ comments: { totalCount: 101, nodes: [] } })).kind).toBe('overflow');
     expect(normalizePRNode(makeNode({ reviews: { totalCount: 51, nodes: [] } })).kind).toBe('overflow');
