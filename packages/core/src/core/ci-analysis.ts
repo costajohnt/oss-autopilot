@@ -38,8 +38,21 @@ const FORK_LIMITATION_PATTERNS: RegExp[] = [
 /**
  * Known CI check name patterns that indicate authorization gates (#81).
  * These require maintainer approval and are not real failures.
+ * Label/triage gates (e.g. "check PR labels", "Check PR type labels",
+ * "needs-triage") are included: only maintainers can apply the labels that
+ * satisfy them, so the contributor has nothing to fix.
  */
-const AUTH_GATE_PATTERNS: RegExp[] = [/authoriz/i, /approval/i, /\bcla\b/i, /license\/cla/i];
+const AUTH_GATE_PATTERNS: RegExp[] = [
+  /authoriz/i,
+  /approval/i,
+  /\bcla\b/i,
+  /license\/cla/i,
+  // Anchored to gate wording so real checks like "label-studio / build" or
+  // "e2e-label-tests" stay actionable.
+  /\b(?:pr|type|require[sd]?|check|missing)[\s-]+(?:\w+[\s-]+)?labels?\b/i,
+  /\blabeler\b/i,
+  /\btriage\b/i,
+];
 
 /**
  * Known CI check name patterns that indicate infrastructure/transient failures (#145).

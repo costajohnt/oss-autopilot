@@ -452,7 +452,7 @@ export function computeActionMenu(
   actionableIssues: ActionableIssue[],
   capacity: CapacityAssessment,
   commentedIssues: CommentedIssue[] = [],
-  attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'>,
+  attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'> & { closeSuggested?: number },
   unextractedMergeCount?: number,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
@@ -486,17 +486,25 @@ export function computeActionMenu(
   // summarizeAttentionBuckets get a menu path to workflows/dormant-pr-follow-up.md
   // instead of only a headline count. Emitted only when a bucket is non-zero,
   // so menus without stuck/dormant PRs are unchanged.
+  // closeSuggested (shouldSuggestClose) counts dormant PRs already pinged
+  // twice with no reply; they are usually auto-shelved, so they would
+  // otherwise never reach this menu.
   const stuckCI = attention?.stuckCI ?? 0;
   const dormantFollowup = attention?.dormantFollowup ?? 0;
-  if (stuckCI > 0 || dormantFollowup > 0) {
+  const closeSuggested = attention?.closeSuggested ?? 0;
+  if (stuckCI > 0 || dormantFollowup > 0 || closeSuggested > 0) {
     const parts: string[] = [];
     if (stuckCI > 0) parts.push(`${stuckCI} stuck-CI`);
     if (dormantFollowup > 0) parts.push(`${dormantFollowup} dormant`);
-    const total = stuckCI + dormantFollowup;
+    if (closeSuggested > 0) parts.push(`${closeSuggested} close-candidate`);
+    const total = stuckCI + dormantFollowup + closeSuggested;
     items.push({
       key: 'follow_up',
       label: `Follow up on ${parts.join(' and ')} PR${total === 1 ? '' : 's'}`,
-      description: 'Waiting PRs that may need a nudge (pending CI or no review activity)',
+      description:
+        closeSuggested > 0
+          ? 'Waiting PRs that may need a nudge, or a close with an offer to reopen after repeated unanswered pings'
+          : 'Waiting PRs that may need a nudge (pending CI or no review activity)',
     });
   }
 

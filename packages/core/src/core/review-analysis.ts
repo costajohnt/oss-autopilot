@@ -10,7 +10,8 @@ import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 /** Inline review comment shape used for self-reply detection and body extraction (#199). */
 export interface ReviewComment {
   id: number;
-  user?: { login?: string } | null;
+  user?: { login?: string; type?: string | null } | null;
+  author_association?: string | null;
   body?: string | null;
   created_at: string;
   in_reply_to_id?: number;
@@ -161,9 +162,9 @@ export function getFirstMaintainerResponseAt(
  * then finds maintainer comments after the user's last comment.
  */
 export function checkUnrespondedComments(
-  comments: Array<{ user?: { login?: string } | null; body?: string | null; created_at: string }>,
+  comments: Array<{ user?: { login?: string; type?: string | null } | null; body?: string | null; created_at: string }>,
   reviews: Array<{
-    user?: { login?: string } | null;
+    user?: { login?: string; type?: string | null } | null;
     body?: string | null;
     submitted_at?: string | null;
     state?: string | null;
@@ -173,13 +174,21 @@ export function checkUnrespondedComments(
   username: string,
 ): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
   // Combine comments and reviews into a timeline
-  const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean; reviewId?: number }> = [];
+  const timeline: Array<{
+    author: string;
+    userType?: string | null;
+    body: string;
+    createdAt: string;
+    isUser: boolean;
+    reviewId?: number;
+  }> = [];
   const usernameLower = username.toLowerCase();
 
   for (const comment of comments) {
     const author = comment.user?.login || 'unknown';
     timeline.push({
       author,
+      userType: comment.user?.type,
       body: comment.body || '',
       createdAt: comment.created_at,
       isUser: author.toLowerCase() === usernameLower,
@@ -212,6 +221,7 @@ export function checkUnrespondedComments(
 
     timeline.push({
       author,
+      userType: review.user?.type,
       body: resolvedBody,
       createdAt: review.submitted_at,
       isUser: author.toLowerCase() === usernameLower,
@@ -237,7 +247,7 @@ export function checkUnrespondedComments(
   for (const item of timeline) {
     if (item.isUser) continue; // Skip user's own comments
     if (item.author === 'unknown') continue; // Skip deleted/null accounts
-    if (isBotAuthor(item.author)) continue; // Skip bots
+    if (isBotAuthor(item.author, item.userType)) continue; // Skip bots
 
     const itemTime = new Date(item.createdAt);
     if (!lastUserCommentTime || itemTime > lastUserCommentTime) {
@@ -263,4 +273,121 @@ export function checkUnrespondedComments(
     hasUnrespondedComment: !!lastMaintainerComment,
     lastMaintainerComment,
   };
+}
+
+/** A non-comment PR event: a commit, force-push, review request or label. */
+export interface ActivityEvent {
+  login?: string | null;
+  /** REST `user.type` / GraphQL `__typename` of the actor (`'Bot'` for apps). */
+  type?: string | null;
+  at?: string | null;
+  /**
+   * True for commits and force-pushes. A push by a bot still counts as
+   * maintainer activity (a maintainer's own GitHub App pushing fixes), unless
+   * the bot is an auto-fixer or dependency bot in {@link PUSH_BOT_DENYLIST}.
+   */
+  isPush?: boolean;
+}
+
+/**
+ * Bots whose pushes are automation, not maintainer engagement. Compared
+ * case-insensitively with any `[bot]` suffix stripped.
+ */
+const PUSH_BOT_DENYLIST: ReadonlySet<string> = new Set([
+  'pre-commit-ci',
+  'autofix-ci',
+  'prettier-ci',
+  'github-actions',
+  'dependabot',
+  'renovate',
+  'web-flow',
+]);
+
+/** Author associations that mark a commenter as a repo maintainer. */
+const MAINTAINER_ASSOCIATIONS: ReadonlySet<string> = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+/**
+ * Minimum gap since the previous activity (maintainer or contributor) for a
+ * contributor comment to count as a "ping". A same-day reply to a maintainer
+ * is conversation, not a nudge.
+ */
+export const PING_MIN_GAP_DAYS = 7;
+
+type ActorFields = {
+  user?: { login?: string; type?: string | null } | null;
+  author_association?: string | null;
+};
+
+/**
+ * Latest maintainer activity on a PR, falling back to `createdAt` when no
+ * maintainer has engaged, plus the number of contributor pings since then.
+ *
+ * Maintainer activity is any of:
+ * - an issue comment by an OWNER / MEMBER / COLLABORATOR, so drive-by "+1"
+ *   comments don't reset the clock (when the association is unknown, as on
+ *   older data, any non-contributor non-bot author counts);
+ * - a review or inline review comment by any non-contributor non-bot user
+ *   (codeowners often show as CONTRIBUTOR);
+ * - a commit authored or committed by someone else, or a force-push by
+ *   someone else, including bots such as a maintainer's own GitHub App,
+ *   except auto-fixer / dependency bots ({@link PUSH_BOT_DENYLIST});
+ * - a review request or label by a non-contributor non-bot actor.
+ *
+ * Staleness is measured from this timestamp rather than `updatedAt`, because
+ * `updatedAt` is bumped by the contributor's own follow-ups and rebases, so a
+ * PR the maintainers have ignored for months never looked dormant.
+ *
+ * A contributor comment counts as a ping only when it comes at least
+ * {@link PING_MIN_GAP_DAYS} after the previous activity (the maintainer
+ * activity or the contributor's own previous comment).
+ */
+export function getLastMaintainerActivity(
+  comments: Array<ActorFields & { created_at: string }>,
+  reviews: Array<ActorFields & { submitted_at?: string | null }>,
+  reviewComments: Array<ActorFields & { created_at: string }>,
+  events: ActivityEvent[],
+  username: string,
+  createdAt: string,
+): { lastMaintainerActivityAt: string; authorPingsSinceMaintainerActivity: number } {
+  const usernameLower = username.toLowerCase();
+  let latest = createdAt;
+  let latestMs = Date.parse(createdAt);
+  const consider = (
+    login: string | undefined | null,
+    type: string | undefined | null,
+    at: string | undefined | null,
+    isPush = false,
+  ) => {
+    if (!login || !at) return;
+    const lower = login.toLowerCase();
+    if (lower === usernameLower) return;
+    if (isPush ? PUSH_BOT_DENYLIST.has(lower.replace(/\[bot\]$/, '')) : isBotAuthor(login, type)) return;
+    const ms = Date.parse(at);
+    if (ms > latestMs) {
+      latest = at;
+      latestMs = ms;
+    }
+  };
+  for (const c of comments) {
+    const association = c.author_association;
+    if (association && !MAINTAINER_ASSOCIATIONS.has(association)) continue;
+    consider(c.user?.login, c.user?.type, c.created_at);
+  }
+  for (const r of reviews) consider(r.user?.login, r.user?.type, r.submitted_at);
+  for (const c of reviewComments) consider(c.user?.login, c.user?.type, c.created_at);
+  for (const e of events) consider(e.login, e.type, e.at, e.isPush);
+
+  const authorCommentTimes = comments
+    .filter((c) => c.user?.login?.toLowerCase() === usernameLower)
+    .map((c) => Date.parse(c.created_at))
+    .filter((ms) => ms > latestMs);
+  authorCommentTimes.sort((a, b) => a - b);
+  const minGapMs = PING_MIN_GAP_DAYS * 86_400_000;
+  let previousMs = latestMs;
+  let authorPingsSinceMaintainerActivity = 0;
+  for (const ms of authorCommentTimes) {
+    if (ms - previousMs >= minGapMs) authorPingsSinceMaintainerActivity++;
+    previousMs = ms;
+  }
+  return { lastMaintainerActivityAt: latest, authorPingsSinceMaintainerActivity };
 }

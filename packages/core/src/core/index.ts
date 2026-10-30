@@ -132,6 +132,7 @@ export {
 export {
   classifyAttentionBucket,
   summarizeAttentionBuckets,
+  shouldSuggestClose,
   STUCK_CI_THRESHOLD_DAYS,
   DORMANT_FOLLOWUP_THRESHOLD_DAYS,
   type AttentionBucket,

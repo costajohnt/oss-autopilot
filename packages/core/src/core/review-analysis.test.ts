@@ -11,6 +11,7 @@ import {
   reviewHasInlineComments,
   checkUnrespondedComments,
   getFirstMaintainerResponseAt,
+  getLastMaintainerActivity,
 } from './review-analysis.js';
 
 describe('getFirstMaintainerResponseAt (#1461)', () => {
@@ -512,6 +513,210 @@ describe('checkUnrespondedComments', () => {
           pull_request_review_id: 200,
         },
       ],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+});
+
+describe('getLastMaintainerActivity', () => {
+  const created = '2026-01-01T00:00:00Z';
+
+  it('falls back to createdAt when only the contributor has commented', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2026-02-01T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-03-01T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity(comments, [], [], [], 'contributor', created)).toEqual({
+      lastMaintainerActivityAt: created,
+      authorPingsSinceMaintainerActivity: 2,
+    });
+  });
+
+  it("does not let the contributor's own ping reset the clock", () => {
+    const comments = [
+      { user: { login: 'maintainer' }, created_at: '2026-01-05T00:00:00Z' },
+      { user: { login: 'Contributor' }, created_at: '2026-03-01T00:00:00Z' },
+    ];
+    const result = getLastMaintainerActivity(comments, [], [], [], 'contributor', created);
+    expect(result.lastMaintainerActivityAt).toBe('2026-01-05T00:00:00Z');
+    expect(result.authorPingsSinceMaintainerActivity).toBe(1);
+  });
+
+  it('ignores bots and counts reviews and inline review comments', () => {
+    const comments = [{ user: { login: 'miq-bot' }, created_at: '2026-04-01T00:00:00Z' }];
+    const reviews = [{ user: { login: 'maintainer' }, submitted_at: '2026-02-01T00:00:00Z' }];
+    const reviewComments = [{ user: { login: 'reviewer' }, created_at: '2026-02-10T00:00:00Z' }];
+    expect(
+      getLastMaintainerActivity(comments, reviews, reviewComments, [], 'contributor', created).lastMaintainerActivityAt,
+    ).toBe('2026-02-10T00:00:00Z');
+  });
+
+  it('counts maintainer commits and force-pushes as maintainer activity', () => {
+    const events = [
+      { login: 'contributor', at: '2026-09-01T00:00:00Z' },
+      { login: 'maintainer', at: '2026-08-26T00:00:00Z' }, // maintainer commit
+      { login: 'maintainer', type: 'User', at: '2026-10-26T00:00:00Z' }, // force-push
+      { login: 'github-actions[bot]', type: 'Bot', at: '2026-10-28T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity([], [], [], events, 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-10-26T00:00:00Z',
+    );
+  });
+
+  it('only counts OWNER / MEMBER / COLLABORATOR issue comments when the association is known', () => {
+    const comments = [
+      { user: { login: 'maintainer' }, author_association: 'MEMBER', created_at: '2026-02-01T00:00:00Z' },
+      { user: { login: 'drive-by' }, author_association: 'NONE', created_at: '2026-03-01T00:00:00Z' },
+      { user: { login: 'other' }, author_association: 'CONTRIBUTOR', created_at: '2026-03-02T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity(comments, [], [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-02-01T00:00:00Z',
+    );
+  });
+
+  it('counts reviews and inline comments from CONTRIBUTOR-association reviewers (codeowners)', () => {
+    // home-assistant/core#188805 shape: codeowner shown as CONTRIBUTOR.
+    const reviews = [
+      {
+        user: { login: 'codeowner' },
+        author_association: 'CONTRIBUTOR',
+        state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-03-03T00:00:00Z',
+      },
+    ];
+    const reviewComments = [
+      { user: { login: 'codeowner' }, author_association: 'CONTRIBUTOR', created_at: '2026-03-04T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity([], reviews, [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-03-03T00:00:00Z',
+    );
+    expect(
+      getLastMaintainerActivity([], reviews, reviewComments, [], 'contributor', created).lastMaintainerActivityAt,
+    ).toBe('2026-03-04T00:00:00Z');
+  });
+
+  it("counts pushes by a maintainer's own GitHub App but not auto-fixer or dependency bots", () => {
+    // sooperset/mcp-atlassian#1597 shape: the author pinged, then the
+    // maintainer's App pushed fixes; the clock must not fall back to createdAt.
+    const comments = [{ user: { login: 'contributor' }, created_at: '2026-03-01T00:00:00Z' }];
+    const events = [
+      { login: 'mcp-atlassian-maintainer[bot]', type: 'Bot', at: '2026-03-01T01:30:00Z', isPush: true },
+      { login: 'pre-commit-ci[bot]', type: 'Bot', at: '2026-03-05T00:00:00Z', isPush: true },
+      { login: 'dependabot[bot]', type: 'Bot', at: '2026-03-06T00:00:00Z', isPush: true },
+      { login: 'web-flow', at: '2026-03-07T00:00:00Z', isPush: true },
+      { login: 'contributor', at: '2026-03-08T00:00:00Z', isPush: true },
+    ];
+    const result = getLastMaintainerActivity(comments, [], [], events, 'contributor', created);
+    expect(result.lastMaintainerActivityAt).toBe('2026-03-01T01:30:00Z');
+    expect(result.authorPingsSinceMaintainerActivity).toBe(0);
+  });
+
+  it('still ignores bots for non-push events such as labels and review requests', () => {
+    const events = [{ login: 'triage-app[bot]', type: 'Bot', at: '2026-03-01T00:00:00Z' }];
+    expect(getLastMaintainerActivity([], [], [], events, 'contributor', created).lastMaintainerActivityAt).toBe(
+      created,
+    );
+  });
+
+  it('falls back to any non-contributor non-bot author when the association is missing', () => {
+    const comments = [{ user: { login: 'someone' }, created_at: '2026-03-01T00:00:00Z' }];
+    expect(getLastMaintainerActivity(comments, [], [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-03-01T00:00:00Z',
+    );
+  });
+
+  it('ignores REST user.type Bot and -robot accounts (Copilot, k8s-ci-robot)', () => {
+    const reviewComments = [{ user: { login: 'Copilot', type: 'Bot' }, created_at: '2026-03-01T00:00:00Z' }];
+    const comments = [{ user: { login: 'k8s-ci-robot', type: 'User' }, created_at: '2026-03-02T00:00:00Z' }];
+    expect(
+      getLastMaintainerActivity(comments, [], reviewComments, [], 'contributor', created).lastMaintainerActivityAt,
+    ).toBe(created);
+  });
+
+  it('does not count a same-day reply to a maintainer as a ping', () => {
+    // Maintainer comments, contributor replies 4h later (conversation), then
+    // nudges once 10 days later: one real ping, not two.
+    const comments = [
+      { user: { login: 'maintainer' }, created_at: '2026-01-10T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-10T04:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-20T04:00:00Z' },
+    ];
+    expect(
+      getLastMaintainerActivity(comments, [], [], [], 'contributor', created).authorPingsSinceMaintainerActivity,
+    ).toBe(1);
+  });
+
+  it('requires a 7-day gap between consecutive pings', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2026-01-10T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-12T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-01-25T00:00:00Z' },
+    ];
+    expect(
+      getLastMaintainerActivity(comments, [], [], [], 'contributor', created).authorPingsSinceMaintainerActivity,
+    ).toBe(2);
+  });
+
+  it('only counts contributor pings after the last maintainer activity', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2026-01-02T00:00:00Z' },
+      { user: { login: 'maintainer' }, created_at: '2026-01-03T00:00:00Z' },
+      { user: { login: 'contributor' }, created_at: '2026-02-01T00:00:00Z' },
+    ];
+    expect(
+      getLastMaintainerActivity(comments, [], [], [], 'contributor', created).authorPingsSinceMaintainerActivity,
+    ).toBe(1);
+  });
+});
+
+describe('checkUnrespondedComments bot filtering', () => {
+  it('does not flag a needs-response for a user-account bot like miq-bot', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T09:00:00Z' },
+        { user: { login: 'miq-bot' }, body: 'Checked commits: 1 offense detected', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('does not flag a needs-response for a REST user.type Bot reviewer', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T09:00:00Z' }],
+      [
+        {
+          user: { login: 'Copilot', type: 'Bot' },
+          body: 'Consider renaming this',
+          submitted_at: '2026-02-07T10:00:00Z',
+          state: 'COMMENTED',
+          id: 1,
+        },
+      ],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+});
+
+describe('checkUnrespondedComments REST bot type', () => {
+  it('does not flag a needs-response for a REST user.type Bot reviewer', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T09:00:00Z' }],
+      [
+        {
+          user: { login: 'Copilot', type: 'Bot' },
+          body: 'Consider renaming this',
+          submitted_at: '2026-02-07T10:00:00Z',
+          state: 'COMMENTED',
+          id: 1,
+        },
+      ],
+      [],
       'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);

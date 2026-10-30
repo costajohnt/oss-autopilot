@@ -19,6 +19,8 @@ import {
   getLatestChangesRequestedDate,
   checkUnrespondedComments,
   getFirstMaintainerResponseAt,
+  getLastMaintainerActivity,
+  type ActivityEvent,
 } from './review-analysis.js';
 import { analyzeChecklist } from './checklist-analysis.js';
 import { extractMaintainerActionHints } from './maintainer-analysis.js';
@@ -27,14 +29,16 @@ import { computeDisplayLabel } from './display-utils.js';
 
 /** Issue comment in the shape `checkUnrespondedComments`/`getFirstMaintainerResponseAt` read. */
 export interface AssemblyComment {
-  user?: { login?: string } | null;
+  user?: { login?: string; type?: string | null } | null;
+  author_association?: string | null;
   body?: string | null;
   created_at: string;
 }
 
 /** Submitted review in the shape the review-analysis helpers read. */
 export interface AssemblyReview {
-  user?: { login?: string } | null;
+  user?: { login?: string; type?: string | null } | null;
+  author_association?: string | null;
   body?: string | null;
   submitted_at?: string | null;
   state?: string | null;
@@ -63,6 +67,12 @@ export interface PRSignals {
   comments: AssemblyComment[];
   reviews: AssemblyReview[];
   reviewComments: ReviewComment[];
+  /**
+   * Non-comment activity that can mark maintainer engagement: commits (by
+   * author and committer), force-pushes, review requests, labels. Optional;
+   * absent means comments/reviews alone drive the dormancy clock.
+   */
+  activityEvents?: ActivityEvent[];
   ciStatus: CIStatusResult;
 }
 
@@ -133,8 +143,24 @@ export async function assembleFetchedPR(
   // Extract maintainer action hints from comments (delegated to maintainer-analysis module)
   const maintainerActionHints = extractMaintainerActionHints(lastMaintainerComment?.body, reviewDecision);
 
-  // Calculate days since activity
-  const daysSinceActivity = daysBetween(new Date(signals.updatedAt), new Date());
+  // Days since ANY activity (updatedAt). The contributor's own pings and
+  // rebases reset this, so it drives follow-up timing and stale-CI demotion,
+  // not dormancy.
+  const now = new Date();
+  const daysSinceActivity = daysBetween(new Date(signals.updatedAt), now);
+
+  // Days since the last non-contributor, non-bot activity (or PR creation).
+  // This drives stalenessTier so a PR the maintainers ignore goes dormant
+  // even while the contributor keeps pinging it.
+  const { lastMaintainerActivityAt, authorPingsSinceMaintainerActivity } = getLastMaintainerActivity(
+    comments,
+    reviews,
+    reviewComments,
+    signals.activityEvents ?? [],
+    config.githubUsername,
+    signals.createdAt,
+  );
+  const daysSinceMaintainerActivity = daysBetween(new Date(lastMaintainerActivityAt), now);
 
   // Find the date of the latest changes_requested review (delegated to review-analysis module)
   const latestChangesRequestedDate = getLatestChangesRequestedDate(reviews);
@@ -156,6 +182,7 @@ export async function assembleFetchedPR(
     hasIncompleteChecklist,
     reviewDecision,
     daysSinceActivity,
+    daysSinceMaintainerActivity,
     dormantThreshold: config.dormantThresholdDays,
     approachingThreshold: config.approachingDormantDays,
     latestCommitDate,
@@ -181,6 +208,9 @@ export async function assembleFetchedPR(
     updatedAt: signals.updatedAt,
     firstMaintainerResponseAt,
     daysSinceActivity,
+    lastMaintainerActivityAt,
+    daysSinceMaintainerActivity,
+    authorPingsSinceMaintainerActivity,
     ciStatus,
     failingCheckNames,
     classifiedChecks,
@@ -200,7 +230,12 @@ export async function assembleFetchedPR(
   // Compute display labels (#79) — delegated to display-utils module
   const { displayLabel, displayDescription } = computeDisplayLabel(pr);
   pr.displayLabel = displayLabel;
-  pr.displayDescription = displayDescription;
+  // Incomplete checklist is informational, never needs_addressing on its own
+  // (see collectAllActionReasons); keep it visible as a note.
+  pr.displayDescription =
+    hasIncompleteChecklist && checklistStats
+      ? `${displayDescription} (note: checklist ${checklistStats.checked}/${checklistStats.total})`
+      : displayDescription;
 
   return pr;
 }

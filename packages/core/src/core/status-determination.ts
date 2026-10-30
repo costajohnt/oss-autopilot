@@ -113,13 +113,17 @@ function isChangesAddressedByCommit(commitDate: string | undefined, changesReque
 /**
  * Collect all applicable action reasons independently, without short-circuiting (#675).
  * Used alongside the priority-based decision tree to surface secondary issues.
+ *
+ * `hasIncompleteChecklist` is deliberately NOT an action reason: the
+ * draft-first workflow tells the agent to leave template boxes unchecked, and
+ * many boxes are N/A or honor-system, so it is shown as a note on the PR's
+ * display description instead of counting as needs_addressing.
  */
 function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | undefined {
   const {
     ciStatus,
     hasMergeConflict,
     hasUnrespondedComment,
-    hasIncompleteChecklist,
     reviewDecision,
     lastMaintainerCommentDate,
     latestChangesRequestedDate,
@@ -152,9 +156,6 @@ function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | 
   }
   if (hasMergeConflict) {
     reasons.push('merge_conflict');
-  }
-  if (hasIncompleteChecklist) {
-    reasons.push('incomplete_checklist');
   }
 
   return reasons.length > 0 ? reasons : undefined;
@@ -191,9 +192,9 @@ function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusRes
     ciStatus,
     hasMergeConflict,
     hasUnrespondedComment,
-    hasIncompleteChecklist,
     reviewDecision,
     daysSinceActivity,
+    daysSinceMaintainerActivity = daysSinceActivity,
     dormantThreshold,
     approachingThreshold,
     lastMaintainerCommentDate,
@@ -201,10 +202,11 @@ function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusRes
     hasActionableCIFailure = true,
   } = input;
 
-  // Compute staleness tier (independent of status)
+  // Compute staleness tier (independent of status) from the maintainer-side
+  // clock, so the contributor's own pings don't keep an ignored PR active.
   let stalenessTier: StalenessTier = 'active';
-  if (daysSinceActivity >= dormantThreshold) stalenessTier = 'dormant';
-  else if (daysSinceActivity >= approachingThreshold) stalenessTier = 'approaching_dormant';
+  if (daysSinceMaintainerActivity >= dormantThreshold) stalenessTier = 'dormant';
+  else if (daysSinceMaintainerActivity >= approachingThreshold) stalenessTier = 'approaching_dormant';
 
   const commitDate = resolveContributorCommitDate(input);
 
@@ -253,10 +255,6 @@ function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusRes
 
   if (hasMergeConflict) {
     return { status: 'needs_addressing', actionReason: 'merge_conflict', stalenessTier };
-  }
-
-  if (hasIncompleteChecklist) {
-    return { status: 'needs_addressing', actionReason: 'incomplete_checklist', stalenessTier };
   }
 
   // Approved and CI passing/unknown = waiting on maintainer to merge

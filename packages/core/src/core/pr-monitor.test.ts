@@ -42,10 +42,12 @@ const {
   classifyFailingChecks,
   isConditionalChecklistItem,
   hasMergeConflict,
+  restActivityEvents,
 } = await import('./pr-monitor.js');
 const { getCIStatus } = await import('./ci-analysis.js');
 const { isBotAuthor, isAcknowledgmentComment } = await import('./comment-utils.js');
 const { getStateManager } = await import('./state.js');
+const { getOctokit } = await import('./github.js');
 
 // Import extracted module functions (pure logic, no mocks needed)
 const { analyzeChecklist } = await import('./checklist-analysis.js');
@@ -3390,5 +3392,148 @@ describe('fetchUserOpenPRs assembles PRs from the batched GraphQL path', () => {
     expect(pr.hasUnrespondedComment).toBe(true);
     expect(pr.lastMaintainerComment?.author).toBe('maintainer');
     expect(pr.status).toBe('needs_addressing');
+  });
+});
+
+function daysAgo(n: number): string {
+  const date = new Date(Date.now() - n * 86_400_000);
+  return date.toISOString();
+}
+
+describe('fetchPRDetails maintainer-activity dormancy clock (REST path)', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+
+  const makeMocks = (opts: { timeline: unknown[]; commits: unknown[]; reviewComments?: unknown[] }) => ({
+    search: {
+      issuesAndPullRequests: vi.fn().mockResolvedValue({
+        data: {
+          total_count: 1,
+          items: [
+            {
+              html_url: prUrl,
+              title: 'Test PR',
+              pull_request: { html_url: prUrl },
+              created_at: daysAgo(120),
+              updated_at: daysAgo(1),
+            },
+          ],
+        },
+      }),
+    },
+    pulls: {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          id: 1,
+          title: 'Test PR',
+          created_at: daysAgo(120),
+          updated_at: daysAgo(1),
+          head: { sha: 'abc123' },
+          mergeable: true,
+          mergeable_state: 'clean',
+          body: '',
+          draft: false,
+        },
+      }),
+      listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      listReviewComments: vi.fn().mockResolvedValue({ data: opts.reviewComments ?? [] }),
+      listCommits: vi.fn().mockResolvedValue({ data: opts.commits }),
+    },
+    issues: {
+      listComments: vi.fn().mockResolvedValue({
+        data: [{ user: { login: 'testuser', type: 'User' }, body: 'Any update?', created_at: daysAgo(1) }],
+      }),
+      listEventsForTimeline: vi.fn().mockResolvedValue({ data: opts.timeline }),
+    },
+    repos: {
+      getCombinedStatusForRef: vi.fn().mockResolvedValue({ data: { state: 'success', statuses: [] } }),
+      getCommit: vi.fn().mockResolvedValue({
+        data: { commit: { author: { date: daysAgo(100) } }, author: { login: 'testuser' } },
+      }),
+    },
+    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
+  });
+
+  beforeEach(() => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: [],
+          dormantThresholdDays: 30,
+          approachingDormantDays: 25,
+        },
+      }),
+    );
+  });
+
+  it('counts a maintainer force-push and a maintainer commit as maintainer activity', async () => {
+    vi.mocked(getOctokit).mockReturnValueOnce(
+      makeMocks({
+        timeline: [
+          { event: 'committed', created_at: daysAgo(100) },
+          { event: 'head_ref_force_pushed', actor: { login: 'maintainer', type: 'User' }, created_at: daysAgo(4) },
+        ],
+        commits: [
+          {
+            author: { login: 'maintainer', type: 'User' },
+            committer: { login: 'maintainer', type: 'User' },
+            commit: { author: { date: daysAgo(65) }, committer: { date: daysAgo(65) } },
+          },
+        ],
+      }) as never,
+    );
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(prs).toHaveLength(1);
+    expect(prs[0].daysSinceMaintainerActivity).toBeLessThanOrEqual(4);
+    expect(prs[0].stalenessTier).toBe('active');
+  });
+
+  it('ignores Copilot (user.type Bot) review comments and contributor commits', async () => {
+    vi.mocked(getOctokit).mockReturnValueOnce(
+      makeMocks({
+        timeline: [],
+        commits: [
+          {
+            author: { login: 'testuser', type: 'User' },
+            committer: { login: 'web-flow', type: 'User' },
+            commit: { author: { date: daysAgo(2) }, committer: { date: daysAgo(2) } },
+          },
+        ],
+        reviewComments: [{ id: 1, user: { login: 'Copilot', type: 'Bot' }, body: 'nit', created_at: daysAgo(3) }],
+      }) as never,
+    );
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(prs).toHaveLength(1);
+    expect(prs[0].stalenessTier).toBe('dormant');
+  });
+});
+
+describe('restActivityEvents', () => {
+  it('maps actor events and both commit identities, skipping other event kinds', () => {
+    const events = restActivityEvents(
+      [
+        { event: 'labeled', actor: { login: 'triager', type: 'User' }, created_at: '2026-01-02T00:00:00Z' },
+        { event: 'commented', actor: { login: 'someone' }, created_at: '2026-01-03T00:00:00Z' },
+      ],
+      [
+        {
+          author: { login: 'a' },
+          committer: { login: 'c' },
+          commit: { author: { date: '2026-01-04T00:00:00Z' }, committer: { date: '2026-01-05T00:00:00Z' } },
+        },
+      ],
+    );
+    expect(events).toEqual([
+      { login: 'triager', type: 'User', at: '2026-01-02T00:00:00Z', isPush: false },
+      { login: 'a', type: undefined, at: '2026-01-04T00:00:00Z', isPush: true },
+      { login: 'c', type: undefined, at: '2026-01-05T00:00:00Z', isPush: true },
+    ]);
   });
 });

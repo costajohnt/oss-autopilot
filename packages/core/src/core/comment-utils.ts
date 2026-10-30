@@ -9,6 +9,7 @@ const KNOWN_BOT_USERNAMES = new Set([
   'changeset-bot',
   'claassistant',
   'codecov-commenter',
+  'copilot',
   'greenkeeper',
   'imgbot',
   'netlify',
@@ -17,14 +18,22 @@ const KNOWN_BOT_USERNAMES = new Set([
   'sonarcloud',
   'stale',
   'vercel',
+  'web-flow',
 ]);
 
 /**
  * Check if a comment author is a bot account.
- * Matches the [bot] suffix convention and known bot usernames (case-insensitive).
+ * Matches the [bot] suffix convention (GitHub Apps; the GraphQL path maps
+ * `__typename: 'Bot'` to it), user-account bots named `*-bot` / `*-robot`
+ * (e.g. `miq-bot`, `k8s-ci-robot`), known bot usernames (case-insensitive),
+ * and REST `user.type === 'Bot'` when the caller has it (e.g. `Copilot`).
  */
-export function isBotAuthor(author: string): boolean {
-  return author.includes('[bot]') || KNOWN_BOT_USERNAMES.has(author.toLowerCase());
+export function isBotAuthor(author: string, userType?: string | null): boolean {
+  if (userType === 'Bot') return true;
+  const lower = author.toLowerCase();
+  return (
+    lower.includes('[bot]') || lower.endsWith('-bot') || lower.endsWith('-robot') || KNOWN_BOT_USERNAMES.has(lower)
+  );
 }
 
 /**
