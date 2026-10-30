@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`.
+Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -66,6 +66,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 
 # Fill missing outcome-ledger fields (opened date, closing issue, close reason, list vet score); safe to re-run
 <prefix> ledger-backfill --json [--path <file>]
+
+# Calibration + outcome report from the ledger (markdown; --json for the structure). Local only
+<prefix> eval [--json]
 
 # Claim an issue with optional message
 <prefix> claim <issue-url> [message...] --json

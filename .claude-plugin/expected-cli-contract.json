@@ -11,6 +11,7 @@
     "detect-formatters",
     "dismiss",
     "doctor",
+    "eval",
     "features",
     "guidelines",
     "init",

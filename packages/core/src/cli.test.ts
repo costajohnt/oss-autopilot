@@ -117,6 +117,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'list-mark-done',
     'manifest',
     'guidelines',
+    'eval',
   ];
 
   const expectedTokenRequired = [
@@ -392,6 +393,7 @@ describe('Command registration', () => {
       'vet',
       'vet-list',
       'ledger-backfill',
+      'eval',
       'verify-issue',
       'track',
       'compliance-score',

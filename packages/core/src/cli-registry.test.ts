@@ -190,6 +190,8 @@ vi.mock('./commands/detect-formatters.js', () => ({ runDetectFormatters: mockRun
 
 const mockRunLedgerBackfill = vi.fn();
 vi.mock('./commands/ledger-backfill.js', () => ({ runLedgerBackfill: mockRunLedgerBackfill }));
+const mockRunEval = vi.fn();
+vi.mock('./commands/eval.js', () => ({ runEval: mockRunEval }));
 const mockRunStats = vi.fn();
 vi.mock('./commands/stats.js', () => ({
   runStats: mockRunStats,
@@ -2169,6 +2171,16 @@ describe('ledger-backfill command', () => {
     expect(out).toContain('Queried 12 ledger PRs (1 unresolved).');
     expect(out).toContain('openedAt 10, issueUrl 7, closeReason 3, pick 4');
     expect(out).toContain('Warning: push failed');
+  });
+});
+
+describe('eval command', () => {
+  it('prints the markdown report', async () => {
+    mockRunEval.mockResolvedValue({ report: {}, markdown: '# oss-autopilot eval (2026-10-29)' });
+
+    await buildProgram('eval').parseAsync(['node', 'cli', 'eval']);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('# oss-autopilot eval (2026-10-29)');
   });
 });
 
