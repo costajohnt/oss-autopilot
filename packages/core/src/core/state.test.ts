@@ -680,11 +680,11 @@ describe('StateManager merged PRs', () => {
       capturedAt: '2025-06-01T00:00:00Z',
     });
 
-    it('re-vetting an issue replaces its snapshot (case-insensitive)', () => {
+    it('keeps the first prediction for an issue (case-insensitive)', () => {
       stateManager.recordPickSnapshots([snap(issueUrl, 5)]);
-      stateManager.recordPickSnapshots([snap('https://github.com/A/B/issues/7', 8)]);
+      stateManager.recordPickSnapshots([snap('https://github.com/A/B/issues/7', 8), snap(issueUrl, 9)]);
       expect(stateManager.getPickSnapshots()).toHaveLength(1);
-      expect(stateManager.getPickSnapshots()[0].grade).toBe(8);
+      expect(stateManager.getPickSnapshots()[0].grade).toBe(5);
     });
 
     it('drops the oldest snapshots past MAX_PICK_SNAPSHOTS', () => {

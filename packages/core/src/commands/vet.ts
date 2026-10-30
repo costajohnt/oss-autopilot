@@ -7,29 +7,9 @@ import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
-import { getStateManager, classifyLinkedPR } from '../core/index.js';
-import { maybeCheckpoint } from '../core/state.js';
-import type { PickSnapshot } from '../core/types.js';
-
-const MODULE = 'vet';
+import { getStateManager, classifyLinkedPR, pickSnapshotFromVet, persistPickSnapshots } from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
-
-/**
- * The vet-time prediction to keep for calibration (#1824): joined onto the
- * outcome ledger when a PR closing this issue later merges or closes.
- */
-export function pickSnapshotFromVet(vet: VetOutput, source: PickSnapshot['source']): PickSnapshot {
-  const stars = (vet.projectHealth as { stargazersCount?: unknown } | null | undefined)?.stargazersCount;
-  return {
-    issueUrl: vet.issue.url,
-    grade: vet.grade.score,
-    recommendation: vet.recommendation,
-    ...(typeof stars === 'number' && { stargazersCount: stars }),
-    source,
-    capturedAt: new Date().toISOString(),
-  };
-}
 
 interface VetOptions {
   issueUrl: string;
@@ -83,9 +63,6 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     grade,
   };
 
-  // Persist the prediction; in Gist mode only a checkpoint gets it past the
-  // local cache (#1629). Best-effort: a failed push never fails the vet.
-  getStateManager().recordPickSnapshots([pickSnapshotFromVet(output, 'vet')]);
-  await maybeCheckpoint(getStateManager(), MODULE);
-  return output;
+  const pick = pickSnapshotFromVet(output, 'vet');
+  return { ...output, ...(await persistPickSnapshots(getStateManager(), pick ? [pick] : [])) };
 }

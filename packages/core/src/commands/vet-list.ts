@@ -18,6 +18,9 @@ import { ValidationError } from '../core/errors.js';
 import {
   getStateManager,
   classifyLinkedPR,
+  pickSnapshotFromVet,
+  persistPickSnapshots,
+  type PickSnapshot,
   getOctokit,
   requireGitHubToken,
   parseGitHubUrl,
@@ -26,12 +29,6 @@ import {
   type IssueAvailabilityVerdict,
   type IssueVerification,
 } from '../core/index.js';
-import { maybeCheckpoint } from '../core/state.js';
-import type { PickSnapshot } from '../core/types.js';
-import { pickSnapshotFromVet } from './vet.js';
-
-const MODULE = 'vet-list';
-
 const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
 interface VetListOptions {
@@ -306,7 +303,8 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       slmTriage: candidate.slmTriage ?? null,
       grade,
     };
-    picks.push(pickSnapshotFromVet(vetResult, 'vet-list'));
+    const pick = pickSnapshotFromVet(vetResult, 'vet-list');
+    if (pick) picks.push(pick);
     return { vetResult, skipReason: extractSkipReason(candidate) };
   }
 
@@ -393,10 +391,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   // Start `concurrency` workers (bounds the scout-vet fan-out).
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => processNext());
   await Promise.all(workers);
-  if (picks.length > 0) {
-    getStateManager().recordPickSnapshots(picks);
-    await maybeCheckpoint(getStateManager(), MODULE);
-  }
+  const pickPersistence = await persistPickSnapshots(getStateManager(), picks);
 
   // 4. Compute summary
   const summary = {
@@ -431,5 +426,5 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     }
   }
 
-  return { results, summary, pruneResult };
+  return { results, summary, pruneResult, ...pickPersistence };
 }

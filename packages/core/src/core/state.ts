@@ -696,9 +696,8 @@ export class StateManager {
    */
   addMergedPRs(prs: StoredMergedPR[]): { added: number; dropped: number } {
     if (prs.length === 0) return { added: 0, dropped: 0 };
-    const filtered = filterValidUrlEntries(prs, 'merged');
-    const valid = filtered.valid.map((pr) => this.withPick(pr));
-    const { dropped } = filtered;
+    const { valid: unpicked, dropped } = filterValidUrlEntries(prs, 'merged');
+    const valid = unpicked.map((pr) => this.withPick(pr));
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.mergedPRs) this.state.mergedPRs = [];
     const byUrl = new Map(this.state.mergedPRs.map((pr) => [pr.url, pr]));
@@ -759,9 +758,8 @@ export class StateManager {
    */
   addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
     if (prs.length === 0) return { added: 0, dropped: 0 };
-    const filtered = filterValidUrlEntries(prs, 'closed');
-    const valid = filtered.valid.map((pr) => this.withPick(pr));
-    const { dropped } = filtered;
+    const { valid: unpicked, dropped } = filterValidUrlEntries(prs, 'closed');
+    const valid = unpicked.map((pr) => this.withPick(pr));
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
     const byUrl = new Map(this.state.closedPRs.map((pr) => [pr.url, pr]));
@@ -1020,28 +1018,39 @@ export class StateManager {
    * @param status - The overridden status
    * @param lastActivityAt - ISO timestamp of PR's last activity when override was set
    */
-  /**
-   * The durable search seen-set (#1528) — issue URLs surfaced by recent
-   * searches, fed into oss-scout for result rotation. Returns `[]` when none
-   * recorded yet.
-   */
   /** Vet-time predictions awaiting a ledger join (#1824), oldest first. */
   getPickSnapshots(): PickSnapshot[] {
     return this.state.pickSnapshots ?? [];
   }
 
   /**
-   * Record vet-time predictions (#1824). Re-vetting an issue replaces its
-   * snapshot; the oldest entries are dropped past {@link MAX_PICK_SNAPSHOTS}.
+   * Record vet-time predictions (#1824). The first prediction for an issue
+   * wins: a later re-vet (often after the user's own PR exists) must not
+   * replace the one that picked it. The oldest entries are dropped past
+   * {@link MAX_PICK_SNAPSHOTS}.
+   *
+   * ponytail: never refreshed, so an issue vetted months before it is picked
+   * keeps its old grade. Replace snapshots older than N days if that skews
+   * calibration.
    */
   recordPickSnapshots(snapshots: PickSnapshot[]): void {
-    if (snapshots.length === 0) return;
-    const replaced = new Set(snapshots.map((p) => p.issueUrl.toLowerCase()));
-    const kept = this.getPickSnapshots().filter((p) => !replaced.has(p.issueUrl.toLowerCase()));
-    this.state.pickSnapshots = [...kept, ...snapshots].slice(-MAX_PICK_SNAPSHOTS);
+    const known = new Set(this.getPickSnapshots().map((p) => p.issueUrl.toLowerCase()));
+    const fresh = snapshots.filter((p) => {
+      const key = p.issueUrl.toLowerCase();
+      if (known.has(key)) return false;
+      known.add(key);
+      return true;
+    });
+    if (fresh.length === 0) return;
+    this.state.pickSnapshots = [...this.getPickSnapshots(), ...fresh].slice(-MAX_PICK_SNAPSHOTS);
     this.autoSave();
   }
 
+  /**
+   * The durable search seen-set (#1528) — issue URLs surfaced by recent
+   * searches, fed into oss-scout for result rotation. Returns `[]` when none
+   * recorded yet.
+   */
   getSearchSeen(): SearchSeenEntry[] {
     return this.state.searchSeen ?? [];
   }

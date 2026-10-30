@@ -21,6 +21,12 @@ export const PR_COUNTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  */
 const MAX_PAGINATION_PAGES = 3;
 
+const CLOSING_KEYWORD_RE =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|([\w.-]+\/[\w.-]+)?#(\d+))\b/i;
+
+/** HTML comments and code: where PR templates keep example `Fixes #123` lines. */
+const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|`[^`\n]*`/g;
+
 /**
  * Issue URL a PR closes, from the first GitHub closing keyword in its body
  * (#1824): `Fixes #12`, `closes owner/repo#12`, or `resolves <issue url>`.
@@ -29,16 +35,13 @@ const MAX_PAGINATION_PAGES = 3;
  * ponytail: first keyword wins; a PR closing several issues links only the
  * first. Switch to GraphQL `closingIssuesReferences` if that ever matters.
  */
-const CLOSING_KEYWORD_RE =
-  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|([\w.-]+\/[\w.-]+)?#(\d+))/i;
-
 export function closingIssueUrl(body: string | null | undefined, prUrl: string): string | undefined {
-  const m = body?.match(CLOSING_KEYWORD_RE);
+  const m = body?.replace(NON_PROSE_RE, ' ').match(CLOSING_KEYWORD_RE);
   if (!m) return undefined;
-  // A bare `#12` refers to the PR's own repo: owner/repo from its URL.
-  const target = m[1] ?? m[3] ?? prUrl.split('/').slice(3, 5).join('/');
-  const number = m[2] ?? m[4];
-  return `https://github.com/${target}/issues/${number}`;
+  const own = extractOwnerRepo(prUrl);
+  // A bare `#12` refers to the PR's own repo.
+  const target = m[1] ?? m[3] ?? (own && `${own.owner}/${own.repo}`);
+  return target ? `https://github.com/${target}/issues/${m[2] ?? m[4]}` : undefined;
 }
 
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */

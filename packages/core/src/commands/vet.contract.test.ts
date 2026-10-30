@@ -39,6 +39,7 @@ vi.mock('../core/index.js', async () => {
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
       recordPickSnapshots: vi.fn(),
       isGistMode: () => false,
+      reloadIfChanged: () => false,
     }),
   };
 });
