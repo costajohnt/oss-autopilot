@@ -12,6 +12,7 @@ import {
   runDaily,
   runStatus,
   runStrategy,
+  runEval,
   runSearch,
   runFeatures,
   runVet,
@@ -558,6 +559,20 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     wrapTool(runStrategy),
+  );
+
+  // Calibration and outcome report over the outcome ledger (#1825).
+  server.registerTool(
+    'eval',
+    {
+      description:
+        'Calibration and outcome metrics from the outcome ledger: merge rate by grade at pick time, repo stars and month, ' +
+        'close reasons, review quality, and flags where predictions and outcomes disagree. Returns the structured report ' +
+        'and a markdown rendering. Read-only; no API calls, no state mutation.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(runEval),
   );
 
   // 5c. repo-vet — Run the typed repo-vet rubric against an `owner/repo`

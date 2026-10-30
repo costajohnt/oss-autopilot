@@ -7,15 +7,10 @@
         "number": 101,
         "title": "Solid first pick",
         "url": "https://github.com/octocat/spoon-knife/issues/101",
-        "labels": [
-          "good first issue"
-        ]
+        "labels": ["good first issue"]
       },
       "recommendation": "approve",
-      "reasonsToApprove": [
-        "Active maintainers",
-        "Relationship history"
-      ],
+      "reasonsToApprove": ["Active maintainers", "Relationship history"],
       "reasonsToSkip": [],
       "searchPriority": "merged_pr",
       "viabilityScore": 88,
@@ -38,17 +33,11 @@
         "number": 7,
         "title": "Worth a look",
         "url": "https://github.com/unknown-org/unknown-repo/issues/7",
-        "labels": [
-          "help wanted"
-        ]
+        "labels": ["help wanted"]
       },
       "recommendation": "needs_review",
-      "reasonsToApprove": [
-        "Clear scope"
-      ],
-      "reasonsToSkip": [
-        "No prior relationship"
-      ],
+      "reasonsToApprove": ["Clear scope"],
+      "reasonsToSkip": ["No prior relationship"],
       "searchPriority": "normal",
       "viabilityScore": 60,
       "grade": {
@@ -67,9 +56,7 @@
       },
       "recommendation": "skip",
       "reasonsToApprove": [],
-      "reasonsToSkip": [
-        "Maintainer unresponsive for 120 days"
-      ],
+      "reasonsToSkip": ["Maintainer unresponsive for 120 days"],
       "searchPriority": "normal",
       "viabilityScore": 12,
       "grade": {
@@ -78,11 +65,7 @@
       }
     }
   ],
-  "excludedRepos": [
-    "excluded-org/excluded-repo"
-  ],
-  "aiPolicyBlocklist": [
-    "anti-llm-org/anti-llm-repo"
-  ],
+  "excludedRepos": ["excluded-org/excluded-repo"],
+  "aiPolicyBlocklist": ["anti-llm-org/anti-llm-repo"],
   "hiddenOwnPRCount": 0
 }

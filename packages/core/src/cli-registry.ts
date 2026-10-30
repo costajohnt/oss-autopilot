@@ -75,7 +75,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    interface and its `*.contract.test.ts` golden snapshot is the only
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
- *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, track, comments,
+ *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, eval, track, comments,
  *    startup, dismiss, undismiss, stats, and the five
  *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
@@ -704,6 +704,28 @@ export const commands: CLICommandDef[] = [
               console.log(`  List files scanned: ${data.listFiles.length}`);
               if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
             },
+          ),
+        );
+    },
+  },
+
+  // ── Eval ───────────────────────────────────────────────────────────────
+  {
+    name: 'eval',
+    localOnly: true,
+    register(program) {
+      program
+        .command('eval')
+        .description('Calibration and outcome report from the outcome ledger (#1825)')
+        .option('--json', 'Output as JSON')
+        .action((options) =>
+          executeAction(
+            options,
+            async () => {
+              const { runEval } = await import('./commands/eval.js');
+              return runEval();
+            },
+            (data) => console.log(data.markdown),
           ),
         );
     },

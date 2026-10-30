@@ -6,14 +6,10 @@
         "number": 1,
         "title": "Still available",
         "url": "https://github.com/owner/repo-a/issues/1",
-        "labels": [
-          "good first issue"
-        ]
+        "labels": ["good first issue"]
       },
       "recommendation": "approve",
-      "reasonsToApprove": [
-        "Active project"
-      ],
+      "reasonsToApprove": ["Active project"],
       "reasonsToSkip": [],
       "projectHealth": {
         "repo": "owner/repo-a",
@@ -55,9 +51,7 @@
       },
       "recommendation": "skip",
       "reasonsToApprove": [],
-      "reasonsToSkip": [
-        "open PR by rival closes this issue"
-      ],
+      "reasonsToSkip": ["open PR by rival closes this issue"],
       "projectHealth": {},
       "vettingResult": {},
       "grade": {
@@ -118,12 +112,8 @@
         "labels": []
       },
       "recommendation": "needs_review",
-      "reasonsToApprove": [
-        "Looks reasonable"
-      ],
-      "reasonsToSkip": [
-        "Open PR mentions this issue"
-      ],
+      "reasonsToApprove": ["Looks reasonable"],
+      "reasonsToSkip": ["Open PR mentions this issue"],
       "projectHealth": {
         "repo": "owner/repo-d",
         "lastCommitAt": "2026-04-15T00:00:00.000Z",
@@ -176,9 +166,7 @@
       },
       "recommendation": "skip",
       "reasonsToApprove": [],
-      "reasonsToSkip": [
-        "you already have an open PR for this issue"
-      ],
+      "reasonsToSkip": ["you already have an open PR for this issue"],
       "projectHealth": {},
       "vettingResult": {},
       "grade": {
@@ -217,9 +205,7 @@
       },
       "recommendation": "skip",
       "reasonsToApprove": [],
-      "reasonsToSkip": [
-        "verdict: closed"
-      ],
+      "reasonsToSkip": ["verdict: closed"],
       "projectHealth": {},
       "vettingResult": {},
       "grade": {

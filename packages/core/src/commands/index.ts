@@ -40,6 +40,7 @@ export { runVet } from './vet.js';
 export { runVerifyIssue, type VerifyIssueOptions } from './verify-issue.js';
 /** Re-vet all available issues in a curated issue list for freshness. */
 export { runVetList } from './vet-list.js';
+export { runEval, type EvalOutput } from './eval.js';
 
 // ── PR Management ───────────────────────────────────────────────────────────
 

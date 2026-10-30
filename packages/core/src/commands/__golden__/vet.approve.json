@@ -4,17 +4,10 @@
     "number": 42,
     "title": "Improve error handling in foo()",
     "url": "https://github.com/owner/repo/issues/42",
-    "labels": [
-      "good first issue",
-      "bug"
-    ]
+    "labels": ["good first issue", "bug"]
   },
   "recommendation": "approve",
-  "reasonsToApprove": [
-    "Active maintainers",
-    "Clear scope",
-    "Good first issue label"
-  ],
+  "reasonsToApprove": ["Active maintainers", "Clear scope", "Good first issue label"],
   "reasonsToSkip": [],
   "projectHealth": {
     "repo": "owner/repo",
