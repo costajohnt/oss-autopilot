@@ -21,7 +21,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Octokit } from '@octokit/rest';
-import { classifyCloseReason } from '../core/close-reason.js';
+import { classifyCloseReason, classifySelfClose, type CloseContext } from '../core/close-reason.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { getOctokit, requireGitHubToken, getStateManager, parseGitHubUrl } from '../core/index.js';
 import { isGraphqlRateLimited } from '../core/pr-graphql.js';
@@ -172,10 +172,14 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   if (!listPath) warnings.push('no curated issue list found; list vet scores were not imported');
   const lists = listPath ? readListFiles(listPath, warnings) : [];
 
-  // 1. GitHub: openedAt, closing issue, close reason, for entries not yet backfilled.
-  const needsFetch = [...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()]
-    .filter((e) => !e.backfilledAt)
-    .map((e) => e.url);
+  // 1. GitHub: openedAt, closing issue, close reason, for entries not yet
+  // backfilled, plus self-closed entries recorded before selfCloseReason existed.
+  const needsFetch = [
+    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt),
+    ...stateManager
+      .getClosedPRs()
+      .filter((e) => !e.backfilledAt || (e.closeReason === 'self-closed' && !e.selfCloseReason)),
+  ].map((e) => e.url);
   const nodes = new Map<string, PRNode>();
   let fatal: Error | undefined;
   if (needsFetch.length > 0) {
@@ -226,17 +230,20 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
         const node = nodes.get(e.url);
         const closedEvent = node?.timelineItems?.nodes.at(-1);
         // No closed event in the answer: leave the reason unset rather than guess.
-        const closeReason = closedEvent
-          ? classifyCloseReason({
+        const context: CloseContext | undefined = closedEvent
+          ? {
               author: node?.author?.login,
               closer: closedEvent.actor?.login,
               closerIsBot: closedEvent.actor?.__typename === 'Bot',
               comments: (node?.comments?.nodes ?? []).flatMap((c) =>
                 c ? [{ author: c.author?.login, isBot: c.author?.__typename === 'Bot', body: c.body }] : [],
               ),
-            })
+            }
           : undefined;
-        return { url: e.url, title: e.title, closedAt: e.closedAt, ...recovered(e), closeReason };
+        const closeReason = context && classifyCloseReason(context);
+        const selfCloseReason =
+          context && (e.closeReason ?? closeReason) === 'self-closed' ? classifySelfClose(context) : undefined;
+        return { url: e.url, title: e.title, closedAt: e.closedAt, ...recovered(e), closeReason, selfCloseReason };
       }),
     );
   });

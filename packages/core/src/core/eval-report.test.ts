@@ -59,6 +59,16 @@ describe('computeEvalReport (#1825)', () => {
     expect(report.headlines.mergeRate1kStars.n).toBe(4);
     expect(report.headlines.approachClosuresByMonth).toEqual({ '2026-10': 1 });
     expect(report.closeReasons).toEqual({ rejected: 1 });
+
+    const withSelf = computeEvalReport(
+      state({
+        closedPRs: [
+          closed(5, { closeReason: 'self-closed', selfCloseReason: 'no-traction' }),
+          closed(6, { closeReason: 'self-closed' }),
+        ],
+      }),
+    );
+    expect(withSelf.closeReasons).toEqual({ 'self-closed: no-traction': 1, 'self-closed': 1 });
   });
 
   it('computes the calibration gap from vet grades only, once both sides have enough outcomes', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyCloseReason, type CloseContext } from './close-reason.js';
+import { classifyCloseReason, classifySelfClose, type CloseContext } from './close-reason.js';
 
 const ctx = (closer: string | undefined, ...comments: Array<[string, string, boolean?]>): CloseContext => ({
   author: 'me',
@@ -41,5 +41,35 @@ describe('classifyCloseReason (#1824)', () => {
     ['author mentions AI', ctx('maint', ['me', 'AI-generated draft, reviewed by me']), 'rejected'],
   ])('%s does not count', (_label, input, expected) => {
     expect(classifyCloseReason(input)).toBe(expected);
+  });
+});
+
+const selfClosed = (...comments: Array<[string, string, boolean?]>): CloseContext => ({
+  author: 'me',
+  closer: 'me',
+  comments: comments.map(([author, body, isBot]) => ({ author, body, isBot })),
+});
+
+describe('classifySelfClose (#1824)', () => {
+  // Phrasings taken from real author closing comments.
+  it.each([
+    ['Closing since v0.6.12 covers this (dbe720e). Thanks for the fix!', 'superseded'],
+    ['Closing, #1684 landed the same fix.', 'superseded'],
+    ['#1408 is in and covers everything here, so closing this one.', 'superseded'],
+    ['Closing in favor of #6087, which takes a different angle.', 'superseded'],
+    ['Closing this PR, the fix was already applied upstream in commit a1ad602.', 'superseded'],
+    ["Closing this to keep the queue tidy since it hasn't gotten traction.", 'no-traction'],
+    ["Closing this since the repo doesn't seem to be actively reviewing PRs.", 'no-traction'],
+    ["Closing this since it's been quiet for a while.", 'no-traction'],
+  ])('%j is %s', (body, expected) => {
+    expect(classifySelfClose(selfClosed(['me', body]))).toBe(expected);
+  });
+
+  it('falls back to whether anyone human engaged before the close', () => {
+    expect(
+      classifySelfClose(selfClosed(['maint', 'Not sure this is the right direction'], ['me', 'Fair, closing'])),
+    ).toBe('after-feedback');
+    expect(classifySelfClose(selfClosed(['coderabbitai', 'auto-generated summary', true]))).toBe('no-response');
+    expect(classifySelfClose(selfClosed())).toBe('no-response');
   });
 });

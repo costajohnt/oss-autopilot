@@ -78,6 +78,25 @@ describe('runLedgerBackfill (#1824)', () => {
     expect(mocks.graphql).toHaveBeenCalledTimes(1);
   });
 
+  it('re-fetches self-closed entries recorded before selfCloseReason, once', async () => {
+    sm.addMergedPRs([{ url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z', backfilledAt: 'x' }]);
+    sm.addClosedPRs([
+      { url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z', backfilledAt: 'x', closeReason: 'self-closed' },
+    ]);
+    mocks.graphql.mockResolvedValue({
+      p0: node({
+        timelineItems: { nodes: [{ actor: { __typename: 'User', login: 'me' } }] },
+        comments: {
+          nodes: [{ author: { __typename: 'User', login: 'me' }, body: 'Closing, #9 landed the same fix.' }],
+        },
+      }),
+    });
+
+    expect((await runLedgerBackfill()).queried).toBe(1);
+    expect(sm.getClosedPRs()[0]).toMatchObject({ closeReason: 'self-closed', selfCloseReason: 'superseded' });
+    expect((await runLedgerBackfill()).queried).toBe(0);
+  });
+
   it('treats a bot closer as stale and leaves the reason unset without a closed event', async () => {
     mocks.graphql.mockResolvedValue({
       p0: node(),
