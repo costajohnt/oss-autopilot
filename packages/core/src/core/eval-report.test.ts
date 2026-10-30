@@ -61,22 +61,24 @@ describe('computeEvalReport (#1825)', () => {
     expect(report.closeReasons).toEqual({ rejected: 1 });
   });
 
-  it('computes the calibration gap and flags high grades that do not merge', () => {
+  it('computes the calibration gap from vet grades only, once both sides have enough outcomes', () => {
     const highClosed = Array.from({ length: 5 }, (_, i) => closed(10 + i, { pick: pick(8) }));
-    const report = computeEvalReport(
-      state({
-        mergedPRs: [merged(1, { pick: pick(4) }), merged(2, { pick: pick(9, 'list') })],
-        closedPRs: highClosed,
-      }),
+    const lowMerged = Array.from({ length: 4 }, (_, i) => merged(20 + i, { pick: pick(4) }));
+    const listPicks = Array.from({ length: 5 }, (_, i) => merged(30 + i, { pick: pick(9, 'list') }));
+
+    const thin = computeEvalReport(state({ mergedPRs: [...lowMerged, ...listPicks], closedPRs: highClosed }));
+    expect(thin.headlines.calibration).toEqual({ gap: null, highN: 5, lowN: 4 });
+    expect(thin.calibrationPairs).toBe(9);
+    expect(thin.flags).toEqual(['vet 7-8: high-grade picks merge at 0% (n=5)']);
+
+    const full = computeEvalReport(
+      state({ mergedPRs: [...lowMerged, merged(40, { pick: pick(5) }), ...listPicks], closedPRs: highClosed }),
     );
-    // grade>=7: 1 merged of 6; grade<=5: 1 merged of 1.
-    expect(report.headlines.calibrationGap).toBe(-0.83);
-    expect(report.calibrationPairs).toBe(7);
-    expect(report.byGrade.map((b) => b.key)).toEqual(['vet 7-8', 'vet 1-4', 'list 9-10']);
-    expect(report.flags).toEqual([
-      'vet 7-8: high-grade picks merge at 0% (n=5)',
-      'grades do not separate outcomes: grade>=7 merges at 0.17, grade<=5 at 1',
-    ]);
+    expect(full.headlines.calibration).toEqual({ gap: -1, highN: 5, lowN: 5 });
+    expect(full.byGrade.map((b) => b.key)).toEqual(['vet 7-8', 'vet 5-6', 'vet 1-4', 'list 9-10']);
+    expect(full.flags).toContain(
+      'vet grades do not separate outcomes: grade>=7 merges at 0% (n=5), grade<=5 at 100% (n=5)',
+    );
   });
 
   it('reports quality shares only over PRs with recorded review state', () => {
@@ -92,7 +94,9 @@ describe('computeEvalReport (#1825)', () => {
   it('renders an empty ledger without throwing', () => {
     const md = formatEvalMarkdown(computeEvalReport(state({}), new Date('2026-10-29T00:00:00Z')));
     expect(md).toContain('# oss-autopilot eval (2026-10-29)');
-    expect(md).toContain('Calibration gap (grade>=7 minus grade<=5 merge rate): **n/a**');
+    expect(md).toContain(
+      'Calibration gap, vet grades (grade>=7 minus grade<=5 merge rate): **n/a** (n=0 vs 0; needs 5 each)',
+    );
     expect(md).not.toContain('## Flags');
   });
 });

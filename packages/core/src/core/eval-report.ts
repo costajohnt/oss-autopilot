@@ -46,8 +46,12 @@ export interface EvalReport {
   headlines: {
     /** Merge rate on repos with at least 1k stars. */
     mergeRate1kStars: EvalBucket;
-    /** Merge rate of grade >= 7 picks minus grade <= 5 picks; null until both have data. */
-    calibrationGap: number | null;
+    /**
+     * Vet-graded picks only (list scores are pre-filtered to 6+, so they can
+     * never land on the low side). `gap` is the grade >= 7 merge rate minus
+     * the grade <= 5 one, null until both sides have MIN_FLAG_N outcomes.
+     */
+    calibration: { gap: number | null; highN: number; lowN: number };
     /** Closures as ai-policy or rejected, per close month. */
     approachClosuresByMonth: Record<string, number>;
   };
@@ -56,7 +60,7 @@ export interface EvalReport {
   byMonth: EvalBucket[];
   closeReasons: Record<string, number>;
   quality: { withReviewState: number; changesRequestedShare: number | null; ciFailingShare: number | null };
-  /** Prediction/outcome pairs available for calibration (merged + closed with a pick). */
+  /** Vet-graded prediction/outcome pairs (merged + closed). */
   calibrationPairs: number;
   /** Buckets where prediction and outcome disagree. */
   flags: string[];
@@ -110,7 +114,8 @@ function groupBy(rows: OutcomeRow[], keyOf: (r: OutcomeRow) => string, order: st
   const groups = new Map<string, OutcomeRow[]>(order.map((k) => [k, []]));
   for (const r of rows) {
     const k = keyOf(r);
-    groups.set(k, [...(groups.get(k) ?? []), r]);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
   }
   return [...groups].filter(([, g]) => g.length > 0).map(([k, g]) => bucket(k, g));
 }
@@ -164,13 +169,17 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
   return [...merged, ...closed, ...dormant];
 }
 
+const pct = (v: number | null) => (v === null ? 'n/a' : `${Math.round(v * 100)}%`);
+const hrs = (v: number | null) => (v === null ? 'n/a' : `${v}h`);
+
 export function computeEvalReport(state: Readonly<AgentState>, now: Date = new Date()): EvalReport {
   const rows = collectRows(state);
-  const graded = rows.filter((r) => r.grade !== undefined);
+  const graded = rows.filter((r) => r.gradeSource === 'vet' && r.outcome !== 'dormant');
   const high = graded.filter((r) => r.grade! >= 7);
   const low = graded.filter((r) => r.grade! <= 5);
-  const highRate = rate(high.filter((r) => r.outcome === 'merged').length, high.length);
-  const lowRate = rate(low.filter((r) => r.outcome === 'merged').length, low.length);
+  const mergedShare = (g: OutcomeRow[]) => g.filter((r) => r.outcome === 'merged').length / g.length;
+  const separable = high.length >= MIN_FLAG_N && low.length >= MIN_FLAG_N;
+  const gap = separable ? Math.round((mergedShare(high) - mergedShare(low)) * 100) / 100 : null;
 
   const closedRows = rows.filter((r) => r.outcome === 'closed');
   const closeReasons: Record<string, number> = {};
@@ -200,8 +209,10 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
   const flags = byGrade
     .filter((b) => /(9-10|7-8)$/.test(b.key) && b.n >= MIN_FLAG_N && (b.mergeRate ?? 1) < 0.6)
     .map((b) => `${b.key}: high-grade picks merge at ${Math.round(b.mergeRate! * 100)}% (n=${b.n})`);
-  if (highRate !== null && lowRate !== null && highRate <= lowRate && high.length >= MIN_FLAG_N) {
-    flags.push(`grades do not separate outcomes: grade>=7 merges at ${highRate}, grade<=5 at ${lowRate}`);
+  if (gap !== null && gap <= 0) {
+    flags.push(
+      `vet grades do not separate outcomes: grade>=7 merges at ${pct(rate(high.filter((r) => r.outcome === 'merged').length, high.length))} (n=${high.length}), grade<=5 at ${pct(rate(low.filter((r) => r.outcome === 'merged').length, low.length))} (n=${low.length})`,
+    );
   }
 
   return {
@@ -212,7 +223,7 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
         '>=1k stars',
         rows.filter((r) => (r.stars ?? 0) >= 1000),
       ),
-      calibrationGap: highRate !== null && lowRate !== null ? Math.round((highRate - lowRate) * 100) / 100 : null,
+      calibration: { gap, highN: high.length, lowN: low.length },
       approachClosuresByMonth,
     },
     byGrade,
@@ -227,13 +238,10 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
       changesRequestedShare: rate(reviewed.filter((r) => r.changesRequested).length, reviewed.length),
       ciFailingShare: rate(ciKnown.filter((r) => r.ciFailing).length, ciKnown.length),
     },
-    calibrationPairs: graded.filter((r) => r.outcome !== 'dormant').length,
+    calibrationPairs: graded.length,
     flags,
   };
 }
-
-const pct = (v: number | null) => (v === null ? 'n/a' : `${Math.round(v * 100)}%`);
-const hrs = (v: number | null) => (v === null ? 'n/a' : `${v}h`);
 
 function table(title: string, buckets: EvalBucket[]): string[] {
   return [
@@ -258,7 +266,7 @@ export function formatEvalMarkdown(r: EvalReport): string {
     '## Headlines',
     '',
     `- Merge rate on repos with 1k+ stars: **${pct(h.mergeRate1kStars.mergeRate)}** (n=${h.mergeRate1kStars.n})`,
-    `- Calibration gap (grade>=7 minus grade<=5 merge rate): **${h.calibrationGap ?? 'n/a'}** from ${r.calibrationPairs} prediction/outcome pairs`,
+    `- Calibration gap, vet grades (grade>=7 minus grade<=5 merge rate): **${h.calibration.gap ?? 'n/a'}** (n=${h.calibration.highN} vs ${h.calibration.lowN}; needs ${MIN_FLAG_N} each)`,
     `- Approach or AI-policy closures by month: ${recentMonths.length ? recentMonths.map((m) => `${m}: ${h.approachClosuresByMonth[m]}`).join(', ') : 'none'}`,
     `- Overall: ${r.totals.n} outcomes, merge rate ${pct(r.totals.mergeRate)} (dormant counted as not merged)`,
     '',

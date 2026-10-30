@@ -1,0 +1,14 @@
+{
+  "queried": 2,
+  "filled": {
+    "openedAt": 1,
+    "issueUrl": 1,
+    "closeReason": 0,
+    "pick": 0
+  },
+  "listFiles": [],
+  "unresolved": 1,
+  "warnings": [
+    "no curated issue list found; list vet scores were not imported"
+  ]
+}

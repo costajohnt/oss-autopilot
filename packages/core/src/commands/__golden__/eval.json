@@ -1,0 +1,122 @@
+{
+  "report": {
+    "generatedAt": "2026-10-29T12:00:00.000Z",
+    "totals": {
+      "key": "all",
+      "n": 4,
+      "merged": 2,
+      "closed": 1,
+      "dormant": 1,
+      "mergeRate": 0.5,
+      "medianHoursToMerge": 48,
+      "medianHoursToFirstResponse": 6
+    },
+    "headlines": {
+      "mergeRate1kStars": {
+        "key": ">=1k stars",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      "calibration": {
+        "gap": null,
+        "highN": 1,
+        "lowN": 0
+      },
+      "approachClosuresByMonth": {
+        "2026-10": 1
+      }
+    },
+    "byGrade": [
+      {
+        "key": "vet 7-8",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "list 7-8",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": null,
+        "medianHoursToFirstResponse": null
+      },
+      {
+        "key": "no prediction",
+        "n": 2,
+        "merged": 0,
+        "closed": 1,
+        "dormant": 1,
+        "mergeRate": 0,
+        "medianHoursToMerge": null,
+        "medianHoursToFirstResponse": null
+      }
+    ],
+    "byStars": [
+      {
+        "key": "1k-10k",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "unknown",
+        "n": 3,
+        "merged": 1,
+        "closed": 1,
+        "dormant": 1,
+        "mergeRate": 0.33,
+        "medianHoursToMerge": null,
+        "medianHoursToFirstResponse": null
+      }
+    ],
+    "byMonth": [
+      {
+        "key": "2026-10",
+        "n": 2,
+        "merged": 1,
+        "closed": 1,
+        "dormant": 0,
+        "mergeRate": 0.5,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "2026-09",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": null,
+        "medianHoursToFirstResponse": null
+      }
+    ],
+    "closeReasons": {
+      "rejected": 1
+    },
+    "quality": {
+      "withReviewState": 2,
+      "changesRequestedShare": 0.5,
+      "ciFailingShare": 0.5
+    },
+    "calibrationPairs": 1,
+    "flags": []
+  },
+  "markdown": "# oss-autopilot eval (2026-10-29)\n\n## Headlines\n\n- Merge rate on repos with 1k+ stars: **100%** (n=1)\n- Calibration gap, vet grades (grade>=7 minus grade<=5 merge rate): **n/a** (n=1 vs 0; needs 5 each)\n- Approach or AI-policy closures by month: 2026-10: 1\n- Overall: 4 outcomes, merge rate 50% (dormant counted as not merged)\n\n## By grade at pick time\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| vet 7-8 | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| list 7-8 | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n| no prediction | 2 | 0 | 1 | 1 | 0% | n/a | n/a |\n\n## By repo stars\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 1k-10k | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| unknown | 3 | 1 | 1 | 1 | 33% | n/a | n/a |\n\n## By month\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 2026-10 | 2 | 1 | 1 | 0 | 50% | 48h | 6h |\n| 2026-09 | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n\n## Close reasons\n\n- rejected: 1\n\n## Review quality\n\n- PRs with a recorded review state: 2\n- Changes requested before the outcome: 50%\n- CI failing at last sight: 50%\n"
+}
