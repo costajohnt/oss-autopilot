@@ -469,7 +469,7 @@ export function registerTools(server: McpServer): void {
           'Full GitHub issue URL to vet (e.g. https://github.com/owner/repo/issues/123)',
         ),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool(runVet),
   );

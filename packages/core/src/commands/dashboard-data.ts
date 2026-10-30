@@ -14,6 +14,7 @@ import {
   toShelvedPRRef,
   buildStarFilter,
   firstMaintainerResponseFromDigest,
+  lastReviewStateFromDigest,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -441,6 +442,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
             ...pr,
             firstMaintainerResponseAt:
               pr.firstMaintainerResponseAt ?? firstMaintainerResponseFromDigest(previousDigest, pr.url),
+            ...lastReviewStateFromDigest(previousDigest, pr.url),
           })),
         );
         if (dropped > 0) {
@@ -459,6 +461,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
             ...pr,
             firstMaintainerResponseAt:
               pr.firstMaintainerResponseAt ?? firstMaintainerResponseFromDigest(previousDigest, pr.url),
+            ...lastReviewStateFromDigest(previousDigest, pr.url),
           })),
         );
         if (dropped > 0) {

@@ -20,6 +20,7 @@ import {
   applyStatusOverrides,
   latestActivityAt,
   firstMaintainerResponseFromDigest,
+  lastReviewStateFromDigest,
   CRITICAL_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
@@ -1094,5 +1095,22 @@ describe('firstMaintainerResponseFromDigest (#1461)', () => {
       firstMaintainerResponseAt: '2025-06-03T00:00:00Z',
     });
     expect(firstMaintainerResponseFromDigest({ openPRs: [pr] }, url)).toBe('2025-06-03T00:00:00Z');
+  });
+});
+
+describe('lastReviewStateFromDigest (#1824)', () => {
+  const url = 'https://github.com/owner/repo/pull/1';
+
+  it('returns nothing when the PR was never seen open', () => {
+    expect(lastReviewStateFromDigest(undefined, url)).toEqual({});
+    expect(lastReviewStateFromDigest({ openPRs: [makePR({ repo: 'owner/repo', number: 2 })] }, url)).toEqual({});
+  });
+
+  it('returns the review decision and CI status from the last digest', () => {
+    const pr = makePR({ repo: 'owner/repo', number: 1, url, reviewDecision: 'changes_requested', ciStatus: 'failing' });
+    expect(lastReviewStateFromDigest({ openPRs: [pr] }, url)).toEqual({
+      lastReviewDecision: 'changes_requested',
+      lastCiStatus: 'failing',
+    });
   });
 });

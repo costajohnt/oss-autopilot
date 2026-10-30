@@ -18,6 +18,9 @@ import { ValidationError } from '../core/errors.js';
 import {
   getStateManager,
   classifyLinkedPR,
+  pickSnapshotFromVet,
+  persistPickSnapshots,
+  type PickSnapshot,
   getOctokit,
   requireGitHubToken,
   parseGitHubUrl,
@@ -26,7 +29,6 @@ import {
   type IssueAvailabilityVerdict,
   type IssueVerification,
 } from '../core/index.js';
-
 const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
 interface VetListOptions {
@@ -265,9 +267,18 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
 
   // 3. Vet only the issues still in play; build each row.
   const scout = await createAutopilotScout();
+  // Vet-time predictions for calibration (#1824), recorded once after the fan-out.
+  const picks: PickSnapshot[] = [];
 
-  /** Run scout's grade/health vet for an issue (the search-driven path). */
-  async function runScoutVet(item: ParsedIssueItem): Promise<{ vetResult: VetOutput; skipReason?: ScoutSkipReason }> {
+  /**
+   * Run scout's grade/health vet for an issue (the search-driven path). `recordPick` is false on the
+   * verify-errored fallback: without verify's own-open-pr verdict, scout's
+   * linked-PR check can miss the user's own PR and record a post-hoc grade.
+   */
+  async function runScoutVet(
+    item: ParsedIssueItem,
+    recordPick: boolean,
+  ): Promise<{ vetResult: VetOutput; skipReason?: ScoutSkipReason }> {
     const candidate = await scout.vetIssue(item.url);
     const grade = gradeFromCandidate({
       repo: candidate.issue.repo,
@@ -299,6 +310,8 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       slmTriage: candidate.slmTriage ?? null,
       grade,
     };
+    const pick = recordPick ? pickSnapshotFromVet(vetResult, 'vet-list') : undefined;
+    if (pick) picks.push(pick);
     return { vetResult, skipReason: extractSkipReason(candidate) };
   }
 
@@ -346,7 +359,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
             : toMessage(verifyError),
       };
       try {
-        const { vetResult, skipReason } = await runScoutVet(item);
+        const { vetResult, skipReason } = await runScoutVet(item, false);
         return { ...vetResult, listStatus: classifyListStatus(vetResult, skipReason), ...verifyErrorTag };
       } catch (error) {
         return { ...errorRow(item, error), ...verifyErrorTag };
@@ -365,7 +378,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     // available / at-risk: still worth grading. The verdict stays authoritative
     // for listStatus; scout only supplies grade/health/recommendation.
     try {
-      const { vetResult } = await runScoutVet(item);
+      const { vetResult } = await runScoutVet(item, true);
       return { ...vetResult, listStatus, verification: summary };
     } catch (error) {
       // Verify succeeded, so keep its verdict facts even though grading failed.
@@ -385,6 +398,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   // Start `concurrency` workers (bounds the scout-vet fan-out).
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => processNext());
   await Promise.all(workers);
+  const pickPersistence = await persistPickSnapshots(getStateManager(), picks);
 
   // 4. Compute summary
   const summary = {
@@ -419,5 +433,5 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     }
   }
 
-  return { results, summary, pruneResult };
+  return { results, summary, pruneResult, ...pickPersistence };
 }

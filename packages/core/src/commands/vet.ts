@@ -7,7 +7,7 @@ import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
-import { getStateManager, classifyLinkedPR } from '../core/index.js';
+import { getStateManager, classifyLinkedPR, pickSnapshotFromVet, persistPickSnapshots } from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
 
@@ -43,7 +43,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
   });
 
   const linkedPR = buildCandidateLinkedPR(candidate.vettingResult.linkedPR);
-  return {
+  const output: VetOutput = {
     issue: {
       repo: candidate.issue.repo,
       number: candidate.issue.number,
@@ -62,4 +62,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     slmTriage: candidate.slmTriage ?? null,
     grade,
   };
+
+  const pick = pickSnapshotFromVet(output, 'vet');
+  return { ...output, ...(await persistPickSnapshots(getStateManager(), pick ? [pick] : [])) };
 }

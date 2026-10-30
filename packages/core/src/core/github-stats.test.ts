@@ -16,6 +16,7 @@ import {
   fetchRecentlyMergedPRs,
   fetchRecentlyClosedPRs,
   PR_COUNTS_CACHE_TTL_MS,
+  closingIssueUrl,
 } from './github-stats.js';
 
 // Mock getHttpCache to return a cache backed by a temp directory
@@ -772,5 +773,56 @@ describe('fetchRecentlyClosedPRs uses is:public query (#792)', () => {
 
     const searchCall = vi.mocked(octokit.search.issuesAndPullRequests).mock.calls[0][0];
     expect(searchCall.q).toContain('is:public');
+  });
+});
+
+describe('closingIssueUrl (#1824)', () => {
+  const pr = 'https://github.com/owner/repo/pull/9';
+
+  it.each([
+    ['Fixes #12', 'https://github.com/owner/repo/issues/12'],
+    ['closes: #3\n\nmore text', 'https://github.com/owner/repo/issues/3'],
+    ['Resolved other/lib#44', 'https://github.com/other/lib/issues/44'],
+    ['This fix resolves https://github.com/up/stream/issues/5 cleanly', 'https://github.com/up/stream/issues/5'],
+    ['Fixes #1 and closes #2', 'https://github.com/owner/repo/issues/1'],
+    ['Fixes:#8', 'https://github.com/owner/repo/issues/8'],
+    ['<!-- Fixes #123 (template example) -->\nCloses #7', 'https://github.com/owner/repo/issues/7'],
+    ['Use `fixes #1` to link.\n\nResolves #4', 'https://github.com/owner/repo/issues/4'],
+    ['``Fixes #1`` closes #3', 'https://github.com/owner/repo/issues/3'],
+    ['Fixes https://github.com/up/stream/issues/5#issuecomment-9', 'https://github.com/up/stream/issues/5'],
+  ])('parses %j', (body, expected) => {
+    expect(closingIssueUrl(body, pr)).toBe(expected);
+  });
+
+  it.each([
+    [null],
+    [undefined],
+    [''],
+    ['See #12 for context'],
+    ['prefixes #12'],
+    ['fixes #12abc'],
+    ['<!-- Fixes #3 -->'],
+  ])('returns undefined for %j', (body) => {
+    expect(closingIssueUrl(body, pr)).toBeUndefined();
+  });
+
+  it('stays fast on an unterminated comment opener', () => {
+    const start = Date.now();
+    expect(closingIssueUrl('<!--'.repeat(100_000), pr)).toBeUndefined();
+    expect(Date.now() - start).toBeLessThan(5000);
+  });
+
+  it('carries the closing issue from the search item body onto merged records', async () => {
+    const octokit = makeOctokit([
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'Ledger PR',
+        body: 'Fixes #77',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ]);
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+    expect(result[0].issueUrl).toBe('https://github.com/org/repo/issues/77');
   });
 });

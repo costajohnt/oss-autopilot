@@ -46,6 +46,9 @@ vi.mock('../core/index.js', async () => {
     getStateManager: () => ({
       getRepoScore: mocks.getRepoScore,
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+      recordPickSnapshots: vi.fn(),
+      isGistMode: () => false,
+      reloadIfChanged: () => false,
     }),
   };
 });

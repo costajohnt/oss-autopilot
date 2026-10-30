@@ -1467,6 +1467,10 @@ export interface VetListOutput {
      */
     error?: string;
   };
+  /** Set when the vet-time predictions (#1824) could not be saved locally. */
+  pickRecordError?: string;
+  /** Set when the saved predictions could not be pushed to the Gist. */
+  gistSyncWarning?: string;
 }
 
 /** Output of the vet command */
@@ -1523,6 +1527,10 @@ export interface VetOutput {
     score: number;
     reason: string;
   };
+  /** Set when the vet-time prediction (#1824) could not be saved locally. */
+  pickRecordError?: string;
+  /** Set when the saved prediction could not be pushed to the Gist. */
+  gistSyncWarning?: string;
 }
 
 /** Output of the comments command */

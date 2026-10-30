@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { VetOutput } from '../formatters/json.js';
 
 const mockVetIssue = vi.fn();
+const mockRecordPickSnapshots = vi.fn();
 const mockVerifyIssuesBatch = vi.hoisted(() => vi.fn());
 
 vi.mock('./scout-bridge.js', async () => {
@@ -29,6 +30,9 @@ vi.mock('../core/index.js', async () => {
     getStateManager: () => ({
       getRepoScore: () => {},
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+      recordPickSnapshots: mockRecordPickSnapshots,
+      isGistMode: () => false,
+      reloadIfChanged: () => false,
     }),
   };
 });
@@ -406,6 +410,11 @@ describe('runVetList', () => {
     // Scout was consulted only for the available issue, not the closed one.
     expect(mockVetIssue).toHaveBeenCalledTimes(1);
     expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/other/lib/issues/2');
+    // Only the graded issue is recorded as a prediction (#1824).
+    expect(mockRecordPickSnapshots).toHaveBeenCalledTimes(1);
+    expect(mockRecordPickSnapshots.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ issueUrl: 'https://github.com/other/lib/issues/2', source: 'vet-list' }),
+    ]);
   });
 
   it('re-vets blocked items even when nothing is available (#1730)', async () => {
@@ -505,6 +514,8 @@ describe('runVetList', () => {
     expect(result.results[0].listStatus).toBe('still_available');
     expect(result.results[0].verifyError).toBe('verify unavailable in test');
     expect(result.results[0].verification).toBeUndefined();
+    // No authoritative own-PR verdict, so no prediction is recorded (#1824).
+    expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
   });
 
   it('tags non-issue (PR) URLs as not verified, still falling back to scout (#1494)', async () => {

@@ -101,6 +101,7 @@ export {
   toShelvedPRRef,
   buildStarFilter,
   firstMaintainerResponseFromDigest,
+  lastReviewStateFromDigest,
   formatActionHint,
   formatBriefSummary,
   formatSummary,
@@ -181,3 +182,4 @@ export {
   type PRIssueCommentEntry,
 } from './pr-comments-fetcher.js';
 export * from './types.js';
+export { pickSnapshotFromVet, persistPickSnapshots } from './pick-snapshot.js';

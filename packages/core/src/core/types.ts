@@ -47,6 +47,7 @@ export type {
   DailyDigest,
   AgentState,
   SearchSeenEntry,
+  PickSnapshot,
   OvernightPrepared,
   OvernightRecord,
   OvernightImplementAttempt,

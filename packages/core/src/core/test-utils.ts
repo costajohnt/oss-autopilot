@@ -218,6 +218,8 @@ export function makeStateManagerMock(
     setStatusOverride: () => {},
     clearStatusOverride: () => false,
     getStatusOverride: () => {},
+    getPickSnapshots: () => state.pickSnapshots ?? [],
+    recordPickSnapshots: () => {},
     getSearchSeen: () => state.searchSeen ?? [],
     setSearchSeen: (seen: AgentState['searchSeen']) => {
       state.searchSeen = seen;

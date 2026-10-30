@@ -51,6 +51,37 @@ export const RepoScoreSchema = z.object({
   language: z.string().nullable().optional(),
 });
 
+/**
+ * What the tool predicted about an issue when it was vetted (#1824). Recorded
+ * by `vet` / `vet-list` keyed by issue URL, then copied onto the outcome
+ * ledger entry of the PR that closes that issue, so outcomes can be compared
+ * against the prediction that picked them (calibration).
+ */
+export const PickSnapshotSchema = z.object({
+  issueUrl: z.string(),
+  /** Success-likelihood grade (1-10) from issue-grading. */
+  grade: z.number(),
+  recommendation: z.string(),
+  stargazersCount: z.number().optional(),
+  source: z.enum(['vet', 'vet-list']),
+  capturedAt: z.string(),
+});
+
+/**
+ * Outcome-ledger fields added by #1824, shared by merged and closed entries.
+ * All optional: entries written before #1824 have none of them.
+ */
+const LedgerPredictionFields = {
+  /** Issue the PR closes, parsed from a closing keyword in the PR body. */
+  issueUrl: z.string().optional(),
+  /** The vet-time prediction for `issueUrl`, when one was recorded. */
+  pick: PickSnapshotSchema.optional(),
+  /** Review decision from the last digest that saw the PR open. */
+  lastReviewDecision: z.string().optional(),
+  /** CI status from the last digest that saw the PR open. */
+  lastCiStatus: z.string().optional(),
+};
+
 export const StoredMergedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
@@ -75,6 +106,7 @@ export const StoredMergedPRSchema = z.object({
   commentsFetchedAt: z.string().datetime().optional(),
   /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
   learningsExtractedAt: z.string().datetime().optional(),
+  ...LedgerPredictionFields,
 });
 
 export const StoredClosedPRSchema = z.object({
@@ -94,6 +126,7 @@ export const StoredClosedPRSchema = z.object({
   commentsFetchedAt: z.string().datetime().optional(),
   /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
   learningsExtractedAt: z.string().datetime().optional(),
+  ...LedgerPredictionFields,
 });
 
 export const AnalyzedIssueConversationSchema = z.object({
@@ -379,6 +412,8 @@ export const ClosedPRSchema = z.object({
    * Optional: digests persisted by older producers don't have it.
    */
   openedAt: z.string().optional(),
+  /** Issue the PR closes, parsed from the PR body (#1824). */
+  issueUrl: z.string().optional(),
 });
 
 export const MergedPRSchema = z.object({
@@ -393,6 +428,8 @@ export const MergedPRSchema = z.object({
    * Optional: digests persisted by older producers don't have it.
    */
   openedAt: z.string().optional(),
+  /** Issue the PR closes, parsed from the PR body (#1824). */
+  issueUrl: z.string().optional(),
 });
 
 export const DailyDigestSummarySchema = z.object({
@@ -610,6 +647,13 @@ export const AgentStateSchema = z.object({
    */
   searchSeen: z.array(SearchSeenEntrySchema).default([]),
 
+  /**
+   * Vet-time predictions keyed by issue URL (#1824), newest last. Joined onto
+   * outcome-ledger entries at merge/close detection. Capped at
+   * MAX_PICK_SNAPSHOTS so it cannot grow without bound.
+   */
+  pickSnapshots: z.array(PickSnapshotSchema).default([]),
+
   /** Latest overnight run (#1574). Absent until the first `overnight`. */
   lastOvernight: OvernightRecordSchema.optional(),
   /**
@@ -629,6 +673,7 @@ export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
 export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
+export type PickSnapshot = z.infer<typeof PickSnapshotSchema>;
 export type OvernightPrepared = z.infer<typeof OvernightPreparedSchema>;
 export type OvernightRecord = z.infer<typeof OvernightRecordSchema>;
 export type OvernightImplementAttempt = z.infer<typeof OvernightImplementAttemptSchema>;
