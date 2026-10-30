@@ -5,6 +5,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDaily: vi.fn(),
   runStatus: vi.fn(),
   runStrategy: vi.fn(),
+  runEval: vi.fn(),
   runSearch: vi.fn(),
   runVet: vi.fn(),
   runVerifyIssue: vi.fn(),
