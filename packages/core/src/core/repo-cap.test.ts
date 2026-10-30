@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AgentConfigSchema, AgentStateSchema, type AgentState } from './state-schema.js';
-import { getRepoCapStatus, openPRCountsByRepo, repoCapField } from './repo-cap.js';
+import { getRepoCapStatus, openPRCountsByRepo, repoCapField, reposAtCap } from './repo-cap.js';
 
 function makeState(opts: {
   openRepos?: string[];
@@ -46,30 +46,50 @@ function makeState(opts: {
 }
 
 describe('per-repo cap config', () => {
-  it('defaults to 2 per repo and 1 for a cold repo', () => {
+  it('defaults to the cold cap only: 1 for a cold repo, warm cap off', () => {
     const config = AgentConfigSchema.parse({});
-    expect(config.maxOpenPRsPerRepo).toBe(2);
+    expect(config.maxOpenPRsPerRepo).toBe(0);
     expect(config.maxOpenPRsColdRepo).toBe(1);
   });
 
   it('rejects negative caps', () => {
     expect(() => AgentConfigSchema.parse({ maxOpenPRsPerRepo: -1 })).toThrow();
+    expect(() => AgentConfigSchema.parse({ maxOpenPRsColdRepo: -1 })).toThrow();
   });
 });
 
 describe('getRepoCapStatus', () => {
   it('applies the cold cap while no PR in the repo has merged', () => {
     const s = getRepoCapStatus(makeState({ openRepos: ['a/b'] }), 'a/b');
-    expect(s).toMatchObject({ openPRCount: 1, mergedPRCount: 0, cold: true, cap: 1, atCap: true, excluded: false });
+    expect(s).toMatchObject({
+      openPRCount: 1,
+      countSource: 'digest',
+      mergedPRCount: 0,
+      cold: true,
+      cap: 1,
+      atCap: true,
+      excluded: false,
+    });
     expect(s.reason).toContain('none of your PRs have merged');
   });
 
-  it('applies the warm cap once a PR has merged', () => {
-    const state = makeState({ openRepos: ['a/b'], merged: { 'a/b': 3 } });
-    expect(getRepoCapStatus(state, 'a/b')).toMatchObject({ cold: false, cap: 2, atCap: false });
+  it('never caps a warm repo by default', () => {
+    const state = makeState({ openRepos: ['a/b', 'a/b', 'a/b', 'a/b', 'a/b'], merged: { 'a/b': 3 } });
+    expect(getRepoCapStatus(state, 'a/b')).toMatchObject({ cold: false, cap: 0, atCap: false });
     expect(getRepoCapStatus(state, 'a/b').reason).toBeUndefined();
-    const two = makeState({ openRepos: ['a/b', 'a/b'], merged: { 'a/b': 3 } });
+  });
+
+  it('applies maxOpenPRsPerRepo to warm repos when set', () => {
+    const config = { maxOpenPRsPerRepo: 2 };
+    const one = makeState({ openRepos: ['a/b'], merged: { 'a/b': 3 }, config });
+    expect(getRepoCapStatus(one, 'a/b')).toMatchObject({ cap: 2, atCap: false });
+    const two = makeState({ openRepos: ['a/b', 'a/b'], merged: { 'a/b': 3 }, config });
     expect(getRepoCapStatus(two, 'a/b')).toMatchObject({ cap: 2, atCap: true });
+  });
+
+  it('uses a live count when given one', () => {
+    const s = getRepoCapStatus(makeState({}), 'a/b', { openPRCount: 1 });
+    expect(s).toMatchObject({ openPRCount: 1, countSource: 'github', atCap: true });
   });
 
   it('counts merges from the ledger when repoScores has none', () => {
@@ -81,18 +101,13 @@ describe('getRepoCapStatus', () => {
     expect(getRepoCapStatus(makeState({ openRepos: ['Owner/Repo'] }), 'owner/repo').openPRCount).toBe(1);
   });
 
-  it('0 disables each cap', () => {
-    const cold0 = makeState({ openRepos: ['a/b'], config: { maxOpenPRsColdRepo: 0 } });
-    expect(getRepoCapStatus(cold0, 'a/b')).toMatchObject({ cap: 2, atCap: false });
-    const both0 = makeState({
-      openRepos: ['a/b', 'a/b', 'a/b'],
-      config: { maxOpenPRsColdRepo: 0, maxOpenPRsPerRepo: 0 },
-    });
-    expect(getRepoCapStatus(both0, 'a/b')).toMatchObject({ cap: 0, atCap: false });
+  it('0 disables the cold cap', () => {
+    const cold0 = makeState({ openRepos: ['a/b', 'a/b', 'a/b'], config: { maxOpenPRsColdRepo: 0 } });
+    expect(getRepoCapStatus(cold0, 'a/b')).toMatchObject({ cap: 0, atCap: false });
   });
 
-  it('a cold cap above the warm cap does not loosen it', () => {
-    const state = makeState({ openRepos: ['a/b', 'a/b'], config: { maxOpenPRsColdRepo: 5 } });
+  it('the tighter cap wins when both apply', () => {
+    const state = makeState({ openRepos: ['a/b', 'a/b'], config: { maxOpenPRsPerRepo: 2, maxOpenPRsColdRepo: 5 } });
     expect(getRepoCapStatus(state, 'a/b')).toMatchObject({ cap: 2, atCap: true });
   });
 
@@ -109,5 +124,19 @@ describe('getRepoCapStatus', () => {
 
   it('openPRCountsByRepo is empty without a digest', () => {
     expect(openPRCountsByRepo(AgentStateSchema.parse({ version: 4 })).size).toBe(0);
+  });
+});
+
+describe('reposAtCap', () => {
+  it('lists only capped repos, once each, as the digest spells them', () => {
+    const state = makeState({
+      openRepos: ['Cold/Repo', 'cold/repo', 'warm/repo', 'warm/repo'],
+      merged: { 'warm/repo': 4 },
+    });
+    expect(reposAtCap(state)).toEqual(['cold/repo']);
+  });
+
+  it('is empty without a digest', () => {
+    expect(reposAtCap(AgentStateSchema.parse({ version: 4 }))).toEqual([]);
   });
 });

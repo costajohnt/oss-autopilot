@@ -1,12 +1,13 @@
 /**
  * Per-repo open-PR cap. First PRs into a repo merge less often than later
- * ones, so discovery stops surfacing a repo once the user has
- * `maxOpenPRsPerRepo` open PRs there, or `maxOpenPRsColdRepo` while none of
- * their PRs in it have merged yet. 0 disables either cap.
+ * ones, so discovery leaves a repo out once the user has
+ * `maxOpenPRsColdRepo` open PRs there while none of their PRs in it have
+ * merged, or `maxOpenPRsPerRepo` open PRs in any repo (off by default).
+ * 0 disables either cap.
  *
- * Open-PR counts come from the last digest (`state.lastDigest.openPRs`), the
- * same source scout's open-PR phase reads, so they are as fresh as the last
- * `daily` run.
+ * Discovery counts open PRs from the last digest (`state.lastDigest.openPRs`),
+ * as fresh as the last `daily` run. The `repo-cap` command passes a live
+ * count from GitHub instead.
  */
 
 import type { AgentState } from './state-schema.js';
@@ -15,6 +16,8 @@ import { parseGitHubUrl } from './urls.js';
 export interface RepoCapStatus {
   repo: string;
   openPRCount: number;
+  /** Where `openPRCount` came from: the last digest, or a live GitHub search. */
+  countSource: 'digest' | 'github';
   mergedPRCount: number;
   /** True while the user has no merged PR in this repo, so the cold cap applies. */
   cold: boolean;
@@ -30,7 +33,8 @@ export interface RepoCapStatus {
 /** Open-PR counts from the last digest, keyed by lowercased owner/repo. */
 export function openPRCountsByRepo(state: Readonly<AgentState>): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const pr of state.lastDigest?.openPRs ?? []) {
+  const openPRs = state.lastDigest?.openPRs ?? [];
+  for (const pr of openPRs) {
     const key = pr.repo.toLowerCase();
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
@@ -50,21 +54,21 @@ function mergedCount(state: Readonly<AgentState>, repo: string): number {
 }
 
 /**
- * Cap status for one repo. Pass `openCounts` from {@link openPRCountsByRepo}
- * when checking many repos so the digest is scanned once.
+ * Cap status for one repo. `openPRCount` defaults to the digest count; pass a
+ * live count (with `countSource: 'github'`) to override it.
  */
 export function getRepoCapStatus(
   state: Readonly<AgentState>,
   repo: string,
-  openCounts: Map<string, number> = openPRCountsByRepo(state),
+  live?: { openPRCount: number },
 ): RepoCapStatus {
   // ponytail: tolerate partial states (test fixtures, hand-built mocks); a
   // parsed AgentState always has these defaults.
   const { maxOpenPRsPerRepo = 0, maxOpenPRsColdRepo = 0, excludeRepos = [] } = state.config ?? {};
-  const openPRCount = openCounts.get(repo.toLowerCase()) ?? 0;
+  const openPRCount = live?.openPRCount ?? openPRCountsByRepo(state).get(repo.toLowerCase()) ?? 0;
   const mergedPRCount = mergedCount(state, repo);
   const cold = mergedPRCount === 0;
-  // The cold cap only tightens: it never raises a lower warm cap.
+  // The tighter of the two applicable caps wins.
   const caps = [maxOpenPRsPerRepo, cold ? maxOpenPRsColdRepo : 0].filter((c) => c > 0);
   const cap = caps.length > 0 ? Math.min(...caps) : 0;
   const atCap = cap > 0 && openPRCount >= cap;
@@ -81,6 +85,7 @@ export function getRepoCapStatus(
   return {
     repo,
     openPRCount,
+    countSource: live ? 'github' : 'digest',
     mergedPRCount,
     cold,
     cap,
@@ -88,6 +93,16 @@ export function getRepoCapStatus(
     excluded,
     ...(reasons.length > 0 && { reason: reasons.join('; ') }),
   };
+}
+
+/**
+ * Repos (owner/repo, as the digest spells them) at their open-PR cap, from the
+ * last digest. Discovery passes these to scout as excluded repos.
+ */
+export function reposAtCap(state: Readonly<AgentState>): string[] {
+  const names = new Map<string, string>();
+  for (const pr of state.lastDigest?.openPRs ?? []) names.set(pr.repo.toLowerCase(), pr.repo);
+  return [...names.values()].filter((repo) => getRepoCapStatus(state, repo).atCap);
 }
 
 /** `{ repoCap }` when the repo is at cap or excluded, else `{}`; spread into vet output. */

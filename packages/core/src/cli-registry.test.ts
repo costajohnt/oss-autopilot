@@ -458,8 +458,7 @@ describe('search text-mode display', () => {
       excludedRepos: [],
       aiPolicyBlocklist: [],
       hiddenOwnPRCount: 2,
-      hiddenRepoCapCount: 1,
-      reposAtCap: [{ repo: 'octo/busy', openPRCount: 1, cap: 1 }],
+      reposAtCap: ['octo/busy'],
     });
     const program = buildProgram('search');
 
@@ -467,7 +466,7 @@ describe('search text-mode display', () => {
 
     const lines = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]);
     expect(lines).toContain('Hidden: 2 candidate(s) were issues you already have open PRs for.');
-    expect(lines).toContain('Hidden: 1 candidate(s) from repos at your open-PR cap (octo/busy 1/1).');
+    expect(lines).toContain('Skipped repos at your open-PR cap: octo/busy.');
     expect(lines).toContain('  Why surfaced: merged PR history, preferred org');
     expect(lines).toContain('  Diversity slot: outside your usual languages/repos');
     expect(lines).toContain('Found 2 candidates:\n');
@@ -475,7 +474,7 @@ describe('search text-mode display', () => {
 });
 
 describe('search empty-result display', () => {
-  const empty = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [], hiddenOwnPRCount: 0 };
+  const empty = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [], hiddenOwnPRCount: 0, reposAtCap: [] };
 
   it('prints the no-match note, or the rate-limit warning when present', async () => {
     mockRunSearch.mockResolvedValueOnce(empty);
@@ -2042,9 +2041,10 @@ describe('pr-template command', () => {
 
 describe('repo-cap command', () => {
   it('prints the counts and the warning when capped', async () => {
-    mockRunRepoCap.mockReturnValueOnce({
+    mockRunRepoCap.mockResolvedValueOnce({
       repo: 'octo/alpha',
       openPRCount: 1,
+      countSource: 'github',
       mergedPRCount: 0,
       cold: true,
       cap: 1,
@@ -2057,7 +2057,7 @@ describe('repo-cap command', () => {
     expect(consoleLogSpy).toHaveBeenCalledWith('\nocto/alpha: 1/1 open PRs, 0 merged');
     expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: octo/alpha has 1 open PR(s), at the cap of 1');
 
-    mockRunRepoCap.mockReturnValueOnce({
+    mockRunRepoCap.mockResolvedValueOnce({
       repo: 'octo/alpha',
       openPRCount: 3,
       mergedPRCount: 2,
@@ -2071,8 +2071,17 @@ describe('repo-cap command', () => {
   });
 
   it('--json routes through outputJsonValidated', async () => {
-    const data = { repo: 'o/r', openPRCount: 0, mergedPRCount: 0, cold: true, cap: 1, atCap: false, excluded: false };
-    mockRunRepoCap.mockReturnValue(data);
+    const data = {
+      repo: 'o/r',
+      openPRCount: 0,
+      countSource: 'github',
+      mergedPRCount: 0,
+      cold: true,
+      cap: 1,
+      atCap: false,
+      excluded: false,
+    };
+    mockRunRepoCap.mockResolvedValue(data);
     await buildProgram('repo-cap').parseAsync(['node', 'cli', 'repo-cap', 'o/r', '--json']);
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(RepoCapStatusSchema, data);
   });

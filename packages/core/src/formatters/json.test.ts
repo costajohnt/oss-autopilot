@@ -515,19 +515,7 @@ describe('SearchOutputSchema (#1147)', () => {
       excludedRepos: ['stale/abandoned'],
       aiPolicyBlocklist: ['anti-ai/repo'],
       hiddenOwnPRCount: 1,
-      hiddenRepoCapCount: 1,
-      reposAtCap: [
-        {
-          repo: 'busy/repo',
-          openPRCount: 1,
-          mergedPRCount: 0,
-          cold: true,
-          cap: 1,
-          atCap: true,
-          excluded: false,
-          reason: 'busy/repo has 1 open PR(s), at the cap of 1',
-        },
-      ],
+      reposAtCap: ['busy/repo'],
     };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
@@ -538,7 +526,7 @@ describe('SearchOutputSchema (#1147)', () => {
       excludedRepos: [],
       aiPolicyBlocklist: [],
       hiddenOwnPRCount: 0,
-      hiddenRepoCapCount: 0,
+      reposAtCap: [],
     };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
@@ -565,7 +553,7 @@ describe('SearchOutputSchema (#1147)', () => {
       excludedRepos: [],
       aiPolicyBlocklist: [],
       hiddenOwnPRCount: 0,
-      hiddenRepoCapCount: 0,
+      reposAtCap: [],
     };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });

@@ -677,6 +677,7 @@ const SearchCandidateSchema = z.object({
 export const RepoCapStatusSchema = z.object({
   repo: z.string(),
   openPRCount: z.number().int().nonnegative(),
+  countSource: z.enum(['digest', 'github']),
   mergedPRCount: z.number().int().nonnegative(),
   cold: z.boolean(),
   cap: z.number().int().nonnegative(),
@@ -690,8 +691,7 @@ export const SearchOutputSchema = z.object({
   excludedRepos: z.array(z.string()),
   aiPolicyBlocklist: z.array(z.string()),
   hiddenOwnPRCount: z.number().int().nonnegative(),
-  hiddenRepoCapCount: z.number().int().nonnegative(),
-  reposAtCap: z.array(RepoCapStatusSchema).optional(),
+  reposAtCap: z.array(z.string()),
   rateLimitWarning: z.string().optional(),
   // Skip file unreadable — search ran with an empty skip list (#1448).
   // Optional: absent on clean runs.
@@ -1235,11 +1235,9 @@ export interface SearchOutput {
   /** Candidates dropped because the authenticated user already has an open PR
    * linked to the issue (#1354). Surfaced as a count so the filter is visible. */
   hiddenOwnPRCount: number;
-  /** Candidates dropped because their repo is at the per-repo open-PR cap
-   * (`maxOpenPRsPerRepo` / `maxOpenPRsColdRepo`). */
-  hiddenRepoCapCount: number;
-  /** The capped repos behind `hiddenRepoCapCount`; absent when it is 0. */
-  reposAtCap?: RepoCapStatus[];
+  /** Repos left out of discovery because they are at the per-repo open-PR
+   * cap (`maxOpenPRsColdRepo` / `maxOpenPRsPerRepo`); empty when none. */
+  reposAtCap: string[];
   /** Set when the seen-set write could not be pushed to the Gist (#1629);
    * the local cache has it but the next startup's Gist refetch will drop it. */
   gistSyncWarning?: string;

@@ -49,13 +49,14 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   {
     key: 'maxOpenPRsPerRepo',
     description:
-      'Discovery hides issues from a repo once you have this many open PRs there; the oss pre-open check warns too. 0 disables.',
+      'Discovery leaves out a repo once you have this many open PRs there, and the pre-push check warns. Default 0 (off).',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 = no limit)',
   },
   {
     key: 'maxOpenPRsColdRepo',
-    description: 'Tighter per-repo open-PR cap while none of your PRs in that repo have merged. 0 disables.',
+    description:
+      'Per-repo open-PR cap while none of your PRs in that repo have merged (default 1). Discovery leaves the repo out and the pre-push check warns. 0 disables.',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 = no limit)',
   },

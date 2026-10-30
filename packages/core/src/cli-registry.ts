@@ -421,11 +421,8 @@ export const commands: CLICommandDef[] = [
               if (data.hiddenOwnPRCount > 0) {
                 console.log(`Hidden: ${data.hiddenOwnPRCount} candidate(s) were issues you already have open PRs for.`);
               }
-              if (data.hiddenRepoCapCount > 0) {
-                const repos = (data.reposAtCap ?? []).map((r) => `${r.repo} ${r.openPRCount}/${r.cap}`).join(', ');
-                console.log(
-                  `Hidden: ${data.hiddenRepoCapCount} candidate(s) from repos at your open-PR cap (${repos}).`,
-                );
+              if (data.reposAtCap.length > 0) {
+                console.log(`Skipped repos at your open-PR cap: ${data.reposAtCap.join(', ')}.`);
               }
               if (data.candidates.length === 0) {
                 if (data.rateLimitWarning) {
@@ -1545,12 +1542,11 @@ export const commands: CLICommandDef[] = [
   // ── Repo Cap ─────────────────────────────────────────────────────────
   {
     name: 'repo-cap',
-    localOnly: true,
     register(program) {
       program
         .command('repo-cap <repo>')
         .description(
-          'Check `owner/repo` against your per-repo open-PR cap and excludeRepos (local state, from the last daily run)',
+          'Check `owner/repo` against your per-repo open-PR cap (live open-PR count from GitHub) and excludeRepos',
         )
         .option('--json', 'Output as JSON')
         .action(async (repo, options) => {

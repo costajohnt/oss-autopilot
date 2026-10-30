@@ -118,7 +118,6 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'manifest',
     'guidelines',
     'eval',
-    'repo-cap',
   ];
 
   const expectedTokenRequired = [
@@ -135,6 +134,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'init',
     'claim',
     'pr-template',
+    'repo-cap',
     'state',
   ];
 
