@@ -188,6 +188,8 @@ vi.mock('./commands/repo-vet.js', () => ({ runRepoVet: mockRunRepoVet }));
 const mockRunDetectFormatters = vi.fn();
 vi.mock('./commands/detect-formatters.js', () => ({ runDetectFormatters: mockRunDetectFormatters }));
 
+const mockRunLedgerBackfill = vi.fn();
+vi.mock('./commands/ledger-backfill.js', () => ({ runLedgerBackfill: mockRunLedgerBackfill }));
 const mockRunStats = vi.fn();
 vi.mock('./commands/stats.js', () => ({
   runStats: mockRunStats,
@@ -2149,6 +2151,26 @@ describe('detect-formatters command', () => {
 });
 
 // ─── stats command (#1586) ──────────────────────────────────────────────────
+
+describe('ledger-backfill command', () => {
+  it('passes --path through and renders the fill counts', async () => {
+    mockRunLedgerBackfill.mockResolvedValue({
+      queried: 12,
+      unresolved: 1,
+      filled: { openedAt: 10, issueUrl: 7, closeReason: 3, pick: 4 },
+      listFiles: ['/tmp/list.md'],
+      gistSyncWarning: 'push failed',
+    });
+
+    await buildProgram('ledger-backfill').parseAsync(['node', 'cli', 'ledger-backfill', '--path', '/tmp/list.md']);
+
+    expect(mockRunLedgerBackfill).toHaveBeenCalledWith({ issueListPath: '/tmp/list.md' });
+    const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+    expect(out).toContain('Queried 12 ledger PRs (1 unresolved).');
+    expect(out).toContain('openedAt 10, issueUrl 7, closeReason 3, pick 4');
+    expect(out).toContain('Warning: push failed');
+  });
+});
 
 describe('stats command', () => {
   const stats = {

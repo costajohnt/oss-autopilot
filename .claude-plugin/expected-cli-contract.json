@@ -1,5 +1,5 @@
 {
-  "_comment": "Plugin → CLI contract (#1190). The markdown command/agent/skill layer expects the CLI to register every command listed below, and expects every workflow file referenced from commands/*.md to exist on disk. Tests in cli-registry.docs.test.ts pin both lists at CI time so contract changes can never ship silently.",
+  "_comment": "Plugin \u2192 CLI contract (#1190). The markdown command/agent/skill layer expects the CLI to register every command listed below, and expects every workflow file referenced from commands/*.md to exist on disk. Tests in cli-registry.docs.test.ts pin both lists at CI time so contract changes can never ship silently.",
   "schemaVersion": 1,
   "expectedCommands": [
     "checkSetup",
@@ -14,6 +14,7 @@
     "features",
     "guidelines",
     "init",
+    "ledger-backfill",
     "list-mark-done",
     "list-move-tier",
     "local-repos",

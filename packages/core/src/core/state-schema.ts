@@ -9,6 +9,7 @@
  * Unknown keys are stripped by default (Zod 4 behavior).
  */
 import { z } from 'zod';
+import { CLOSE_REASONS } from './close-reason.js';
 import type { FetchedPR } from './types.js';
 
 // ── 1. Enum / union schemas ───────────────────────────────────────────
@@ -63,7 +64,8 @@ export const PickSnapshotSchema = z.object({
   grade: z.number(),
   recommendation: z.string(),
   stargazersCount: z.number().optional(),
-  source: z.enum(['vet', 'vet-list']),
+  /** `list`: the curated list's `**Tier (N/10)**` score, imported by ledger-backfill. */
+  source: z.enum(['vet', 'vet-list', 'list']),
   capturedAt: z.string(),
 });
 
@@ -127,6 +129,8 @@ export const StoredClosedPRSchema = z.object({
   /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
   learningsExtractedAt: z.string().datetime().optional(),
   ...LedgerPredictionFields,
+  /** Why it closed unmerged (#1824), set by ledger-backfill. */
+  closeReason: z.enum(CLOSE_REASONS).optional(),
 });
 
 export const AnalyzedIssueConversationSchema = z.object({

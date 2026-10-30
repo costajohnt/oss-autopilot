@@ -64,6 +64,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # Re-vet every available issue in the curated list (--prune drops completed, terminal-status (Done/Skip/Dropped/Merged/Closed), and low-score (<6) items)
 <prefix> vet-list --json [--prune]
 
+# Fill missing outcome-ledger fields (opened date, closing issue, close reason, list vet score); safe to re-run
+<prefix> ledger-backfill --json [--path <file>]
+
 # Claim an issue with optional message
 <prefix> claim <issue-url> [message...] --json
 
