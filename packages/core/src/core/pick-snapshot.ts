@@ -17,6 +17,9 @@ const MODULE = 'pick-snapshot';
  * PR is already linked: scout then grades the issue as taken, which is a
  * post-hoc verdict, not the prediction that picked it.
  */
+// ponytail: scout reports only the first linked PR, so a standalone `vet` of an
+// issue whose first reference is someone else's PR can still miss the user's
+// own. First-wins in recordPickSnapshots limits this to never-vetted issues.
 export function pickSnapshotFromVet(vet: VetOutput, source: PickSnapshot['source']): PickSnapshot | undefined {
   if (vet.linkedPRClassification?.startsWith('user_')) return undefined;
   const stars = (vet.projectHealth as { stargazersCount?: unknown } | null | undefined)?.stargazersCount;

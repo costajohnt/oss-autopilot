@@ -167,17 +167,9 @@ describe('MCP tool registrations', () => {
   describe('annotations', () => {
     // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
     // untrack and read v1→v2 stubs were removed in v4 (#1133).
-    const readOnlyTools = [
-      'status',
-      'search',
-      'vet',
-      'comments',
-      'check-setup',
-      'track',
-      'compliance-score',
-      'repo-vet',
-    ];
+    const readOnlyTools = ['status', 'search', 'comments', 'check-setup', 'track', 'compliance-score', 'repo-vet'];
     const mutatingTools = [
+      'vet',
       'daily',
       'startup',
       'post',

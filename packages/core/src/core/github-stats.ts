@@ -25,7 +25,10 @@ const CLOSING_KEYWORD_RE =
   /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|([\w.-]+\/[\w.-]+)?#(\d+))\b/i;
 
 /** HTML comments and code: where PR templates keep example `Fixes #123` lines. */
-const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|`[^`\n]*`/g;
+const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|(`+)[^`]*\1/g;
+
+/** GitHub's PR body limit; also bounds NON_PROSE_RE's scan on an unclosed `<!--`. */
+const MAX_BODY_CHARS = 65_536;
 
 /**
  * Issue URL a PR closes, from the first GitHub closing keyword in its body
@@ -36,7 +39,7 @@ const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|`[^`\n]*`/g;
  * first. Switch to GraphQL `closingIssuesReferences` if that ever matters.
  */
 export function closingIssueUrl(body: string | null | undefined, prUrl: string): string | undefined {
-  const m = body?.replace(NON_PROSE_RE, ' ').match(CLOSING_KEYWORD_RE);
+  const m = body?.slice(0, MAX_BODY_CHARS).replace(NON_PROSE_RE, ' ').match(CLOSING_KEYWORD_RE);
   if (!m) return undefined;
   const own = extractOwnerRepo(prUrl);
   // A bare `#12` refers to the PR's own repo.

@@ -788,6 +788,7 @@ describe('closingIssueUrl (#1824)', () => {
     ['Fixes:#8', 'https://github.com/owner/repo/issues/8'],
     ['<!-- Fixes #123 (template example) -->\nCloses #7', 'https://github.com/owner/repo/issues/7'],
     ['Use `fixes #1` to link.\n\nResolves #4', 'https://github.com/owner/repo/issues/4'],
+    ['``Fixes #1`` closes #3', 'https://github.com/owner/repo/issues/3'],
     ['Fixes https://github.com/up/stream/issues/5#issuecomment-9', 'https://github.com/up/stream/issues/5'],
   ])('parses %j', (body, expected) => {
     expect(closingIssueUrl(body, pr)).toBe(expected);
@@ -803,6 +804,12 @@ describe('closingIssueUrl (#1824)', () => {
     ['<!-- Fixes #3 -->'],
   ])('returns undefined for %j', (body) => {
     expect(closingIssueUrl(body, pr)).toBeUndefined();
+  });
+
+  it('stays fast on an unterminated comment opener', () => {
+    const start = Date.now();
+    expect(closingIssueUrl('<!--'.repeat(100_000), pr)).toBeUndefined();
+    expect(Date.now() - start).toBeLessThan(5000);
   });
 
   it('carries the closing issue from the search item body onto merged records', async () => {

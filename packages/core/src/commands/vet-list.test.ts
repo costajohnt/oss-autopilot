@@ -514,6 +514,8 @@ describe('runVetList', () => {
     expect(result.results[0].listStatus).toBe('still_available');
     expect(result.results[0].verifyError).toBe('verify unavailable in test');
     expect(result.results[0].verification).toBeUndefined();
+    // No authoritative own-PR verdict, so no prediction is recorded (#1824).
+    expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
   });
 
   it('tags non-issue (PR) URLs as not verified, still falling back to scout (#1494)', async () => {

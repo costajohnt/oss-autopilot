@@ -270,8 +270,15 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   // Vet-time predictions for calibration (#1824), recorded once after the fan-out.
   const picks: PickSnapshot[] = [];
 
-  /** Run scout's grade/health vet for an issue (the search-driven path). */
-  async function runScoutVet(item: ParsedIssueItem): Promise<{ vetResult: VetOutput; skipReason?: ScoutSkipReason }> {
+  /**
+   * Run scout's grade/health vet for an issue (the search-driven path). `recordPick` is false on the
+   * verify-errored fallback: without verify's own-open-pr verdict, scout's
+   * linked-PR check can miss the user's own PR and record a post-hoc grade.
+   */
+  async function runScoutVet(
+    item: ParsedIssueItem,
+    recordPick: boolean,
+  ): Promise<{ vetResult: VetOutput; skipReason?: ScoutSkipReason }> {
     const candidate = await scout.vetIssue(item.url);
     const grade = gradeFromCandidate({
       repo: candidate.issue.repo,
@@ -303,7 +310,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       slmTriage: candidate.slmTriage ?? null,
       grade,
     };
-    const pick = pickSnapshotFromVet(vetResult, 'vet-list');
+    const pick = recordPick ? pickSnapshotFromVet(vetResult, 'vet-list') : undefined;
     if (pick) picks.push(pick);
     return { vetResult, skipReason: extractSkipReason(candidate) };
   }
@@ -352,7 +359,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
             : toMessage(verifyError),
       };
       try {
-        const { vetResult, skipReason } = await runScoutVet(item);
+        const { vetResult, skipReason } = await runScoutVet(item, false);
         return { ...vetResult, listStatus: classifyListStatus(vetResult, skipReason), ...verifyErrorTag };
       } catch (error) {
         return { ...errorRow(item, error), ...verifyErrorTag };
@@ -371,7 +378,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     // available / at-risk: still worth grading. The verdict stays authoritative
     // for listStatus; scout only supplies grade/health/recommendation.
     try {
-      const { vetResult } = await runScoutVet(item);
+      const { vetResult } = await runScoutVet(item, true);
       return { ...vetResult, listStatus, verification: summary };
     } catch (error) {
       // Verify succeeded, so keep its verdict facts even though grading failed.
