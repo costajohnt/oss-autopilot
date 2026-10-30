@@ -24,6 +24,8 @@ interface OutcomeRow {
   hoursToFirstResponse?: number;
   /** Open enum: a newer release may record reasons this one does not know (#1831). */
   closeReason?: StoredClosedPR['closeReason'];
+  /** Open enum, like closeReason (#1831). */
+  selfCloseReason?: StoredClosedPR['selfCloseReason'];
   changesRequested?: boolean;
   ciFailing?: boolean;
 }
@@ -162,6 +164,7 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
     outcome: 'closed',
     month: e.closedAt.slice(0, 7),
     closeReason: e.closeReason,
+    selfCloseReason: e.selfCloseReason,
   }));
   const dormant: OutcomeRow[] = (state.lastDigest?.openPRs ?? [])
     .filter((pr) => pr.stalenessTier === 'dormant')
@@ -185,7 +188,8 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
   const closeReasons: Record<string, number> = {};
   const approachClosuresByMonth: Record<string, number> = {};
   for (const r of closedRows) {
-    const reason = r.closeReason ?? 'unclassified';
+    // Self-closed splits by what preceded it, e.g. "self-closed: no-response".
+    const reason = r.selfCloseReason ? `self-closed: ${r.selfCloseReason}` : (r.closeReason ?? 'unclassified');
     closeReasons[reason] = (closeReasons[reason] ?? 0) + 1;
     if ((r.closeReason === 'ai-policy' || r.closeReason === 'rejected') && r.month) {
       approachClosuresByMonth[r.month] = (approachClosuresByMonth[r.month] ?? 0) + 1;

@@ -10,7 +10,7 @@
  * marked `.passthrough()` (#1831): see the note above AgentStateSchema.
  */
 import { z } from 'zod';
-import { CLOSE_REASONS } from './close-reason.js';
+import { CLOSE_REASONS, SELF_CLOSE_REASONS } from './close-reason.js';
 
 /**
  * An enum that also accepts values it does not know (#1831): a newer release
@@ -154,6 +154,8 @@ export const StoredClosedPRSchema = z
     ...LedgerPredictionFields,
     /** Why it closed unmerged (#1824), set by ledger-backfill. */
     closeReason: openEnum(CLOSE_REASONS).optional(),
+    /** For `self-closed`: superseded, no traction, after feedback, or no response (#1824). */
+    selfCloseReason: openEnum(SELF_CLOSE_REASONS).optional(),
   })
   .passthrough();
 
