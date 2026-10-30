@@ -165,6 +165,10 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `find-issues` | `maxResults?` | Searches for issues ranked by viability score |
 | `extract-learnings` | `repo`, `corpus`, `existingGuidelines?` | Distills durable per-repo guidance from raw PR comment bundles (#867) |
 
+## Multiple Machines
+
+With Gist persistence, every client that runs oss-autopilot (the plugin on each machine, and every MCP server process) reads and writes the same state. Since core 3.35.0, a client keeps state fields it does not recognise instead of dropping them, and warns when the state was written by a different release. Clients on older releases still drop newer fields when they save, so update every machine after a release and restart running MCP servers, which keep the version they started with.
+
 ## Programmatic Usage
 
 The server can also be imported and used as a library:
