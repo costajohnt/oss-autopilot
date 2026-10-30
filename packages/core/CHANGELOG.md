@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.34.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.33.1...core-v3.34.0) (2026-10-30)
+
+
+### Features
+
+* add eval report for pick calibration and outcomes ([#1829](https://github.com/costajohnt/oss-autopilot/issues/1829)) ([296b4ad](https://github.com/costajohnt/oss-autopilot/commit/296b4adb125a18b07111afd479dea499739aa25e))
+* add ledger-backfill to recover outcome history for calibration ([#1828](https://github.com/costajohnt/oss-autopilot/issues/1828)) ([0bcbd32](https://github.com/costajohnt/oss-autopilot/commit/0bcbd329ba53224e77fcc12b7d6b278525449688))
+* record vet-time predictions on the outcome ledger ([#1826](https://github.com/costajohnt/oss-autopilot/issues/1826)) ([cba1eea](https://github.com/costajohnt/oss-autopilot/commit/cba1eea294aaf54d4501ec93aff49fc27d7cebe1))
+
 ## [3.33.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.33.0...core-v3.33.1) (2026-10-29)
 
 
