@@ -33,7 +33,8 @@ export interface RepoCapStatus {
 /** Open-PR counts from the last digest, keyed by lowercased owner/repo. */
 export function openPRCountsByRepo(state: Readonly<AgentState>): Map<string, number> {
   const counts = new Map<string, number>();
-  const openPRs = state.lastDigest?.openPRs ?? [];
+  const openPRs = state.lastDigest?.openPRs;
+  if (!openPRs) return counts;
   for (const pr of openPRs) {
     const key = pr.repo.toLowerCase();
     counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -53,6 +54,23 @@ function mergedCount(state: Readonly<AgentState>, repo: string): number {
   }).length;
 }
 
+/** The tighter of the caps that apply (0 = none). */
+function applicableCap(config: Partial<AgentState['config']>, isCold: boolean): number {
+  const { maxOpenPRsPerRepo = 0, maxOpenPRsColdRepo = 0 } = config;
+  const caps = [maxOpenPRsPerRepo, isCold ? maxOpenPRsColdRepo : 0].filter((c) => c > 0);
+  return caps.length > 0 ? Math.min(...caps) : 0;
+}
+
+function capReason(status: Omit<RepoCapStatus, 'reason'>): string | undefined {
+  const reasons: string[] = [];
+  if (status.excluded) reasons.push(`${status.repo} is in excludeRepos`);
+  if (status.atCap) {
+    const coldNote = status.cold ? ' for a repo where none of your PRs have merged yet' : '';
+    reasons.push(`${status.repo} has ${status.openPRCount} open PR(s), at the cap of ${status.cap}${coldNote}`);
+  }
+  return reasons.length > 0 ? reasons.join('; ') : undefined;
+}
+
 /**
  * Cap status for one repo. `openPRCount` defaults to the digest count; pass a
  * live count (with `countSource: 'github'`) to override it.
@@ -64,45 +82,41 @@ export function getRepoCapStatus(
 ): RepoCapStatus {
   // ponytail: tolerate partial states (test fixtures, hand-built mocks); a
   // parsed AgentState always has these defaults.
-  const { maxOpenPRsPerRepo = 0, maxOpenPRsColdRepo = 0, excludeRepos = [] } = state.config ?? {};
+  const config: Partial<AgentState['config']> = state.config ?? {};
   const openPRCount = live?.openPRCount ?? openPRCountsByRepo(state).get(repo.toLowerCase()) ?? 0;
   const mergedPRCount = mergedCount(state, repo);
-  const cold = mergedPRCount === 0;
-  // The tighter of the two applicable caps wins.
-  const caps = [maxOpenPRsPerRepo, cold ? maxOpenPRsColdRepo : 0].filter((c) => c > 0);
-  const cap = caps.length > 0 ? Math.min(...caps) : 0;
-  const atCap = cap > 0 && openPRCount >= cap;
-  const excluded = excludeRepos.some((r) => r.toLowerCase() === repo.toLowerCase());
-
-  const reasons: string[] = [];
-  if (excluded) reasons.push(`${repo} is in excludeRepos`);
-  if (atCap) {
-    reasons.push(
-      `${repo} has ${openPRCount} open PR(s), at the cap of ${cap}` +
-        (cold ? ' for a repo where none of your PRs have merged yet' : ''),
-    );
-  }
-  return {
+  const isCold = mergedPRCount === 0;
+  const cap = applicableCap(config, isCold);
+  const status = {
     repo,
     openPRCount,
-    countSource: live ? 'github' : 'digest',
+    countSource: live ? ('github' as const) : ('digest' as const),
     mergedPRCount,
-    cold,
+    cold: isCold,
     cap,
-    atCap,
-    excluded,
-    ...(reasons.length > 0 && { reason: reasons.join('; ') }),
+    atCap: cap > 0 && openPRCount >= cap,
+    excluded: (config.excludeRepos ?? []).some((r) => r.toLowerCase() === repo.toLowerCase()),
   };
+  const reason = capReason(status);
+  return reason ? { ...status, reason } : status;
 }
 
 /**
- * Repos (owner/repo, as the digest spells them) at their open-PR cap, from the
- * last digest. Discovery passes these to scout as excluded repos.
+ * Repos (owner/repo, first spelling seen in the digest) at their open-PR cap,
+ * from the last digest. Discovery passes these to scout as excluded repos.
  */
 export function reposAtCap(state: Readonly<AgentState>): string[] {
-  const names = new Map<string, string>();
-  for (const pr of state.lastDigest?.openPRs ?? []) names.set(pr.repo.toLowerCase(), pr.repo);
-  return [...names.values()].filter((repo) => getRepoCapStatus(state, repo).atCap);
+  const openPRs = state.lastDigest?.openPRs;
+  if (!openPRs) return [];
+  const seen = new Set<string>();
+  const capped: string[] = [];
+  for (const pr of openPRs) {
+    const key = pr.repo.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (getRepoCapStatus(state, pr.repo).atCap) capped.push(pr.repo);
+  }
+  return capped;
 }
 
 /** `{ repoCap }` when the repo is at cap or excluded, else `{}`; spread into vet output. */

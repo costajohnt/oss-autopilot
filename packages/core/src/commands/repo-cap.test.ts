@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSearch = vi.fn();
-let mockState: Record<string, unknown>;
+const mockGetState = vi.fn();
 
 vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
-    getStateManager: () => ({ getState: () => mockState }),
+    getStateManager: () => ({ getState: mockGetState }),
     requireGitHubToken: () => 'token',
     getOctokit: () => ({ search: { issuesAndPullRequests: mockSearch } }),
   };
@@ -18,12 +18,12 @@ import { runRepoCap } from './repo-cap.js';
 describe('runRepoCap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockState = {
+    mockGetState.mockReturnValue({
       config: { githubUsername: 'octo', maxOpenPRsPerRepo: 0, maxOpenPRsColdRepo: 1, excludeRepos: [] },
       repoScores: {},
       // The digest is stale (no open PRs); the live count must win.
       lastDigest: { openPRs: [] },
-    };
+    });
   });
 
   it('counts open PRs live from GitHub', async () => {
@@ -41,7 +41,7 @@ describe('runRepoCap', () => {
   });
 
   it('requires githubUsername', async () => {
-    mockState = { config: { githubUsername: '' } };
+    mockGetState.mockReturnValue({ config: { githubUsername: '' } });
     await expect(runRepoCap({ repo: 'owner/repo' })).rejects.toThrow(/githubUsername/);
     expect(mockSearch).not.toHaveBeenCalled();
   });

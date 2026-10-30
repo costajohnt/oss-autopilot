@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockVetIssue = vi.fn();
 const mockGetRepoScore = vi.fn();
 const mockRecordPickSnapshots = vi.fn();
-let mockState: Record<string, unknown> = { config: { githubUsername: 'costajohnt' } };
+const mockGetState = vi.fn();
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -25,7 +25,7 @@ vi.mock('../core/index.js', async () => {
     ...actual,
     getStateManager: () => ({
       getRepoScore: mockGetRepoScore,
-      getState: () => mockState,
+      getState: mockGetState,
       recordPickSnapshots: mockRecordPickSnapshots,
       isGistMode: () => false,
       reloadIfChanged: () => false,
@@ -40,14 +40,14 @@ const TEST_ISSUE_URL = 'https://github.com/owner/repo/issues/5';
 describe('runVet', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockState = { config: { githubUsername: 'costajohnt' } };
+    mockGetState.mockReturnValue({ config: { githubUsername: 'costajohnt' } });
   });
 
   it('marks the result with repoCap when the repo is at its open-PR cap', async () => {
-    mockState = {
+    mockGetState.mockReturnValue({
       config: { githubUsername: 'costajohnt', maxOpenPRsPerRepo: 2, maxOpenPRsColdRepo: 1, excludeRepos: [] },
       lastDigest: { openPRs: [{ repo: 'owner/repo' }] },
-    };
+    });
     mockVetIssue.mockResolvedValue({
       issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
       recommendation: 'approve' as const,

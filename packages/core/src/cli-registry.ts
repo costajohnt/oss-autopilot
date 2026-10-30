@@ -1549,11 +1549,12 @@ export const commands: CLICommandDef[] = [
           'Check `owner/repo` against your per-repo open-PR cap (live open-PR count from GitHub) and excludeRepos',
         )
         .option('--json', 'Output as JSON')
-        .action(async (repo, options) => {
+        .action(async (repo: string, options: { json?: boolean }) => {
           const { RepoCapStatusSchema } = await import('./formatters/json.js');
+          const { runRepoCap } = await import('./commands/repo-cap.js');
           await executeAction(
             options,
-            async () => (await import('./commands/repo-cap.js')).runRepoCap({ repo }),
+            () => runRepoCap({ repo }),
             (data) => {
               const capText = data.cap > 0 ? `${data.openPRCount}/${data.cap}` : `${data.openPRCount} (no cap)`;
               console.log(`\n${data.repo}: ${capText} open PRs, ${data.mergedPRCount} merged`);

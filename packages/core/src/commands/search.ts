@@ -17,7 +17,7 @@ import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-gradi
 import { computeStrategy } from '../core/strategy.js';
 import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
-import { reposAtCap } from '../core/repo-cap.js';
+import { reposAtCap as findReposAtCap } from '../core/repo-cap.js';
 import { SCOUT_ROTATION_TTL_DAYS, SEARCH_SEEN_RETENTION_DAYS } from '../core/state-prune.js';
 
 export { type SearchOutput } from '../formatters/json.js';
@@ -214,8 +214,8 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   const preferLanguages = strategy?.recommendations.languages ?? undefined;
   // Repos at the per-repo open-PR cap are excluded inside scout (scout-bridge)
   // so they use no result slots; keep the per-call bias from pulling them back.
-  const cappedRepos = reposAtCap(stateManager.getState());
-  const cappedSet = new Set(cappedRepos.map((r) => r.toLowerCase()));
+  const reposAtCap = findReposAtCap(stateManager.getState());
+  const cappedSet = new Set(reposAtCap.map((r) => r.toLowerCase()));
   const preferRepos = strategy?.recommendations.repos?.filter((r) => !cappedSet.has(r.toLowerCase()));
   if (preferLanguages?.length || preferRepos?.length) {
     debug(
@@ -343,7 +343,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     excludedRepos: result.excludedRepos,
     aiPolicyBlocklist: result.aiPolicyBlocklist,
     hiddenOwnPRCount,
-    reposAtCap: cappedRepos,
+    reposAtCap,
   };
   if (gistSyncWarning) {
     searchOutput.gistSyncWarning = gistSyncWarning;

@@ -169,8 +169,8 @@ describe('buildScoutState', () => {
       mergedAt: '2026-02-01T00:00:00Z',
     }));
     const state = makeAgentState({
-      config: { excludeRepos: ['owner/excluded'], maxOpenPRsPerRepo: 2 },
       mergedPRs,
+      config: { excludeRepos: ['owner/excluded'], maxOpenPRsPerRepo: 2 },
       repoScores: {
         'owner/fav': {
           repo: 'owner/fav',

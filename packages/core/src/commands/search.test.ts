@@ -59,6 +59,21 @@ function healthyProjectHealth(repo: string) {
 const mockGetStateManager = vi.mocked(getStateManager);
 const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
+/** State mock with open PRs in the last digest, for the per-repo cap tests. */
+function stateWithOpenPRs(openRepos: string[], repoScores: Record<string, { mergedPRCount: number }> = {}) {
+  mockGetStateManager.mockReturnValue({
+    getState: vi.fn().mockReturnValue({
+      repoScores,
+      config: { excludeRepos: [], aiPolicyBlocklist: [], maxOpenPRsPerRepo: 0, maxOpenPRsColdRepo: 1 },
+      lastDigest: { openPRs: openRepos.map((repo) => ({ repo })) },
+    }),
+    getRepoScore: vi.fn().mockReturnValue(null),
+    getSearchSeen: vi.fn().mockReturnValue([]),
+    setSearchSeen: vi.fn(),
+    setSearchRotation: vi.fn(),
+  } as any);
+}
+
 describe('runSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -752,20 +767,6 @@ describe('runSearch', () => {
   });
 
   describe('per-repo open-PR cap', () => {
-    function stateWithOpenPRs(openRepos: string[], repoScores: Record<string, { mergedPRCount: number }> = {}) {
-      mockGetStateManager.mockReturnValue({
-        getState: vi.fn().mockReturnValue({
-          config: { excludeRepos: [], aiPolicyBlocklist: [], maxOpenPRsPerRepo: 0, maxOpenPRsColdRepo: 1 },
-          repoScores,
-          lastDigest: { openPRs: openRepos.map((repo) => ({ repo })) },
-        }),
-        getRepoScore: vi.fn().mockReturnValue(null),
-        getSearchSeen: vi.fn().mockReturnValue([]),
-        setSearchSeen: vi.fn(),
-        setSearchRotation: vi.fn(),
-      } as any);
-    }
-
     it('reports the capped repos (scout excludes them via the bridge)', async () => {
       // cold/repo: 1 open, 0 merged -> at cold cap 1. warm/repo: merged -> no cap.
       stateWithOpenPRs(['cold/repo', 'warm/repo'], { 'warm/repo': { mergedPRCount: 2 } });

@@ -16,8 +16,8 @@ function makeState(opts: {
         repo,
         {
           repo,
-          score: 5,
           mergedPRCount,
+          score: 5,
           closedWithoutMergeCount: 0,
           avgResponseDays: null,
           lastEvaluatedAt: '',
@@ -29,8 +29,8 @@ function makeState(opts: {
     lastDigest: {
       generatedAt: '2026-10-30T00:00:00Z',
       openPRs: (opts.openRepos ?? []).map((repo, i) => ({
-        url: `https://github.com/${repo}/pull/${i + 1}`,
         repo,
+        url: `https://github.com/${repo}/pull/${i + 1}`,
         number: i + 1,
         status: 'waiting_on_maintainer',
       })),
@@ -128,12 +128,12 @@ describe('getRepoCapStatus', () => {
 });
 
 describe('reposAtCap', () => {
-  it('lists only capped repos, once each, as the digest spells them', () => {
+  it('lists only capped repos, once each, with the first spelling seen', () => {
     const state = makeState({
       openRepos: ['Cold/Repo', 'cold/repo', 'warm/repo', 'warm/repo'],
       merged: { 'warm/repo': 4 },
     });
-    expect(reposAtCap(state)).toEqual(['cold/repo']);
+    expect(reposAtCap(state)).toEqual(['Cold/Repo']);
   });
 
   it('is empty without a digest', () => {
