@@ -138,11 +138,18 @@ function toActivityEvents(nodes: GraphQLTimelineNode[]): ActivityEvent[] {
       const c = n.commit;
       if (!c) return [];
       return [
-        { login: c.author?.user?.login, at: c.authoredDate },
-        { login: c.committer?.user?.login, at: c.committedDate },
+        { login: c.author?.user?.login, at: c.authoredDate, isPush: true },
+        { login: c.committer?.user?.login, at: c.committedDate, isPush: true },
       ];
     }
-    return [{ login: n.actor ? restLogin(n.actor) : null, type: n.actor?.__typename, at: n.createdAt }];
+    return [
+      {
+        login: n.actor ? restLogin(n.actor) : null,
+        type: n.actor?.__typename,
+        at: n.createdAt,
+        isPush: n.__typename === 'HeadRefForcePushedEvent',
+      },
+    ];
   });
 }
 

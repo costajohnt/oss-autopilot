@@ -18,7 +18,7 @@ From `data.daily.digest.openPRs`, select PRs where **all** of:
 - `status === 'waiting_on_maintainer'` — the PR is blocked on the maintainer, not the contributor.
 - `daysSinceMaintainerActivity >= 7` — the 7-day lower bound from the skill's cadence. Fall back to `daysSinceActivity` when the field is absent.
 
-`daysSinceMaintainerActivity` counts from the last comment or review by someone other than you and not a bot (or from PR creation). Your own pings and rebases do not reset it. `daysSinceActivity` does include them, so use it only for the hygiene check in step 6.
+`daysSinceMaintainerActivity` counts from the last maintainer activity, or from PR creation if there is none. Maintainer activity is: an issue comment by an owner, member or collaborator; a review or inline review comment by anyone other than you and not a bot; a commit or force-push by someone else, including a maintainer's GitHub App but not auto-fixer or dependency bots; a review request or label by anyone other than you and not a bot. Your own pings and rebases do not reset it. `daysSinceActivity` does include them, so use it only for the hygiene check in step 6.
 
 Bucket into tiers by `daysSinceMaintainerActivity`:
 - **7–13 days:** light check-in tier.

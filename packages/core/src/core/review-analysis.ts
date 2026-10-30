@@ -281,7 +281,27 @@ export interface ActivityEvent {
   /** REST `user.type` / GraphQL `__typename` of the actor (`'Bot'` for apps). */
   type?: string | null;
   at?: string | null;
+  /**
+   * True for commits and force-pushes. A push by a bot still counts as
+   * maintainer activity (a maintainer's own GitHub App pushing fixes), unless
+   * the bot is an auto-fixer or dependency bot in {@link PUSH_BOT_DENYLIST}.
+   */
+  isPush?: boolean;
 }
+
+/**
+ * Bots whose pushes are automation, not maintainer engagement. Compared
+ * case-insensitively with any `[bot]` suffix stripped.
+ */
+const PUSH_BOT_DENYLIST: ReadonlySet<string> = new Set([
+  'pre-commit-ci',
+  'autofix-ci',
+  'prettier-ci',
+  'github-actions',
+  'dependabot',
+  'renovate',
+  'web-flow',
+]);
 
 /** Author associations that mark a commenter as a repo maintainer. */
 const MAINTAINER_ASSOCIATIONS: ReadonlySet<string> = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -302,13 +322,16 @@ type ActorFields = {
  * Latest maintainer activity on a PR, falling back to `createdAt` when no
  * maintainer has engaged, plus the number of contributor pings since then.
  *
- * Maintainer activity is:
- * - a comment, review or inline review comment by an OWNER / MEMBER /
- *   COLLABORATOR (when the association is unknown, as on older data, any
- *   non-contributor non-bot author counts), and
- * - an event in `events` (commit authored/committed by someone else,
- *   force-push, review request, label) by a non-contributor non-bot actor.
- *   These need repo permissions, so no association check is required.
+ * Maintainer activity is any of:
+ * - an issue comment by an OWNER / MEMBER / COLLABORATOR, so drive-by "+1"
+ *   comments don't reset the clock (when the association is unknown, as on
+ *   older data, any non-contributor non-bot author counts);
+ * - a review or inline review comment by any non-contributor non-bot user
+ *   (codeowners often show as CONTRIBUTOR);
+ * - a commit authored or committed by someone else, or a force-push by
+ *   someone else, including bots such as a maintainer's own GitHub App,
+ *   except auto-fixer / dependency bots ({@link PUSH_BOT_DENYLIST});
+ * - a review request or label by a non-contributor non-bot actor.
  *
  * Staleness is measured from this timestamp rather than `updatedAt`, because
  * `updatedAt` is bumped by the contributor's own follow-ups and rebases, so a
@@ -333,24 +356,26 @@ export function getLastMaintainerActivity(
     login: string | undefined | null,
     type: string | undefined | null,
     at: string | undefined | null,
+    isPush = false,
   ) => {
     if (!login || !at) return;
-    if (login.toLowerCase() === usernameLower || isBotAuthor(login, type)) return;
+    const lower = login.toLowerCase();
+    if (lower === usernameLower) return;
+    if (isPush ? PUSH_BOT_DENYLIST.has(lower.replace(/\[bot\]$/, '')) : isBotAuthor(login, type)) return;
     const ms = Date.parse(at);
     if (ms > latestMs) {
       latest = at;
       latestMs = ms;
     }
   };
-  const considerAuthored = (item: ActorFields, at: string | undefined | null) => {
-    const association = item.author_association;
-    if (association && !MAINTAINER_ASSOCIATIONS.has(association)) return;
-    consider(item.user?.login, item.user?.type, at);
-  };
-  for (const c of comments) considerAuthored(c, c.created_at);
-  for (const r of reviews) considerAuthored(r, r.submitted_at);
-  for (const c of reviewComments) considerAuthored(c, c.created_at);
-  for (const e of events) consider(e.login, e.type, e.at);
+  for (const c of comments) {
+    const association = c.author_association;
+    if (association && !MAINTAINER_ASSOCIATIONS.has(association)) continue;
+    consider(c.user?.login, c.user?.type, c.created_at);
+  }
+  for (const r of reviews) consider(r.user?.login, r.user?.type, r.submitted_at);
+  for (const c of reviewComments) consider(c.user?.login, c.user?.type, c.created_at);
+  for (const e of events) consider(e.login, e.type, e.at, e.isPush);
 
   const authorCommentTimes = comments
     .filter((c) => c.user?.login?.toLowerCase() === usernameLower)

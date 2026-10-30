@@ -564,15 +564,58 @@ describe('getLastMaintainerActivity', () => {
     );
   });
 
-  it('only counts OWNER / MEMBER / COLLABORATOR comments when the association is known', () => {
+  it('only counts OWNER / MEMBER / COLLABORATOR issue comments when the association is known', () => {
     const comments = [
       { user: { login: 'maintainer' }, author_association: 'MEMBER', created_at: '2026-02-01T00:00:00Z' },
       { user: { login: 'drive-by' }, author_association: 'NONE', created_at: '2026-03-01T00:00:00Z' },
       { user: { login: 'other' }, author_association: 'CONTRIBUTOR', created_at: '2026-03-02T00:00:00Z' },
     ];
-    const reviews = [{ user: { login: 'passer' }, author_association: 'NONE', submitted_at: '2026-03-03T00:00:00Z' }];
-    expect(getLastMaintainerActivity(comments, reviews, [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+    expect(getLastMaintainerActivity(comments, [], [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
       '2026-02-01T00:00:00Z',
+    );
+  });
+
+  it('counts reviews and inline comments from CONTRIBUTOR-association reviewers (codeowners)', () => {
+    // home-assistant/core#188805 shape: codeowner shown as CONTRIBUTOR.
+    const reviews = [
+      {
+        user: { login: 'codeowner' },
+        author_association: 'CONTRIBUTOR',
+        state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-03-03T00:00:00Z',
+      },
+    ];
+    const reviewComments = [
+      { user: { login: 'codeowner' }, author_association: 'CONTRIBUTOR', created_at: '2026-03-04T00:00:00Z' },
+    ];
+    expect(getLastMaintainerActivity([], reviews, [], [], 'contributor', created).lastMaintainerActivityAt).toBe(
+      '2026-03-03T00:00:00Z',
+    );
+    expect(
+      getLastMaintainerActivity([], reviews, reviewComments, [], 'contributor', created).lastMaintainerActivityAt,
+    ).toBe('2026-03-04T00:00:00Z');
+  });
+
+  it("counts pushes by a maintainer's own GitHub App but not auto-fixer or dependency bots", () => {
+    // sooperset/mcp-atlassian#1597 shape: the author pinged, then the
+    // maintainer's App pushed fixes; the clock must not fall back to createdAt.
+    const comments = [{ user: { login: 'contributor' }, created_at: '2026-03-01T00:00:00Z' }];
+    const events = [
+      { login: 'mcp-atlassian-maintainer[bot]', type: 'Bot', at: '2026-03-01T01:30:00Z', isPush: true },
+      { login: 'pre-commit-ci[bot]', type: 'Bot', at: '2026-03-05T00:00:00Z', isPush: true },
+      { login: 'dependabot[bot]', type: 'Bot', at: '2026-03-06T00:00:00Z', isPush: true },
+      { login: 'web-flow', at: '2026-03-07T00:00:00Z', isPush: true },
+      { login: 'contributor', at: '2026-03-08T00:00:00Z', isPush: true },
+    ];
+    const result = getLastMaintainerActivity(comments, [], [], events, 'contributor', created);
+    expect(result.lastMaintainerActivityAt).toBe('2026-03-01T01:30:00Z');
+    expect(result.authorPingsSinceMaintainerActivity).toBe(0);
+  });
+
+  it('still ignores bots for non-push events such as labels and review requests', () => {
+    const events = [{ login: 'triage-app[bot]', type: 'Bot', at: '2026-03-01T00:00:00Z' }];
+    expect(getLastMaintainerActivity([], [], [], events, 'contributor', created).lastMaintainerActivityAt).toBe(
+      created,
     );
   });
 

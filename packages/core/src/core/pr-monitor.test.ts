@@ -3531,9 +3531,9 @@ describe('restActivityEvents', () => {
       ],
     );
     expect(events).toEqual([
-      { login: 'triager', type: 'User', at: '2026-01-02T00:00:00Z' },
-      { login: 'a', type: undefined, at: '2026-01-04T00:00:00Z' },
-      { login: 'c', type: undefined, at: '2026-01-05T00:00:00Z' },
+      { login: 'triager', type: 'User', at: '2026-01-02T00:00:00Z', isPush: false },
+      { login: 'a', type: undefined, at: '2026-01-04T00:00:00Z', isPush: true },
+      { login: 'c', type: undefined, at: '2026-01-05T00:00:00Z', isPush: true },
     ]);
   });
 });

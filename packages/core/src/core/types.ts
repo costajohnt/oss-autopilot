@@ -267,9 +267,14 @@ export interface FetchedPR {
   daysSinceActivity: number;
 
   /**
-   * Timestamp of the latest comment/review/inline comment by someone other
-   * than the contributor and not a bot, or `createdAt` when nobody else has
-   * engaged. Optional: absent on payloads from older producers.
+   * Timestamp of the latest maintainer activity, or `createdAt` when there is
+   * none (see `getLastMaintainerActivity`). Maintainer activity is: an issue
+   * comment by an OWNER / MEMBER / COLLABORATOR (any non-contributor non-bot
+   * author when the association is unknown); a review or inline review
+   * comment by any non-contributor non-bot user; a commit or force-push by
+   * someone else, including a maintainer's GitHub App but not auto-fixer or
+   * dependency bots; a review request or label by a non-contributor non-bot.
+   * Optional: absent on payloads from older producers.
    */
   lastMaintainerActivityAt?: string;
   /**

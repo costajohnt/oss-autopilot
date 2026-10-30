@@ -9,6 +9,7 @@ import { assembleFetchedPR, type PRSignals, type AssemblyConfig } from './pr-ass
 import { computeCIStatus } from './ci-analysis.js';
 import { latestActivityAt } from './daily-logic.js';
 import { classifyAttentionBucket } from './pr-attention.js';
+import { getLastMaintainerActivity } from './review-analysis.js';
 
 const CONFIG: AssemblyConfig = {
   githubUsername: 'contributor',
@@ -297,11 +298,66 @@ describe('normalizePRNode', () => {
       author_association: 'MEMBER',
     });
     expect(outcome.data.activityEvents).toEqual([
-      { login: 'maintainer', at: '2026-02-02T00:00:00Z' },
-      { login: undefined, at: '2026-02-03T00:00:00Z' },
-      { login: 'maintainer', type: 'User', at: '2026-02-05T00:00:00Z' },
-      { login: 'labeler[bot]', type: 'Bot', at: '2026-02-06T00:00:00Z' },
+      { login: 'maintainer', at: '2026-02-02T00:00:00Z', isPush: true },
+      { login: undefined, at: '2026-02-03T00:00:00Z', isPush: true },
+      { login: 'maintainer', type: 'User', at: '2026-02-05T00:00:00Z', isPush: true },
+      { login: 'labeler[bot]', type: 'Bot', at: '2026-02-06T00:00:00Z', isPush: false },
     ]);
+  });
+
+  it("sees commits pushed by a maintainer's GitHub App (sooperset/mcp-atlassian#1597 shape)", () => {
+    // Live GraphQL for that PR: App-authored commits carry
+    // author.user.login 'mcp-atlassian-maintainer[bot]'; the contributor's own
+    // commits had user null.
+    const node = makeNode({
+      createdAt: '2026-07-01T00:00:00Z',
+      comments: {
+        totalCount: 1,
+        nodes: [
+          {
+            author: { login: 'contributor', __typename: 'User' },
+            authorAssociation: 'CONTRIBUTOR',
+            body: 'Any chance to look at this?',
+            createdAt: '2026-09-20T19:00:00Z',
+          },
+        ],
+      },
+      timelineItems: {
+        nodes: [
+          {
+            __typename: 'PullRequestCommit',
+            commit: {
+              authoredDate: '2026-08-18T22:04:28Z',
+              committedDate: '2026-08-18T22:04:28Z',
+              author: { user: null },
+              committer: { user: null },
+            },
+          },
+          {
+            __typename: 'PullRequestCommit',
+            commit: {
+              authoredDate: '2026-09-20T20:51:21Z',
+              committedDate: '2026-09-20T20:51:21Z',
+              author: { user: { login: 'mcp-atlassian-maintainer[bot]' } },
+              committer: { user: { login: 'mcp-atlassian-maintainer[bot]' } },
+            },
+          },
+        ],
+      },
+    });
+    const outcome = normalizePRNode(node);
+    if (outcome.kind !== 'ok') throw new Error('expected ok');
+    const d = outcome.data;
+    const result = getLastMaintainerActivity(
+      d.comments,
+      d.reviews,
+      d.reviewComments,
+      d.activityEvents,
+      'contributor',
+      d.createdAt,
+    );
+    expect(result.lastMaintainerActivityAt).toBe('2026-09-20T20:51:21Z');
+    expect(result.authorPingsSinceMaintainerActivity).toBe(0);
   });
 
   it('requests timeline items and author associations in the batch query', () => {

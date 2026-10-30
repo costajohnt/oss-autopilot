@@ -743,11 +743,16 @@ interface RestPRCommit {
 export function restActivityEvents(timeline: RestTimelineEvent[], commits: RestPRCommit[]): ActivityEvent[] {
   const events: ActivityEvent[] = timeline
     .filter((e) => e.event && ACTIVITY_TIMELINE_EVENTS.has(e.event))
-    .map((e) => ({ login: e.actor?.login, type: e.actor?.type, at: e.created_at }));
+    .map((e) => ({
+      login: e.actor?.login,
+      type: e.actor?.type,
+      at: e.created_at,
+      isPush: e.event === 'head_ref_force_pushed',
+    }));
   for (const c of commits) {
     events.push(
-      { login: c.author?.login, type: c.author?.type, at: c.commit.author?.date },
-      { login: c.committer?.login, type: c.committer?.type, at: c.commit.committer?.date },
+      { login: c.author?.login, type: c.author?.type, at: c.commit.author?.date, isPush: true },
+      { login: c.committer?.login, type: c.committer?.type, at: c.commit.committer?.date, isPush: true },
     );
   }
   return events;
