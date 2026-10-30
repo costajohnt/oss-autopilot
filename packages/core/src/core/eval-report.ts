@@ -207,7 +207,7 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
     'no prediction',
   ]);
   const flags = byGrade
-    .filter((b) => /(9-10|7-8)$/.test(b.key) && b.n >= MIN_FLAG_N && (b.mergeRate ?? 1) < 0.6)
+    .filter((b) => /(?:9-10|7-8)$/.test(b.key) && b.n >= MIN_FLAG_N && (b.mergeRate ?? 1) < 0.6)
     .map((b) => `${b.key}: high-grade picks merge at ${Math.round(b.mergeRate! * 100)}% (n=${b.n})`);
   if (gap !== null && gap <= 0) {
     flags.push(
