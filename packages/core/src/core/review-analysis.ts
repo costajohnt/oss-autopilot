@@ -330,6 +330,13 @@ type ActorFields = {
 };
 
 /**
+ * Version of {@link isMaintainerEngagement}. Bump it when the rule changes so
+ * ledger-backfill recomputes stored `firstMaintainerResponseAt` values. Rule 1
+ * (implicit, unstamped) counted any non-author non-bot issue comment.
+ */
+export const MAINTAINER_RESPONSE_RULE = 2;
+
+/**
  * Whether a comment or review counts as maintainer engagement. Shared by the
  * dormancy clock ({@link getLastMaintainerActivity}, #1842) and first-response
  * latency ({@link getFirstMaintainerResponseAt}) so both agree on who a

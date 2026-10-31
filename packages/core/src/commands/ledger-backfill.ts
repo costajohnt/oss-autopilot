@@ -10,9 +10,10 @@
  *   runs only query new entries.
  * - `firstMaintainerResponseAt` (earliest maintainer comment or review, by
  *   the dormancy clock's rule), which feeds each repo's `avgResponseDays`.
- *   Entries backfilled before this field existed are re-queried once, gated
- *   by `responseBackfilledAt`; a PR whose scanned page held no response but
- *   was full stays unstamped and is re-queried.
+ *   Each lookup stamps `responseRule`; entries with an older or missing rule
+ *   (never looked up, or recorded under the old any-non-author rule) are
+ *   re-queried once and their value overwritten. When the first page has no
+ *   maintainer response, later pages are fetched (up to RESPONSE_MAX_PAGES).
  * - `closeReason` for closed-unmerged entries, from who closed the PR and its
  *   last comments (core/close-reason.ts).
  * - `pick` for entries with no vet-time snapshot, from the curated issue list
@@ -30,7 +31,7 @@ import { classifyCloseReason, classifySelfClose, type CloseContext } from '../co
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { getOctokit, requireGitHubToken, getStateManager, parseGitHubUrl } from '../core/index.js';
 import { isGraphqlRateLimited } from '../core/pr-graphql.js';
-import { getFirstMaintainerResponseAt } from '../core/review-analysis.js';
+import { getFirstMaintainerResponseAt, MAINTAINER_RESPONSE_RULE } from '../core/review-analysis.js';
 import { maybeCheckpoint } from '../core/state.js';
 import type { PickSnapshot, StoredClosedPR, StoredMergedPR } from '../core/types.js';
 import { detectIssueListPath } from './locate-issue-list.js';
@@ -66,60 +67,115 @@ interface PRNode {
   closingIssuesReferences?: { nodes: Array<{ url: string } | null> };
   timelineItems?: { nodes: Array<{ actor?: Login | null } | null> };
   comments?: { nodes: Array<{ author?: Login | null; body: string } | null> };
-  firstComments?: {
-    nodes: Array<{ author?: Login | null; authorAssociation?: string | null; createdAt: string } | null>;
-  };
-  reviews?: { nodes: Array<{ author?: Login | null; submittedAt?: string | null } | null> };
+  firstComments?: Page<{ author?: Login | null; authorAssociation?: string | null; createdAt: string }>;
+  reviews?: Page<{ author?: Login | null; submittedAt?: string | null }>;
 }
 
-/** Comments and reviews scanned per PR for the first maintainer response. */
-const RESPONSE_SCAN = 10;
+interface Page<T> {
+  pageInfo?: { hasNextPage: boolean; endCursor?: string | null };
+  nodes: Array<T | null>;
+}
+
+/** Comments and reviews fetched per page when looking for the first maintainer response. */
+const RESPONSE_PAGE_SIZE = 10;
+/**
+ * Pages of each scanned before a PR is recorded as unanswered.
+ * ponytail: a PR with 50+ non-maintainer comments and reviews before the
+ * first maintainer reply reads as unanswered; raise this if that shows up.
+ */
+const RESPONSE_MAX_PAGES = 5;
+
+const RESPONSE_FIELDS = (args: string) => `
+  firstComments: comments(first: ${RESPONSE_PAGE_SIZE}${args ? `, after: $c` : ''}) {
+    pageInfo { hasNextPage endCursor } nodes { author { __typename login } authorAssociation createdAt } }
+  reviews(first: ${RESPONSE_PAGE_SIZE}${args ? `, after: $rc` : ''}) {
+    pageInfo { hasNextPage endCursor } nodes { author { __typename login } submittedAt } }`;
 
 const PR_FIELDS = `
   createdAt
   author { __typename login }
   closingIssuesReferences(first: 1) { nodes { url } }
   timelineItems(itemTypes: [CLOSED_EVENT], last: 1) { nodes { ... on ClosedEvent { actor { __typename login } } } }
-  comments(last: 5) { nodes { author { __typename login } body } }
-  firstComments: comments(first: ${RESPONSE_SCAN}) { nodes { author { __typename login } authorAssociation createdAt } }
-  reviews(first: ${RESPONSE_SCAN}) { nodes { author { __typename login } submittedAt } }`;
+  comments(last: 5) { nodes { author { __typename login } body } }${RESPONSE_FIELDS('')}`;
+
+const MORE_RESPONSES_QUERY = `query($o: String!, $r: String!, $n: Int!, $c: String, $rc: String) {
+  repository(owner: $o, name: $r) { pullRequest(number: $n) {${RESPONSE_FIELDS('after')}} } }`;
 
 /** GraphQL actor in the REST `user` shape; `type: 'Bot'` lets isBotAuthor drop bots without a `[bot]` suffix. */
 const restUser = (a: Login | null | undefined) => (a ? { login: a.login, type: a.__typename } : null);
 
-/**
- * Earliest maintainer comment or review, by the same rule as live enrichment
- * and the dormancy clock (isMaintainerEngagement). `truncated` is true when no
- * response was found but a full page came back, so a later one may exist:
- * the caller leaves the entry unstamped and it is re-queried next run.
- * ponytail: re-query instead of paging; page if many PRs sit there for good.
- */
-function firstResponse(node: PRNode): { at?: string; isTruncated: boolean } {
-  const commentNodes = node.firstComments?.nodes ?? [];
-  const reviewNodes = node.reviews?.nodes ?? [];
-  const comments = commentNodes
+/** Earliest maintainer comment or review, by the same rule as live enrichment and the dormancy clock. */
+function firstResponseAt(node: PRNode): string | undefined {
+  const comments = (node.firstComments?.nodes ?? [])
     .filter((c) => c !== null)
     .map((c) => ({ user: restUser(c.author), author_association: c.authorAssociation, created_at: c.createdAt }));
-  const reviews = reviewNodes
+  const reviews = (node.reviews?.nodes ?? [])
     .filter((r) => r !== null)
     .map((r) => ({ user: restUser(r.author), submitted_at: r.submittedAt }));
-  const at = node.author?.login ? getFirstMaintainerResponseAt(comments, reviews, node.author.login) : undefined;
-  const isTruncated = !at && (commentNodes.length >= RESPONSE_SCAN || reviewNodes.length >= RESPONSE_SCAN);
-  return { at, isTruncated };
+  return node.author?.login ? getFirstMaintainerResponseAt(comments, reviews, node.author.login) : undefined;
 }
 
-/** First-response fields for a returned node; a truncated miss stays unstamped so it is re-queried. */
-function responseFields(
+const hasMore = (node: PRNode) => !!(node.firstComments?.pageInfo?.hasNextPage || node.reviews?.pageInfo?.hasNextPage);
+
+/**
+ * First maintainer response for `node`, fetching later comment/review pages
+ * while none is found and more exist. Returns `pending` when a page fetch
+ * failed, so the entry is left for the next run instead of recorded as
+ * unanswered. Rate-limit and auth errors rethrow.
+ */
+async function resolveFirstResponse(
+  octokit: Octokit,
+  url: string,
   node: PRNode,
-  now: string,
-): { firstMaintainerResponseAt?: string; responseBackfilledAt?: string } {
-  const { at, isTruncated } = firstResponse(node);
-  return isTruncated ? {} : { firstMaintainerResponseAt: at, responseBackfilledAt: now };
+  warnings: string[],
+): Promise<{ at?: string; isPending: boolean }> {
+  const ref = parseGitHubUrl(url);
+  let at = firstResponseAt(node);
+  for (let page = 1; !at && ref && page < RESPONSE_MAX_PAGES && hasMore(node); page++) {
+    try {
+      const data = await octokit.graphql<{ repository: { pullRequest: PRNode | null } | null }>(MORE_RESPONSES_QUERY, {
+        o: ref.owner,
+        r: ref.repo,
+        n: ref.number,
+        c: node.firstComments?.pageInfo?.endCursor ?? null,
+        rc: node.reviews?.pageInfo?.endCursor ?? null,
+      });
+      const more = data.repository?.pullRequest;
+      if (!more) return { isPending: true };
+      // Only keep the pages that had more; an exhausted connection re-queried
+      // with its last cursor returns nothing anyway.
+      node.firstComments = more.firstComments;
+      node.reviews = more.reviews;
+    } catch (err) {
+      if (isRateLimitOrAuthError(err) || isGraphqlRateLimited(err)) throw err;
+      warnings.push(`response lookup for ${url} failed: ${errorMessage(err)}`);
+      return { isPending: true };
+    }
+    at = firstResponseAt(node);
+  }
+  return { at, isPending: false };
 }
 
-/** True when the response lookup has never run for this entry (see responseBackfilledAt). */
-const isMissingResponse = (e: StoredMergedPR | StoredClosedPR) =>
-  !e.firstMaintainerResponseAt && !e.responseBackfilledAt;
+/** First responses for every fetched node (URL -> at); a pending lookup is omitted. A rate-limit stops early. */
+async function resolveResponses(
+  octokit: Octokit,
+  nodes: Map<string, PRNode>,
+  warnings: string[],
+): Promise<{ responses: Map<string, string | undefined>; fatal?: Error }> {
+  const responses = new Map<string, string | undefined>();
+  try {
+    for (const [url, node] of nodes) {
+      const { at, isPending } = await resolveFirstResponse(octokit, url, node, warnings);
+      if (!isPending) responses.set(url, at);
+    }
+  } catch (err) {
+    return { responses, fatal: err as Error };
+  }
+  return { responses };
+}
+
+/** True when the entry's first response was never computed under the current maintainer rule. */
+const needsResponseLookup = (e: StoredMergedPR | StoredClosedPR) => e.responseRule !== MAINTAINER_RESPONSE_RULE;
 
 type GraphqlError = { type?: string; path?: Array<string | number> };
 
@@ -209,7 +265,6 @@ function countFilled(entries: Array<StoredMergedPR | StoredClosedPR>) {
     issueUrl: entries.filter((e) => e.issueUrl).length,
     closeReason: entries.filter((e) => 'closeReason' in e && e.closeReason).length,
     pick: entries.filter((e) => e.pick).length,
-    firstMaintainerResponseAt: entries.filter((e) => e.firstMaintainerResponseAt).length,
   };
 }
 
@@ -228,16 +283,17 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   // 1. GitHub: openedAt, closing issue, close reason, first response, for
   // entries not yet backfilled, plus one-time re-fetches for fields added
   // later: selfCloseReason on self-closed entries, and firstMaintainerResponseAt
-  // on entries that never had it looked up (responseBackfilledAt unset).
+  // on entries not looked up under the current maintainer rule.
   const needsFetch = [
-    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || isMissingResponse(e)),
+    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || needsResponseLookup(e)),
     ...stateManager
       .getClosedPRs()
       .filter(
-        (e) => !e.backfilledAt || isMissingResponse(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason),
+        (e) => !e.backfilledAt || needsResponseLookup(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason),
       ),
   ].map((e) => e.url);
   const nodes = new Map<string, PRNode>();
+  let responses = new Map<string, string | undefined>();
   let fatal: Error | undefined;
   if (needsFetch.length > 0) {
     const octokit = getOctokit(requireGitHubToken());
@@ -256,6 +312,7 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     if (!fatal && failedBatches === Math.ceil(needsFetch.length / BATCH_SIZE)) {
       throw new Error(`Every GitHub batch failed: ${warnings.join('; ')}`);
     }
+    if (!fatal) ({ responses, fatal } = await resolveResponses(octokit, nodes, warnings));
   }
 
   // 2. Merge into fresh state: the GitHub phase can take a while, and upgrades
@@ -279,7 +336,7 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
       openedAt: node?.createdAt,
       issueUrl,
       pick,
-      ...(node && { backfilledAt: now, ...responseFields(node, now) }),
+      ...(node && { backfilledAt: now }),
     };
   };
 
@@ -308,6 +365,8 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
         return { url: e.url, title: e.title, closedAt: e.closedAt, ...recovered(e), closeReason, selfCloseReason };
       }),
     );
+    // Overwrite, not fill-missing: a value recorded under an older rule is replaced.
+    for (const [url, at] of responses) stateManager.setLedgerResponse(url, at, MAINTAINER_RESPONSE_RULE);
   });
 
   const after = countFilled([...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()]);
@@ -320,7 +379,8 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
       issueUrl: after.issueUrl - before.issueUrl,
       closeReason: after.closeReason - before.closeReason,
       pick: after.pick - before.pick,
-      firstMaintainerResponseAt: after.firstMaintainerResponseAt - before.firstMaintainerResponseAt,
+      // Lookups that found a response (overwrites included), not a before/after delta.
+      firstMaintainerResponseAt: [...responses.values()].filter(Boolean).length,
     },
     listFiles: lists.map((l) => l.file),
     unresolved: needsFetch.length - nodes.size,

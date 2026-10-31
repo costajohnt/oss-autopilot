@@ -19,6 +19,7 @@ import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
 import { parseGitHubUrl } from './urls.js';
+import { MAINTAINER_RESPONSE_RULE } from './review-analysis.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
   FetchedPR,
@@ -281,6 +282,12 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MIN_RESPONSE_SAMPLES = 3;
 /** Only PRs opened within this window feed avgResponseDays. */
 const RESPONSE_WINDOW_DAYS = 365;
+/**
+ * A lower bound (unanswered PR) counts only at or above this many days: the
+ * top of the 7-point band in issue-grading's gradeResponsiveness. A shorter
+ * wait says nothing about the repo yet and would only pull the median fast.
+ */
+const CENSORED_MIN_DAYS = 14;
 
 const toMs = (t: string | undefined) => (t ? Date.parse(t) : undefined);
 
@@ -314,12 +321,13 @@ function medianOf(values: number[], minCount: number): number | null {
  *   are censored, not dropped, so a repo that ignores most PRs can't grade
  *   fast off the one it answered. Each PR opened in the last 12 months gives:
  *   - answered: openedAt -> firstMaintainerResponseAt
- *   - merged with no recorded response: openedAt -> mergedAt (the merge was the response)
- *   - closed and confirmed unanswered (responseBackfilledAt set):
- *     openedAt -> closedAt, a lower bound
+ *   - merged with no recorded response: openedAt -> mergedAt (the merge was
+ *     the response; errs slow, since any earlier reply went unrecorded)
+ *   - closed and confirmed unanswered under the current maintainer rule
+ *     (responseRule), except self-closes: openedAt -> closedAt, a lower bound
  *   - open and still waiting: createdAt -> now, a lower bound
- *   The median of a mix with lower bounds is itself a lower bound, so it
- *   errs fast only by as much as the censored PRs would have taken.
+ *   Lower bounds count only from 14 days (CENSORED_MIN_DAYS): a PR opened
+ *   yesterday or closed within days says nothing yet and would grade fast.
  *   Null below 3 samples.
  * - hasHostileComments: any closed PR here has closeReason 'ai-policy'.
  *
@@ -333,7 +341,7 @@ export function computeLedgerRepoSignals(
     firstMaintainerResponseAt?: string;
     mergedAt?: string;
     closedAt?: string;
-    responseBackfilledAt?: string;
+    responseRule?: number;
     closeReason?: string;
   }>,
   openPRs: ReadonlyArray<Pick<FetchedPR, 'url' | 'createdAt' | 'firstMaintainerResponseAt'>>,
@@ -341,7 +349,13 @@ export function computeLedgerRepoSignals(
 ): Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }> {
   const byRepo = new Map<string, { samples: number[]; hostile: boolean }>();
   const windowStart = nowMs - RESPONSE_WINDOW_DAYS * MS_PER_DAY;
-  const add = (url: string, openedAt: string | undefined, endMs: number | undefined, closeReason?: string) => {
+  const add = (
+    url: string,
+    openedAt: string | undefined,
+    endMs: number | undefined,
+    isLowerBound: boolean,
+    closeReason?: string,
+  ) => {
     const ref = parseGitHubUrl(url);
     if (!ref) return;
     const repo = `${ref.owner}/${ref.repo}`;
@@ -349,16 +363,21 @@ export function computeLedgerRepoSignals(
     byRepo.set(repo, entry);
     if (closeReason === 'ai-policy') entry.hostile = true;
     const days = responseDays(openedAt, endMs, windowStart);
-    if (days !== undefined) entry.samples.push(days);
+    if (days !== undefined && (!isLowerBound || days >= CENSORED_MIN_DAYS)) entry.samples.push(days);
   };
   const seen = new Set<string>();
   for (const e of ledger) {
     seen.add(e.url);
-    const confirmedUnanswered = e.responseBackfilledAt ? toMs(e.closedAt) : undefined;
-    add(e.url, e.openedAt, toMs(e.firstMaintainerResponseAt) ?? toMs(e.mergedAt) ?? confirmedUnanswered, e.closeReason);
+    // mergedAt stands in when no response was recorded; it errs slow.
+    const exact = toMs(e.firstMaintainerResponseAt) ?? toMs(e.mergedAt);
+    const isConfirmedUnanswered = e.responseRule === MAINTAINER_RESPONSE_RULE && e.closeReason !== 'self-closed';
+    const lowerBound = isConfirmedUnanswered ? toMs(e.closedAt) : undefined;
+    add(e.url, e.openedAt, exact ?? lowerBound, exact === undefined, e.closeReason);
   }
   for (const pr of openPRs) {
-    if (!seen.has(pr.url)) add(pr.url, pr.createdAt, toMs(pr.firstMaintainerResponseAt) ?? nowMs);
+    if (seen.has(pr.url)) continue;
+    const exact = toMs(pr.firstMaintainerResponseAt);
+    add(pr.url, pr.createdAt, exact ?? nowMs, exact === undefined);
   }
 
   const result = new Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }>();

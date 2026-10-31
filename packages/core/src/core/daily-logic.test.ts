@@ -1140,7 +1140,7 @@ function isoDay(n: number, base = '2026-01-01T00:00:00Z'): string {
 describe('computeLedgerRepoSignals', () => {
   const NOW = LEDGER_NOW;
   let n = 0;
-  const pr = (fields: Record<string, string | undefined> = {}) => {
+  const pr = (fields: Omit<Parameters<typeof computeLedgerRepoSignals>[0][number], 'url'> = {}) => {
     n += 1;
     return { url: `https://github.com/o/r/pull/${n}`, ...fields };
   };
@@ -1157,11 +1157,31 @@ describe('computeLedgerRepoSignals', () => {
 
   it('does not grade fast when most PRs closed unanswered (censored, not dropped)', () => {
     const stale = Array.from({ length: 5 }, () =>
-      pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseBackfilledAt: 'x', closeReason: 'stale' }),
+      pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseRule: 2, closeReason: 'stale' }),
     );
     const avg = signals([...stale, answered(1)])?.avgResponseDays;
     expect(avg).toBe(60);
-    expect(avg).toBeGreaterThanOrEqual(3);
+    expect(avg).toBeGreaterThanOrEqual(14);
+  });
+
+  it('ignores lower bounds under 14 days: PRs opened yesterday do not make a repo look fast', () => {
+    const waiting = [1, 2, 3].map((i) => ({
+      url: `https://github.com/o/r/pull/${800 + i}`,
+      createdAt: isoDay(-1, '2026-06-01T00:00:00Z'),
+    }));
+    const avg = signals([answered(20), answered(20)], waiting)?.avgResponseDays;
+    expect(avg).toBeNull(); // 2 exact samples; the 1-day waits are uninformative
+  });
+
+  it('ignores quick unanswered closes and self-closes as lower bounds', () => {
+    const quick = pr({ openedAt: isoDay(0), closedAt: isoDay(2), responseRule: 2, closeReason: 'rejected' });
+    const self = pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseRule: 2, closeReason: 'self-closed' });
+    expect(signals([quick, self, answered(20), answered(20)])?.avgResponseDays).toBeNull();
+  });
+
+  it('counts a confirmed-unanswered close only under the current maintainer rule', () => {
+    const legacy = pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseRule: 1, closeReason: 'stale' });
+    expect(signals([legacy, answered(20), answered(20)])?.avgResponseDays).toBeNull();
   });
 
   it('uses mergedAt for merges without a recorded response and now for open PRs still waiting', () => {

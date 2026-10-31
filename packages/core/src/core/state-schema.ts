@@ -124,11 +124,12 @@ const LedgerPredictionFields = {
   /** When ledger-backfill got GitHub's answer for this PR; later runs skip it. */
   backfilledAt: z.string().optional(),
   /**
-   * When ledger-backfill looked for `firstMaintainerResponseAt`. Entries
-   * backfilled before that lookup existed are re-queried once; a PR nobody
-   * answered keeps this stamp without the field, so it is not re-queried.
+   * Version of the maintainer rule (`MAINTAINER_RESPONSE_RULE`) ledger-backfill
+   * last computed `firstMaintainerResponseAt` under. Entries with an older or
+   * missing version are re-queried once and their value overwritten; a PR
+   * nobody answered carries the current version without the field.
    */
-  responseBackfilledAt: z.string().optional(),
+  responseRule: z.number().int().optional(),
 };
 
 export const StoredMergedPRSchema = z

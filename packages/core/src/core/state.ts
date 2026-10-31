@@ -88,7 +88,7 @@ const LEDGER_FIELDS = [
   'lastReviewDecision',
   'lastCiStatus',
   'backfilledAt',
-  'responseBackfilledAt',
+  'responseRule',
   'closeReason',
   'selfCloseReason',
 ] as const;
@@ -809,6 +809,23 @@ export class StateManager {
       closed.commentsFetchedAt = fetchedAt;
       this.autoSave();
     }
+  }
+
+  /**
+   * Overwrite the first-response lookup on the merged or closed PR matching
+   * `url`. Unlike addMergedPRs/addClosedPRs, which only fill missing fields,
+   * this replaces `firstMaintainerResponseAt` (clearing it when `at` is
+   * undefined) so ledger-backfill can recompute values recorded under an older
+   * maintainer rule. No-op when no PR with that URL is stored.
+   */
+  setLedgerResponse(url: string, at: string | undefined, rule: number): void {
+    const entry =
+      this.state.mergedPRs?.find((pr) => pr.url === url) ?? this.state.closedPRs?.find((pr) => pr.url === url);
+    if (!entry) return;
+    if (at === undefined) delete entry.firstMaintainerResponseAt;
+    else entry.firstMaintainerResponseAt = at;
+    entry.responseRule = rule;
+    this.autoSave();
   }
 
   /**
