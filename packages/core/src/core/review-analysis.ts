@@ -26,9 +26,12 @@ export interface ReviewComment {
  * Only APPROVED, CHANGES_REQUESTED and DISMISSED change a reviewer's standing
  * verdict on GitHub. COMMENTED is also what GitHub records for every inline
  * reply, so it must not overwrite an earlier verdict from the same reviewer.
+ *
+ * Bot-authored reviews (e.g. an AI review bot posting APPROVE) are ignored so a
+ * bot alone never reads as maintainer approval or a changes request (#1840).
  */
 export function determineReviewDecision(
-  reviews: Array<{ state?: string | null; user?: { login?: string } | null }>,
+  reviews: Array<{ state?: string | null; user?: { login?: string; type?: string | null } | null }>,
 ): ReviewDecision {
   if (reviews.length === 0) {
     return 'review_required';
@@ -39,7 +42,7 @@ export function determineReviewDecision(
   for (const review of reviews) {
     const login = review.user?.login;
     const state = review.state;
-    if (!login || !state) continue;
+    if (!login || !state || isBotAuthor(login, review.user?.type)) continue;
     if (state === 'DISMISSED') {
       latestByUser.delete(login);
     } else if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {

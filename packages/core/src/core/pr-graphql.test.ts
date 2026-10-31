@@ -749,6 +749,85 @@ describe('GraphQL vs REST status parity', () => {
     expect(prGraphql.actionReason).toBe('merge_conflict');
     expect(prGraphql.hasMergeConflict).toBe(true);
   });
+
+  // #1840: both paths ignore bot reviews. GraphQL reports an App as
+  // `__typename: 'Bot'` with a bare login; REST as `name[bot]` + `type: 'Bot'`.
+  describe('bot reviews', () => {
+    const botGraphQL = {
+      author: { login: 'coderabbitai', __typename: 'Bot' },
+      body: 'automated review',
+      databaseId: 5,
+      state: 'APPROVED',
+      submittedAt: '2026-02-06T00:00:00Z',
+    };
+    const botRest = {
+      body: 'automated review',
+      id: 5,
+      state: 'APPROVED',
+      submitted_at: '2026-02-06T00:00:00Z',
+      user: { login: 'coderabbitai[bot]', type: 'Bot' },
+    };
+    const baseSignals: PRSignals = {
+      prUrl: 'https://github.com/o/r/pull/7',
+      owner: 'o',
+      repo: 'r',
+      number: 7,
+      id: 12_345,
+      title: 'PR',
+      body: '',
+      createdAt: '2026-02-01T00:00:00Z',
+      updatedAt: '2026-02-07T00:00:00Z',
+      hasMergeConflict: false,
+      comments: [],
+      reviews: [],
+      reviewComments: [],
+      ciStatus: computeCIStatus([], { state: 'success', statuses: [] }),
+    };
+    const commit = { date: '2026-02-04T00:00:00Z', author: 'contributor' };
+
+    it('does not treat a PR approved only by a bot as approved', async () => {
+      const node = makeNode({ title: 'PR', reviews: { totalCount: 1, nodes: [botGraphQL] } });
+      const prGraphql = await assembleFromGraphQL(node);
+      const prRest = await assembleFetchedPR({ ...baseSignals, reviews: [botRest] }, CONFIG, async () => commit);
+
+      expect(prGraphql.reviewDecision).toBe('review_required');
+      expect(prRest.reviewDecision).toBe('review_required');
+      expect(prGraphql.waitReason).toBe('pending_review');
+      expect(prRest.waitReason).toBe('pending_review');
+    });
+
+    it('reports changes_requested when a bot approves and a human requests changes', async () => {
+      const human = {
+        databaseId: 6,
+        state: 'CHANGES_REQUESTED',
+        body: 'please fix',
+        submittedAt: '2026-02-05T00:00:00Z',
+        author: { login: 'maintainer' },
+      };
+      const node = makeNode({ title: 'PR', reviews: { totalCount: 2, nodes: [botGraphQL, human] } });
+      const prGraphql = await assembleFromGraphQL(node);
+      const prRest = await assembleFetchedPR(
+        {
+          ...baseSignals,
+          reviews: [
+            botRest,
+            {
+              user: { login: 'maintainer' },
+              body: 'please fix',
+              submitted_at: '2026-02-05T00:00:00Z',
+              state: 'CHANGES_REQUESTED',
+              id: 6,
+            },
+          ],
+        },
+        CONFIG,
+        async () => commit,
+      );
+
+      expect(prGraphql.reviewDecision).toBe('changes_requested');
+      expect(prRest.reviewDecision).toBe('changes_requested');
+    });
+  });
 });
 
 // #1713 follow-up: override auto-clear keys on latestActivityAt, which falls

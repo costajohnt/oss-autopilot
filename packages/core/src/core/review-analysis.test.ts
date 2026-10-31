@@ -117,6 +117,38 @@ describe('determineReviewDecision', () => {
   it('should return review_required for COMMENTED-only reviews', () => {
     expect(determineReviewDecision([{ state: 'COMMENTED', user: { login: 'reviewer1' } }])).toBe('review_required');
   });
+
+  // #1840: a bot (e.g. an AI review bot) approving is not a maintainer approval.
+  it.each([
+    ['[bot] suffix', { login: 'coderabbitai[bot]' }],
+    ['REST user.type Bot', { login: 'Copilot', type: 'Bot' }],
+    ['-bot suffix', { login: 'miq-bot' }],
+    ['-robot suffix', { login: 'k8s-ci-robot' }],
+  ])('ignores an APPROVED review from a bot (%s)', (_label, user) => {
+    expect(determineReviewDecision([{ state: 'APPROVED', user }])).toBe('review_required');
+  });
+
+  it('ignores a CHANGES_REQUESTED review from a bot', () => {
+    expect(determineReviewDecision([{ state: 'CHANGES_REQUESTED', user: { login: 'coderabbitai[bot]' } }])).toBe(
+      'review_required',
+    );
+  });
+
+  it('reports changes_requested when a bot approves but a human requests changes', () => {
+    const result = determineReviewDecision([
+      { state: 'APPROVED', user: { login: 'coderabbitai[bot]', type: 'Bot' } },
+      { state: 'CHANGES_REQUESTED', user: { login: 'maintainer' } },
+    ]);
+    expect(result).toBe('changes_requested');
+  });
+
+  it('still reports a human approval alongside a bot approval', () => {
+    const result = determineReviewDecision([
+      { state: 'APPROVED', user: { login: 'coderabbitai[bot]' } },
+      { state: 'APPROVED', user: { login: 'maintainer' } },
+    ]);
+    expect(result).toBe('approved');
+  });
 });
 
 describe('getLatestChangesRequestedDate', () => {
