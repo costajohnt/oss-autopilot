@@ -512,6 +512,20 @@ describe('GistStateStore', () => {
       expect(result).toEqual({ status: 'refreshed' });
     });
 
+    it('{ force: true } bypasses the 30s throttle (conflict-retry path, audit 2026-10-30 M1)', async () => {
+      const gistId = 'refresh-forced';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+      const first = await store.refreshFromGist();
+      const throttled = await store.refreshFromGist();
+      const forced = await store.refreshFromGist({ force: true });
+      expect([first.status, throttled.status, forced.status]).toEqual(['refreshed', 'throttled', 'refreshed']);
+    });
+
     it('returns { status: "throttled", sinceLastMs } when called within 30s of the previous refresh', async () => {
       const gistId = 'refresh-throttled';
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);

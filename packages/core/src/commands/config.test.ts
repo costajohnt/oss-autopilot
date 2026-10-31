@@ -337,7 +337,7 @@ describe('runConfig', () => {
       await runConfig({ key: 'username', value: 'newuser' });
 
       expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
-      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'config');
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'config', expect.any(Function));
     });
 
     it('threads the checkpoint warning into gistSyncWarning when the Gist push fails', async () => {

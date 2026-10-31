@@ -229,20 +229,31 @@ function isConcurrencyConflict(e: unknown): boolean {
  * guard — if state is fundamentally unloadable the caller must see that,
  * exactly as it would when the tool/resource body calls it.
  */
-export async function reloadExternalState(): Promise<void> {
+export async function reloadExternalState(options: { force?: boolean } = {}): Promise<void> {
   const stateManager = getStateManager();
   try {
     if (stateManager.isGistMode()) {
       // Throttled to once per 30s inside GistStateStore, so per-call refresh
       // is cheap; fetch failures RESOLVE (status 'error') rather than throw,
-      // serving cached state.
-      await stateManager.refreshFromGist();
+      // serving cached state. `force` bypasses the throttle on the
+      // conflict-retry path, where the first reload of the same request
+      // stamped it seconds ago (audit 2026-10-30 M1).
+      await stateManager.refreshFromGist(options);
     } else {
       stateManager.reloadIfChanged();
     }
   } catch (e) {
     console.error('[MCP] State reload failed; proceeding on cached state:', e);
   }
+}
+
+/**
+ * Run a tool body as an in-flight mutation so a concurrent tool call or
+ * resource read cannot refresh Gist state out from under it (audit
+ * 2026-10-30 M2).
+ */
+function runBody<T>(fn: () => Promise<T>): Promise<T> {
+  return getStateManager().runMutation(fn);
 }
 
 /** Standard MCP text content result. */
@@ -299,7 +310,7 @@ function wrapTool<A>(
       await reloadExternalState();
       let data: unknown;
       try {
-        data = await fn(args);
+        data = await runBody(() => fn(args));
       } catch (e) {
         if (!isConcurrencyConflict(e)) throw e;
         // Concurrency conflict: an external write landed between our reload
@@ -308,8 +319,8 @@ function wrapTool<A>(
         // own mutation — every mutating tool is an absolute set operation,
         // so re-applying it on a fresh baseline is safe. A second
         // consecutive conflict surfaces as the normal error result.
-        await reloadExternalState();
-        data = await fn(args);
+        await reloadExternalState({ force: true });
+        data = await runBody(() => fn(args));
       }
       // Degraded gist mode is surfaced IN the response (#1415), not just on
       // stderr — the consuming agent must see that this mutation/read ran

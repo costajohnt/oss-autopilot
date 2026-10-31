@@ -138,7 +138,7 @@ describe('runSearch', () => {
     const out = await runSearch({ maxResults: 5 });
 
     const sm = mockGetStateManager.mock.results[0].value;
-    expect(mockMaybeCheckpoint).toHaveBeenCalledWith(sm, 'search');
+    expect(mockMaybeCheckpoint).toHaveBeenCalledWith(sm, 'search', expect.any(Function));
     expect(sm.setSearchSeen.mock.invocationCallOrder[0]).toBeLessThan(mockMaybeCheckpoint.mock.invocationCallOrder[0]);
     expect(out.gistSyncWarning).toBe('Gist checkpoint push failed');
   });

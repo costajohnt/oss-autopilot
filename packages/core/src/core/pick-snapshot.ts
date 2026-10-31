@@ -101,6 +101,8 @@ export async function persistPickSnapshots(
     warn(MODULE, pickRecordError);
     return { pickRecordError };
   }
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () =>
+    stateManager.recordPickSnapshots(snapshots),
+  );
   return gistSyncWarning ? { gistSyncWarning } : {};
 }

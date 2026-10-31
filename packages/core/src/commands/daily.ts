@@ -18,6 +18,7 @@ import {
   applyStatusOverrides,
   computeRepoSignals,
   computeLedgerRepoSignals,
+  GistConcurrencyError,
   groupPRsByRepo,
   assessCapacity,
   collectActionableIssues,
@@ -876,6 +877,9 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // One collector shared by every phase — threaded through explicitly so the
   // callgraph documents which phases can produce non-fatal warnings. See #1042.
   const warnings: DailyWarning[] = [];
+  // This run's mutations cannot be re-applied, so if a concurrent tool's
+  // conflict recovery refreshes state mid-run they are gone; say so at the end.
+  const generationAtStart = getStateManager().refreshGeneration;
 
   // Surface gist-mode degradation in the machine-readable envelope (#1431):
   // a degraded process (local-only under a gist config, or a #1443 degraded
@@ -1088,6 +1092,16 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   try {
     const sm = getStateManager();
     if (sm.isGistMode()) {
+      if (sm.refreshGeneration !== generationAtStart) {
+        recordWarning(
+          warnings,
+          'gist-checkpoint',
+          'Gist checkpoint',
+          new Error(
+            'state was refreshed from the Gist while this run was in progress; its state changes were dropped, re-run daily',
+          ),
+        );
+      }
       // checkpoint() resolves false (no throw) when the push failed after
       // its retry — previously discarded, reporting clean success while
       // cross-machine state silently drifted (#1370).
@@ -1102,7 +1116,15 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       }
     }
   } catch (err) {
-    recordWarning(warnings, 'gist-checkpoint', 'Gist checkpoint', err);
+    // A conflict cannot be recovered here (nothing re-applies a daily run):
+    // the next refresh drops this run's changes, so say that, not "retry".
+    const cause =
+      err instanceof GistConcurrencyError
+        ? new Error(
+            "another machine pushed during this run; this run's state changes were NOT synced and will be dropped, re-run daily",
+          )
+        : err;
+    recordWarning(warnings, 'gist-checkpoint', 'Gist checkpoint', cause);
   }
 
   return result;

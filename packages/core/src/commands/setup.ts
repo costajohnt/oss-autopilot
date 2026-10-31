@@ -125,7 +125,10 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
       }
     }
 
-    stateManager.batch(() => {
+    // Named so the Gist conflict path can re-apply the same settings on a
+    // refreshed baseline (maybeCheckpoint below).
+    const applySettings = (): void => {
+      warnings.length = 0;
       for (const setting of options.set!) {
         const [key, ...valueParts] = setting.split('=');
         const value = valueParts.join('=');
@@ -445,12 +448,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           }
         }
       }
-    });
+    };
+    stateManager.batch(applySettings);
 
     // Push the settings mutation to the Gist in gist mode (no-op locally).
     // Without this the change only hits the local cache and the next
     // bootstrap reverts it from the Gist (#1440).
-    const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+    const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () => stateManager.batch(applySettings));
     return {
       success: true,
       settings: results,

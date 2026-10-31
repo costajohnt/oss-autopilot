@@ -14,21 +14,22 @@ onlyBuiltDependencies:
 overrides:
   # Transitive via @modelcontextprotocol/sdk. Floor at the lowest
   # non-vulnerable version for the advisory family, currently the
-  # 2026-09 advisories affecting < 4.13.5 (previously < 4.12.27, #1587).
-  hono: '>=4.13.5'
+  # 2026-10 serveStatic double-decode advisory affecting < 4.13.11
+  # (previously < 4.13.5, #1587).
+  hono: '>=4.13.11'
   # Moved from the dead package.json `pnpm.overrides` block (ignored by
   # pnpm v10, see note above).
   # Dev-only, transitive via minimatch. ReDoS advisories patched in 5.0.12.
   brace-expansion: '>=5.0.12'
   '@babel/core': '>=7.29.6'
   # Transitive via @modelcontextprotocol/sdk. Advisories affect < 1.19.13.
-  '@hono/node-server': '>=1.19.13'
+  '@hono/node-server': '>=2.1.3'
   # Transitive via @modelcontextprotocol/sdk. Known advisory.
   express-rate-limit: '>=8.2.2'
   # Transitive via @modelcontextprotocol/sdk -> express-rate-limit, which
   # exact-pins 10.1.0. XSS advisory in Address6 HTML-emitting methods;
   # patched in 10.1.1.
-  ip-address: '>=10.1.1'
+  ip-address: '>=10.7.4'
   # Dev-only, transitive via eslint -> flat-cache. ReDoS advisory.
   flatted: '>=3.4.2'
   # Dev-only, transitive via typescript-eslint -> tinyglobby. ReDoS advisory.
@@ -39,10 +40,13 @@ overrides:
   yaml: '>=2.8.3'
   # Transitive via @modelcontextprotocol/sdk -> ajv. Path-traversal advisory
   # GHSA-q3j6-qgpj-74h6, plus later advisories patched in 3.1.6.
-  fast-uri: '>=3.1.6'
+  fast-uri: '>=4.2.3'
   # Transitive via @modelcontextprotocol/sdk -> express/body-parser.
   # Advisory affects >=6.14.2 <=6.15.3; patched in 6.16.0.
-  qs: '>=6.16.0'
+  qs: '>=6.16.1'
+  # Transitive via @modelcontextprotocol/sdk -> express. DoS advisory
+  # patched in 2.4.0 (audit 2026-10-30 M4).
+  body-parser: '>=2.4.0'
   # Dev-only, transitive via @oss-autopilot/dashboard -> jsdom -> undici.
   # jsdom 30 pulls undici 8.x; the 2026-10 advisory family (GHSA-r53p-7pc4-xj5r
   # and others) affects undici 8.x <8.10.2. Earlier 7.x advisories are

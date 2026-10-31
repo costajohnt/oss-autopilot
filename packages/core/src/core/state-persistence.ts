@@ -91,7 +91,10 @@ export function releaseLock(lockPath: string): void {
  * preventing partial/corrupt state files if the process crashes mid-write.
  */
 export function atomicWriteFileSync(filePath: string, data: string, mode?: number): void {
-  const tmpPath = filePath + '.tmp';
+  // Per-process name: two unlocked writers (MCP server + a CLI run, both in
+  // Gist mode) sharing one `<file>.tmp` could publish each other's partial
+  // write via rename (audit 2026-10-30 L2).
+  const tmpPath = `${filePath}.${process.pid}.tmp`;
   fs.writeFileSync(tmpPath, data, { mode: mode ?? 0o600 });
   fs.renameSync(tmpPath, filePath);
   // Ensure permissions are correct (rename preserves the tmp file's mode,

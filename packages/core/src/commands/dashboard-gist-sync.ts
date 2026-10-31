@@ -50,6 +50,8 @@ export class GistSyncCoordinator {
   // exactly the event that can destroy it (refreshFromGist wholesale-replaces
   // state). These clear only when a checkpoint PUSH succeeds.
   private pendingGistSyncWarnings: string[] = [];
+  /** `refreshGeneration` when the oldest pending warning was recorded. */
+  private pendingSince = 0;
 
   private lastRecoveryAttemptAt = 0;
   private recoveryHaltedReason: string | null = null;
@@ -82,9 +84,15 @@ export class GistSyncCoordinator {
    * so any previously pending warning is resolved with it. */
   recordGistSyncOutcome(warning: string | null): void {
     if (warning === null) {
+      // ...unless a Gist refresh replaced state since the warning was
+      // recorded (a mutation's own conflict recovery does that without going
+      // through pullFromGist): the push then carried the Gist's copy, not the
+      // un-pushed change, so it is a loss, not a resolution (#1443 invariant).
+      if (this.manager.refreshGeneration !== this.pendingSince) this.convertPendingWarningsToLossNotices();
       this.pendingGistSyncWarnings = [];
       return;
     }
+    if (this.pendingGistSyncWarnings.length === 0) this.pendingSince = this.manager.refreshGeneration;
     if (!this.pendingGistSyncWarnings.includes(warning)) {
       this.pendingGistSyncWarnings.push(warning);
     }
@@ -178,8 +186,8 @@ export class GistSyncCoordinator {
    * notice when the pull actually replaced state (#1443). All dashboard pull
    * sites go through here; callers flush pending pushes first (#1417), so a
    * warning that is still pending at pull time means the flush failed. */
-  async pullFromGist(): Promise<boolean> {
-    const refreshed = await this.manager.refreshFromGist();
+  async pullFromGist(options: { force?: boolean } = {}): Promise<boolean> {
+    const refreshed = await this.manager.refreshFromGist(options);
     if (refreshed) this.convertPendingWarningsToLossNotices();
     return refreshed;
   }
@@ -210,7 +218,14 @@ export class GistSyncCoordinator {
     try {
       await ensureGistPersistence(currentToken);
       // The upgrade replaced the core singleton — re-resolve our reference.
+      const previous = this.manager;
       this.manager = getStateManager();
+      // A swapped manager starts its own refreshGeneration; re-anchor any
+      // still-pending warnings to it so the next successful push is not
+      // misread as a loss (or a loss missed) against the old counter.
+      if (this.manager !== previous && this.pendingGistSyncWarnings.length > 0) {
+        this.pendingSince = this.manager.refreshGeneration;
+      }
       // Genuinely armed only: a retry can resolve via ANOTHER degraded
       // bootstrap (gist-backed, store disarmed) — that is not a recovery
       // and must not produce a recovery notice (#1443).

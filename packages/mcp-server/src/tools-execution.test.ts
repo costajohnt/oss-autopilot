@@ -54,6 +54,9 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runGuidelinesReset: mockRunGuidelinesReset,
   runFetchCorpus: mockRunFetchCorpus,
   runFeatures: vi.fn(),
+  runStateShow: vi.fn(),
+  runStateSync: vi.fn(),
+  runStateUnlink: vi.fn(),
   MAX_SEARCH_RESULTS: 100,
   DEFAULT_SEARCH_RESULTS: 15,
   MAX_FEATURES_RESULTS: 100,
@@ -72,6 +75,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
     isGistMode: vi.fn().mockReturnValue(false),
     reloadIfChanged: vi.fn().mockReturnValue(false),
     refreshFromGist: vi.fn().mockResolvedValue(false),
+    runMutation: (fn: () => Promise<unknown>) => fn(),
   }),
   getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
   ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
@@ -88,6 +92,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
 }));
 
 import { createServer } from './server.js';
+import * as commands from '@oss-autopilot/core/commands';
 
 // callTool's return type is a union whose legacy CompatibilityCallToolResult
 // arm types `content` as `unknown`; every tool in this suite returns text content.
@@ -414,5 +419,89 @@ describe('tool execution', () => {
       const content = firstTextContent(result);
       expect(content.text).toContain('GitHub rate limit exceeded');
     });
+  });
+});
+
+// Every registered tool runs once through wrapTool with a minimal valid input
+// (audit 2026-10-30 M5): the core handler is mocked, so this pins the MCP
+// envelope (ok on resolve, isError on reject) and the arg plumbing, not core.
+describe('every registered tool executes through wrapTool (smoke)', () => {
+  const ISSUE = 'https://github.com/owner/repo/issues/1';
+  const PR = 'https://github.com/owner/repo/pull/1';
+  const REPO = 'owner/repo';
+  const smoke: Array<[tool: string, handler: keyof typeof commands, args: Record<string, unknown>]> = [
+    ['daily', 'runDaily', {}],
+    ['status', 'runStatus', {}],
+    ['search', 'runSearch', {}],
+    ['features', 'runFeatures', {}],
+    ['vet', 'runVet', { issueUrl: ISSUE }],
+    ['verify-issue', 'runVerifyIssue', { issueUrl: ISSUE }],
+    ['vet-list', 'runVetList', {}],
+    ['track', 'runTrack', { prUrl: PR }],
+    ['compliance-score', 'runComplianceScore', { prUrl: PR }],
+    ['strategy', 'runStrategy', {}],
+    ['eval', 'runEval', {}],
+    ['repo-vet', 'runRepoVet', { repo: REPO }],
+    ['comments', 'runComments', { prUrl: PR }],
+    ['post', 'runPost', { url: ISSUE, message: 'hello' }],
+    ['claim', 'runClaim', { issueUrl: ISSUE }],
+    ['config', 'runConfig', {}],
+    ['init', 'runInit', { username: 'someone' }],
+    ['setup', 'runSetup', {}],
+    ['check-setup', 'runCheckSetup', {}],
+    ['startup', 'runStartup', {}],
+    ['dismiss', 'runDismiss', { url: ISSUE }],
+    ['undismiss', 'runUndismiss', { url: ISSUE }],
+    ['move', 'runMove', { prUrl: PR, target: 'shelved' }],
+    ['state-show', 'runStateShow', {}],
+    ['state-sync', 'runStateSync', {}],
+    ['state-unlink', 'runStateUnlink', {}],
+    ['guidelines-list', 'runGuidelinesList', {}],
+    ['guidelines-get', 'runGuidelinesView', { repo: REPO }],
+    ['guidelines-store', 'runGuidelinesStore', { repo: REPO, content: 'be nice' }],
+    ['guidelines-reset', 'runGuidelinesReset', { repo: REPO }],
+    ['guidelines-fetch-corpus', 'runFetchCorpus', { repo: REPO }],
+  ];
+
+  let client: Client;
+
+  beforeAll(async () => {
+    const server = createServer();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    client = new Client({ name: 'smoke-client', version: '0.0.0' });
+    await client.connect(clientTransport);
+  });
+
+  afterAll(async () => {
+    await client.close();
+  });
+
+  it('the smoke table covers every registered tool', async () => {
+    const { tools } = await client.listTools();
+    expect(new Set(tools.map((t) => t.name))).toEqual(new Set(smoke.map(([tool]) => tool)));
+  });
+
+  it.each(smoke)('%s: handler result comes back in the ok envelope', async (tool, handler, args) => {
+    const fn = vi.mocked(commands[handler] as (...a: unknown[]) => Promise<unknown>);
+    fn.mockResolvedValueOnce({ smoke: tool });
+
+    const result = await client.callTool({ name: tool, arguments: args });
+
+    expect(result.isError).toBeFalsy();
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(firstTextContent(result).text)).toMatchObject({ smoke: tool });
+    fn.mockClear();
+  });
+
+  it.each(smoke)('%s: handler rejection comes back as isError', async (tool, handler, args) => {
+    const fn = vi.mocked(commands[handler] as (...a: unknown[]) => Promise<unknown>);
+    fn.mockRejectedValueOnce(new Error(`${tool} smoke failure`));
+
+    const result = await client.callTool({ name: tool, arguments: args });
+
+    expect(result.isError).toBe(true);
+    expect(firstTextContent(result).text).toContain(`${tool} smoke failure`);
+    fn.mockClear();
   });
 });

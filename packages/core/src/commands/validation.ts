@@ -67,8 +67,33 @@ export function validateMessage(message: string): string {
   if (message.length > MAX_MESSAGE_LENGTH) {
     throw new ValidationError(`Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters`);
   }
+  // The no-AI-attribution rule (CLAUDE.md, skills/contribution-ethics) was
+  // prompt-level only; this is the one write boundary every post/claim
+  // crosses, so enforce it here (audit 2026-10-30 L1).
+  // Best-effort guard, not enforcement: the prompt-level rule stays the
+  // contract; this catches the common pasted shapes. Format characters are
+  // stripped so "C\u200Blaude" is seen, and fenced code blocks are ignored
+  // so a reply quoting the trailer it removed is not rejected.
+  const cleaned = message.replace(/\p{Cf}/gu, '').replace(/```[\s\S]*?```/g, '');
+  if (AI_ATTRIBUTION_PATTERNS.some((pattern) => pattern.test(cleaned))) {
+    throw new ValidationError(
+      'Message contains AI attribution (a Co-Authored-By / Claude-Session trailer or "Generated with Claude Code"); remove it',
+    );
+  }
   return message;
 }
+
+/**
+ * Markers the contribution-ethics skill forbids in anything posted to GitHub:
+ * trailer lines and the "Generated/Made/Built with|by Claude Code" footer,
+ * both anchored to line start (leading indent allowed, so a pasted Git log
+ * still matches) so quoting or negating one mid-sentence is fine.
+ */
+const AI_ATTRIBUTION_PATTERNS = [
+  /^[ \t]*co-authored-by:.*\b(?:claude|anthropic)\b/im,
+  /^[ \t]*claude-session:/im,
+  /^[ \t]*(?:\u{1F916} ?)?(?:generated|made|built) (?:with|by) [[*]*claude code\b/imu,
+];
 
 /**
  * Validate that a repository identifier matches the "owner/repo" format.

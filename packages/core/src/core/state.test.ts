@@ -1289,6 +1289,148 @@ describe('maybeCheckpoint (#1370)', () => {
   });
 });
 
+const conflict = () => new GistConcurrencyError('"etag-a"', '"etag-b"');
+const makeStub = (checkpoint: ReturnType<typeof vi.fn>, refreshFromGist: ReturnType<typeof vi.fn>) =>
+  ({
+    isGistMode: () => true,
+    checkpoint,
+    refreshFromGist,
+    runMutation: (fn: () => Promise<unknown>) => fn(),
+  }) as unknown as StateManager;
+
+describe('maybeCheckpoint Gist conflict recovery (audit 2026-10-30 H1)', () => {
+  it('force-refreshes, re-applies the mutation, then pushes again on a cross-machine conflict', async () => {
+    const checkpoint = vi.fn().mockRejectedValueOnce(conflict()).mockResolvedValueOnce(true);
+    const refreshFromGist = vi.fn().mockResolvedValue(true);
+    const reapply = vi.fn();
+
+    await expect(maybeCheckpoint(makeStub(checkpoint, refreshFromGist), 'test', reapply)).resolves.toBeNull();
+
+    expect(refreshFromGist).toHaveBeenCalledWith({ force: true });
+    // Once before the first push (sibling-recovery guard), once after the refresh.
+    expect(reapply).toHaveBeenCalledTimes(2);
+    expect(checkpoint).toHaveBeenCalledTimes(2);
+    // refresh, then re-apply, then the second push: any other order clobbers.
+    expect(refreshFromGist.mock.invocationCallOrder[0]).toBeLessThan(reapply.mock.invocationCallOrder[1]);
+    expect(reapply.mock.invocationCallOrder[1]).toBeLessThan(checkpoint.mock.invocationCallOrder[1]);
+  });
+
+  it('reports the mutation as NOT synced (no phantom retry) when the second push conflicts too', async () => {
+    const checkpoint = vi.fn().mockRejectedValue(conflict());
+    const refreshFromGist = vi.fn().mockResolvedValue(true);
+
+    const warning = await maybeCheckpoint(makeStub(checkpoint, refreshFromGist), 'test', vi.fn());
+
+    expect(checkpoint).toHaveBeenCalledTimes(2);
+    expect(warning).toMatch(/Gist checkpoint failed/);
+    expect(warning).toMatch(/NOT synced/);
+    expect(warning).toMatch(/re-run the command/);
+    expect(warning).not.toMatch(/will retry/);
+  });
+
+  it('does not refresh or claim a retry when the caller passed no reapply', async () => {
+    const checkpoint = vi.fn().mockRejectedValueOnce(conflict());
+    const refreshFromGist = vi.fn();
+
+    const warning = await maybeCheckpoint(makeStub(checkpoint, refreshFromGist), 'test');
+
+    expect(refreshFromGist).not.toHaveBeenCalled();
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    expect(warning).toMatch(/NOT synced/);
+  });
+
+  it('skips the re-apply and reports not synced when the forced refresh fails', async () => {
+    const checkpoint = vi.fn().mockRejectedValueOnce(conflict());
+    const refreshFromGist = vi.fn().mockResolvedValue(false);
+    const reapply = vi.fn();
+
+    const warning = await maybeCheckpoint(makeStub(checkpoint, refreshFromGist), 'test', reapply);
+
+    expect(reapply).toHaveBeenCalledTimes(1); // only the pre-push guard
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    expect(warning).toMatch(/NOT synced/);
+  });
+
+  it('says the mutation was LOST (not saved) when reapply throws after the refresh', async () => {
+    const checkpoint = vi.fn().mockRejectedValueOnce(conflict());
+    const refreshFromGist = vi.fn().mockResolvedValue(true);
+    const reapply = vi
+      .fn()
+      .mockReturnValueOnce(undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('schema rejected');
+      });
+
+    const warning = await maybeCheckpoint(makeStub(checkpoint, refreshFromGist), 'test', reapply);
+
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    expect(warning).toMatch(/LOST/);
+    expect(warning).toMatch(/schema rejected/);
+    expect(warning).not.toMatch(/saved/);
+  });
+
+  it('a forced refresh outside any mutation refuses to discard un-pushed changes', async () => {
+    const { manager, store } = makeManager();
+    manager.dismissIssue('https://github.com/o/r/issues/7', '2026-10-31T00:00:00.000Z');
+    expect(manager.hasUnpushedChanges()).toBe(true);
+
+    await expect(manager.refreshFromGist({ force: true })).resolves.toBe(false);
+    expect(store.refreshFromGist).not.toHaveBeenCalled();
+    expect(manager.getIssueDismissedAt('https://github.com/o/r/issues/7')).toBe('2026-10-31T00:00:00.000Z');
+  });
+
+  it('non-conflict errors are not retried even with reapply', async () => {
+    const checkpoint = vi.fn().mockRejectedValueOnce(new Error('socket hang up'));
+    const refreshFromGist = vi.fn();
+
+    const warning = await maybeCheckpoint(makeStub(checkpoint, refreshFromGist), 'test', vi.fn());
+
+    expect(refreshFromGist).not.toHaveBeenCalled();
+    expect(warning).toMatch(/socket hang up/);
+  });
+});
+
+const makeManager = () => {
+  const manager = new StateManager(true);
+  const store = {
+    refreshFromGist: vi.fn().mockResolvedValue({ status: 'refreshed' }),
+    cachedFiles: new Map([['state.json', JSON.stringify(manager.getState())]]),
+    lastRefreshError: null,
+  };
+  (manager as unknown as { gistStore: unknown }).gistStore = store;
+  return { manager, store };
+};
+
+describe('StateManager.runMutation blocks refreshFromGist mid-mutation (audit 2026-10-30 M2)', () => {
+  it('a non-forced refresh is skipped while a mutation is in flight, and resumes after', async () => {
+    const { manager, store } = makeManager();
+    let inside: boolean | undefined;
+    await manager.runMutation(async () => {
+      inside = await manager.refreshFromGist();
+    });
+    expect(inside).toBe(false);
+    expect(store.refreshFromGist).not.toHaveBeenCalled();
+
+    await expect(manager.refreshFromGist()).resolves.toBe(true);
+    expect(store.refreshFromGist).toHaveBeenCalledTimes(1);
+  });
+
+  it('a forced refresh (the conflict-recovery path) goes through mid-mutation', async () => {
+    const { manager, store } = makeManager();
+    await manager.runMutation(async () => {
+      await expect(manager.refreshFromGist({ force: true })).resolves.toBe(true);
+    });
+    expect(store.refreshFromGist).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('the guard is released when the mutation throws', async () => {
+    const { manager, store } = makeManager();
+    await expect(manager.runMutation(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+    await expect(manager.refreshFromGist()).resolves.toBe(true);
+    expect(store.refreshFromGist).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('StateManager.checkpoint gistDegraded (#1510)', () => {
   const makeMockGistStore = (push: ReturnType<typeof vi.fn>) => ({
     setState: vi.fn(),

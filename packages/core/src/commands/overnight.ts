@@ -27,7 +27,12 @@ import { UNATTENDED_ENV, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
-import type { ActionableIssueType, OvernightImplementAttempt, OvernightPrepared } from '../core/types.js';
+import type {
+  ActionableIssueType,
+  OvernightImplementAttempt,
+  OvernightPrepared,
+  OvernightRecord,
+} from '../core/types.js';
 import { detectIssueListPath } from './locate-issue-list.js';
 import { parseIssueList } from './parse-list.js';
 import type { DailyOutput, DailyWarning, PendingLearnings } from '../formatters/json.js';
@@ -352,7 +357,7 @@ export async function runOvernight(): Promise<OvernightOutput> {
   }
   // executeDailyCheck already checkpointed the Gist; this write came after it,
   // and in Gist mode setLastOvernight only reaches the local cache (#1629 class).
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setLastOvernight(record));
 
   return {
     ...body,
@@ -428,15 +433,27 @@ export async function runOvernightImplementBlocked(
     throw new Error(`${options.url} is not tonight's implement item (${last.implementUrl ?? 'none queued'})`);
   }
   const note = options.note ?? (options.fromReport ? readPreparerReport(options.fromReport).note : undefined);
-  const implementAttempts = [
-    ...(last.implementAttempts ?? []),
-    { url: options.url, attemptedAt: new Date().toISOString(), outcome: 'blocked' as const, note },
-  ];
-  sm.setLastOvernight({ ...last, implementAttempts });
+  const attempt = { url: options.url, attemptedAt: new Date().toISOString(), outcome: 'blocked' as const, note };
+  // Reads the live record each time so a re-apply after a Gist refresh lands
+  // on the refreshed copy, not on the `last` captured above; idempotent.
+  const apply = (): OvernightRecord => {
+    const base = sm.getLastOvernight() ?? last;
+    const attempts = base.implementAttempts ?? [];
+    const record = attempts.some((a) => a.attemptedAt === attempt.attemptedAt)
+      ? base
+      : { ...base, implementAttempts: [...attempts, attempt] };
+    sm.setLastOvernight(record);
+    return record;
+  };
+  const record = apply();
   const dropDir = handoffDir();
-  if (dropDir) exportHandoff(dropDir, { ...last, implementAttempts });
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
-  return { url: options.url, attemptCount: implementAttempts.length, ...(gistSyncWarning && { gistSyncWarning }) };
+  if (dropDir) exportHandoff(dropDir, record);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, apply);
+  return {
+    url: options.url,
+    attemptCount: record.implementAttempts?.length ?? 0,
+    ...(gistSyncWarning && { gistSyncWarning }),
+  };
 }
 
 export interface OvernightRecordOptions {
@@ -484,22 +501,35 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
       throw new ValidationError('No worktree to bundle: pass --worktree, or a report with WORKTREE:.');
     writeHandoffBundle(dropDir, entry.worktree, branch);
   }
-  const prepared = [...last.prepared, entry];
-  // Recording the branch for tonight's list issue is what marks the attempt
-  // as prepared, so the next run moves on to the next Pursue item.
-  const implementAttempts =
-    options.url === last.implementUrl
-      ? [
-          ...(last.implementAttempts ?? []),
-          { url: options.url, attemptedAt: entry.recordedAt, outcome: 'prepared' as const },
-        ]
-      : last.implementAttempts;
-  sm.setLastOvernight({ ...last, prepared, implementAttempts });
+  // Reads the live record each time so a re-apply after a Gist refresh lands
+  // on the refreshed copy, not on the `last` captured above; idempotent.
+  const apply = (): OvernightRecord => {
+    const base = sm.getLastOvernight() ?? last;
+    if (base.prepared.some((p) => p.branch === entry.branch)) {
+      sm.setLastOvernight(base);
+      return base;
+    }
+    const prepared = [...base.prepared, entry];
+    // Recording the branch for tonight's list issue is what marks the attempt
+    // as prepared, so the next run moves on to the next Pursue item.
+    const implementAttempts =
+      options.url === base.implementUrl
+        ? [
+            ...(base.implementAttempts ?? []),
+            { url: options.url, attemptedAt: entry.recordedAt, outcome: 'prepared' as const },
+          ]
+        : base.implementAttempts;
+    const record = { ...base, prepared, implementAttempts };
+    sm.setLastOvernight(record);
+    return record;
+  };
+  const record = apply();
+  const { prepared } = record;
 
-  const { reportRecreated } = writePreparedSection(last.reportPath, prepared);
-  publishReport(sm, last.reportPath);
-  if (dropDir) exportHandoff(dropDir, { ...last, prepared, implementAttempts });
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  const { reportRecreated } = writePreparedSection(record.reportPath, prepared);
+  publishReport(sm, record.reportPath);
+  if (dropDir) exportHandoff(dropDir, record);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, apply);
 
   return {
     reportPath: last.reportPath,
