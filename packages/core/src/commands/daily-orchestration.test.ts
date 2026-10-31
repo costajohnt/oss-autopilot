@@ -681,6 +681,8 @@ describe('executeDailyCheck() — repo score updates', () => {
   });
 
   it('writes ledger-derived avgResponseDays and hostility for every scored repo', async () => {
+    // Relative dates: only PRs opened in the last 12 months count.
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
     mockGetState.mockReturnValue(
       makeDefaultState({
         repoScores: {
@@ -693,17 +695,19 @@ describe('executeDailyCheck() — repo score updates', () => {
       {
         url: 'https://github.com/owner/a/pull/1',
         title: 'x',
-        mergedAt: '2026-01-10T00:00:00Z',
-        openedAt: '2026-01-01T00:00:00Z',
-        firstMaintainerResponseAt: '2026-01-02T00:00:00Z',
+        mergedAt: ago(20),
+        openedAt: ago(30),
+        firstMaintainerResponseAt: ago(29),
       },
       {
         url: 'https://github.com/owner/a/pull/2',
         title: 'y',
-        mergedAt: '2026-01-10T00:00:00Z',
-        openedAt: '2026-01-01T00:00:00Z',
-        firstMaintainerResponseAt: '2026-01-04T00:00:00Z',
+        mergedAt: ago(20),
+        openedAt: ago(30),
+        firstMaintainerResponseAt: ago(27),
       },
+      // No recorded response: the merge (2 days in) stands in for it.
+      { url: 'https://github.com/owner/a/pull/3', title: 'z', mergedAt: ago(28), openedAt: ago(30) },
     ]);
 
     await executeDailyCheck('test-token');

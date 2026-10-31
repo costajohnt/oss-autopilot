@@ -8,10 +8,11 @@
  * - `openedAt` and `issueUrl` (GitHub's `closingIssuesReferences`) via
  *   batched GraphQL; each answered PR is stamped `backfilledAt` so later
  *   runs only query new entries.
- * - `firstMaintainerResponseAt` (earliest non-author, non-bot comment or
- *   review), which feeds each repo's `avgResponseDays`. Entries backfilled
- *   before this field existed are re-queried once, gated by
- *   `responseBackfilledAt`.
+ * - `firstMaintainerResponseAt` (earliest maintainer comment or review, by
+ *   the dormancy clock's rule), which feeds each repo's `avgResponseDays`.
+ *   Entries backfilled before this field existed are re-queried once, gated
+ *   by `responseBackfilledAt`; a PR whose scanned page held no response but
+ *   was full stays unstamped and is re-queried.
  * - `closeReason` for closed-unmerged entries, from who closed the PR and its
  *   last comments (core/close-reason.ts).
  * - `pick` for entries with no vet-time snapshot, from the curated issue list
@@ -65,9 +66,14 @@ interface PRNode {
   closingIssuesReferences?: { nodes: Array<{ url: string } | null> };
   timelineItems?: { nodes: Array<{ actor?: Login | null } | null> };
   comments?: { nodes: Array<{ author?: Login | null; body: string } | null> };
-  firstComments?: { nodes: Array<{ author?: Login | null; createdAt: string } | null> };
+  firstComments?: {
+    nodes: Array<{ author?: Login | null; authorAssociation?: string | null; createdAt: string } | null>;
+  };
   reviews?: { nodes: Array<{ author?: Login | null; submittedAt?: string | null } | null> };
 }
+
+/** Comments and reviews scanned per PR for the first maintainer response. */
+const RESPONSE_SCAN = 10;
 
 const PR_FIELDS = `
   createdAt
@@ -75,25 +81,29 @@ const PR_FIELDS = `
   closingIssuesReferences(first: 1) { nodes { url } }
   timelineItems(itemTypes: [CLOSED_EVENT], last: 1) { nodes { ... on ClosedEvent { actor { __typename login } } } }
   comments(last: 5) { nodes { author { __typename login } body } }
-  firstComments: comments(first: 10) { nodes { author { __typename login } createdAt } }
-  reviews(first: 10) { nodes { author { __typename login } submittedAt } }`;
+  firstComments: comments(first: ${RESPONSE_SCAN}) { nodes { author { __typename login } authorAssociation createdAt } }
+  reviews(first: ${RESPONSE_SCAN}) { nodes { author { __typename login } submittedAt } }`;
 
-/** GraphQL Bot logins lack the `[bot]` suffix isBotAuthor keys on, so drop them by typename first. */
-const human = (a: Login | null | undefined) => (a && a.__typename !== 'Bot' ? { login: a.login } : null);
+/** GraphQL actor in the REST `user` shape; `type: 'Bot'` lets isBotAuthor drop bots without a `[bot]` suffix. */
+const restUser = (a: Login | null | undefined) => (a ? { login: a.login, type: a.__typename } : null);
 
 /**
- * Earliest non-author, non-bot comment or review (same rule as live enrichment).
- * ponytail: only the first 10 of each are scanned; a PR whose first 10 are all
- * author/bot replies reads as unanswered. Page further if that shows up.
+ * Earliest maintainer comment or review, by the same rule as live enrichment
+ * and the dormancy clock (isMaintainerEngagement). `truncated` is true when no
+ * response was found but a full page came back, so a later one may exist:
+ * the caller leaves the entry unstamped and it is re-queried next run.
+ * ponytail: re-query instead of paging; page if many PRs sit there for good.
  */
-function firstResponseAt(node: PRNode): string | undefined {
-  const comments = (node.firstComments?.nodes ?? []).flatMap((c) =>
-    c ? [{ user: human(c.author), created_at: c.createdAt }] : [],
+function firstResponse(node: PRNode): { at?: string; truncated: boolean } {
+  const commentNodes = node.firstComments?.nodes ?? [];
+  const reviewNodes = node.reviews?.nodes ?? [];
+  const comments = commentNodes.flatMap((c) =>
+    c ? [{ user: restUser(c.author), author_association: c.authorAssociation, created_at: c.createdAt }] : [],
   );
-  const reviews = (node.reviews?.nodes ?? []).flatMap((r) =>
-    r ? [{ user: human(r.author), submitted_at: r.submittedAt }] : [],
-  );
-  return node.author?.login ? getFirstMaintainerResponseAt(comments, reviews, node.author.login) : undefined;
+  const reviews = reviewNodes.flatMap((r) => (r ? [{ user: restUser(r.author), submitted_at: r.submittedAt }] : []));
+  const at = node.author?.login ? getFirstMaintainerResponseAt(comments, reviews, node.author.login) : undefined;
+  const truncated = !at && (commentNodes.length >= RESPONSE_SCAN || reviewNodes.length >= RESPONSE_SCAN);
+  return { at, truncated };
 }
 
 type GraphqlError = { type?: string; path?: Array<string | number> };
@@ -250,12 +260,14 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     // A vet-time snapshot (joined by addMergedPRs/addClosedPRs) beats the list
     // score, and a list score for a different issue than the PR closes is dropped.
     const pick = fromList && fromList.issueUrl === issueUrl && !snapshotFor(issueUrl) ? fromList : undefined;
+    const response = node && firstResponse(node);
     return {
       openedAt: node?.createdAt,
       issueUrl,
       pick,
-      firstMaintainerResponseAt: node && firstResponseAt(node),
-      ...(node && { backfilledAt: now, responseBackfilledAt: now }),
+      firstMaintainerResponseAt: response?.at,
+      ...(node && { backfilledAt: now }),
+      ...(response && !response.truncated && { responseBackfilledAt: now }),
     };
   };
 

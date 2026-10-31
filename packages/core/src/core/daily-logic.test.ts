@@ -1130,57 +1130,75 @@ describe('lastReviewStateFromDigest (#1824)', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeLedgerRepoSignals', () => {
-  const entry = (n: number, openedAt?: string, respondedAt?: string, closeReason?: string) => ({
-    url: `https://github.com/o/r/pull/${n}`,
-    openedAt,
-    firstMaintainerResponseAt: respondedAt,
-    closeReason,
+  const NOW = Date.parse('2026-06-01T00:00:00Z');
+  const day = (n: number) => new Date(Date.parse('2026-01-01T00:00:00Z') + n * 86_400_000).toISOString();
+  let n = 0;
+  const pr = (fields: Record<string, string | undefined> = {}) => ({
+    url: `https://github.com/o/r/pull/${++n}`,
+    ...fields,
   });
+  const answered = (days: number) => pr({ openedAt: day(0), firstMaintainerResponseAt: day(days) });
+  const signals = (ledger: Array<ReturnType<typeof pr>>, open: Parameters<typeof computeLedgerRepoSignals>[1] = []) =>
+    computeLedgerRepoSignals(ledger, open, NOW).get('o/r');
 
   it('takes the median days to first response, ignoring outliers', () => {
-    const result = computeLedgerRepoSignals(
-      [
-        entry(1, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z'), // 1d
-        entry(2, '2026-01-01T00:00:00Z', '2026-01-03T12:00:00Z'), // 2.5d
-        entry(3, '2026-01-01T00:00:00Z', '2026-04-01T00:00:00Z'), // 90d outlier
-      ],
-      [],
-    );
-    expect(result.get('o/r')).toEqual({ avgResponseDays: 2.5, hasHostileComments: false });
+    expect(signals([answered(1), answered(2.5), answered(90)])).toEqual({
+      avgResponseDays: 2.5,
+      hasHostileComments: false,
+    });
   });
 
-  it('averages the middle two samples for an even count and folds in answered open PRs', () => {
-    const result = computeLedgerRepoSignals(
-      [entry(1, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')],
-      [
-        {
-          url: 'https://github.com/o/r/pull/9',
-          createdAt: '2026-01-01T00:00:00Z',
-          firstMaintainerResponseAt: '2026-01-04T00:00:00Z',
-        },
-        { url: 'https://github.com/o/r/pull/10', createdAt: '2026-01-01T00:00:00Z' }, // still waiting: not a sample
-      ],
+  it('does not grade fast when most PRs closed unanswered (censored, not dropped)', () => {
+    const stale = Array.from({ length: 5 }, () =>
+      pr({ openedAt: day(0), closedAt: day(60), responseBackfilledAt: 'x', closeReason: 'stale' }),
     );
-    expect(result.get('o/r')?.avgResponseDays).toBe(2);
+    const avg = signals([...stale, answered(1)])?.avgResponseDays;
+    expect(avg).toBe(60);
+    expect(avg).toBeGreaterThanOrEqual(3);
   });
 
-  it('is null with no usable samples (missing, unparseable, or negative spans)', () => {
-    const result = computeLedgerRepoSignals(
-      [
-        entry(1, '2026-01-01T00:00:00Z'),
-        entry(2, undefined, '2026-01-02T00:00:00Z'),
-        entry(3, 'garbage', '2026-01-02T00:00:00Z'),
-        entry(4, '2026-01-05T00:00:00Z', '2026-01-02T00:00:00Z'),
-      ],
-      [],
-    );
-    expect(result.get('o/r')).toEqual({ avgResponseDays: null, hasHostileComments: false });
+  it('uses mergedAt for merges without a recorded response and now for open PRs still waiting', () => {
+    const merged = pr({ openedAt: day(0), mergedAt: day(4) });
+    const open = [
+      { url: 'https://github.com/o/r/pull/900', createdAt: day(0), firstMaintainerResponseAt: day(2) },
+      { url: 'https://github.com/o/r/pull/901', createdAt: new Date(NOW - 30 * 86_400_000).toISOString() },
+    ];
+    // samples: 4 (merge), 2 (answered open), 30 (waiting) -> median 4
+    expect(signals([merged], open)?.avgResponseDays).toBe(4);
+  });
+
+  it('skips closed PRs not yet checked for a response', () => {
+    const unchecked = pr({ openedAt: day(0), closedAt: day(60) });
+    expect(signals([unchecked, answered(1), answered(2)])?.avgResponseDays).toBeNull();
+  });
+
+  it('is null below 3 samples, and with missing, unparseable, or negative spans', () => {
+    expect(signals([answered(1), answered(2)])?.avgResponseDays).toBeNull();
+    expect(
+      signals([
+        pr({ openedAt: day(0) }),
+        pr({ firstMaintainerResponseAt: day(1) }),
+        pr({ openedAt: 'garbage', firstMaintainerResponseAt: day(1) }),
+        pr({ openedAt: day(5), firstMaintainerResponseAt: day(1) }),
+      ]),
+    ).toEqual({ avgResponseDays: null, hasHostileComments: false });
+  });
+
+  it('excludes PRs opened more than 12 months ago', () => {
+    const old = (days: number) =>
+      pr({
+        openedAt: '2025-01-01T00:00:00Z',
+        firstMaintainerResponseAt: `2025-01-${String(1 + days).padStart(2, '0')}T00:00:00Z`,
+      });
+    expect(signals([old(20), old(20), answered(1), answered(1)])?.avgResponseDays).toBeNull();
+    expect(signals([old(20), answered(1), answered(1), answered(1)])?.avgResponseDays).toBe(1);
   });
 
   it('marks a repo hostile only when a closed PR there has closeReason ai-policy', () => {
     const result = computeLedgerRepoSignals(
-      [entry(1, undefined, undefined, 'ai-policy'), { url: 'https://github.com/x/y/pull/1', closeReason: 'rejected' }],
+      [pr({ closeReason: 'ai-policy' }), { url: 'https://github.com/x/y/pull/1', closeReason: 'rejected' }],
       [],
+      NOW,
     );
     expect(result.get('o/r')?.hasHostileComments).toBe(true);
     expect(result.get('x/y')?.hasHostileComments).toBe(false);
