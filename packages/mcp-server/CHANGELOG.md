@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.9.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.9.0...mcp-v5.9.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **mcp:** pick up core 3.37.0 for pick traits and the new verify-issue fields ([#1849](https://github.com/costajohnt/oss-autopilot/issues/1849)) ([f826459](https://github.com/costajohnt/oss-autopilot/commit/f82645961297927b161862c90b563074308ec80e))
+
 ## [5.9.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.8.1...mcp-v5.9.0) (2026-10-30)
 
 
