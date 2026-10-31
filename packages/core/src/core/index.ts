@@ -183,4 +183,4 @@ export {
   type PRIssueCommentEntry,
 } from './pr-comments-fetcher.js';
 export * from './types.js';
-export { pickSnapshotFromVet, persistPickSnapshots } from './pick-snapshot.js';
+export { pickSnapshotFromVet, persistPickSnapshots, fetchIssueAuthorTraits, isFirstInRepo } from './pick-snapshot.js';

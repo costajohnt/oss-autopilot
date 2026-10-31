@@ -25,6 +25,7 @@ vi.mock('../core/index.js', async () => {
     ...actual,
     // parseGitHubUrl stays real (from actual) so verify targets resolve.
     getOctokit: () => ({}),
+    fetchIssueAuthorTraits: async () => ({}),
     requireGitHubToken: () => 'fake-token',
     verifyIssuesBatch: mockVerifyIssuesBatch,
     getStateManager: () => ({

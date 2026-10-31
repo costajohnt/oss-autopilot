@@ -34,6 +34,9 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
+    fetchIssueAuthorTraits: async () => ({}),
+    getOctokit: () => ({}),
+    requireGitHubToken: () => 'fake-token',
     getStateManager: () => ({
       getRepoScore: mockGetRepoScore,
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
