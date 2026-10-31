@@ -173,7 +173,8 @@ async function resolveResponses(
   responses: Map<string, string | undefined>,
   warnings: string[],
 ): Promise<void> {
-  for (const [url, node] of nodes ?? []) {
+  if (!nodes) return;
+  for (const [url, node] of nodes) {
     const { at, isPending } = await resolveFirstResponse(octokit, url, node, warnings);
     if (!isPending) responses.set(url, at);
   }
