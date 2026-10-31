@@ -129,9 +129,9 @@ Read ONLY files explicitly mentioned. Use targeted line-range reads. Don't read 
 - **Mid-relationship (1–4 merged PRs):** default tone — concise but with enough context that the maintainer doesn't have to scroll back.
 
 ```bash
-# Read repo-level merged-PR count from local state (no network call).
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
-# Look up data.repoScores[OWNER/REPO].mergedPRCount.
+# mergedPRCount comes from local state (repo scores, then the merged-PR ledger); one search call fills the cap fields.
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" repo-cap OWNER/REPO --json
+# Read data.mergedPRCount (ignore the cap fields).
 ```
 
 Optional: scan the user's prior PR history in this repo to count how many of those merged PRs the same maintainer reviewed. The MCP `comments` tool over each merged PR exposes the reviewer set; treat this as a soft signal — if the API is rate-limited or the bookkeeping is too costly, fall back to repo-level merged count alone.
