@@ -92,14 +92,12 @@ async function pickFor(output: VetOutput): Promise<PickSnapshot | undefined> {
   if (output.linkedPRClassification?.startsWith('user_')) return undefined;
   const { repo, number, url } = output.issue;
   const [owner, name] = repo.split('/', 2);
-  const verification = await fetchIssueVerification(getOctokit(requireGitHubToken()), {
-    repo: name,
-    owner,
-    number,
-  }).catch((error: unknown) => {
+  let verification: Awaited<ReturnType<typeof fetchIssueVerification>> | undefined;
+  try {
+    verification = await fetchIssueVerification(getOctokit(requireGitHubToken()), { repo: name, owner, number });
+  } catch (error) {
     warn('vet', `Could not verify ${url} for pick traits: ${errorMessage(error)}`);
-    return undefined;
-  });
+  }
   if (verification?.verdict === 'own-open-pr') return undefined;
   return pickSnapshotFromVet(output, 'vet', {
     ...(verification && traitsFromVerification(verification)),
