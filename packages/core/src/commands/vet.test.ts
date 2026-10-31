@@ -8,6 +8,7 @@ const mockVetIssue = vi.fn();
 const mockGetRepoScore = vi.fn();
 const mockRecordPickSnapshots = vi.fn();
 const mockGetState = vi.fn();
+const mockFetchVerification = vi.fn();
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -23,7 +24,7 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
-    fetchIssueAuthorTraits: async () => ({}),
+    fetchIssueVerification: (...args: unknown[]) => mockFetchVerification(...args),
     getOctokit: () => ({}),
     requireGitHubToken: () => 'fake-token',
     getStateManager: () => ({
@@ -44,6 +45,7 @@ describe('runVet', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetState.mockReturnValue({ config: { githubUsername: 'costajohnt' } });
+    mockFetchVerification.mockRejectedValue(new Error('offline'));
   });
 
   it('marks the result with repoCap when the repo is at its open-PR cap', async () => {
@@ -122,6 +124,50 @@ describe('runVet', () => {
         firstInRepo: true,
       },
     ]);
+  });
+
+  it('takes pick traits from one verification call, and skips the pick on a verified own PR', async () => {
+    mockVetIssue.mockResolvedValue({
+      issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
+      recommendation: 'approve' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+    mockGetRepoScore.mockReturnValue(undefined);
+    const otherPR = {
+      url: 'https://github.com/owner/repo/pull/6',
+      state: 'open',
+      isOwn: false,
+      isDraft: false,
+      linkType: 'closing',
+    };
+    mockFetchVerification.mockResolvedValue({
+      owner: 'owner',
+      repo: 'repo',
+      verdict: 'taken',
+      linkedPRs: [otherPR],
+      authorAssociation: 'OWNER',
+      authorIsBot: false,
+      commentCount: 2,
+    });
+
+    await runVet({ issueUrl: TEST_ISSUE_URL });
+    expect(mockFetchVerification).toHaveBeenCalledWith(expect.anything(), { owner: 'owner', repo: 'repo', number: 5 });
+    expect(mockRecordPickSnapshots).toHaveBeenCalledWith([
+      expect.objectContaining({
+        issueAuthorAssociation: 'OWNER',
+        issueAuthorIsBot: false,
+        commentCount: 2,
+        competingPRs: 1,
+      }),
+    ]);
+
+    mockRecordPickSnapshots.mockClear();
+    mockFetchVerification.mockResolvedValue({ owner: 'owner', repo: 'repo', verdict: 'own-open-pr', linkedPRs: [] });
+    await runVet({ issueUrl: TEST_ISSUE_URL });
+    expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
   });
 
   it('includes grade with unknown merge rate when no repo score exists', async () => {

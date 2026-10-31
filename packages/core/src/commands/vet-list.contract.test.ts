@@ -41,7 +41,6 @@ vi.mock('../core/index.js', async () => {
     ...actual,
     // parseGitHubUrl + classifyLinkedPR stay real (from actual).
     getOctokit: () => ({}),
-    fetchIssueAuthorTraits: async () => ({}),
     requireGitHubToken: () => 'fake-token',
     verifyIssuesBatch: mocks.verifyIssuesBatch,
     getStateManager: () => ({

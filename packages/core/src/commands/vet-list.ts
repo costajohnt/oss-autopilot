@@ -21,7 +21,7 @@ import {
   classifyLinkedPR,
   pickSnapshotFromVet,
   persistPickSnapshots,
-  fetchIssueAuthorTraits,
+  traitsFromVerification,
   isFirstInRepo,
   type PickSnapshot,
   getOctokit,
@@ -317,8 +317,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     };
     if (verification) {
       const pick = pickSnapshotFromVet(vetResult, 'vet-list', {
-        ...(await fetchIssueAuthorTraits(octokit, candidate.issue.url)),
-        competingPRs: verification.linkedPRs.filter((pr) => pr.state === 'open' && !pr.isOwn).length,
+        ...traitsFromVerification(verification),
         firstInRepo: isFirstInRepo(
           candidate.issue.repo,
           getStateManager().getRepoScore(candidate.issue.repo),

@@ -28,7 +28,7 @@ interface OutcomeRow {
   selfCloseReason?: StoredClosedPR['selfCloseReason'];
   changesRequested?: boolean;
   ciFailing?: boolean;
-  /** No earlier merged PR in the same repo (pick-time value when recorded, else derived from the ledger). */
+  /** No merged PR in the same repo when this PR was opened (pick-time value when recorded, else derived from the ledger). */
   firstInRepo: boolean;
   pick?: PickSnapshot;
 }
@@ -151,13 +151,27 @@ function starRange(stars: number | undefined): string {
 
 /** Normalized label groups for the label cut; a label matches by substring. */
 const LABEL_GROUPS: Array<[string, RegExp]> = [
-  ['good first issue', /good.?first|beginner|starter|easy/],
-  ['help wanted', /help.?wanted/],
-  ['bug', /bug/],
-  ['enhancement', /enhancement|feature/],
-  ['documentation', /doc/],
+  ['good first issue', /\bgood[ -]?first\b|\bbeginner\b|\beasy\b/],
+  ['help wanted', /\bhelp[ -]?wanted\b/],
+  ['bug', /\bbugs?\b/],
+  ['enhancement', /\benhancements?\b|\bfeatures?\b/],
+  ['documentation', /\bdoc(s|umentation)?\b/],
 ];
+
+const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+const OUTSIDER_ASSOCIATIONS = new Set(['NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'MANNEQUIN']);
+
+/** Issue-author bucket from the raw association recorded at pick time. */
+function authorRole(pick: PickSnapshot): string {
+  if (pick.issueAuthorIsBot) return 'bot';
+  const a = pick.issueAuthorAssociation;
+  if (a === undefined) return NOT_RECORDED;
+  if (MAINTAINER_ASSOCIATIONS.has(a)) return 'maintainer';
+  if (a === 'CONTRIBUTOR') return 'contributor';
+  return OUTSIDER_ASSOCIATIONS.has(a) ? 'outsider' : 'unknown';
+}
 const NO_LABEL_GROUP = 'none of these';
+const NOT_RECORDED = 'not recorded';
 
 function labelGroups(labels: string[]): string[] {
   const lower = labels.map((l) => l.toLowerCase());
@@ -167,8 +181,8 @@ function labelGroups(labels: string[]): string[] {
 
 function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
   const starsOf = (repo: string) => state.repoScores[repo]?.stargazersCount;
-  // Merge times per repo, so an outcome is first-in-repo when no merge in the
-  // same repo precedes it. Works for entries recorded before picks existed.
+  // Merge times per repo, so a PR is first-in-repo when no merge in the same
+  // repo precedes its opening. Works for entries recorded before picks existed.
   // ponytail: only sees merges the ledger holds; older merges count as none.
   const mergeTimes = new Map<string, number[]>();
   const mergedLedger = state.mergedPRs ?? [];
@@ -185,7 +199,7 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
     return {
       url: e.url,
       repo,
-      firstInRepo: e.pick?.firstInRepo ?? isFirstAt(repo, Date.parse(at)),
+      firstInRepo: e.pick?.firstInRepo ?? isFirstAt(repo, Date.parse(e.openedAt ?? at)),
       pick: e.pick,
       grade: e.pick?.grade,
       gradeSource: e.pick ? (e.pick.source === 'list' ? ('list' as const) : ('vet' as const)) : undefined,
@@ -215,8 +229,7 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
       repo: pr.repo,
       outcome: 'dormant',
       stars: starsOf(pr.repo),
-      // Still open, so any merge in the ledger came before it.
-      firstInRepo: isFirstAt(pr.repo, Infinity),
+      firstInRepo: isFirstAt(pr.repo, Date.parse(pr.createdAt)),
     }));
   return [...merged, ...closed, ...dormant];
 }
@@ -246,7 +259,6 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
   }
 
   const picked = rows.filter((r) => r.pick);
-  const NOT_RECORDED = 'not recorded';
 
   const reviewed = rows.filter((r) => r.changesRequested !== undefined);
   const ciKnown = rows.filter((r) => r.ciFailing !== undefined);
@@ -292,9 +304,11 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
       'first in repo',
       'returning',
     ]),
-    byIssueAuthorRole: groupBy(picked, (r) => r.pick!.issueAuthorRole ?? NOT_RECORDED, [
+    byIssueAuthorRole: groupBy(picked, (r) => authorRole(r.pick!), [
       'maintainer',
       'contributor',
+      'outsider',
+      'bot',
       'unknown',
       NOT_RECORDED,
     ]),

@@ -785,6 +785,10 @@ export const VerifyIssueOutputSchema = z.object({
   stateReason: z.enum(['completed', 'not_planned', 'reopened', 'duplicate']).nullable(),
   closedAt: z.string().nullable(),
   assignees: z.array(z.string()),
+  author: z.string().nullable(),
+  authorAssociation: z.string().nullable(),
+  authorIsBot: z.boolean(),
+  commentCount: z.number().int().nonnegative().nullable(),
   linkedPRs: z.array(
     z.object({
       number: z.number().int().positive(),

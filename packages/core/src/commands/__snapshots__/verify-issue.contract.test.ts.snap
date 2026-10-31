@@ -5,7 +5,11 @@ exports[`verify-issue --json contract > a fully populated verification round-tri
   "assignees": [
     "maintainer",
   ],
+  "author": "reporter",
+  "authorAssociation": "MEMBER",
+  "authorIsBot": false,
   "closedAt": "2026-06-01T00:00:00Z",
+  "commentCount": 5,
   "linkedPRs": [
     {
       "author": "TestUser",

@@ -67,6 +67,13 @@ export interface IssueVerification {
   stateReason: 'completed' | 'not_planned' | 'reopened' | 'duplicate' | null;
   closedAt: string | null;
   assignees: string[];
+  /** Issue author login; null for ghost (deleted) accounts. */
+  author: string | null;
+  /** GitHub CommentAuthorAssociation of the issue author (OWNER, MEMBER, NONE, ...). */
+  authorAssociation: string | null;
+  /** The issue was opened by a GitHub App / bot account. */
+  authorIsBot: boolean;
+  commentCount: number | null;
   linkedPRs: VerifiedLinkedPR[];
   verdict: IssueAvailabilityVerdict;
   verdictReason: string;
@@ -175,6 +182,14 @@ const VERIFY_ISSUE_QUERY = /* GraphQL */ `
         state
         stateReason
         closedAt
+        authorAssociation
+        author {
+          __typename
+          login
+        }
+        comments {
+          totalCount
+        }
         assignees(first: 10) {
           nodes {
             login
@@ -227,6 +242,9 @@ interface VerifyIssueQueryResponse {
       state: 'OPEN' | 'CLOSED';
       stateReason: 'COMPLETED' | 'NOT_PLANNED' | 'REOPENED' | 'DUPLICATE' | null;
       closedAt: string | null;
+      authorAssociation?: string | null;
+      author?: { __typename?: string; login: string } | null;
+      comments?: { totalCount: number };
       assignees: { nodes: Array<{ login: string } | null> };
       timelineItems: {
         pageInfo?: { hasNextPage: boolean; endCursor: string | null };
@@ -385,6 +403,7 @@ export async function fetchIssueVerification(octokit: Octokit, params: VerifyIss
   const state = issue.state.toLowerCase() as IssueVerification['state'];
   const stateReason = (issue.stateReason?.toLowerCase() ?? null) as IssueVerification['stateReason'];
   const assignees = issue.assignees.nodes.flatMap((n) => (n ? [n.login] : []));
+  const issueAuthor = issue.author?.login ?? null;
 
   const { verdict, verdictReason } = classifyIssueAvailability({
     state,
@@ -404,6 +423,10 @@ export async function fetchIssueVerification(octokit: Octokit, params: VerifyIss
     stateReason,
     closedAt: issue.closedAt,
     assignees,
+    author: issueAuthor,
+    authorAssociation: issue.authorAssociation ?? null,
+    authorIsBot: issue.author?.__typename === 'Bot' || (issueAuthor?.endsWith('[bot]') ?? false),
+    commentCount: issue.comments?.totalCount ?? null,
     linkedPRs,
     verdict,
     verdictReason,

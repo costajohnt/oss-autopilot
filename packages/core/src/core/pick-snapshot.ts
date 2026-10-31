@@ -4,13 +4,12 @@
  * the PR that closed the issue actually ended.
  */
 
-import type { Octokit } from '@octokit/rest';
 import type { VetOutput } from '../formatters/json.js';
 import { errorMessage } from './errors.js';
+import type { IssueVerification } from './issue-verification.js';
 import { warn } from './logger.js';
 import { maybeCheckpoint, type StateManager } from './state.js';
 import type { PickSnapshot, RepoScore, StoredMergedPR } from './types.js';
-import { parseGitHubUrl } from './urls.js';
 
 const MODULE = 'pick-snapshot';
 
@@ -29,8 +28,8 @@ export function pickSnapshotFromVet(
 ): PickSnapshot | undefined {
   if (vet.linkedPRClassification?.startsWith('user_')) return undefined;
   const stars = (vet.projectHealth as { stargazersCount?: unknown } | null | undefined)?.stargazersCount;
-  // ponytail: without the caller's full linked-PR list, scout's first linked PR
-  // gives a 0/1 lower bound. vet-list passes the verified count instead.
+  // ponytail: when verification failed, scout's first linked PR gives a 0/1
+  // lower bound; callers pass the verified count otherwise.
   const fromScout = vet.linkedPRClassification && Number(vet.linkedPRClassification === 'other_open');
   const competingPRs = traits.competingPRs ?? fromScout;
   return {
@@ -42,7 +41,8 @@ export function pickSnapshotFromVet(
     source,
     capturedAt: new Date().toISOString(),
     labels: vet.issue.labels,
-    ...(traits.authorAssociation !== undefined && { issueAuthorRole: issueAuthorRole(traits.authorAssociation) }),
+    ...(traits.authorAssociation !== undefined && { issueAuthorAssociation: traits.authorAssociation }),
+    ...(traits.authorIsBot !== undefined && { issueAuthorIsBot: traits.authorIsBot }),
     ...(competingPRs !== undefined && { competingPRs }),
     ...(traits.firstInRepo !== undefined && { firstInRepo: traits.firstInRepo }),
     ...(traits.commentCount !== undefined && { commentCount: traits.commentCount }),
@@ -51,20 +51,35 @@ export function pickSnapshotFromVet(
 
 /** Vet-time facts the vet output itself does not carry. All optional: each is best-effort. */
 export interface PickTraits {
-  /** GitHub `author_association` of the issue author. */
+  /** GitHub author association of the issue author, raw (OWNER, NONE, ...). */
   authorAssociation?: string;
+  authorIsBot?: boolean;
   commentCount?: number;
-  /** Open PRs by others on the issue, when the caller has the full linked-PR list. */
+  /** {@link competingPRCount}, when the caller has a verification. */
   competingPRs?: number;
   firstInRepo?: boolean;
 }
 
-const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
-const CONTRIBUTOR_ASSOCIATIONS = new Set(['CONTRIBUTOR', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'NONE']);
+/** Open PRs by others that really compete: closing the issue, or in the issue's repo. Drafts are left out. */
+export function competingPRCount(v: Pick<IssueVerification, 'owner' | 'repo' | 'linkedPRs'>): number {
+  const sameRepo = `https://github.com/${v.owner}/${v.repo}/pull/`.toLowerCase();
+  return v.linkedPRs.filter(
+    (pr) =>
+      pr.state === 'open' &&
+      !pr.isOwn &&
+      !pr.isDraft &&
+      (pr.linkType === 'closing' || pr.url.toLowerCase().startsWith(sameRepo)),
+  ).length;
+}
 
-export function issueAuthorRole(association: string): NonNullable<PickSnapshot['issueAuthorRole']> {
-  if (MAINTAINER_ASSOCIATIONS.has(association)) return 'maintainer';
-  return CONTRIBUTOR_ASSOCIATIONS.has(association) ? 'contributor' : 'unknown';
+/** The pick traits a verification already carries, so a pick costs no extra API call. */
+export function traitsFromVerification(v: IssueVerification): PickTraits {
+  return {
+    ...(v.authorAssociation !== null && { authorAssociation: v.authorAssociation }),
+    authorIsBot: v.authorIsBot,
+    ...(v.commentCount !== null && { commentCount: v.commentCount }),
+    competingPRs: competingPRCount(v),
+  };
 }
 
 /** True when neither the repo score nor the merged ledger shows a merged PR by the user in `repo`. */
@@ -76,26 +91,6 @@ export function isFirstInRepo(
   if ((repoScore?.mergedPRCount ?? 0) > 0) return false;
   const prefix = `https://github.com/${repo}/`.toLowerCase();
   return (mergedPRs ?? []).every((pr) => !pr.url.toLowerCase().startsWith(prefix));
-}
-
-/**
- * The one extra call a pick costs: the issue's author association and
- * comment count, which scout's vet result drops. Never fails the vet; a
- * failed lookup just leaves those traits out of the snapshot.
- */
-export async function fetchIssueAuthorTraits(
-  octokit: Octokit,
-  issueUrl: string,
-): Promise<Pick<PickTraits, 'authorAssociation' | 'commentCount'>> {
-  const ref = parseGitHubUrl(issueUrl);
-  if (!ref || ref.type !== 'issues') return {};
-  try {
-    const { data } = await octokit.issues.get({ owner: ref.owner, repo: ref.repo, issue_number: ref.number });
-    return { authorAssociation: data.author_association, commentCount: data.comments };
-  } catch (error) {
-    warn(MODULE, `Could not read issue author traits for ${issueUrl}: ${errorMessage(error)}`);
-    return {};
-  }
 }
 
 /**
