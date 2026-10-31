@@ -34,6 +34,30 @@ const node = (extra: object = {}) => ({
   },
 });
 
+const PAGE_QUERY_MARK = 'repository(owner: $o, name: $r)';
+const fans = (page: number) =>
+  Array.from({ length: 10 }, (_, i) => ({
+    author: { __typename: 'User', login: `fan${page}-${i}` },
+    authorAssociation: 'NONE',
+    createdAt: '2026-01-01T01:00:00Z',
+  }));
+const page = (nodes: object[], hasNextPage: boolean, endCursor: string) => ({
+  firstComments: { pageInfo: { hasNextPage, endCursor }, nodes },
+  reviews: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+});
+/** Batch queries get `batch`; follow-up page queries get `pages(n)` for the n-th follow-up. */
+function route(batch: object, pages: (n: number) => object) {
+  let n = 0;
+  mocks.graphql.mockImplementation(async (query: string) => {
+    if (!query.includes(PAGE_QUERY_MARK)) return batch;
+    n += 1;
+    return { repository: { pullRequest: pages(n) } };
+  });
+}
+
+/** Follow-up page queries the mock received. */
+const pageCalls = () => mocks.graphql.mock.calls.filter(([q]) => String(q).includes(PAGE_QUERY_MARK));
+
 function writeList(entry: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-backfill-'));
   const list = path.join(dir, 'issues.md');
@@ -129,26 +153,6 @@ describe('runLedgerBackfill (#1824)', () => {
   });
 
   describe('paging past a page with no maintainer response', () => {
-    const fans = (page: number) =>
-      Array.from({ length: 10 }, (_, i) => ({
-        author: { __typename: 'User', login: `fan${page}-${i}` },
-        authorAssociation: 'NONE',
-        createdAt: '2026-01-01T01:00:00Z',
-      }));
-    const page = (nodes: object[], hasNextPage: boolean, endCursor: string) => ({
-      firstComments: { pageInfo: { hasNextPage, endCursor }, nodes },
-      reviews: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
-    });
-    /** Batch queries get `batch`; follow-up page queries get `pages(n)` for the n-th follow-up. */
-    function route(batch: object, pages: (n: number) => object) {
-      let n = 0;
-      mocks.graphql.mockImplementation(async (query: string) => {
-        if (!query.includes('repository(owner: $o, name: $r)')) return batch;
-        n += 1;
-        return { repository: { pullRequest: pages(n) } };
-      });
-    }
-
     it('fetches later pages until a maintainer response turns up', async () => {
       const maint = {
         author: { __typename: 'User', login: 'maint' },
@@ -162,15 +166,14 @@ describe('runLedgerBackfill (#1824)', () => {
         responseRule: 2,
       });
       expect(result.filled.firstMaintainerResponseAt).toBe(1);
-      const pageCall = mocks.graphql.mock.calls.find(([q]) => String(q).includes('repository(owner: $o, name: $r)'));
+      const [pageCall] = pageCalls();
       expect(pageCall?.[1]).toMatchObject({ o: 'o', r: 'r', n: 1, c: 'c1' });
     });
 
     it('records the PR as unanswered after the page bound', async () => {
       route({ p0: node(page(fans(0), true, 'c0')), p1: node() }, (n) => page(fans(n), true, `c${n}`));
       await runLedgerBackfill();
-      const pageCalls = mocks.graphql.mock.calls.filter(([q]) => String(q).includes('repository(owner: $o, name: $r)'));
-      expect(pageCalls).toHaveLength(4); // 5 pages in all
+      expect(pageCalls()).toHaveLength(4); // 5 pages in all
       expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBeUndefined();
       expect(sm.getMergedPRs()[0].responseRule).toBe(2);
       const rerun = await runLedgerBackfill();
@@ -181,8 +184,7 @@ describe('runLedgerBackfill (#1824)', () => {
       let calls = 0;
       mocks.graphql.mockImplementation(async (query: string) => {
         calls += 1;
-        if (!query.includes('repository(owner: $o, name: $r)'))
-          return { p0: node(page(fans(0), true, 'c0')), p1: node() };
+        if (!query.includes(PAGE_QUERY_MARK)) return { p0: node(page(fans(0), true, 'c0')), p1: node() };
         throw new Error('boom');
       });
       const result = await runLedgerBackfill();

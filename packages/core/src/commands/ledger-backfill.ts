@@ -85,10 +85,10 @@ const RESPONSE_PAGE_SIZE = 10;
  */
 const RESPONSE_MAX_PAGES = 5;
 
-const RESPONSE_FIELDS = (args: string) => `
-  firstComments: comments(first: ${RESPONSE_PAGE_SIZE}${args ? `, after: $c` : ''}) {
+const responseSelection = (isPaged: boolean) => `
+  firstComments: comments(first: ${RESPONSE_PAGE_SIZE}${isPaged ? `, after: $c` : ''}) {
     pageInfo { hasNextPage endCursor } nodes { author { __typename login } authorAssociation createdAt } }
-  reviews(first: ${RESPONSE_PAGE_SIZE}${args ? `, after: $rc` : ''}) {
+  reviews(first: ${RESPONSE_PAGE_SIZE}${isPaged ? `, after: $rc` : ''}) {
     pageInfo { hasNextPage endCursor } nodes { author { __typename login } submittedAt } }`;
 
 const PR_FIELDS = `
@@ -96,10 +96,10 @@ const PR_FIELDS = `
   author { __typename login }
   closingIssuesReferences(first: 1) { nodes { url } }
   timelineItems(itemTypes: [CLOSED_EVENT], last: 1) { nodes { ... on ClosedEvent { actor { __typename login } } } }
-  comments(last: 5) { nodes { author { __typename login } body } }${RESPONSE_FIELDS('')}`;
+  comments(last: 5) { nodes { author { __typename login } body } }${responseSelection(false)}`;
 
 const MORE_RESPONSES_QUERY = `query($o: String!, $r: String!, $n: Int!, $c: String, $rc: String) {
-  repository(owner: $o, name: $r) { pullRequest(number: $n) {${RESPONSE_FIELDS('after')}} } }`;
+  repository(owner: $o, name: $r) { pullRequest(number: $n) {${responseSelection(true)}} } }`;
 
 /** GraphQL actor in the REST `user` shape; `type: 'Bot'` lets isBotAuthor drop bots without a `[bot]` suffix. */
 const restUser = (a: Login | null | undefined) => (a ? { login: a.login, type: a.__typename } : null);
@@ -117,9 +117,25 @@ function firstResponseAt(node: PRNode): string | undefined {
 
 const hasMore = (node: PRNode) => !!(node.firstComments?.pageInfo?.hasNextPage || node.reviews?.pageInfo?.hasNextPage);
 
+/** The next page of comments and reviews after the cursors `node` holds. */
+async function fetchNextResponsePage(
+  octokit: Octokit,
+  ref: { owner: string; repo: string; number: number },
+  node: PRNode,
+): Promise<PRNode | null | undefined> {
+  const data = await octokit.graphql<{ repository: { pullRequest: PRNode | null } | null }>(MORE_RESPONSES_QUERY, {
+    o: ref.owner,
+    r: ref.repo,
+    n: ref.number,
+    c: node.firstComments?.pageInfo?.endCursor ?? null,
+    rc: node.reviews?.pageInfo?.endCursor ?? null,
+  });
+  return data.repository?.pullRequest;
+}
+
 /**
  * First maintainer response for `node`, fetching later comment/review pages
- * while none is found and more exist. Returns `pending` when a page fetch
+ * while none is found and more exist. Returns `isPending` when a page fetch
  * failed, so the entry is left for the next run instead of recorded as
  * unanswered. Rate-limit and auth errors rethrow.
  */
@@ -132,50 +148,46 @@ async function resolveFirstResponse(
   const ref = parseGitHubUrl(url);
   let at = firstResponseAt(node);
   for (let page = 1; !at && ref && page < RESPONSE_MAX_PAGES && hasMore(node); page++) {
+    let more: PRNode | null | undefined;
     try {
-      const data = await octokit.graphql<{ repository: { pullRequest: PRNode | null } | null }>(MORE_RESPONSES_QUERY, {
-        o: ref.owner,
-        r: ref.repo,
-        n: ref.number,
-        c: node.firstComments?.pageInfo?.endCursor ?? null,
-        rc: node.reviews?.pageInfo?.endCursor ?? null,
-      });
-      const more = data.repository?.pullRequest;
-      if (!more) return { isPending: true };
-      // Only keep the pages that had more; an exhausted connection re-queried
-      // with its last cursor returns nothing anyway.
-      node.firstComments = more.firstComments;
-      node.reviews = more.reviews;
+      more = await fetchNextResponsePage(octokit, ref, node);
     } catch (err) {
       if (isRateLimitOrAuthError(err) || isGraphqlRateLimited(err)) throw err;
       warnings.push(`response lookup for ${url} failed: ${errorMessage(err)}`);
       return { isPending: true };
     }
+    if (!more) return { isPending: true };
+    // Earlier pages held no response, so only the new page matters. An
+    // exhausted connection re-queried past its last cursor comes back empty.
+    node.firstComments = more.firstComments;
+    node.reviews = more.reviews;
     at = firstResponseAt(node);
   }
   return { at, isPending: false };
 }
 
-/** First responses for every fetched node (URL -> at); a pending lookup is omitted. A rate-limit stops early. */
+/** Record each fetched node's first response (URL -> at) in `responses`; pending lookups are left out. */
 async function resolveResponses(
   octokit: Octokit,
-  nodes: Map<string, PRNode>,
+  nodes: Map<string, PRNode> | null,
+  responses: Map<string, string | undefined>,
   warnings: string[],
-): Promise<{ responses: Map<string, string | undefined>; fatal?: Error }> {
-  const responses = new Map<string, string | undefined>();
-  try {
-    for (const [url, node] of nodes) {
-      const { at, isPending } = await resolveFirstResponse(octokit, url, node, warnings);
-      if (!isPending) responses.set(url, at);
-    }
-  } catch (err) {
-    return { responses, fatal: err as Error };
+): Promise<void> {
+  for (const [url, node] of nodes ?? []) {
+    const { at, isPending } = await resolveFirstResponse(octokit, url, node, warnings);
+    if (!isPending) responses.set(url, at);
   }
-  return { responses };
+}
+
+/** Lookups in `responses` that found a response. */
+function countFound(responses: Map<string, string | undefined>): number {
+  let found = 0;
+  for (const at of responses.values()) if (at) found++;
+  return found;
 }
 
 /** True when the entry's first response was never computed under the current maintainer rule. */
-const needsResponseLookup = (e: StoredMergedPR | StoredClosedPR) => e.responseRule !== MAINTAINER_RESPONSE_RULE;
+const isResponseStale = (e: StoredMergedPR | StoredClosedPR) => e.responseRule !== MAINTAINER_RESPONSE_RULE;
 
 type GraphqlError = { type?: string; path?: Array<string | number> };
 
@@ -285,15 +297,13 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   // later: selfCloseReason on self-closed entries, and firstMaintainerResponseAt
   // on entries not looked up under the current maintainer rule.
   const needsFetch = [
-    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || needsResponseLookup(e)),
+    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || isResponseStale(e)),
     ...stateManager
       .getClosedPRs()
-      .filter(
-        (e) => !e.backfilledAt || needsResponseLookup(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason),
-      ),
+      .filter((e) => !e.backfilledAt || isResponseStale(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason)),
   ].map((e) => e.url);
   const nodes = new Map<string, PRNode>();
-  let responses = new Map<string, string | undefined>();
+  const responses = new Map<string, string | undefined>();
   let fatal: Error | undefined;
   if (needsFetch.length > 0) {
     const octokit = getOctokit(requireGitHubToken());
@@ -303,6 +313,7 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
         const batch = await fetchBatch(octokit, needsFetch.slice(i, i + BATCH_SIZE), warnings);
         if (!batch) failedBatches++;
         for (const [url, node] of batch ?? []) nodes.set(url, node);
+        await resolveResponses(octokit, batch, responses, warnings);
       } catch (err) {
         // Rate limit or auth: keep what earlier batches got, persist it, then rethrow.
         fatal = err as Error;
@@ -312,7 +323,6 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     if (!fatal && failedBatches === Math.ceil(needsFetch.length / BATCH_SIZE)) {
       throw new Error(`Every GitHub batch failed: ${warnings.join('; ')}`);
     }
-    if (!fatal) ({ responses, fatal } = await resolveResponses(octokit, nodes, warnings));
   }
 
   // 2. Merge into fresh state: the GitHub phase can take a while, and upgrades
@@ -380,7 +390,7 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
       closeReason: after.closeReason - before.closeReason,
       pick: after.pick - before.pick,
       // Lookups that found a response (overwrites included), not a before/after delta.
-      firstMaintainerResponseAt: [...responses.values()].filter(Boolean).length,
+      firstMaintainerResponseAt: countFound(responses),
     },
     listFiles: lists.map((l) => l.file),
     unresolved: needsFetch.length - nodes.size,

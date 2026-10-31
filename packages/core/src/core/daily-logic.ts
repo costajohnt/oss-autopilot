@@ -304,6 +304,21 @@ function responseDays(
   return Number.isFinite(days) && days >= 0 ? days : undefined;
 }
 
+/** Where a ledger entry's response sample ends, and whether that end is only a lower bound. */
+function ledgerSampleEnd(e: {
+  firstMaintainerResponseAt?: string;
+  mergedAt?: string;
+  closedAt?: string;
+  responseRule?: number;
+  closeReason?: string;
+}): { endMs: number | undefined; isLowerBound: boolean } {
+  // mergedAt stands in when no response was recorded; it errs slow.
+  const exact = toMs(e.firstMaintainerResponseAt) ?? toMs(e.mergedAt);
+  if (exact !== undefined) return { endMs: exact, isLowerBound: false };
+  const isConfirmedUnanswered = e.responseRule === MAINTAINER_RESPONSE_RULE && e.closeReason !== 'self-closed';
+  return { endMs: isConfirmedUnanswered ? toMs(e.closedAt) : undefined, isLowerBound: true };
+}
+
 /** Median of `values` (sorts in place), or null with fewer than `minCount`. */
 function medianOf(values: number[], minCount: number): number | null {
   if (values.length < minCount) return null;
@@ -368,11 +383,8 @@ export function computeLedgerRepoSignals(
   const seen = new Set<string>();
   for (const e of ledger) {
     seen.add(e.url);
-    // mergedAt stands in when no response was recorded; it errs slow.
-    const exact = toMs(e.firstMaintainerResponseAt) ?? toMs(e.mergedAt);
-    const isConfirmedUnanswered = e.responseRule === MAINTAINER_RESPONSE_RULE && e.closeReason !== 'self-closed';
-    const lowerBound = isConfirmedUnanswered ? toMs(e.closedAt) : undefined;
-    add(e.url, e.openedAt, exact ?? lowerBound, exact === undefined, e.closeReason);
+    const { endMs, isLowerBound } = ledgerSampleEnd(e);
+    add(e.url, e.openedAt, endMs, isLowerBound, e.closeReason);
   }
   for (const pr of openPRs) {
     if (seen.has(pr.url)) continue;
