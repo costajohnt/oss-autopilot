@@ -113,12 +113,11 @@ describe('Concurrent State Write Protection', () => {
 
     it('should not leave a .tmp file after successful write', () => {
       const filePath = path.join(tmpDir, 'test.json');
-      const tmpPath = filePath + '.tmp';
 
       atomicWriteFileSync(filePath, '{"ok":true}');
 
       expect(fs.existsSync(filePath)).toBe(true);
-      expect(fs.existsSync(tmpPath)).toBe(false);
+      expect(fs.readdirSync(tmpDir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
     });
 
     it('should overwrite existing file atomically', () => {
