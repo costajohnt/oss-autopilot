@@ -103,6 +103,44 @@ describe('runLedgerBackfill (#1824)', () => {
     expect((await runLedgerBackfill()).queried).toBe(0);
   });
 
+  it('counts issue comments only from maintainer associations', async () => {
+    mocks.graphql.mockResolvedValue({
+      p0: node({
+        firstComments: {
+          nodes: [
+            {
+              author: { __typename: 'User', login: 'fan' },
+              authorAssociation: 'NONE',
+              createdAt: '2026-01-01T01:00:00Z',
+            },
+            {
+              author: { __typename: 'User', login: 'maint' },
+              authorAssociation: 'OWNER',
+              createdAt: '2026-01-04T00:00:00Z',
+            },
+          ],
+        },
+      }),
+      p1: node(),
+    });
+    await runLedgerBackfill();
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBe('2026-01-04T00:00:00Z');
+  });
+
+  it('leaves a full page with no maintainer response unstamped so it is re-queried', async () => {
+    const fans = Array.from({ length: 10 }, (_, i) => ({
+      author: { __typename: 'User', login: `fan${i}` },
+      authorAssociation: 'NONE',
+      createdAt: '2026-01-01T01:00:00Z',
+    }));
+    mocks.graphql.mockResolvedValue({ p0: node({ firstComments: { nodes: fans } }), p1: node() });
+    await runLedgerBackfill();
+    expect(sm.getMergedPRs()[0].backfilledAt).toBeDefined();
+    expect(sm.getMergedPRs()[0].responseBackfilledAt).toBeUndefined();
+    expect(sm.getClosedPRs()[0].responseBackfilledAt).toBeDefined();
+    expect((await runLedgerBackfill()).queried).toBe(1);
+  });
+
   it('stamps an unanswered PR so it is not re-queried', async () => {
     mocks.graphql.mockResolvedValue({ p0: node(), p1: node() });
     await runLedgerBackfill();

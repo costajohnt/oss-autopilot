@@ -130,30 +130,22 @@ export function reviewHasInlineComments(reviewId: number, reviewComments: Review
 
 /**
  * Earliest maintainer response timestamp across issue comments and submitted
- * reviews (#1461). A "response" is any comment or review by a non-bot
- * account other than the contributor — acknowledgments and approvals count,
- * since for latency purposes any human maintainer reply is a response.
- * Computed from data fetchPRDetails already holds in memory (zero extra API
- * calls). Returns undefined when no maintainer has responded yet.
+ * reviews (#1461). "Maintainer" is the same rule the dormancy clock uses
+ * ({@link isMaintainerEngagement}): issue comments count only from OWNER /
+ * MEMBER / COLLABORATOR (any non-bot non-contributor when the association is
+ * unknown), reviews from any non-bot non-contributor. Acknowledgments and
+ * approvals count. Returns undefined when no maintainer has responded yet.
  */
 export function getFirstMaintainerResponseAt(
-  comments: Array<{ user?: { login?: string } | null; created_at: string }>,
-  reviews: Array<{ user?: { login?: string } | null; submitted_at?: string | null }>,
+  comments: Array<ActorFields & { created_at: string }>,
+  reviews: Array<ActorFields & { submitted_at?: string | null }>,
   username: string,
 ): string | undefined {
-  const usernameLower = username.toLowerCase();
-  let earliest: string | undefined;
-  const consider = (author: string | undefined | null, createdAt: string | undefined | null) => {
-    if (!author || !createdAt) return;
-    if (author.toLowerCase() === usernameLower) return;
-    if (isBotAuthor(author)) return;
-    if (!earliest || new Date(createdAt).getTime() < new Date(earliest).getTime()) {
-      earliest = createdAt;
-    }
-  };
-  for (const comment of comments) consider(comment.user?.login, comment.created_at);
-  for (const review of reviews) consider(review.user?.login, review.submitted_at);
-  return earliest;
+  const times = [
+    ...comments.filter((c) => isMaintainerEngagement(c, username, 'issue-comment')).map((c) => c.created_at),
+    ...reviews.filter((r) => isMaintainerEngagement(r, username, 'review')).map((r) => r.submitted_at),
+  ].filter((t): t is string => !!t && Number.isFinite(Date.parse(t)));
+  return times.length ? times.reduce((a, b) => (Date.parse(b) < Date.parse(a) ? b : a)) : undefined;
 }
 
 /**
@@ -319,6 +311,27 @@ type ActorFields = {
 };
 
 /**
+ * Whether a comment or review counts as maintainer engagement. Shared by the
+ * dormancy clock ({@link getLastMaintainerActivity}, #1842) and first-response
+ * latency ({@link getFirstMaintainerResponseAt}) so both agree on who a
+ * maintainer is: never the contributor or a bot; an issue comment additionally
+ * needs an OWNER / MEMBER / COLLABORATOR association when one is known, so
+ * drive-by "+1"s don't count. Reviews and inline review comments count from
+ * any other account, since codeowners often show as CONTRIBUTOR.
+ */
+export function isMaintainerEngagement(
+  actor: ActorFields,
+  username: string,
+  kind: 'issue-comment' | 'review',
+): boolean {
+  const login = actor.user?.login;
+  if (!login || login.toLowerCase() === username.toLowerCase()) return false;
+  if (isBotAuthor(login, actor.user?.type)) return false;
+  const association = actor.author_association;
+  return kind === 'review' || !association || MAINTAINER_ASSOCIATIONS.has(association);
+}
+
+/**
  * Latest maintainer activity on a PR, falling back to `createdAt` when no
  * maintainer has engaged, plus the number of contributor pings since then.
  *
@@ -369,12 +382,14 @@ export function getLastMaintainerActivity(
     }
   };
   for (const c of comments) {
-    const association = c.author_association;
-    if (association && !MAINTAINER_ASSOCIATIONS.has(association)) continue;
-    consider(c.user?.login, c.user?.type, c.created_at);
+    if (isMaintainerEngagement(c, username, 'issue-comment')) consider(c.user?.login, c.user?.type, c.created_at);
   }
-  for (const r of reviews) consider(r.user?.login, r.user?.type, r.submitted_at);
-  for (const c of reviewComments) consider(c.user?.login, c.user?.type, c.created_at);
+  for (const r of reviews) {
+    if (isMaintainerEngagement(r, username, 'review')) consider(r.user?.login, r.user?.type, r.submitted_at);
+  }
+  for (const c of reviewComments) {
+    if (isMaintainerEngagement(c, username, 'review')) consider(c.user?.login, c.user?.type, c.created_at);
+  }
   for (const e of events) consider(e.login, e.type, e.at, e.isPush);
 
   const authorCommentTimes = comments

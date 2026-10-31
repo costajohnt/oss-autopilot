@@ -389,14 +389,13 @@ describe('computeSuccessGrade', () => {
 describe('grading with ledger-derived avgResponseDays', () => {
   it('grades the response band from the median written by daily', () => {
     const derived = computeLedgerRepoSignals(
-      [
-        {
-          url: 'https://github.com/o/r/pull/1',
-          openedAt: '2026-01-01T00:00:00Z',
-          firstMaintainerResponseAt: '2026-01-11T00:00:00Z',
-        },
-      ],
+      [8, 10, 12].map((d, i) => ({
+        url: `https://github.com/o/r/pull/${i}`,
+        openedAt: '2026-01-01T00:00:00Z',
+        firstMaintainerResponseAt: `2026-01-${String(1 + d).padStart(2, '0')}T00:00:00Z`,
+      })),
       [],
+      Date.parse('2026-06-01T00:00:00Z'),
     ).get('o/r')!;
     const grade = gradeFromCandidate({
       repo: 'o/r',
