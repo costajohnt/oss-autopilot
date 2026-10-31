@@ -159,8 +159,12 @@ export function getFirstMaintainerResponseAt(
   const times = [
     ...comments.filter((c) => isMaintainerEngagement(c, username, 'issue-comment')).map((c) => c.created_at),
     ...reviews.filter((r) => isMaintainerEngagement(r, username, 'review')).map((r) => r.submitted_at),
-  ].filter((t): t is string => !!t && Number.isFinite(Date.parse(t)));
-  return times.length ? times.reduce((a, b) => (Date.parse(b) < Date.parse(a) ? b : a)) : undefined;
+  ];
+  let earliest: string | undefined;
+  for (const t of times) {
+    if (t && Number.isFinite(Date.parse(t)) && (!earliest || Date.parse(t) < Date.parse(earliest))) earliest = t;
+  }
+  return earliest;
 }
 
 /**

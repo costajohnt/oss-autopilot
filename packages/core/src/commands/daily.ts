@@ -452,11 +452,12 @@ async function updateRepoScores(
       );
       for (const repo of Object.keys(stateManager.getState().repoScores)) {
         const derived = ledgerSignals.get(repo);
+        const update = {
+          avgResponseDays: derived?.avgResponseDays ?? null,
+          signals: { hasHostileComments: derived?.hasHostileComments ?? false },
+        };
         try {
-          stateManager.updateRepoScore(repo, {
-            avgResponseDays: derived?.avgResponseDays ?? null,
-            signals: { hasHostileComments: derived?.hasHostileComments ?? false },
-          });
+          stateManager.updateRepoScore(repo, update);
         } catch (error) {
           warn(MODULE, `Failed to update ledger signals for ${repo}: ${errorMessage(error)}`);
         }

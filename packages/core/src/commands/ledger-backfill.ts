@@ -94,17 +94,32 @@ const restUser = (a: Login | null | undefined) => (a ? { login: a.login, type: a
  * the caller leaves the entry unstamped and it is re-queried next run.
  * ponytail: re-query instead of paging; page if many PRs sit there for good.
  */
-function firstResponse(node: PRNode): { at?: string; truncated: boolean } {
+function firstResponse(node: PRNode): { at?: string; isTruncated: boolean } {
   const commentNodes = node.firstComments?.nodes ?? [];
   const reviewNodes = node.reviews?.nodes ?? [];
-  const comments = commentNodes.flatMap((c) =>
-    c ? [{ user: restUser(c.author), author_association: c.authorAssociation, created_at: c.createdAt }] : [],
-  );
-  const reviews = reviewNodes.flatMap((r) => (r ? [{ user: restUser(r.author), submitted_at: r.submittedAt }] : []));
+  const comments = commentNodes
+    .filter((c) => c !== null)
+    .map((c) => ({ user: restUser(c.author), author_association: c.authorAssociation, created_at: c.createdAt }));
+  const reviews = reviewNodes
+    .filter((r) => r !== null)
+    .map((r) => ({ user: restUser(r.author), submitted_at: r.submittedAt }));
   const at = node.author?.login ? getFirstMaintainerResponseAt(comments, reviews, node.author.login) : undefined;
-  const truncated = !at && (commentNodes.length >= RESPONSE_SCAN || reviewNodes.length >= RESPONSE_SCAN);
-  return { at, truncated };
+  const isTruncated = !at && (commentNodes.length >= RESPONSE_SCAN || reviewNodes.length >= RESPONSE_SCAN);
+  return { at, isTruncated };
 }
+
+/** First-response fields for a returned node; a truncated miss stays unstamped so it is re-queried. */
+function responseFields(
+  node: PRNode,
+  now: string,
+): { firstMaintainerResponseAt?: string; responseBackfilledAt?: string } {
+  const { at, isTruncated } = firstResponse(node);
+  return isTruncated ? {} : { firstMaintainerResponseAt: at, responseBackfilledAt: now };
+}
+
+/** True when the response lookup has never run for this entry (see responseBackfilledAt). */
+const isMissingResponse = (e: StoredMergedPR | StoredClosedPR) =>
+  !e.firstMaintainerResponseAt && !e.responseBackfilledAt;
 
 type GraphqlError = { type?: string; path?: Array<string | number> };
 
@@ -214,13 +229,13 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   // entries not yet backfilled, plus one-time re-fetches for fields added
   // later: selfCloseReason on self-closed entries, and firstMaintainerResponseAt
   // on entries that never had it looked up (responseBackfilledAt unset).
-  const missingResponse = (e: StoredMergedPR | StoredClosedPR) =>
-    !e.firstMaintainerResponseAt && !e.responseBackfilledAt;
   const needsFetch = [
-    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || missingResponse(e)),
+    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || isMissingResponse(e)),
     ...stateManager
       .getClosedPRs()
-      .filter((e) => !e.backfilledAt || missingResponse(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason)),
+      .filter(
+        (e) => !e.backfilledAt || isMissingResponse(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason),
+      ),
   ].map((e) => e.url);
   const nodes = new Map<string, PRNode>();
   let fatal: Error | undefined;
@@ -260,14 +275,11 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     // A vet-time snapshot (joined by addMergedPRs/addClosedPRs) beats the list
     // score, and a list score for a different issue than the PR closes is dropped.
     const pick = fromList && fromList.issueUrl === issueUrl && !snapshotFor(issueUrl) ? fromList : undefined;
-    const response = node && firstResponse(node);
     return {
       openedAt: node?.createdAt,
       issueUrl,
       pick,
-      firstMaintainerResponseAt: response?.at,
-      ...(node && { backfilledAt: now }),
-      ...(response && !response.truncated && { responseBackfilledAt: now }),
+      ...(node && { backfilledAt: now, ...responseFields(node, now) }),
     };
   };
 

@@ -282,6 +282,30 @@ const MIN_RESPONSE_SAMPLES = 3;
 /** Only PRs opened within this window feed avgResponseDays. */
 const RESPONSE_WINDOW_DAYS = 365;
 
+const toMs = (t: string | undefined) => (t ? Date.parse(t) : undefined);
+
+/** Days from `openedAt` to `endMs`, or undefined when unusable or opened before `windowStart`. */
+function responseDays(
+  openedAt: string | undefined,
+  endMs: number | undefined,
+  windowStart: number,
+): number | undefined {
+  if (endMs === undefined || !openedAt) return undefined;
+  const startMs = Date.parse(openedAt);
+  if (startMs < windowStart) return undefined;
+  const days = (endMs - startMs) / MS_PER_DAY;
+  return Number.isFinite(days) && days >= 0 ? days : undefined;
+}
+
+/** Median of `values` (sorts in place), or null with fewer than `minCount`. */
+function medianOf(values: number[], minCount: number): number | null {
+  if (values.length < minCount) return null;
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  if (values.length % 2 === 1) return values[mid];
+  return (values[mid - 1] + values[mid]) / 2;
+}
+
 /**
  * Per-repo signals derived from the outcome ledger, recomputed each daily run
  * so a corrected ledger entry corrects the score (no one-way latching):
@@ -324,33 +348,22 @@ export function computeLedgerRepoSignals(
     const entry = byRepo.get(repo) ?? { samples: [], hostile: false };
     byRepo.set(repo, entry);
     if (closeReason === 'ai-policy') entry.hostile = true;
-    const startMs = openedAt ? Date.parse(openedAt) : NaN;
-    if (!(startMs >= windowStart) || endMs === undefined) return;
-    const days = (endMs - startMs) / MS_PER_DAY;
-    if (Number.isFinite(days) && days >= 0) entry.samples.push(days);
+    const days = responseDays(openedAt, endMs, windowStart);
+    if (days !== undefined) entry.samples.push(days);
   };
-  const ms = (t: string | undefined) => (t ? Date.parse(t) : undefined);
   const seen = new Set<string>();
   for (const e of ledger) {
     seen.add(e.url);
-    const end =
-      ms(e.firstMaintainerResponseAt) ?? ms(e.mergedAt) ?? (e.responseBackfilledAt ? ms(e.closedAt) : undefined);
-    add(e.url, e.openedAt, end, e.closeReason);
+    const confirmedUnanswered = e.responseBackfilledAt ? toMs(e.closedAt) : undefined;
+    add(e.url, e.openedAt, toMs(e.firstMaintainerResponseAt) ?? toMs(e.mergedAt) ?? confirmedUnanswered, e.closeReason);
   }
   for (const pr of openPRs) {
-    if (!seen.has(pr.url)) add(pr.url, pr.createdAt, ms(pr.firstMaintainerResponseAt) ?? nowMs);
+    if (!seen.has(pr.url)) add(pr.url, pr.createdAt, toMs(pr.firstMaintainerResponseAt) ?? nowMs);
   }
 
   const result = new Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }>();
   for (const [repo, { samples, hostile }] of byRepo) {
-    samples.sort((a, b) => a - b);
-    const mid = Math.floor(samples.length / 2);
-    const median =
-      samples.length < MIN_RESPONSE_SAMPLES
-        ? null
-        : samples.length % 2
-          ? samples[mid]
-          : (samples[mid - 1] + samples[mid]) / 2;
+    const median = medianOf(samples, MIN_RESPONSE_SAMPLES);
     result.set(repo, {
       avgResponseDays: median === null ? null : Math.round(median * 10) / 10,
       hasHostileComments: hostile,

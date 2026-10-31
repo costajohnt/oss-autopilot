@@ -100,7 +100,8 @@ describe('runLedgerBackfill (#1824)', () => {
     expect(result.queried).toBe(1);
     expect(result.filled.firstMaintainerResponseAt).toBe(1);
     expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBe('2026-01-02T00:00:00Z');
-    expect((await runLedgerBackfill()).queried).toBe(0);
+    const rerun = await runLedgerBackfill();
+    expect(rerun.queried).toBe(0);
   });
 
   it('counts issue comments only from maintainer associations', async () => {
@@ -138,7 +139,8 @@ describe('runLedgerBackfill (#1824)', () => {
     expect(sm.getMergedPRs()[0].backfilledAt).toBeDefined();
     expect(sm.getMergedPRs()[0].responseBackfilledAt).toBeUndefined();
     expect(sm.getClosedPRs()[0].responseBackfilledAt).toBeDefined();
-    expect((await runLedgerBackfill()).queried).toBe(1);
+    const rerun = await runLedgerBackfill();
+    expect(rerun.queried).toBe(1);
   });
 
   it('stamps an unanswered PR so it is not re-queried', async () => {
@@ -146,7 +148,8 @@ describe('runLedgerBackfill (#1824)', () => {
     await runLedgerBackfill();
     expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBeUndefined();
     expect(sm.getMergedPRs()[0].responseBackfilledAt).toBeDefined();
-    expect((await runLedgerBackfill()).queried).toBe(0);
+    const rerun = await runLedgerBackfill();
+    expect(rerun.queried).toBe(0);
   });
 
   it('re-fetches self-closed entries recorded before selfCloseReason, once', async () => {
