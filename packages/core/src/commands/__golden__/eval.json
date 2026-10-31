@@ -3,11 +3,11 @@
     "generatedAt": "2026-10-29T12:00:00.000Z",
     "totals": {
       "key": "all",
-      "n": 4,
-      "merged": 2,
+      "n": 5,
+      "merged": 3,
       "closed": 1,
       "dormant": 1,
-      "mergeRate": 0.5,
+      "mergeRate": 0.6,
       "medianHoursToMerge": 48,
       "medianHoursToFirstResponse": 6
     },
@@ -54,12 +54,12 @@
       },
       {
         "key": "no prediction",
-        "n": 2,
-        "merged": 0,
+        "n": 3,
+        "merged": 1,
         "closed": 1,
         "dormant": 1,
-        "mergeRate": 0,
-        "medianHoursToMerge": null,
+        "mergeRate": 0.33,
+        "medianHoursToMerge": 48,
         "medianHoursToFirstResponse": null
       }
     ],
@@ -76,23 +76,23 @@
       },
       {
         "key": "unknown",
-        "n": 3,
-        "merged": 1,
+        "n": 4,
+        "merged": 2,
         "closed": 1,
         "dormant": 1,
-        "mergeRate": 0.33,
-        "medianHoursToMerge": null,
+        "mergeRate": 0.5,
+        "medianHoursToMerge": 48,
         "medianHoursToFirstResponse": null
       }
     ],
     "byMonth": [
       {
         "key": "2026-10",
-        "n": 2,
-        "merged": 1,
+        "n": 3,
+        "merged": 2,
         "closed": 1,
         "dormant": 0,
-        "mergeRate": 0.5,
+        "mergeRate": 0.67,
         "medianHoursToMerge": 48,
         "medianHoursToFirstResponse": 6
       },
@@ -107,6 +107,94 @@
         "medianHoursToFirstResponse": null
       }
     ],
+    "byFirstInRepo": [
+      {
+        "key": "first in repo",
+        "n": 2,
+        "merged": 2,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "returning",
+        "n": 3,
+        "merged": 1,
+        "closed": 1,
+        "dormant": 1,
+        "mergeRate": 0.33,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": null
+      }
+    ],
+    "byIssueAuthorRole": [
+      {
+        "key": "maintainer",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "not recorded",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": null,
+        "medianHoursToFirstResponse": null
+      }
+    ],
+    "byCompetingPRs": [
+      {
+        "key": "0",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "not recorded",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": null,
+        "medianHoursToFirstResponse": null
+      }
+    ],
+    "byLabel": [
+      {
+        "key": "good first issue",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      },
+      {
+        "key": "bug",
+        "n": 1,
+        "merged": 1,
+        "closed": 0,
+        "dormant": 0,
+        "mergeRate": 1,
+        "medianHoursToMerge": 48,
+        "medianHoursToFirstResponse": 6
+      }
+    ],
     "closeReasons": {
       "rejected": 1
     },
@@ -118,5 +206,5 @@
     "calibrationPairs": 1,
     "flags": []
   },
-  "markdown": "# oss-autopilot eval (2026-10-29)\n\n## Headlines\n\n- Merge rate on repos with 1k+ stars: **100%** (n=1)\n- Calibration gap, vet grades (grade>=7 minus grade<=5 merge rate): **n/a** (n=1 vs 0; needs 5 each)\n- Approach or AI-policy closures by month: 2026-10: 1\n- Overall: 4 outcomes, merge rate 50% (dormant counted as not merged)\n\n## By grade at pick time\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| vet 7-8 | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| list 7-8 | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n| no prediction | 2 | 0 | 1 | 1 | 0% | n/a | n/a |\n\n## By repo stars\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 1k-10k | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| unknown | 3 | 1 | 1 | 1 | 33% | n/a | n/a |\n\n## By month\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 2026-10 | 2 | 1 | 1 | 0 | 50% | 48h | 6h |\n| 2026-09 | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n\n## Close reasons\n\n- rejected: 1\n\n## Review quality\n\n- PRs with a recorded review state: 2\n- Changes requested before the outcome: 50%\n- CI failing at last sight: 50%\n"
+  "markdown": "# oss-autopilot eval (2026-10-29)\n\n## Headlines\n\n- Merge rate on repos with 1k+ stars: **100%** (n=1)\n- Calibration gap, vet grades (grade>=7 minus grade<=5 merge rate): **n/a** (n=1 vs 0; needs 5 each)\n- Approach or AI-policy closures by month: 2026-10: 1\n- Overall: 5 outcomes, merge rate 60% (dormant counted as not merged)\n\n## By grade at pick time\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| vet 7-8 | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| list 7-8 | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n| no prediction | 3 | 1 | 1 | 1 | 33% | 48h | n/a |\n\n## By repo stars\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 1k-10k | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| unknown | 4 | 2 | 1 | 1 | 50% | 48h | n/a |\n\n## By month\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 2026-10 | 3 | 2 | 1 | 0 | 67% | 48h | 6h |\n| 2026-09 | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n\n## First PR in repo vs returning\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| first in repo | 2 | 2 | 0 | 0 | 100% | 48h | 6h |\n| returning | 3 | 1 | 1 | 1 | 33% | 48h | n/a |\n\n## By issue author (picks)\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| maintainer | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| not recorded | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n\n## By competing PRs at pick time (picks)\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| 0 | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| not recorded | 1 | 1 | 0 | 0 | 100% | n/a | n/a |\n\n## By issue label (picks; one pick can match several)\n\n| Bucket | n | Merged | Closed | Dormant | Merge rate | Median to merge | Median to first response |\n|---|---|---|---|---|---|---|---|\n| good first issue | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n| bug | 1 | 1 | 0 | 0 | 100% | 48h | 6h |\n\n## Close reasons\n\n- rejected: 1\n\n## Review quality\n\n- PRs with a recorded review state: 2\n- Changes requested before the outcome: 50%\n- CI failing at last sight: 50%\n"
 }

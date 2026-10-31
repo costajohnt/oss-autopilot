@@ -8,7 +8,16 @@ import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { repoCapField } from '../core/repo-cap.js';
-import { getStateManager, classifyLinkedPR, pickSnapshotFromVet, persistPickSnapshots } from '../core/index.js';
+import {
+  getStateManager,
+  getOctokit,
+  classifyLinkedPR,
+  pickSnapshotFromVet,
+  persistPickSnapshots,
+  fetchIssueAuthorTraits,
+  isFirstInRepo,
+  requireGitHubToken,
+} from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
 
@@ -65,6 +74,14 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     ...repoCapField(getStateManager().getState(), candidate.issue.repo),
   };
 
-  const pick = pickSnapshotFromVet(output, 'vet');
+  const octokit = getOctokit(requireGitHubToken());
+  const pick = pickSnapshotFromVet(output, 'vet', {
+    ...(await fetchIssueAuthorTraits(octokit, candidate.issue.url)),
+    firstInRepo: isFirstInRepo(
+      candidate.issue.repo,
+      getStateManager().getRepoScore(candidate.issue.repo),
+      getStateManager().getState().mergedPRs,
+    ),
+  });
   return { ...output, ...(await persistPickSnapshots(getStateManager(), pick ? [pick] : [])) };
 }

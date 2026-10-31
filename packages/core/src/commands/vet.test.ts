@@ -23,6 +23,9 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
+    fetchIssueAuthorTraits: async () => ({}),
+    getOctokit: () => ({}),
+    requireGitHubToken: () => 'fake-token',
     getStateManager: () => ({
       getRepoScore: mockGetRepoScore,
       getState: mockGetState,
@@ -114,6 +117,9 @@ describe('runVet', () => {
         stargazersCount: 1200,
         source: 'vet',
         capturedAt: expect.any(String),
+        labels: [],
+        competingPRs: 0,
+        firstInRepo: true,
       },
     ]);
   });
