@@ -3,12 +3,12 @@ import type { VetOutput } from '../formatters/json.js';
 import {
   pickSnapshotFromVet,
   persistPickSnapshots,
-  issueAuthorRole,
   isFirstInRepo,
-  fetchIssueAuthorTraits,
+  competingPRCount,
+  traitsFromVerification,
 } from './pick-snapshot.js';
 import type { StateManager } from './state.js';
-import type { Octokit } from '@octokit/rest';
+import type { IssueVerification, VerifiedLinkedPR } from './issue-verification.js';
 
 const vet = (overrides: Partial<VetOutput> = {}): VetOutput => ({
   issue: { repo: 'o/r', number: 1, title: 't', url: 'https://github.com/o/r/issues/1', labels: [] },
@@ -45,15 +45,17 @@ describe('pickSnapshotFromVet (#1824)', () => {
 });
 
 describe('pick traits', () => {
-  it('records labels, mapped author role, comments and first-in-repo', () => {
+  it('records labels, raw author association, bot flag, comments and first-in-repo', () => {
     const snap = pickSnapshotFromVet(vet({ issue: { ...vet().issue, labels: ['bug', 'help wanted'] } }), 'vet', {
-      authorAssociation: 'MEMBER',
+      authorAssociation: 'FIRST_TIME_CONTRIBUTOR',
+      authorIsBot: false,
       commentCount: 3,
       firstInRepo: true,
     });
     expect(snap).toMatchObject({
       labels: ['bug', 'help wanted'],
-      issueAuthorRole: 'maintainer',
+      issueAuthorAssociation: 'FIRST_TIME_CONTRIBUTOR',
+      issueAuthorIsBot: false,
       commentCount: 3,
       firstInRepo: true,
     });
@@ -61,23 +63,9 @@ describe('pick traits', () => {
 
   it('leaves traits out when the caller has none', () => {
     const snap = pickSnapshotFromVet(vet(), 'vet')!;
-    expect(snap).not.toHaveProperty('issueAuthorRole');
+    expect(snap).not.toHaveProperty('issueAuthorAssociation');
     expect(snap).not.toHaveProperty('firstInRepo');
     expect(snap).not.toHaveProperty('competingPRs');
-  });
-
-  it('maps author associations to roles', () => {
-    expect(['OWNER', 'MEMBER', 'COLLABORATOR'].map((a) => issueAuthorRole(a))).toEqual([
-      'maintainer',
-      'maintainer',
-      'maintainer',
-    ]);
-    expect(['CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'NONE'].map((a) => issueAuthorRole(a))).toEqual([
-      'contributor',
-      'contributor',
-      'contributor',
-    ]);
-    expect(issueAuthorRole('MANNEQUIN')).toBe('unknown');
   });
 
   it('competingPRs: caller count wins, else 0/1 from the linked-PR classification', () => {
@@ -86,6 +74,62 @@ describe('pick traits', () => {
     ).toBe(3);
     expect(pickSnapshotFromVet(vet({ linkedPRClassification: 'other_open' }), 'vet')!.competingPRs).toBe(1);
     expect(pickSnapshotFromVet(vet({ linkedPRClassification: 'none' }), 'vet')!.competingPRs).toBe(0);
+  });
+});
+
+const pr = (overrides: Partial<VerifiedLinkedPR>): VerifiedLinkedPR => ({
+  number: 2,
+  url: 'https://github.com/o/r/pull/2',
+  title: 't',
+  state: 'open',
+  isDraft: false,
+  author: 'someone',
+  isOwn: false,
+  linkType: 'cross-referenced',
+  updatedAt: null,
+  ...overrides,
+});
+
+describe('competingPRCount', () => {
+  it('counts open, non-draft PRs by others that close the issue or live in its repo', () => {
+    const linkedPRs = [
+      pr({}), // same-repo mention: counts
+      pr({ url: 'https://github.com/fork/r/pull/9', linkType: 'closing' }), // cross-repo closing: counts
+      pr({ url: 'https://github.com/other/x/pull/3' }), // cross-repo mention: no
+      pr({ isDraft: true }),
+      pr({ isOwn: true }),
+      pr({ state: 'merged' }),
+    ];
+    expect(competingPRCount({ owner: 'O', repo: 'R', linkedPRs })).toBe(2);
+  });
+});
+
+const verification = (overrides: Partial<IssueVerification>) =>
+  ({
+    owner: 'o',
+    repo: 'r',
+    linkedPRs: [pr({ linkType: 'closing' })],
+    author: 'dependabot',
+    authorAssociation: 'NONE',
+    authorIsBot: true,
+    commentCount: 4,
+    ...overrides,
+  }) as IssueVerification;
+
+describe('traitsFromVerification', () => {
+  it('carries author, comments and the competing count', () => {
+    expect(traitsFromVerification(verification({}))).toEqual({
+      authorAssociation: 'NONE',
+      authorIsBot: true,
+      commentCount: 4,
+      competingPRs: 1,
+    });
+  });
+
+  it('leaves out traits GitHub did not return', () => {
+    const traits = traitsFromVerification(verification({ authorAssociation: null, commentCount: null }));
+    expect(traits).not.toHaveProperty('authorAssociation');
+    expect(traits).not.toHaveProperty('commentCount');
   });
 });
 
@@ -98,29 +142,6 @@ describe('isFirstInRepo', () => {
   it('is true otherwise, and does not match a repo-name prefix', () => {
     expect(isFirstInRepo('owner/repo', { mergedPRCount: 0 }, undefined)).toBe(true);
     expect(isFirstInRepo('owner/rep', undefined, merged)).toBe(true);
-  });
-});
-
-describe('fetchIssueAuthorTraits', () => {
-  it('reads author association and comment count', async () => {
-    const get = vi.fn(async () => ({ data: { author_association: 'OWNER', comments: 4 } }));
-    const octokit = { issues: { get } } as unknown as Octokit;
-    expect(await fetchIssueAuthorTraits(octokit, 'https://github.com/o/r/issues/7')).toEqual({
-      authorAssociation: 'OWNER',
-      commentCount: 4,
-    });
-    expect(get).toHaveBeenCalledWith({ owner: 'o', repo: 'r', issue_number: 7 });
-  });
-
-  it('returns {} when the lookup fails', async () => {
-    const octokit = {
-      issues: {
-        get: async () => {
-          throw new Error('rate limited');
-        },
-      },
-    } as unknown as Octokit;
-    expect(await fetchIssueAuthorTraits(octokit, 'https://github.com/o/r/issues/7')).toEqual({});
   });
 });
 

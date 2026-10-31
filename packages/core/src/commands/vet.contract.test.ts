@@ -34,7 +34,17 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
-    fetchIssueAuthorTraits: async () => ({}),
+    // Plain function, not vi.fn: this file calls resetAllMocks.
+    fetchIssueVerification: async () => ({
+      owner: 'o',
+      repo: 'r',
+      verdict: 'available',
+      linkedPRs: [],
+      author: null,
+      authorAssociation: null,
+      authorIsBot: false,
+      commentCount: null,
+    }),
     getOctokit: () => ({}),
     requireGitHubToken: () => 'fake-token',
     getStateManager: () => ({

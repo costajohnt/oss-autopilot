@@ -38,7 +38,7 @@ describe('eval --json contract', () => {
             source: 'vet',
             capturedAt: '2026-10-07T00:00:00Z',
             labels: ['bug', 'good first issue'],
-            issueAuthorRole: 'maintainer',
+            issueAuthorAssociation: 'MEMBER',
             competingPRs: 0,
             firstInRepo: true,
             commentCount: 2,
@@ -74,7 +74,12 @@ describe('eval --json contract', () => {
       ],
       lastDigest: {
         openPRs: [
-          makeFetchedPR({ url: 'https://github.com/octo/beta/pull/5', repo: 'octo/beta', stalenessTier: 'dormant' }),
+          makeFetchedPR({
+            url: 'https://github.com/octo/beta/pull/5',
+            repo: 'octo/beta',
+            stalenessTier: 'dormant',
+            createdAt: '2026-09-25T00:00:00Z',
+          }),
         ],
       } as never,
     });

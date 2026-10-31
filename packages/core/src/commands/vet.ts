@@ -14,9 +14,13 @@ import {
   classifyLinkedPR,
   pickSnapshotFromVet,
   persistPickSnapshots,
-  fetchIssueAuthorTraits,
+  fetchIssueVerification,
+  traitsFromVerification,
   isFirstInRepo,
   requireGitHubToken,
+  errorMessage,
+  warn,
+  type PickSnapshot,
 } from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
@@ -74,14 +78,31 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     ...repoCapField(getStateManager().getState(), candidate.issue.repo),
   };
 
-  const octokit = getOctokit(requireGitHubToken());
-  const pick = pickSnapshotFromVet(output, 'vet', {
-    ...(await fetchIssueAuthorTraits(octokit, candidate.issue.url)),
-    firstInRepo: isFirstInRepo(
-      candidate.issue.repo,
-      getStateManager().getRepoScore(candidate.issue.repo),
-      getStateManager().getState().mergedPRs,
-    ),
-  });
+  const pick = await pickFor(output);
   return { ...output, ...(await persistPickSnapshots(getStateManager(), pick ? [pick] : [])) };
+}
+
+/**
+ * The pick to record for this vet. One verify GraphQL call supplies the issue
+ * author, comment count and competing PRs, and catches an own open PR that
+ * scout's first-linked-PR check missed. A failed verify never fails the vet:
+ * the pick then falls back to scout's facts.
+ */
+async function pickFor(output: VetOutput): Promise<PickSnapshot | undefined> {
+  if (output.linkedPRClassification?.startsWith('user_')) return undefined;
+  const { repo, number, url } = output.issue;
+  const [owner, name] = repo.split('/', 2);
+  const verification = await fetchIssueVerification(getOctokit(requireGitHubToken()), {
+    repo: name,
+    owner,
+    number,
+  }).catch((error: unknown) => {
+    warn('vet', `Could not verify ${url} for pick traits: ${errorMessage(error)}`);
+    return undefined;
+  });
+  if (verification?.verdict === 'own-open-pr') return undefined;
+  return pickSnapshotFromVet(output, 'vet', {
+    ...(verification && traitsFromVerification(verification)),
+    firstInRepo: isFirstInRepo(repo, getStateManager().getRepoScore(repo), getStateManager().getState().mergedPRs),
+  });
 }

@@ -86,9 +86,19 @@ export const PickSnapshotSchema = z
     capturedAt: z.string().optional(),
     // Issue traits at vet time, for the eval's trait cuts. Older snapshots lack them.
     labels: z.array(z.string()).optional(),
-    /** From the issue's author association: OWNER/MEMBER/COLLABORATOR = maintainer. */
-    issueAuthorRole: openEnum(['maintainer', 'contributor', 'unknown'] as const).optional(),
-    /** Open PRs by others linked to or cross-referencing the issue. */
+    /** Raw GitHub author association of the issue author; the eval buckets it. */
+    issueAuthorAssociation: openEnum([
+      'OWNER',
+      'MEMBER',
+      'COLLABORATOR',
+      'CONTRIBUTOR',
+      'FIRST_TIMER',
+      'FIRST_TIME_CONTRIBUTOR',
+      'MANNEQUIN',
+      'NONE',
+    ] as const).optional(),
+    issueAuthorIsBot: z.boolean().optional(),
+    /** Open, non-draft PRs by others that close the issue or are in its repo. */
     competingPRs: z.number().optional(),
     /** The user had no merged PR in the repo yet. */
     firstInRepo: z.boolean().optional(),
