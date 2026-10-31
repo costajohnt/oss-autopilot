@@ -28,12 +28,13 @@ export async function runInit(options: { username: string }): Promise<InitOutput
   const stateManager = getStateManager();
 
   // Set username in config
-  stateManager.updateConfig({ githubUsername: options.username });
+  const apply = (): void => stateManager.updateConfig({ githubUsername: options.username });
+  apply();
 
   // Push the config mutation to the Gist in gist mode (no-op locally).
   // Without this the change only hits the local cache and the next
   // bootstrap reverts it from the Gist (#1440).
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, apply);
   return {
     username: options.username,
     message: 'Username saved. Run `daily` to fetch your open PRs from GitHub.',

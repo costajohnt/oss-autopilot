@@ -52,6 +52,7 @@ const {
       isGistMode: vi.fn(),
       reloadIfChanged: vi.fn(),
       refreshFromGist: vi.fn(),
+      runMutation: (fn: () => Promise<unknown>) => fn(),
     },
     MockConcurrencyError,
     MockGistConcurrencyError,
@@ -252,6 +253,9 @@ describe('per-tool-call state reload + concurrency retry (#1439)', () => {
     expect(result.isError).toBeFalsy();
     expect(mockRunMove).toHaveBeenCalledTimes(2);
     expect(mockStateManager.refreshFromGist).toHaveBeenCalledTimes(2);
+    // The retry must bypass the 30s refresh throttle the first reload just
+    // stamped, or it re-runs against the same stale baseline (audit M1).
+    expect(mockStateManager.refreshFromGist).toHaveBeenLastCalledWith({ force: true });
   });
 
   it('a reload failure never fails the call — degraded read serves cached state', async () => {

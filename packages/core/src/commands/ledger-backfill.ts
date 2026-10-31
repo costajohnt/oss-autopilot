@@ -351,7 +351,7 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     };
   };
 
-  stateManager.batch(() => {
+  const applyLedger = (): void => {
     stateManager.addMergedPRs(
       merged.map((e) => ({ url: e.url, title: e.title, mergedAt: e.mergedAt, ...recovered(e) })),
     );
@@ -378,10 +378,11 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     );
     // Overwrite, not fill-missing: a value recorded under an older rule is replaced.
     for (const [url, at] of responses) stateManager.setLedgerResponse(url, at, MAINTAINER_RESPONSE_RULE);
-  });
+  };
+  stateManager.batch(applyLedger);
 
   const after = countFilled([...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()]);
-  const gistSyncWarning = await maybeCheckpoint(stateManager, 'ledger-backfill');
+  const gistSyncWarning = await maybeCheckpoint(stateManager, 'ledger-backfill', () => stateManager.batch(applyLedger));
   if (fatal) throw fatal;
   return {
     queried: needsFetch.length,

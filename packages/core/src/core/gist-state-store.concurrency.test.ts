@@ -27,6 +27,8 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { GistConcurrencyError } from './errors.js';
+import { StateManager, maybeCheckpoint } from './state.js';
+import { AgentStateSchema } from './state-schema.js';
 
 // ── Path mock (shared with gist-state-store.test.ts pattern) ─────────────────
 
@@ -250,6 +252,46 @@ describe('GistStateStore concurrency (#1191)', () => {
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     mockTmpDir = '';
+  });
+
+  it("a mutation that conflicts with another machine's push is re-applied on the refreshed baseline, not dropped (audit 2026-10-30 H1)", async () => {
+    const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
+
+    // Machine A: a long-lived process (MCP server) that bootstrapped at R0.
+    const storeA = new GistStateStore(mock.octokit);
+    await storeA.bootstrap();
+    const machineA = new StateManager(true);
+    (machineA as unknown as { state: unknown }).state = AgentStateSchema.parse(
+      JSON.parse(storeA.cachedFiles.get(STATE_FILE_NAME)!),
+    );
+    (machineA as unknown as { gistStore: unknown }).gistStore = storeA;
+
+    // Machine B: pushes R1 (dismisses issue 1) while A is idle.
+    const storeB = new GistStateStore(mock.octokit);
+    await storeB.bootstrap();
+    const stateB = JSON.parse(storeB.cachedFiles.get(STATE_FILE_NAME)!) as {
+      config: { dismissedIssues?: Record<string, string> };
+    };
+    stateB.config.dismissedIssues = { 'https://github.com/o/r/issues/1': '2026-10-30T00:00:00.000Z' };
+    storeB.setState(JSON.stringify(stateB));
+    expect(await storeB.push()).toBe(true);
+
+    // Machine A dismisses issue 2 against its stale R0 baseline. The push
+    // conflicts (R1 != R0); recovery must force-refresh, re-apply, and push
+    // a Gist that carries BOTH dismissals.
+    const urlA = 'https://github.com/o/r/issues/2';
+    machineA.dismissIssue(urlA, '2026-10-30T00:01:00.000Z');
+    const warning = await maybeCheckpoint(machineA, 'test', () =>
+      machineA.dismissIssue(urlA, '2026-10-30T00:01:00.000Z'),
+    );
+
+    expect(warning).toBeNull();
+    // B's push plus A's recovered push; A's conflicting first push never wrote.
+    expect(mock.counts.update).toBe(2);
+    const both = new Set(['https://github.com/o/r/issues/1', 'https://github.com/o/r/issues/2']);
+    const remote = mock.readState() as { config: { dismissedIssues: Record<string, string> } };
+    expect(new Set(Object.keys(remote.config.dismissedIssues))).toEqual(both);
+    expect(new Set(Object.keys(machineA.getState().config.dismissedIssues ?? {}))).toEqual(both);
   });
 
   it('N concurrent writers writing disjoint freeform files all converge', async () => {

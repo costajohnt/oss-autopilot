@@ -55,19 +55,23 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
       // Use current time — the CLI doesn't have cached PR data. The override
       // will auto-clear on the next daily run if the PR has new activity after this.
       const lastActivityAt = new Date().toISOString();
-      stateManager.batch(() => {
-        stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
-        stateManager.unshelvePR(options.prUrl);
-      });
-      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+      const apply = (): void =>
+        stateManager.batch(() => {
+          stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
+          stateManager.unshelvePR(options.prUrl);
+        });
+      apply();
+      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, apply);
       return withGistSyncWarning({ url: options.prUrl, target, description: `Moved to ${label}` }, gistSyncWarning);
     }
     case 'shelved': {
-      stateManager.batch(() => {
-        stateManager.shelvePR(options.prUrl);
-        stateManager.clearStatusOverride(options.prUrl);
-      });
-      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+      const apply = (): void =>
+        stateManager.batch(() => {
+          stateManager.shelvePR(options.prUrl);
+          stateManager.clearStatusOverride(options.prUrl);
+        });
+      apply();
+      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, apply);
       return withGistSyncWarning(
         {
           url: options.prUrl,
@@ -78,11 +82,13 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
       );
     }
     case 'auto': {
-      stateManager.batch(() => {
-        stateManager.clearStatusOverride(options.prUrl);
-        stateManager.unshelvePR(options.prUrl);
-      });
-      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+      const apply = (): void =>
+        stateManager.batch(() => {
+          stateManager.clearStatusOverride(options.prUrl);
+          stateManager.unshelvePR(options.prUrl);
+        });
+      apply();
+      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, apply);
       return withGistSyncWarning(
         {
           url: options.prUrl,

@@ -178,8 +178,8 @@ export class GistSyncCoordinator {
    * notice when the pull actually replaced state (#1443). All dashboard pull
    * sites go through here; callers flush pending pushes first (#1417), so a
    * warning that is still pending at pull time means the flush failed. */
-  async pullFromGist(): Promise<boolean> {
-    const refreshed = await this.manager.refreshFromGist();
+  async pullFromGist(options: { force?: boolean } = {}): Promise<boolean> {
+    const refreshed = await this.manager.refreshFromGist(options);
     if (refreshed) this.convertPendingWarningsToLossNotices();
     return refreshed;
   }

@@ -519,7 +519,7 @@ describe('runSetup', () => {
       await runSetup({ set: ['username=newuser', 'maxActivePRs=5'] });
 
       expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
-      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'setup');
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'setup', expect.any(Function));
     });
 
     it('threads the checkpoint warning into gistSyncWarning when the Gist push fails', async () => {

@@ -441,7 +441,7 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     // Outside the try: publishReport warns on its own and must never be
     // mistaken for a failed report write.
     if (!reportWarning) publishReport(sm, lastRun.reportPath);
-    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setLastOvernight({ ...lastRun, prepared }));
   }
 
   try {

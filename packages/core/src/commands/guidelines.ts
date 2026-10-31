@@ -179,7 +179,7 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   // Push to Gist — autoSave only writes the local state-cache mirror in Gist
   // mode, so without this checkpoint the change never propagates across
   // machines (#1200).
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setGuidelines(options.repo, options.content));
   return {
     repo: options.repo,
     byteSize: Buffer.byteLength(options.content, 'utf8'),
@@ -201,12 +201,16 @@ export async function runMarkExtracted(options: RepoOption): Promise<MarkExtract
   const repoUrlPrefix = `https://github.com/${options.repo}/`;
   const now = new Date().toISOString();
   let marked = 0;
-  for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
-    if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
-    sm.markPRLearningsExtracted(pr.url, now);
-    marked++;
-  }
-  const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE) : null;
+  const apply = (): void => {
+    marked = 0;
+    for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
+      if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
+      sm.markPRLearningsExtracted(pr.url, now);
+      marked++;
+    }
+  };
+  apply();
+  const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, apply) : null;
   return { repo: options.repo, marked, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
@@ -222,7 +226,7 @@ export async function runGuidelinesReset(options: RepoOption): Promise<Guideline
   if (existed) {
     sm.deleteGuidelines(options.repo);
     // Push to Gist — see runGuidelinesStore note (#1200).
-    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.deleteGuidelines(options.repo));
   }
   return { repo: options.repo, deleted: existed, ...(gistSyncWarning && { gistSyncWarning }) };
 }
@@ -300,15 +304,18 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
   // list mirrors the input order until paginateAll fan-out, so we mark on
   // a per-bundle basis to be safe.
   const now = new Date().toISOString();
-  for (const bundle of bundles) {
-    sm.markPRCommentsFetched(bundle.prUrl, now);
-  }
+  const stamp = (): void => {
+    for (const bundle of bundles) {
+      sm.markPRCommentsFetched(bundle.prUrl, now);
+    }
+  };
+  stamp();
   // Push commentsFetchedAt stamps to Gist so other machines don't re-fetch
   // the same PRs forever. autoSave only writes the local mirror in Gist
   // mode (#1200).
   let gistSyncWarning: string | null = null;
   if (bundles.length > 0) {
-    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE, stamp);
   }
 
   // Surface pagination truncation per bundle (#1456): a truncated bundle is

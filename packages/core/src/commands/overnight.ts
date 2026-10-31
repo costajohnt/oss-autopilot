@@ -352,7 +352,7 @@ export async function runOvernight(): Promise<OvernightOutput> {
   }
   // executeDailyCheck already checkpointed the Gist; this write came after it,
   // and in Gist mode setLastOvernight only reaches the local cache (#1629 class).
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setLastOvernight(record));
 
   return {
     ...body,
@@ -435,7 +435,7 @@ export async function runOvernightImplementBlocked(
   sm.setLastOvernight({ ...last, implementAttempts });
   const dropDir = handoffDir();
   if (dropDir) exportHandoff(dropDir, { ...last, implementAttempts });
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setLastOvernight({ ...last, implementAttempts }));
   return { url: options.url, attemptCount: implementAttempts.length, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
@@ -499,7 +499,9 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   const { reportRecreated } = writePreparedSection(last.reportPath, prepared);
   publishReport(sm, last.reportPath);
   if (dropDir) exportHandoff(dropDir, { ...last, prepared, implementAttempts });
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () =>
+    sm.setLastOvernight({ ...last, prepared, implementAttempts }),
+  );
 
   return {
     reportPath: last.reportPath,

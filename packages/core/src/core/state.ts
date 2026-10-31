@@ -38,6 +38,7 @@ import {
   errorMessage,
   ConfigurationError,
   ConcurrencyError,
+  GistConcurrencyError,
   isTransientNetworkError,
   GistFileSizeError,
   GIST_FILE_SIZE_REMEDY,
@@ -133,23 +134,61 @@ export const MAX_PICK_SNAPSHOTS = 300;
  * after its retry — previously that was discarded everywhere except
  * `state --sync`, so a failed cross-machine sync reported clean success
  * (#1370). stderr `warn()` alone is invisible to MCP/dashboard consumers.
+ *
+ * Pass `reapply` (the same mutation the caller just performed) to make a
+ * `GistConcurrencyError` recoverable: the state is force-refreshed from the
+ * Gist, `reapply` runs on the fresh baseline, and the push is retried once.
  */
-export async function maybeCheckpoint(stateManager: StateManager, callerModule: string): Promise<string | null> {
+export async function maybeCheckpoint(
+  stateManager: StateManager,
+  callerModule: string,
+  reapply?: () => void,
+): Promise<string | null> {
   if (!stateManager.isGistMode()) return null;
   try {
-    const pushed = await stateManager.checkpoint();
-    if (!pushed) {
-      const msg =
-        'Gist checkpoint push failed after retry; the local mutation is saved and will sync on the next successful push';
-      warn(callerModule, msg);
-      return msg;
-    }
-    return null;
+    return await pushOrWarn(stateManager, callerModule);
   } catch (err) {
-    const msg = `Gist checkpoint failed (local mutation succeeded, will retry on next push): ${errorMessage(err)}`;
-    warn(callerModule, msg);
-    return msg;
+    if (err instanceof GistConcurrencyError && reapply)
+      return recoverConflict(stateManager, callerModule, reapply, err);
+    return notSynced(callerModule, err);
   }
+}
+
+async function pushOrWarn(stateManager: StateManager, callerModule: string): Promise<string | null> {
+  if (await stateManager.checkpoint()) return null;
+  const msg =
+    'Gist checkpoint push failed after retry; the local mutation is saved and will sync on the next successful push';
+  warn(callerModule, msg);
+  return msg;
+}
+
+/**
+ * Cross-machine conflict: another machine pushed since our last fetch. The
+ * in-memory mutation would otherwise be dropped by the next refresh or
+ * bootstrap with nothing ever retrying it (audit 2026-10-30 H1), so re-fetch
+ * (bypassing the 30s throttle), re-apply the caller's mutation on the fresh
+ * baseline, and push once more. Every caller's `reapply` is an absolute set
+ * operation, so re-running it is safe.
+ */
+async function recoverConflict(
+  stateManager: StateManager,
+  callerModule: string,
+  reapply: () => void,
+  conflict: unknown,
+): Promise<string | null> {
+  try {
+    if (!(await stateManager.refreshFromGist({ force: true }))) return notSynced(callerModule, conflict);
+    reapply();
+    return await pushOrWarn(stateManager, callerModule);
+  } catch (err) {
+    return notSynced(callerModule, err);
+  }
+}
+
+function notSynced(callerModule: string, err: unknown): string {
+  const msg = `Gist checkpoint failed; the local mutation is saved but NOT synced to the Gist, re-run the command to retry: ${errorMessage(err)}`;
+  warn(callerModule, msg);
+  return msg;
 }
 
 /**
@@ -188,6 +227,7 @@ export class StateManager {
   protected gistDegraded = false;
   private staleness: StalenessInfo | null = null;
   private lastSuccessfulRefreshAt: string | null = null;
+  private mutationDepth = 0;
   private loadRecovery: LoadRecoveryInfo | null = null;
 
   /**
@@ -552,12 +592,34 @@ export class StateManager {
   }
 
   /**
-   * Re-fetch state from the backing Gist (if in Gist mode).
-   * Throttled to once per 30 seconds by GistStateStore. Returns true if state was refreshed.
+   * Run `fn` as an in-flight mutation: non-forced `refreshFromGist()` calls
+   * are skipped until it settles so a concurrent refresh cannot swap
+   * `this.state` out from under it (audit 2026-10-30 M2).
    */
-  async refreshFromGist(): Promise<boolean> {
+  // ponytail: a counter, not a lock; concurrent bodies still share one state
+  // object. Upgrade to a promise chain if interleaved mutations ever bite.
+  async runMutation<T>(fn: () => Promise<T>): Promise<T> {
+    this.mutationDepth++;
+    try {
+      return await fn();
+    } finally {
+      this.mutationDepth--;
+    }
+  }
+
+  /**
+   * Re-fetch state from the backing Gist (if in Gist mode).
+   * Throttled to once per 30 seconds by GistStateStore unless `force` is set.
+   * Returns true if state was refreshed.
+   */
+  async refreshFromGist(options: { force?: boolean } = {}): Promise<boolean> {
     if (!this.gistStore) return false;
-    const result = await this.gistStore.refreshFromGist();
+    // A refresh replaces `this.state`, orphaning every mutation an in-flight
+    // command (e.g. a long `daily` run in the MCP server) has made so far
+    // (audit 2026-10-30 M2). Skip it while one is running; `force` is for
+    // the conflict-recovery path, which the mutation itself drives.
+    if (this.mutationDepth > 0 && !options.force) return false;
+    const result = await this.gistStore.refreshFromGist(options);
     // StateManager keeps its boolean shape (callers rely on truthy-check
     // semantics) but consults the discriminated union internally to know
     // whether to reload state.json from the now-fresh cache (#1209 L9).

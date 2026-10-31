@@ -692,16 +692,19 @@ export class GistStateStore {
    * outcomes that previously collapsed into a single boolean (#1209 L9):
    *   - `{ status: 'refreshed' }` — fresh data loaded successfully.
    *   - `{ status: 'no-gist' }` — store not in Gist mode (e.g. degraded).
-   *   - `{ status: 'throttled', sinceLastMs }` — within the 30s throttle.
+   *   - `{ status: 'throttled', sinceLastMs }` — within the 30s throttle
+   *     (skipped when `options.force` is set).
    *   - `{ status: 'error', error }` — fetch attempt failed.
    */
-  async refreshFromGist(): Promise<RefreshResult> {
+  async refreshFromGist(options: { force?: boolean } = {}): Promise<RefreshResult> {
     if (!this.gistId) return { status: 'no-gist' };
     const now = Date.now();
     const sinceLastMs = now - this.lastRefreshAt;
     // Throttle hits are not failures — preserve any previous lastRefreshError
-    // for the caller to inspect.
-    if (sinceLastMs < GistStateStore.REFRESH_THROTTLE_MS) {
+    // for the caller to inspect. `force` bypasses the throttle for the
+    // conflict-recovery path: a retry that re-reads the same stale baseline
+    // fails identically (audit 2026-10-30 M1).
+    if (sinceLastMs < GistStateStore.REFRESH_THROTTLE_MS && !options.force) {
       return { status: 'throttled', sinceLastMs };
     }
     // Stamp the ATTEMPT, success or failure (#1443): the success-only stamp

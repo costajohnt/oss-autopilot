@@ -9,6 +9,7 @@ import {
   formatUnknownKeyError,
   getStateManager,
   maybeCheckpoint,
+  type StateManager,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
@@ -68,20 +69,34 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
   }
 
   const stateManager = getStateManager();
-  const currentConfig = stateManager.getState().config;
 
   if (!options.key) {
     // Show current config
-    return { config: currentConfig };
+    return { config: stateManager.getState().config };
   }
 
   if (!options.value) {
     throw new Error('Value required');
   }
-  const value = options.value;
+  const { key, value } = options;
 
-  // Handle specific config keys
-  switch (options.key) {
+  const apply = (): void => applyConfigKey(stateManager, key, value);
+  apply();
+
+  // Push the config mutation to the Gist in gist mode (no-op locally).
+  // Without this the change only hits the local cache and the next
+  // bootstrap reverts it from the Gist (#1440).
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, apply);
+  return { success: true, key, value, ...(gistSyncWarning && { gistSyncWarning }) };
+}
+
+/**
+ * Apply one config key. Reads the current config fresh so the Gist conflict
+ * path can re-run it on a refreshed baseline without stale array merges.
+ */
+function applyConfigKey(stateManager: StateManager, key: string, value: string): void {
+  const currentConfig = stateManager.getState().config;
+  switch (key) {
     case 'username': {
       stateManager.updateConfig({ githubUsername: validateGitHubUsername(value) });
       break;
@@ -224,13 +239,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       break;
     }
     default: {
-      throw new ValidationError(formatUnknownKeyError(options.key, 'config'));
+      throw new ValidationError(formatUnknownKeyError(key, 'config'));
     }
   }
-
-  // Push the config mutation to the Gist in gist mode (no-op locally).
-  // Without this the change only hits the local cache and the next
-  // bootstrap reverts it from the Gist (#1440).
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
-  return { success: true, key: options.key, value, ...(gistSyncWarning && { gistSyncWarning }) };
 }

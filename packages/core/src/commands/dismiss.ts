@@ -37,8 +37,11 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
   validateGitHubUrl(options.url, ISSUE_URL_PATTERN, 'issue');
 
   const stateManager = getStateManager();
-  const added = stateManager.dismissIssue(options.url, new Date().toISOString());
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  const dismissedAt = new Date().toISOString();
+  const added = stateManager.dismissIssue(options.url, dismissedAt);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () =>
+    stateManager.dismissIssue(options.url, dismissedAt),
+  );
 
   return { dismissed: added, url: options.url, ...(gistSyncWarning && { gistSyncWarning }) };
 }
@@ -57,7 +60,7 @@ export async function runUndismiss(options: { url: string }): Promise<UndismissO
 
   const stateManager = getStateManager();
   const removed = stateManager.undismissIssue(options.url);
-  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () => stateManager.undismissIssue(options.url));
 
   return { undismissed: removed, url: options.url, ...(gistSyncWarning && { gistSyncWarning }) };
 }

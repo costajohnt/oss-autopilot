@@ -62,6 +62,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
     isGistMode: vi.fn().mockReturnValue(false),
     reloadIfChanged: vi.fn().mockReturnValue(false),
     refreshFromGist: vi.fn().mockResolvedValue(false),
+    runMutation: (fn: () => Promise<unknown>) => fn(),
     getState: vi.fn().mockReturnValue({
       lastDigest: {
         generatedAt: '2026-02-28T12:00:00Z',
@@ -343,6 +344,7 @@ describe('MCP resource registrations', () => {
       isGistMode: vi.fn().mockReturnValue(false),
       reloadIfChanged: vi.fn().mockReturnValue(false),
       refreshFromGist: vi.fn().mockResolvedValue(false),
+      runMutation: (fn: () => Promise<unknown>) => fn(),
     });
 
     it('returns markdown content when the repo has guidelines', async () => {

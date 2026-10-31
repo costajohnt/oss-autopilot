@@ -307,22 +307,23 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   let stateSaveWarning: string | undefined;
   try {
     const stateManager = getStateManager();
-    stateManager.addIssue({
+    const issue = {
       id: number,
       url: options.issueUrl,
       repo: `${owner}/${repo}`,
       number,
       title: issueTitle,
-      status: 'claimed',
+      status: 'claimed' as const,
       labels: issueLabels,
       createdAt: issueCreatedAt,
       updatedAt: new Date().toISOString(),
       vetted: false,
-    });
+    };
+    stateManager.addIssue(issue);
     // Push state to Gist if in Gist mode. Best-effort — the warning is
     // threaded into the structured output so MCP/dashboard consumers see
     // the degraded-sync signal, not just the stderr log (#1036 audit H1, #1370).
-    gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+    gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () => stateManager.addIssue(issue));
   } catch (error) {
     // The claim comment is live on GitHub but local state never tracked it —
     // an otherwise-clean envelope would hide an invisible untracked claim, so

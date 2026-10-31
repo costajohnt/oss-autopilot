@@ -394,7 +394,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
    * Returns true when the state source changed (gist pull refreshed, local
    * file reloaded, or a gist recovery completed) — GET /api/data uses this
    * to decide whether to rebuild the cached payload (#1446 item 5). */
-  async function reloadState(): Promise<boolean> {
+  async function reloadState(options: { force?: boolean } = {}): Promise<boolean> {
     if (gistSync.stateManager.isGistMode()) {
       await gistSync.flushPendingGistSync();
       // Both post-pull steps consume the same refreshFromGist outcome, in
@@ -406,7 +406,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       // because the background-refresh path also pulls but replaces
       // cachedDigest unconditionally right after — adoption is a
       // reloadState-path concern only.
-      const refreshed = await gistSync.pullFromGist();
+      const refreshed = await gistSync.pullFromGist(options);
       if (refreshed) cache.adoptNewerPulledDigest(gistSync.stateManager.getState().lastDigest);
       if (gistSync.gistBootstrapDegraded()) {
         // #1443: a degraded bootstrap keeps isGistMode() true while the
@@ -541,8 +541,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     // body-streaming time (#1397).
     await reloadState();
 
+    const sm = gistSync.stateManager;
     try {
-      await applyMutation();
+      await sm.runMutation(async () => applyMutation());
     } catch (error) {
       if (!isConcurrencyConflict(error)) {
         warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
@@ -557,9 +558,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       // in state-concurrency.test.ts. A second consecutive conflict means
       // sustained contention; surface it as a retryable 409 and let the SPA
       // re-prime and retry.
+      // The retry bypasses the 30s Gist refresh throttle: the reload above
+      // stamped it seconds ago, so a throttled reload would re-run the
+      // mutation against the same stale baseline (audit 2026-10-30 M1).
       try {
-        await reloadState();
-        await applyMutation();
+        await reloadState({ force: true });
+        await sm.runMutation(async () => applyMutation());
       } catch (retryError) {
         if (isConcurrencyConflict(retryError)) {
           warn(MODULE, `Action conflicted twice: ${body.action} ${body.url} ${errorMessage(retryError)}`);

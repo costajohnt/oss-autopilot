@@ -99,6 +99,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
     isGistMode: vi.fn().mockReturnValue(false),
     reloadIfChanged: vi.fn().mockReturnValue(false),
     refreshFromGist: vi.fn().mockResolvedValue(false),
+    runMutation: (fn: () => Promise<unknown>) => fn(),
   }),
   getGitHubTokenAsync: mockGetGitHubTokenAsync,
   ensureGistPersistence: mockEnsureGistPersistence,

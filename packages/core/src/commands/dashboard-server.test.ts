@@ -69,6 +69,7 @@ const mockStateManager = {
   isGistMode: vi.fn().mockReturnValue(false),
   isGistDegraded: vi.fn().mockReturnValue(false),
   refreshFromGist: vi.fn().mockResolvedValue(false),
+  runMutation: (fn: () => Promise<unknown>) => fn(),
   getStateStaleness: vi.fn().mockReturnValue(null),
   // Mirrors the real StateManager.getGistHealth (#1444), derived at call
   // time from the isGistMode/isGistDegraded/getState mocks so the existing
@@ -1078,6 +1079,23 @@ describe('dashboard-server', () => {
       expect(mockStateManager.reloadIfChanged).toHaveBeenCalledTimes(2);
     });
 
+    it('the conflict retry bypasses the Gist refresh throttle in gist mode (audit 2026-10-30 M1)', async () => {
+      mockStateManager.isGistMode.mockReturnValue(true);
+      mockStateManager.refreshFromGist.mockClear();
+      mockRunMove.mockRejectedValueOnce(new ConcurrencyError(1000, 2000));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(200);
+      expect(mockStateManager.refreshFromGist).toHaveBeenCalledTimes(2);
+      expect(mockStateManager.refreshFromGist).toHaveBeenLastCalledWith({ force: true });
+      mockStateManager.isGistMode.mockReturnValue(false);
+    });
+
     it('retries once on ConcurrencyError and returns 200 when the retry succeeds (dismiss)', async () => {
       mockStateManager.dismissIssue.mockImplementationOnce(() => {
         throw new ConcurrencyError(1000, 2000);
@@ -1194,7 +1212,7 @@ describe('dashboard-server', () => {
 
         expect(result.statusCode).toBe(200);
         // Checkpoint runs against the live state manager, after dismissIssue.
-        expect(mockMaybeCheckpoint).toHaveBeenCalledWith(mockStateManager, expect.any(String));
+        expect(mockMaybeCheckpoint).toHaveBeenCalledWith(mockStateManager, expect.any(String), expect.any(Function));
         expect(mockMaybeCheckpoint.mock.invocationCallOrder[0]).toBeGreaterThan(
           mockStateManager.dismissIssue.mock.invocationCallOrder[0],
         );
