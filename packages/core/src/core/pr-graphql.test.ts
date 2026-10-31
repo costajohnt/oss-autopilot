@@ -827,6 +827,51 @@ describe('GraphQL vs REST status parity', () => {
       expect(prGraphql.reviewDecision).toBe('changes_requested');
       expect(prRest.reviewDecision).toBe('changes_requested');
     });
+
+    it('keeps changes_addressed when a bot requests changes after the fix commit', async () => {
+      const humanCR = {
+        author: { login: 'maintainer' },
+        body: 'please fix',
+        databaseId: 6,
+        state: 'CHANGES_REQUESTED',
+        submittedAt: '2026-02-03T00:00:00Z',
+      };
+      const fixCommit = {
+        commit: {
+          author: { user: { login: 'contributor' } },
+          authoredDate: '2026-02-04T00:00:00Z',
+          oid: 'fix1',
+          status: null,
+          statusCheckRollup: null,
+        },
+      };
+      const node = makeNode({
+        commits: { nodes: [fixCommit] },
+        reviews: { nodes: [humanCR, { ...botGraphQL, state: 'CHANGES_REQUESTED' }], totalCount: 2 },
+        title: 'PR',
+      });
+      const prGraphql = await assembleFromGraphQL(node);
+      const prRest = await assembleFetchedPR(
+        {
+          ...baseSignals,
+          reviews: [
+            {
+              body: 'please fix',
+              id: 6,
+              state: 'CHANGES_REQUESTED',
+              submitted_at: '2026-02-03T00:00:00Z',
+              user: { login: 'maintainer' },
+            },
+            { ...botRest, state: 'CHANGES_REQUESTED' },
+          ],
+        },
+        CONFIG,
+        async () => commit,
+      );
+
+      expect(prGraphql.waitReason).toBe('changes_addressed');
+      expect(prRest.waitReason).toBe('changes_addressed');
+    });
   });
 });
 

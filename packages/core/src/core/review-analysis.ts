@@ -64,15 +64,22 @@ export function determineReviewDecision(
 }
 
 /**
- * Get the date of the latest CHANGES_REQUESTED review (from any reviewer).
+ * Get the date of the latest CHANGES_REQUESTED review (from any human reviewer).
  * Used to detect needs_changes status when review feedback is in inline comments.
+ * Bot reviews are skipped (#1840): a bot re-reviewing every push would otherwise
+ * move the date past the author's fix commit.
  */
 export function getLatestChangesRequestedDate(
-  reviews: Array<{ state?: string | null; submitted_at?: string | null }>,
+  reviews: Array<{
+    state?: string | null;
+    submitted_at?: string | null;
+    user?: { login?: string; type?: string | null } | null;
+  }>,
 ): string | undefined {
   let latest: string | undefined;
   for (const review of reviews) {
-    if (review.state === 'CHANGES_REQUESTED' && review.submitted_at && (!latest || review.submitted_at > latest)) {
+    if (review.state !== 'CHANGES_REQUESTED' || isBotAuthor(review.user?.login ?? '', review.user?.type)) continue;
+    if (review.submitted_at && (!latest || review.submitted_at > latest)) {
       latest = review.submitted_at;
     }
   }
