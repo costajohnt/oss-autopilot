@@ -117,8 +117,8 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `status` | Show current PR tracking status | Yes |
 | `search` | Search GitHub for contributable issues | Yes |
 | `features` | Find feature-scoped opportunities in repos with 3+ merged PRs (relationship-anchored) | Yes |
-| `vet` | Analyze an issue for contribution suitability; records the vet-time prediction for calibration (#1824) | No |
-| `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting | Yes |
+| `vet` | Analyze an issue for contribution suitability; records the vet-time prediction and issue traits (labels, author association, competing PRs, first PR in the repo) for calibration | No |
+| `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting; also returns the issue author, author association and comment count | Yes |
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
 | `track` | Inspect a PR: read-only metadata lookup (nothing is tracked or persisted) | Yes |
 | `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
