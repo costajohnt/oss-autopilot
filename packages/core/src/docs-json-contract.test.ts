@@ -8,9 +8,10 @@
  * maintainer-relationship signal silently fell back to `first_pr`.
  *
  * ponytail: each `data.` reference is attributed to the nearest CLI invocation
- * on the same line or within LOOKBACK lines above it. Commands without a Zod
- * schema (goldens-only tier, MCP-only calls) are skipped. Not a parser; widen
- * the invocation regex if a doc starts invoking commands another way.
+ * on the same line or within LOOKBACK lines above it. References that can't be
+ * checked (no invocation found, or a command without a Zod schema) must be in
+ * UNCHECKED, so a new blind spot fails instead of passing silently. Not a
+ * parser; widen the invocation regex if a doc starts invoking commands another way.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -21,10 +22,24 @@ import * as json from './formatters/json.js';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const DOC_DIRS = ['agents', 'commands', 'workflows'];
-const LOOKBACK = 30;
+const LOOKBACK = 40;
 
-// startup is goldens-only, but its `daily` field is DailyOutput; check that much.
-const STARTUP_SCHEMA = z.object({ daily: json.DailyOutputSchema }).catchall(z.unknown());
+// startup is goldens-only, so it has no Zod schema. Mirror StartupOutput's keys
+// (formatters/json.ts) and check `daily` against the (compact) daily schema.
+const startupSchema = (daily: ZodType) =>
+  z.object({
+    daily,
+    version: z.unknown(),
+    setupComplete: z.unknown(),
+    autoDetected: z.unknown(),
+    authError: z.unknown(),
+    dashboardUrl: z.unknown(),
+    dashboardError: z.unknown(),
+    dashboardBuildStatus: z.unknown(),
+    dashboardBuildErrorTail: z.unknown(),
+    issueList: z.unknown(),
+    overnight: z.unknown(),
+  });
 
 /** `<command>[ <subcommand>]` → the schema `executeAction` validates its `--json` output against. */
 const SCHEMAS = new Map<string, ZodType>(
@@ -32,6 +47,7 @@ const SCHEMAS = new Map<string, ZodType>(
     status: json.StatusOutputSchema,
     strategy: json.StrategyOutputSchema,
     daily: json.DailyOutputSchema,
+    'daily --compact': json.CompactDailyOutputSchema,
     search: json.SearchOutputSchema,
     features: json.FeaturesOutputSchema,
     doctor: json.DoctorOutputSchema,
@@ -57,16 +73,38 @@ const SCHEMAS = new Map<string, ZodType>(
     'local-repos': json.LocalReposOutputSchema,
     'overnight report': json.OvernightReportOutputSchema,
     'overnight push-prep': json.OvernightPushPrepOutputSchema,
-    startup: STARTUP_SCHEMA,
+    startup: startupSchema(json.DailyOutputSchema),
+    'startup --compact': startupSchema(json.CompactDailyOutputSchema),
   }),
 );
 
-/** Docs that describe one command's output throughout, whatever else they invoke inline. */
-const FILE_COMMAND: Record<string, string> = { 'workflows/startup-and-build.md': 'startup' };
+/**
+ * Docs that read the session's `startup --json --compact` output throughout
+ * (workflows/startup-and-build.md runs it), whatever else they invoke inline.
+ */
+const STARTUP_DOCS = new Set(['workflows/startup-and-build.md', 'commands/oss.md', 'workflows/action-menu.md']);
+/** Session state every doc reads from the startup output, wherever it appears. */
+const STARTUP_FIELD = /^data\.(?:daily|issueList)\b/;
+const STARTUP = 'startup --compact';
 
-// `cli.bundle.cjs" status --json` or an inline `` `status --json` `` mention.
+/**
+ * References no command schema can check: `cmd <command>` when the command has
+ * no schema, `<file> <data.path>` when no invocation was found. Each needs a
+ * reason; anything new is a blind spot and fails the test.
+ */
+const UNCHECKED = new Map<string, string>([
+  // Keyed `cmd <command>` for commands without a Zod output schema.
+  ['cmd guidelines', 'guidelines view/fetch-corpus/mark-extracted are goldens-only, no Zod schema'],
+  ['cmd overnight', 'overnight run/record are goldens-only (report and push-prep have schemas and are checked)'],
+  // extract-learnings.md "Auto mode" forward-references Step 3's `guidelines fetch-corpus` output.
+  ['workflows/extract-learnings.md data.failures', 'guidelines fetch-corpus, no schema'],
+  ['workflows/extract-learnings.md data.prCount', 'guidelines fetch-corpus, no schema'],
+  ['workflows/extract-learnings.md data.skipped', 'guidelines fetch-corpus, no schema'],
+]);
+
+// `cli.bundle.cjs" status --json`, `<prefix> status --json`, or an inline `` `status --json` `` mention.
 const INVOCATION = new RegExp(
-  [String.raw`cli\.bundle\.cjs\\?"?\s+([a-z][\w-]*)(?:\s+([a-z][\w-]*))?`, '`([^`]*)--json`'].join('|'),
+  [String.raw`(?:cli\.bundle\.cjs\\?"?|<prefix>)\s+([a-z][\w-]*)(?:\s+([a-z][\w-]*))?`, '`([^`]*)--json`'].join('|'),
   'gi',
 );
 const COMMAND_WORD = /^[a-z][\w-]*$/i;
@@ -117,16 +155,19 @@ function isResolvable(schema: ZodType, segments: string[]): boolean {
 interface Ref {
   file: string;
   line: number;
-  command: string;
+  command: string | undefined;
   path: string;
 }
 
-/** Schema keys of the CLI commands invoked on one line, in order. */
+/** Schema keys of the CLI commands invoked on one line, in order (`--compact` picks the compact schema). */
 function invocationsOn(text: string): string[] {
   const keys: string[] = [];
   for (const m of text.matchAll(INVOCATION)) {
     const [cmd, sub] = m[1] ? [m[1], m[2]] : m[3].split(' ');
-    if (COMMAND_WORD.test(cmd)) keys.push(sub && SCHEMAS.has(`${cmd} ${sub}`) ? `${cmd} ${sub}` : cmd);
+    if (!COMMAND_WORD.test(cmd)) continue;
+    const key = sub && SCHEMAS.has(`${cmd} ${sub}`) ? `${cmd} ${sub}` : cmd;
+    const rest = m[3] ?? text.slice(m.index);
+    keys.push(rest.includes('--compact') && SCHEMAS.has(`${key} --compact`) ? `${key} --compact` : key);
   }
   return keys;
 }
@@ -145,8 +186,9 @@ function refsIn(file: string): Ref[] {
   for (const [i, text] of lines.entries()) {
     for (const m of text.matchAll(REFERENCE)) {
       // `data.daily` is the plugin's name for startup's DailyOutput across every doc.
-      const command = FILE_COMMAND[file] ?? (/^data\.daily\b/.test(m[0]) ? 'startup' : nearestCommand(i));
-      if (command && SCHEMAS.has(command)) refs.push({ command, file, line: i + 1, path: m[0] });
+      const isStartup = STARTUP_DOCS.has(file) || STARTUP_FIELD.test(m[0]);
+      const command = isStartup ? STARTUP : nearestCommand(i);
+      refs.push({ command, file, line: i + 1, path: m[0] });
     }
   }
   return refs;
@@ -161,26 +203,36 @@ function collectRefs(): Ref[] {
   );
 }
 
+const isCheckable = (r: Ref) => r.command !== undefined && SCHEMAS.has(r.command);
+
 describe('plugin markdown `data.<field>` references match the --json output schemas', () => {
   const refs = collectRefs();
+  const checked = refs.filter((r) => isCheckable(r));
 
   it('finds the references it is meant to guard (non-vacuous)', () => {
-    expect(refs.length).toBeGreaterThan(20);
-    expect(refs).toContainEqual(
-      expect.objectContaining({ file: 'agents/pr-responder.md', command: 'repo-cap', path: 'data.mergedPRCount' }),
+    expect(checked.length).toBeGreaterThan(20);
+    expect(checked).toContainEqual(
+      expect.objectContaining({ command: 'repo-cap', file: 'agents/pr-responder.md', path: 'data.mergedPRCount' }),
     );
   });
 
   it('every referenced field exists in its command schema', () => {
-    const broken = refs
+    const broken = checked
       .filter((r) => {
         const segments = r.path
           .slice('data.'.length)
           .split(/\.|(?=\[)/)
           .filter(Boolean);
-        return !isResolvable(SCHEMAS.get(r.command)!, segments);
+        return !isResolvable(SCHEMAS.get(r.command!)!, segments);
       })
       .map((r) => `${r.file}:${r.line} reads \`${r.path}\` from \`${r.command} --json\`, which has no such field`);
     expect(broken, `Fix the doc or the command's output schema:\n${broken.join('\n')}`).toEqual([]);
+  });
+
+  it('only allowlisted references go unchecked', () => {
+    const keys = refs
+      .filter((r) => !isCheckable(r))
+      .map((r) => (r.command ? `cmd ${r.command}` : `${r.file} ${r.path}`));
+    expect(new Set(keys)).toEqual(new Set(UNCHECKED.keys()));
   });
 });

@@ -134,6 +134,8 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 # Read data.mergedPRCount (ignore the cap fields).
 ```
 
+`repo-cap` needs a GitHub token, a configured `githubUsername`, and one search API call, so it can fail (rate limit, no auth). If the command errors or returns `success: false`, use the **First PR with this maintainer** tone; don't retry or block the draft on it.
+
 Optional: scan the user's prior PR history in this repo to count how many of those merged PRs the same maintainer reviewed. The MCP `comments` tool over each merged PR exposes the reviewer set; treat this as a soft signal — if the API is rate-limited or the bookkeeping is too costly, fall back to repo-level merged count alone.
 
 Surface the inferred level (`repeat_collaborator` / `mid_relationship` / `first_pr`) as one line in the agent's drafting context, not in the user-facing draft itself. The signal calibrates tone; it doesn't appear in the response.
