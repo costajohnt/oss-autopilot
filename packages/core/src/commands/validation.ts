@@ -67,8 +67,19 @@ export function validateMessage(message: string): string {
   if (message.length > MAX_MESSAGE_LENGTH) {
     throw new ValidationError(`Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters`);
   }
+  // The no-AI-attribution rule (CLAUDE.md, skills/contribution-ethics) was
+  // prompt-level only; this is the one write boundary every post/claim
+  // crosses, so enforce it here (audit 2026-10-30 L1).
+  if (AI_ATTRIBUTION_PATTERN.test(message)) {
+    throw new ValidationError(
+      'Message contains AI attribution (Co-Authored-By / Generated with / robot emoji); remove it',
+    );
+  }
   return message;
 }
+
+/** Markers the contribution-ethics skill forbids in anything posted to GitHub. */
+const AI_ATTRIBUTION_PATTERN = /co-authored-by:\s*(?:claude|anthropic)|generated with \[?claude|\u{1F916}/iu;
 
 /**
  * Validate that a repository identifier matches the "owner/repo" format.

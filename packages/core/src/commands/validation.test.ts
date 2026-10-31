@@ -127,6 +127,19 @@ describe('validateMessage', () => {
     const msg = 'a'.repeat(1001);
     expect(() => validateMessage(msg)).toThrow('Message exceeds maximum length of 1000 characters');
   });
+
+  it.each([
+    'Fix typo\n\nCo-Authored-By: Claude <noreply@anthropic.com>',
+    'Done.\n\nGenerated with [Claude Code](https://claude.com/claude-code)',
+    'Looks good \u{1F916}',
+  ])('rejects AI attribution markers (audit 2026-10-30 L1): %s', (msg) => {
+    expect(() => validateMessage(msg)).toThrow('AI attribution');
+  });
+
+  it('does not reject ordinary mentions of co-authors or generated code', () => {
+    const msg = 'Co-authored with my teammate; the generated client code is in src/gen.';
+    expect(validateMessage(msg)).toBe(msg);
+  });
 });
 
 describe('validateRepoIdentifier', () => {
