@@ -131,7 +131,7 @@ describe('validateMessage', () => {
   it.each([
     'Fix typo\n\nCo-Authored-By: Claude <noreply@anthropic.com>',
     'Done.\n\nGenerated with [Claude Code](https://claude.com/claude-code)',
-    'Looks good \u{1F916}',
+    '\u{1F916} Generated with Claude Code',
   ])('rejects AI attribution markers (audit 2026-10-30 L1): %s', (msg) => {
     expect(() => validateMessage(msg)).toThrow('AI attribution');
   });

@@ -70,16 +70,27 @@ export function validateMessage(message: string): string {
   // The no-AI-attribution rule (CLAUDE.md, skills/contribution-ethics) was
   // prompt-level only; this is the one write boundary every post/claim
   // crosses, so enforce it here (audit 2026-10-30 L1).
-  if (AI_ATTRIBUTION_PATTERN.test(message)) {
+  // Zero-width / format characters stripped first so "C\u200Blaude" cannot
+  // slip a trailer past the check.
+  const cleaned = message.replace(/\p{Cf}/gu, '');
+  if (AI_ATTRIBUTION_PATTERNS.some((pattern) => pattern.test(cleaned))) {
     throw new ValidationError(
-      'Message contains AI attribution (Co-Authored-By / Generated with / robot emoji); remove it',
+      'Message contains AI attribution (a Co-Authored-By / Claude-Session trailer or "Generated with Claude Code"); remove it',
     );
   }
   return message;
 }
 
-/** Markers the contribution-ethics skill forbids in anything posted to GitHub. */
-const AI_ATTRIBUTION_PATTERN = /co-authored-by:\s*(?:claude|anthropic)|generated with \[?claude|\u{1F916}/iu;
+/**
+ * Markers the contribution-ethics skill forbids in anything posted to GitHub:
+ * trailer lines (anchored to line start, so quoting one mid-sentence is fine)
+ * and the "Generated/Made with|by Claude Code" footer.
+ */
+const AI_ATTRIBUTION_PATTERNS = [
+  /^co-authored-by:.*\b(?:claude|anthropic)\b/im,
+  /^claude-session:/im,
+  /\b(?:generated|made)\s+(?:with|by)\s+\[?claude code\b/i,
+];
 
 /**
  * Validate that a repository identifier matches the "owner/repo" format.
