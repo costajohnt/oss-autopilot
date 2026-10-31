@@ -8,6 +8,10 @@
  * - `openedAt` and `issueUrl` (GitHub's `closingIssuesReferences`) via
  *   batched GraphQL; each answered PR is stamped `backfilledAt` so later
  *   runs only query new entries.
+ * - `firstMaintainerResponseAt` (earliest non-author, non-bot comment or
+ *   review), which feeds each repo's `avgResponseDays`. Entries backfilled
+ *   before this field existed are re-queried once, gated by
+ *   `responseBackfilledAt`.
  * - `closeReason` for closed-unmerged entries, from who closed the PR and its
  *   last comments (core/close-reason.ts).
  * - `pick` for entries with no vet-time snapshot, from the curated issue list
@@ -25,6 +29,7 @@ import { classifyCloseReason, classifySelfClose, type CloseContext } from '../co
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { getOctokit, requireGitHubToken, getStateManager, parseGitHubUrl } from '../core/index.js';
 import { isGraphqlRateLimited } from '../core/pr-graphql.js';
+import { getFirstMaintainerResponseAt } from '../core/review-analysis.js';
 import { maybeCheckpoint } from '../core/state.js';
 import type { PickSnapshot, StoredClosedPR, StoredMergedPR } from '../core/types.js';
 import { detectIssueListPath } from './locate-issue-list.js';
@@ -39,7 +44,7 @@ export interface LedgerBackfillOutput {
   /** Ledger PRs sent to GitHub because they had not been backfilled yet. */
   queried: number;
   /** Entries that gained each field in this run. */
-  filled: { openedAt: number; issueUrl: number; closeReason: number; pick: number };
+  filled: { openedAt: number; issueUrl: number; closeReason: number; pick: number; firstMaintainerResponseAt: number };
   /** Curated-list files scanned for vet scores. */
   listFiles: string[];
   /** PRs GitHub returned nothing for this run; retried next run. */
@@ -60,6 +65,8 @@ interface PRNode {
   closingIssuesReferences?: { nodes: Array<{ url: string } | null> };
   timelineItems?: { nodes: Array<{ actor?: Login | null } | null> };
   comments?: { nodes: Array<{ author?: Login | null; body: string } | null> };
+  firstComments?: { nodes: Array<{ author?: Login | null; createdAt: string } | null> };
+  reviews?: { nodes: Array<{ author?: Login | null; submittedAt?: string | null } | null> };
 }
 
 const PR_FIELDS = `
@@ -67,7 +74,27 @@ const PR_FIELDS = `
   author { __typename login }
   closingIssuesReferences(first: 1) { nodes { url } }
   timelineItems(itemTypes: [CLOSED_EVENT], last: 1) { nodes { ... on ClosedEvent { actor { __typename login } } } }
-  comments(last: 5) { nodes { author { __typename login } body } }`;
+  comments(last: 5) { nodes { author { __typename login } body } }
+  firstComments: comments(first: 10) { nodes { author { __typename login } createdAt } }
+  reviews(first: 10) { nodes { author { __typename login } submittedAt } }`;
+
+/** GraphQL Bot logins lack the `[bot]` suffix isBotAuthor keys on, so drop them by typename first. */
+const human = (a: Login | null | undefined) => (a && a.__typename !== 'Bot' ? { login: a.login } : null);
+
+/**
+ * Earliest non-author, non-bot comment or review (same rule as live enrichment).
+ * ponytail: only the first 10 of each are scanned; a PR whose first 10 are all
+ * author/bot replies reads as unanswered. Page further if that shows up.
+ */
+function firstResponseAt(node: PRNode): string | undefined {
+  const comments = (node.firstComments?.nodes ?? []).flatMap((c) =>
+    c ? [{ user: human(c.author), created_at: c.createdAt }] : [],
+  );
+  const reviews = (node.reviews?.nodes ?? []).flatMap((r) =>
+    r ? [{ user: human(r.author), submitted_at: r.submittedAt }] : [],
+  );
+  return node.author?.login ? getFirstMaintainerResponseAt(comments, reviews, node.author.login) : undefined;
+}
 
 type GraphqlError = { type?: string; path?: Array<string | number> };
 
@@ -157,6 +184,7 @@ function countFilled(entries: Array<StoredMergedPR | StoredClosedPR>) {
     issueUrl: entries.filter((e) => e.issueUrl).length,
     closeReason: entries.filter((e) => 'closeReason' in e && e.closeReason).length,
     pick: entries.filter((e) => e.pick).length,
+    firstMaintainerResponseAt: entries.filter((e) => e.firstMaintainerResponseAt).length,
   };
 }
 
@@ -172,13 +200,17 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   if (!listPath) warnings.push('no curated issue list found; list vet scores were not imported');
   const lists = listPath ? readListFiles(listPath, warnings) : [];
 
-  // 1. GitHub: openedAt, closing issue, close reason, for entries not yet
-  // backfilled, plus self-closed entries recorded before selfCloseReason existed.
+  // 1. GitHub: openedAt, closing issue, close reason, first response, for
+  // entries not yet backfilled, plus one-time re-fetches for fields added
+  // later: selfCloseReason on self-closed entries, and firstMaintainerResponseAt
+  // on entries that never had it looked up (responseBackfilledAt unset).
+  const missingResponse = (e: StoredMergedPR | StoredClosedPR) =>
+    !e.firstMaintainerResponseAt && !e.responseBackfilledAt;
   const needsFetch = [
-    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt),
+    ...stateManager.getMergedPRs().filter((e) => !e.backfilledAt || missingResponse(e)),
     ...stateManager
       .getClosedPRs()
-      .filter((e) => !e.backfilledAt || (e.closeReason === 'self-closed' && !e.selfCloseReason)),
+      .filter((e) => !e.backfilledAt || missingResponse(e) || (e.closeReason === 'self-closed' && !e.selfCloseReason)),
   ].map((e) => e.url);
   const nodes = new Map<string, PRNode>();
   let fatal: Error | undefined;
@@ -218,7 +250,13 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
     // A vet-time snapshot (joined by addMergedPRs/addClosedPRs) beats the list
     // score, and a list score for a different issue than the PR closes is dropped.
     const pick = fromList && fromList.issueUrl === issueUrl && !snapshotFor(issueUrl) ? fromList : undefined;
-    return { openedAt: node?.createdAt, issueUrl, pick, ...(node && { backfilledAt: now }) };
+    return {
+      openedAt: node?.createdAt,
+      issueUrl,
+      pick,
+      firstMaintainerResponseAt: node && firstResponseAt(node),
+      ...(node && { backfilledAt: now, responseBackfilledAt: now }),
+    };
   };
 
   stateManager.batch(() => {
@@ -258,6 +296,7 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
       issueUrl: after.issueUrl - before.issueUrl,
       closeReason: after.closeReason - before.closeReason,
       pick: after.pick - before.pick,
+      firstMaintainerResponseAt: after.firstMaintainerResponseAt - before.firstMaintainerResponseAt,
     },
     listFiles: lists.map((l) => l.file),
     unresolved: needsFetch.length - nodes.size,

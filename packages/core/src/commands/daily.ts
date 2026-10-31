@@ -17,6 +17,7 @@ import {
   CRITICAL_STATUSES,
   applyStatusOverrides,
   computeRepoSignals,
+  computeLedgerRepoSignals,
   groupPRsByRepo,
   assessCapacity,
   collectActionableIssues,
@@ -441,6 +442,24 @@ async function updateRepoScores(
           MODULE,
           `[CLOSED_COUNT_UPDATES_FAILED] ${closedCountFailures} of ${closedCounts.size} closed count update(s) failed.`,
         );
+      }
+
+      // Ledger-derived signals, recomputed each run for every scored repo so a
+      // corrected closeReason clears hostility and repos without samples reset to null.
+      const ledgerSignals = computeLedgerRepoSignals(
+        [...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()],
+        prs,
+      );
+      for (const repo of Object.keys(stateManager.getState().repoScores)) {
+        const derived = ledgerSignals.get(repo);
+        try {
+          stateManager.updateRepoScore(repo, {
+            avgResponseDays: derived?.avgResponseDays ?? null,
+            signals: { hasHostileComments: derived?.hasHostileComments ?? false },
+          });
+        } catch (error) {
+          warn(MODULE, `Failed to update ledger signals for ${repo}: ${errorMessage(error)}`);
+        }
       }
 
       // Update repo signals from observed open PR data

@@ -15,6 +15,7 @@ import {
   formatSummary,
   toShelvedPRRef,
   computeRepoSignals,
+  computeLedgerRepoSignals,
   groupPRsByRepo,
   computeActionMenu,
   applyStatusOverrides,
@@ -1121,5 +1122,71 @@ describe('lastReviewStateFromDigest (#1824)', () => {
       lastReviewDecision: 'changes_requested',
       lastCiStatus: 'failing',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeLedgerRepoSignals
+// ---------------------------------------------------------------------------
+
+describe('computeLedgerRepoSignals', () => {
+  const entry = (n: number, openedAt?: string, respondedAt?: string, closeReason?: string) => ({
+    url: `https://github.com/o/r/pull/${n}`,
+    openedAt,
+    firstMaintainerResponseAt: respondedAt,
+    closeReason,
+  });
+
+  it('takes the median days to first response, ignoring outliers', () => {
+    const result = computeLedgerRepoSignals(
+      [
+        entry(1, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z'), // 1d
+        entry(2, '2026-01-01T00:00:00Z', '2026-01-03T12:00:00Z'), // 2.5d
+        entry(3, '2026-01-01T00:00:00Z', '2026-04-01T00:00:00Z'), // 90d outlier
+      ],
+      [],
+    );
+    expect(result.get('o/r')).toEqual({ avgResponseDays: 2.5, hasHostileComments: false });
+  });
+
+  it('averages the middle two samples for an even count and folds in answered open PRs', () => {
+    const result = computeLedgerRepoSignals(
+      [entry(1, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')],
+      [
+        {
+          url: 'https://github.com/o/r/pull/9',
+          createdAt: '2026-01-01T00:00:00Z',
+          firstMaintainerResponseAt: '2026-01-04T00:00:00Z',
+        },
+        { url: 'https://github.com/o/r/pull/10', createdAt: '2026-01-01T00:00:00Z' }, // still waiting: not a sample
+      ],
+    );
+    expect(result.get('o/r')?.avgResponseDays).toBe(2);
+  });
+
+  it('is null with no usable samples (missing, unparseable, or negative spans)', () => {
+    const result = computeLedgerRepoSignals(
+      [
+        entry(1, '2026-01-01T00:00:00Z'),
+        entry(2, undefined, '2026-01-02T00:00:00Z'),
+        entry(3, 'garbage', '2026-01-02T00:00:00Z'),
+        entry(4, '2026-01-05T00:00:00Z', '2026-01-02T00:00:00Z'),
+      ],
+      [],
+    );
+    expect(result.get('o/r')).toEqual({ avgResponseDays: null, hasHostileComments: false });
+  });
+
+  it('marks a repo hostile only when a closed PR there has closeReason ai-policy', () => {
+    const result = computeLedgerRepoSignals(
+      [entry(1, undefined, undefined, 'ai-policy'), { url: 'https://github.com/x/y/pull/1', closeReason: 'rejected' }],
+      [],
+    );
+    expect(result.get('o/r')?.hasHostileComments).toBe(true);
+    expect(result.get('x/y')?.hasHostileComments).toBe(false);
+  });
+
+  it('skips unparseable URLs', () => {
+    expect(computeLedgerRepoSignals([{ url: 'not-a-url', closeReason: 'ai-policy' }], []).size).toBe(0);
   });
 });

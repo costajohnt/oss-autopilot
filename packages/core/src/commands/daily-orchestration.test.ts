@@ -680,6 +680,45 @@ describe('executeDailyCheck() — repo score updates', () => {
     expect(warning?.message).toContain('1 of 2 merged count update(s) failed');
   });
 
+  it('writes ledger-derived avgResponseDays and hostility for every scored repo', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        repoScores: {
+          'owner/a': { repo: 'owner/a', mergedPRCount: 2, closedWithoutMergeCount: 0, score: 7 },
+          'owner/quiet': { repo: 'owner/quiet', mergedPRCount: 1, closedWithoutMergeCount: 0, score: 6 },
+        },
+      }),
+    );
+    mockGetMergedPRs.mockReturnValue([
+      {
+        url: 'https://github.com/owner/a/pull/1',
+        title: 'x',
+        mergedAt: '2026-01-10T00:00:00Z',
+        openedAt: '2026-01-01T00:00:00Z',
+        firstMaintainerResponseAt: '2026-01-02T00:00:00Z',
+      },
+      {
+        url: 'https://github.com/owner/a/pull/2',
+        title: 'y',
+        mergedAt: '2026-01-10T00:00:00Z',
+        openedAt: '2026-01-01T00:00:00Z',
+        firstMaintainerResponseAt: '2026-01-04T00:00:00Z',
+      },
+    ]);
+
+    await executeDailyCheck('test-token');
+
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/a', {
+      avgResponseDays: 2,
+      signals: { hasHostileComments: false },
+    });
+    // No samples: reset to unknown rather than left at a stale value.
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/quiet', {
+      avgResponseDays: null,
+      signals: { hasHostileComments: false },
+    });
+  });
+
   it('syncs trusted projects for repos with merged PRs', async () => {
     const mergedRepos = new Map([['owner/repo-trusted', { count: 2, lastMergedAt: '2026-01-10T00:00:00Z' }]]);
     mockFetchUserMergedPRCounts.mockResolvedValue(makeMergedResult(mergedRepos));

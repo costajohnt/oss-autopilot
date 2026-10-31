@@ -184,33 +184,6 @@ export function updateRepoScore(state: AgentState, repo: string, updates: RepoSc
 }
 
 /**
- * Increment the merged PR count for a repository and recalculate its score.
- */
-export function incrementMergedCount(state: AgentState, repo: string): void {
-  const newCount = (state.repoScores[repo]?.mergedPRCount ?? 0) + 1;
-  updateRepoScore(state, repo, {
-    mergedPRCount: newCount,
-    lastMergedAt: new Date().toISOString(),
-  });
-}
-
-/**
- * Increment the closed-without-merge count for a repository and recalculate its score.
- */
-export function incrementClosedCount(state: AgentState, repo: string): void {
-  const newCount = (state.repoScores[repo]?.closedWithoutMergeCount ?? 0) + 1;
-  updateRepoScore(state, repo, { closedWithoutMergeCount: newCount });
-}
-
-/**
- * Mark a repository as having hostile maintainer comments and recalculate its score.
- * This applies a -2 penalty to the score. Creates a default score record if needed.
- */
-export function markRepoHostile(state: AgentState, repo: string): void {
-  updateRepoScore(state, repo, { signals: { hasHostileComments: true } });
-}
-
-/**
  * Get repositories where the user has at least one merged PR, sorted by merged count descending.
  */
 export function getReposWithMergedPRs(state: Readonly<AgentState>): string[] {

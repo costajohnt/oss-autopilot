@@ -88,6 +88,7 @@ const LEDGER_FIELDS = [
   'lastReviewDecision',
   'lastCiStatus',
   'backfilledAt',
+  'responseBackfilledAt',
   'closeReason',
   'selfCloseReason',
 ] as const;
@@ -1172,33 +1173,6 @@ export class StateManager {
    */
   updateRepoScore(repo: string, updates: RepoScoreUpdate): void {
     repoScoring.updateRepoScore(this.state, repo, updates);
-    this.autoSave();
-  }
-
-  /**
-   * Increment the merged PR count for a repository.
-   * @param repo - Repository in "owner/repo" format
-   */
-  incrementMergedCount(repo: string): void {
-    repoScoring.incrementMergedCount(this.state, repo);
-    this.autoSave();
-  }
-
-  /**
-   * Increment the closed-without-merge PR count.
-   * @param repo - Repository in "owner/repo" format
-   */
-  incrementClosedCount(repo: string): void {
-    repoScoring.incrementClosedCount(this.state, repo);
-    this.autoSave();
-  }
-
-  /**
-   * Mark a repository as hostile (score zeroed).
-   * @param repo - Repository in "owner/repo" format
-   */
-  markRepoHostile(repo: string): void {
-    repoScoring.markRepoHostile(this.state, repo);
     this.autoSave();
   }
 

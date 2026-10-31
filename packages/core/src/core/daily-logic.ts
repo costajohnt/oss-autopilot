@@ -18,6 +18,7 @@
 import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
+import { parseGitHubUrl } from './urls.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
   FetchedPR,
@@ -271,6 +272,63 @@ export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSi
     const isResponsive = repoPRs.some((pr) => pr.lastMaintainerComment && !STALE_STATUSES.has(pr.stalenessTier));
     const hasActiveMaintainers = repoPRs.some((pr) => !STALE_STATUSES.has(pr.stalenessTier));
     result.set(repo, { isResponsive, hasActiveMaintainers });
+  }
+  return result;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Per-repo signals derived from the outcome ledger, recomputed each daily run
+ * so a corrected ledger entry corrects the score (no one-way latching):
+ * - avgResponseDays: MEDIAN days from open to first maintainer response
+ *   (name kept for the schema; median so one forgotten PR doesn't skew it).
+ *   Samples are ledger entries with both timestamps plus open PRs that
+ *   already got a response. Open PRs still waiting are left out, which
+ *   biases fast; they are censored, not missing.
+ * - hasHostileComments: any closed PR here has closeReason 'ai-policy'.
+ *
+ * Repos with no ledger or open PR data are absent; callers treat absent as
+ * `{ avgResponseDays: null, hasHostileComments: false }`.
+ */
+export function computeLedgerRepoSignals(
+  ledger: ReadonlyArray<{
+    url: string;
+    openedAt?: string;
+    firstMaintainerResponseAt?: string;
+    closeReason?: string;
+  }>,
+  openPRs: ReadonlyArray<Pick<FetchedPR, 'url' | 'createdAt' | 'firstMaintainerResponseAt'>>,
+): Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }> {
+  const byRepo = new Map<string, { samples: number[]; hostile: boolean }>();
+  const add = (url: string, openedAt?: string, respondedAt?: string, closeReason?: string) => {
+    const ref = parseGitHubUrl(url);
+    if (!ref) return;
+    const repo = `${ref.owner}/${ref.repo}`;
+    const entry = byRepo.get(repo) ?? { samples: [], hostile: false };
+    byRepo.set(repo, entry);
+    if (closeReason === 'ai-policy') entry.hostile = true;
+    if (!openedAt || !respondedAt) return;
+    const days = (Date.parse(respondedAt) - Date.parse(openedAt)) / MS_PER_DAY;
+    if (Number.isFinite(days) && days >= 0) entry.samples.push(days);
+  };
+  const seen = new Set<string>();
+  for (const e of ledger) {
+    seen.add(e.url);
+    add(e.url, e.openedAt, e.firstMaintainerResponseAt, e.closeReason);
+  }
+  for (const pr of openPRs) if (!seen.has(pr.url)) add(pr.url, pr.createdAt, pr.firstMaintainerResponseAt);
+
+  const result = new Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }>();
+  for (const [repo, { samples, hostile }] of byRepo) {
+    samples.sort((a, b) => a - b);
+    const mid = Math.floor(samples.length / 2);
+    const median =
+      samples.length === 0 ? null : samples.length % 2 ? samples[mid] : (samples[mid - 1] + samples[mid]) / 2;
+    result.set(repo, {
+      avgResponseDays: median === null ? null : Math.round(median * 10) / 10,
+      hasHostileComments: hostile,
+    });
   }
   return result;
 }

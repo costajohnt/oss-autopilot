@@ -68,7 +68,7 @@ describe('runLedgerBackfill (#1824)', () => {
       queried: 2,
       unresolved: 0,
       warnings: ['no curated issue list found; list vet scores were not imported'],
-      filled: { openedAt: 2, issueUrl: 1, closeReason: 1, pick: 0 },
+      filled: { openedAt: 2, issueUrl: 1, closeReason: 1, pick: 0, firstMaintainerResponseAt: 0 },
     });
     expect(sm.getMergedPRs()[0]).toMatchObject({ openedAt: '2026-01-01T00:00:00Z', issueUrl: ISSUE });
     expect(sm.getMergedPRs()[0].backfilledAt).toBeDefined();
@@ -78,8 +78,43 @@ describe('runLedgerBackfill (#1824)', () => {
     expect(mocks.graphql).toHaveBeenCalledTimes(1);
   });
 
-  it('re-fetches self-closed entries recorded before selfCloseReason, once', async () => {
+  it('re-fetches entries backfilled before firstMaintainerResponseAt, once', async () => {
     sm.addMergedPRs([{ url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z', backfilledAt: 'x' }]);
+    sm.addClosedPRs([
+      { url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z', backfilledAt: 'x', responseBackfilledAt: 'x' },
+    ]);
+    mocks.graphql.mockResolvedValue({
+      p0: node({
+        firstComments: {
+          nodes: [
+            { author: { __typename: 'Bot', login: 'ci-helper' }, createdAt: '2026-01-01T01:00:00Z' },
+            { author: { __typename: 'User', login: 'me' }, createdAt: '2026-01-01T02:00:00Z' },
+            { author: { __typename: 'User', login: 'maint' }, createdAt: '2026-01-03T00:00:00Z' },
+          ],
+        },
+        reviews: { nodes: [{ author: { __typename: 'User', login: 'other' }, submittedAt: '2026-01-02T00:00:00Z' }] },
+      }),
+    });
+
+    const result = await runLedgerBackfill();
+    expect(result.queried).toBe(1);
+    expect(result.filled.firstMaintainerResponseAt).toBe(1);
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBe('2026-01-02T00:00:00Z');
+    expect((await runLedgerBackfill()).queried).toBe(0);
+  });
+
+  it('stamps an unanswered PR so it is not re-queried', async () => {
+    mocks.graphql.mockResolvedValue({ p0: node(), p1: node() });
+    await runLedgerBackfill();
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBeUndefined();
+    expect(sm.getMergedPRs()[0].responseBackfilledAt).toBeDefined();
+    expect((await runLedgerBackfill()).queried).toBe(0);
+  });
+
+  it('re-fetches self-closed entries recorded before selfCloseReason, once', async () => {
+    sm.addMergedPRs([
+      { url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z', backfilledAt: 'x', responseBackfilledAt: 'x' },
+    ]);
     sm.addClosedPRs([
       { url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z', backfilledAt: 'x', closeReason: 'self-closed' },
     ]);
