@@ -218,7 +218,14 @@ export class GistSyncCoordinator {
     try {
       await ensureGistPersistence(currentToken);
       // The upgrade replaced the core singleton — re-resolve our reference.
+      const previous = this.manager;
       this.manager = getStateManager();
+      // A swapped manager starts its own refreshGeneration; re-anchor any
+      // still-pending warnings to it so the next successful push is not
+      // misread as a loss (or a loss missed) against the old counter.
+      if (this.manager !== previous && this.pendingGistSyncWarnings.length > 0) {
+        this.pendingSince = this.manager.refreshGeneration;
+      }
       // Genuinely armed only: a retry can resolve via ANOTHER degraded
       // bootstrap (gist-backed, store disarmed) — that is not a recovery
       // and must not produce a recovery notice (#1443).

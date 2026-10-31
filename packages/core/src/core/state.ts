@@ -694,9 +694,9 @@ export class StateManager {
         };
         return false;
       }
+      const wasUnpushed = this.unpushed;
       try {
         this.state = AgentStateSchema.parse(JSON.parse(raw));
-        this.tryReconcilePRCounts();
       } catch (err) {
         warn(MODULE, `Failed to parse refreshed Gist state: ${errorMessage(err)}`);
         // Same reasoning as the missing-file branch: parse failure leaves us
@@ -709,13 +709,30 @@ export class StateManager {
         };
         return false;
       }
+      // Derived bookkeeping on the fresh copy, not a user change: it must
+      // not count as un-pushed, so the flag is reset after it runs.
+      this.tryReconcilePRCounts();
+      this.unpushed = false;
       // Successful refresh clears any prior staleness (#1193).
-      this.lastSuccessfulRefreshAt = new Date().toISOString();
+      const now = new Date();
+      this.lastSuccessfulRefreshAt = now.toISOString();
       this.staleness = null;
       this.refreshCount++;
-      if (this.unpushed) {
-        warn(MODULE, 'Gist refresh replaced local state that still had un-pushed changes; they were not synced');
-        this.unpushed = false;
+      // Only the throttled depth-0 refresh gets here with un-pushed changes
+      // (a forced one is conflict recovery, which re-applies its mutation).
+      // Their push already failed once; this is the moment they are gone, so
+      // say so where commands and the dashboard read staleness (#1193).
+      if (wasUnpushed && !options.force) {
+        const reason =
+          'A Gist refresh replaced local state that still had un-pushed changes; they were NOT synced. ' +
+          'Re-run the command that made the change.';
+        warn(MODULE, reason);
+        this.staleness = {
+          reason,
+          source: 'cache',
+          lastSuccessfulRefresh: this.lastSuccessfulRefreshAt,
+          detectedAt: now.toISOString(),
+        };
       }
     } else if (this.gistStore.lastRefreshError) {
       // Distinguish "fetch failed" (set marker) from "throttled" (preserve

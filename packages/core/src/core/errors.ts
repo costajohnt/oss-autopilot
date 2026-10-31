@@ -150,7 +150,7 @@ export class GistConcurrencyError extends OssAutopilotError {
   ) {
     super(
       'Another machine pushed to the state Gist while this push was in flight, and the merge attempt also collided. ' +
-        'Re-run `oss-autopilot state --sync` to retry — your local mutations are still in memory.',
+        'Your local mutations are still in memory, but `state --sync` cannot merge them: re-run the command that made the change.',
       'CONCURRENCY_ERROR',
     );
     this.name = 'GistConcurrencyError';
