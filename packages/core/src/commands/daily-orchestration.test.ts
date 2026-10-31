@@ -623,6 +623,12 @@ describe('executeDailyCheck() — output shape', () => {
 // executeDailyCheck() — repo score / merged count updates
 // ---------------------------------------------------------------------------
 
+/** ISO timestamp `days` before now; ledger response samples only count within 12 months. */
+function ago(days: number): string {
+  const date = new Date(Date.now() - days * 86_400_000);
+  return date.toISOString();
+}
+
 describe('executeDailyCheck() — repo score updates', () => {
   it('updates merged PR counts in state for each repo', async () => {
     const mergedRepos = new Map([
@@ -681,8 +687,6 @@ describe('executeDailyCheck() — repo score updates', () => {
   });
 
   it('writes ledger-derived avgResponseDays and hostility for every scored repo', async () => {
-    // Relative dates: only PRs opened in the last 12 months count.
-    const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
     mockGetState.mockReturnValue(
       makeDefaultState({
         repoScores: {
