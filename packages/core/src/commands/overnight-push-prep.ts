@@ -429,7 +429,10 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
   /** Record what happened so far. Runs even when the loop throws, so a ref that is live on the fork is never missing from state. */
   async function persist(): Promise<void> {
     if (options.dryRun) return;
-    sm.setLastOvernight({ ...lastRun, prepared });
+    // Live record, not the `lastRun` snapshot: the re-apply below may run
+    // after a Gist refresh replaced it.
+    const record = (): void => sm.setLastOvernight({ ...(sm.getLastOvernight() ?? lastRun), prepared });
+    record();
     try {
       reportRecreated = writePreparedSection(lastRun.reportPath, prepared).reportRecreated;
     } catch (err) {
@@ -441,7 +444,7 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     // Outside the try: publishReport warns on its own and must never be
     // mistaken for a failed report write.
     if (!reportWarning) publishReport(sm, lastRun.reportPath);
-    gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setLastOvernight({ ...lastRun, prepared }));
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE, record);
   }
 
   try {
