@@ -44,6 +44,7 @@ export function pickSnapshotFromVet(
     ...(traits.authorAssociation !== undefined && { issueAuthorAssociation: traits.authorAssociation }),
     ...(traits.authorIsBot !== undefined && { issueAuthorIsBot: traits.authorIsBot }),
     ...(competingPRs !== undefined && { competingPRs }),
+    ...(traits.mentioningPRs !== undefined && { mentioningPRs: traits.mentioningPRs }),
     ...(traits.firstInRepo !== undefined && { firstInRepo: traits.firstInRepo }),
     ...(traits.commentCount !== undefined && { commentCount: traits.commentCount }),
   };
@@ -55,26 +56,23 @@ export interface PickTraits {
   authorAssociation?: string;
   authorIsBot?: boolean;
   commentCount?: number;
-  /** {@link competingPRCount}, when the caller has a verification. */
+  /** Open, non-draft closing PRs by others, when the caller has a verification. */
   competingPRs?: number;
+  /** Open PRs by others that only cross-reference the issue. */
+  mentioningPRs?: number;
   firstInRepo?: boolean;
-}
-
-/** Open PRs by others that really compete: closing the issue, or in the issue's repo. Drafts are left out. */
-export function competingPRCount(v: Pick<IssueVerification, 'owner' | 'repo' | 'linkedPRs'>): number {
-  const sameRepo = `https://github.com/${v.owner}/${v.repo}/pull/`.toLowerCase();
-  const isCompeting = (pr: IssueVerification['linkedPRs'][number]) =>
-    pr.linkType === 'closing' || pr.url.toLowerCase().startsWith(sameRepo);
-  return v.linkedPRs.filter((pr) => pr.state === 'open' && !pr.isOwn && !pr.isDraft && isCompeting(pr)).length;
 }
 
 /** The pick traits a verification already carries, so a pick costs no extra API call. */
 export function traitsFromVerification(v: IssueVerification): PickTraits {
+  const open = v.linkedPRs.filter((pr) => pr.state === 'open' && !pr.isOwn);
   return {
     ...(v.authorAssociation !== null && { authorAssociation: v.authorAssociation }),
     authorIsBot: v.authorIsBot,
     ...(v.commentCount !== null && { commentCount: v.commentCount }),
-    competingPRs: competingPRCount(v),
+    // Only a closing PR is a claim; a cross-reference is a mention (see issue-verification).
+    competingPRs: open.filter((pr) => pr.linkType === 'closing' && !pr.isDraft).length,
+    mentioningPRs: open.filter((pr) => pr.linkType === 'cross-referenced').length,
   };
 }
 

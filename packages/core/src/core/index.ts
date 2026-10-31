@@ -122,6 +122,7 @@ export {
   fetchIssueVerification,
   verifyIssuesBatch,
   MAX_VERIFY_CONCURRENCY,
+  RULED_OUT_VERDICTS,
   type BatchVerificationResult,
   type IssueAvailabilityVerdict,
   type IssueVerification,

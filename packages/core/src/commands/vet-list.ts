@@ -28,6 +28,7 @@ import {
   requireGitHubToken,
   parseGitHubUrl,
   verifyIssuesBatch,
+  RULED_OUT_VERDICTS,
   type BatchVerificationResult,
   type IssueAvailabilityVerdict,
   type IssueVerification,
@@ -163,13 +164,6 @@ export function listStatusFromVerdict(verdict: IssueAvailabilityVerdict): VetLis
     }
   }
 }
-
-/**
- * Verdicts that conclusively rule an issue out as a new opportunity. For these
- * we skip scout's grade/health vet entirely — there is nothing to grade — and
- * build the result row straight from the verification.
- */
-const RULED_OUT_VERDICTS: ReadonlySet<IssueAvailabilityVerdict> = new Set(['closed', 'taken', 'own-open-pr']);
 
 /** The per-row `verification` sub-object: the authoritative facts behind the
  * status, projected from the full {@link IssueVerification}. */
@@ -384,7 +378,8 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     const summary = toVerificationSummary(v);
     const listStatus = listStatusFromVerdict(v.verdict);
 
-    // Conclusively ruled out — skip the scout vet entirely.
+    // Conclusively ruled out: skip the scout vet entirely and build the row
+    // straight from the verification.
     if (RULED_OUT_VERDICTS.has(v.verdict)) {
       return { ...ruledOutVetOutput(v), listStatus, verification: summary };
     }

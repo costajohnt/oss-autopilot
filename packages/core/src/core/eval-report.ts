@@ -150,12 +150,15 @@ function starRange(stars: number | undefined): string {
 }
 
 /** Normalized label groups for the label cut; a label matches by substring. */
+// Word boundaries by letters only: `\b` treats `_` as a word char, so
+// `good_first_issue` / `type_bug` would never match.
+const wordRe = (alternatives: string) => new RegExp(`(?:^|[^a-z])(?:${alternatives})(?![a-z])`);
 const LABEL_GROUPS: Array<[string, RegExp]> = [
-  ['good first issue', /\bgood[ -]?first\b|\bbeginner\b|\beasy\b/],
-  ['help wanted', /\bhelp[ -]?wanted\b/],
-  ['bug', /\bbugs?\b/],
-  ['enhancement', /\benhancements?\b|\bfeatures?\b/],
-  ['documentation', /\bdoc(s|umentation)?\b/],
+  ['good first issue', wordRe('good[ _-]?first|beginners?|easy|first.?timers?|starter(?![_-][a-z])')],
+  ['help wanted', wordRe('help[ _-]?wanted')],
+  ['bug', wordRe('bugs?')],
+  ['enhancement', wordRe('enhancements?|features?')],
+  ['documentation', wordRe('docs?|documentation')],
 ];
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);

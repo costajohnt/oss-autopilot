@@ -43,6 +43,9 @@ function state(overrides: Partial<AgentState>): AgentState {
   });
 }
 
+const labelled = (label: string) => merged(1, { pick: { ...pick(8), labels: [label] } });
+const labelKeys = (report: ReturnType<typeof computeEvalReport>) => report.byLabel.map((bucket) => bucket.key);
+
 describe('computeEvalReport (#1825)', () => {
   it('counts dormant PRs against the merge rate and computes medians', () => {
     const report = computeEvalReport(
@@ -193,6 +196,25 @@ describe('computeEvalReport (#1825)', () => {
       ['none of these', 2],
     ]);
     expect(formatEvalMarkdown(report)).toContain('By issue label (picks; one pick can match several)');
+  });
+
+  it('matches label groups on letter boundaries, including underscore and dash forms', () => {
+    const cases: Array<[string, string]> = [
+      ['good_first_issue', 'good first issue'],
+      ['good-first-issue', 'good first issue'],
+      ['first-timers-only', 'good first issue'],
+      ['starter', 'good first issue'],
+      ['help_wanted', 'help wanted'],
+      ['type_bug', 'bug'],
+      ['kind/bug', 'bug'],
+      ['feature_request', 'enhancement'],
+      ['docs', 'documentation'],
+      ['starter-kit', 'none of these'],
+      ['debug', 'none of these'],
+      ['docker', 'none of these'],
+    ];
+    const groupsOf = (label: string) => labelKeys(computeEvalReport(state({ mergedPRs: [labelled(label)] })));
+    expect(cases.map(([label]) => [label, groupsOf(label)])).toEqual(cases.map(([label, g]) => [label, [g]]));
   });
 
   it('renders an empty ledger without throwing', () => {

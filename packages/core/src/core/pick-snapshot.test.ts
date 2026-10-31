@@ -1,12 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { VetOutput } from '../formatters/json.js';
-import {
-  pickSnapshotFromVet,
-  persistPickSnapshots,
-  isFirstInRepo,
-  competingPRCount,
-  traitsFromVerification,
-} from './pick-snapshot.js';
+import { pickSnapshotFromVet, persistPickSnapshots, isFirstInRepo, traitsFromVerification } from './pick-snapshot.js';
 import type { StateManager } from './state.js';
 import type { IssueVerification, VerifiedLinkedPR } from './issue-verification.js';
 
@@ -61,6 +55,13 @@ describe('pick traits', () => {
     });
   });
 
+  it('records mentioningPRs when the caller has it', () => {
+    expect(pickSnapshotFromVet(vet(), 'vet', { competingPRs: 0, mentioningPRs: 3 })).toMatchObject({
+      competingPRs: 0,
+      mentioningPRs: 3,
+    });
+  });
+
   it('leaves traits out when the caller has none', () => {
     const snap = pickSnapshotFromVet(vet(), 'vet')!;
     expect(snap).not.toHaveProperty('issueAuthorAssociation');
@@ -90,20 +91,6 @@ const pr = (overrides: Partial<VerifiedLinkedPR>): VerifiedLinkedPR => ({
   ...overrides,
 });
 
-describe('competingPRCount', () => {
-  it('counts open, non-draft PRs by others that close the issue or live in its repo', () => {
-    const linkedPRs = [
-      pr({}), // same-repo mention: counts
-      pr({ url: 'https://github.com/fork/r/pull/9', linkType: 'closing' }), // cross-repo closing: counts
-      pr({ url: 'https://github.com/other/x/pull/3' }), // cross-repo mention: no
-      pr({ isDraft: true }),
-      pr({ isOwn: true }),
-      pr({ state: 'merged' }),
-    ];
-    expect(competingPRCount({ owner: 'O', repo: 'R', linkedPRs })).toBe(2);
-  });
-});
-
 const verification = (overrides: Partial<IssueVerification>) =>
   ({
     owner: 'o',
@@ -123,7 +110,21 @@ describe('traitsFromVerification', () => {
       authorIsBot: true,
       commentCount: 4,
       competingPRs: 1,
+      mentioningPRs: 0,
     });
+  });
+
+  it('counts only closing PRs as competing; open cross-references are mentions', () => {
+    const linkedPRs = [
+      pr({ linkType: 'closing' }), // competing
+      pr({ url: 'https://github.com/fork/r/pull/9', linkType: 'closing' }), // cross-repo closing: competing
+      pr({ linkType: 'closing', isDraft: true }), // draft: not competing
+      pr({}), // same-repo mention
+      pr({ url: 'https://github.com/other/x/pull/3', isDraft: true }), // mention, drafts included
+      pr({ isOwn: true, linkType: 'closing' }),
+      pr({ state: 'merged', linkType: 'closing' }),
+    ];
+    expect(traitsFromVerification(verification({ linkedPRs }))).toMatchObject({ competingPRs: 2, mentioningPRs: 2 });
   });
 
   it('leaves out traits GitHub did not return', () => {

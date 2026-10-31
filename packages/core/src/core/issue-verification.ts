@@ -52,6 +52,12 @@ export interface VerifiedLinkedPR {
  */
 export type IssueAvailabilityVerdict = 'closed' | 'own-open-pr' | 'taken' | 'at-risk' | 'available';
 
+/**
+ * Verdicts that conclusively rule an issue out as a new opportunity: nothing
+ * to grade, and no pick to record. Shared by `vet` and `vet-list`.
+ */
+export const RULED_OUT_VERDICTS: ReadonlySet<IssueAvailabilityVerdict> = new Set(['closed', 'taken', 'own-open-pr']);
+
 export interface IssueVerification {
   url: string;
   owner: string;

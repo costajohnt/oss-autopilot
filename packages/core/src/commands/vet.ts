@@ -15,6 +15,7 @@ import {
   pickSnapshotFromVet,
   persistPickSnapshots,
   fetchIssueVerification,
+  RULED_OUT_VERDICTS,
   traitsFromVerification,
   isFirstInRepo,
   requireGitHubToken,
@@ -84,8 +85,8 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
 
 /**
  * The pick to record for this vet. One verify GraphQL call supplies the issue
- * author, comment count and competing PRs, and catches an own open PR that
- * scout's first-linked-PR check missed. A failed verify never fails the vet:
+ * author, comment count and competing PRs, and applies vet-list's rule: no pick
+ * for a closed, taken or own-PR issue (scout's first-linked-PR check can miss these). A failed verify never fails the vet:
  * the pick then falls back to scout's facts.
  */
 async function pickFor(output: VetOutput): Promise<PickSnapshot | undefined> {
@@ -98,7 +99,7 @@ async function pickFor(output: VetOutput): Promise<PickSnapshot | undefined> {
   } catch (error) {
     warn('vet', `Could not verify ${url} for pick traits: ${errorMessage(error)}`);
   }
-  if (verification?.verdict === 'own-open-pr') return undefined;
+  if (verification && RULED_OUT_VERDICTS.has(verification.verdict)) return undefined;
   return pickSnapshotFromVet(output, 'vet', {
     ...(verification && traitsFromVerification(verification)),
     firstInRepo: isFirstInRepo(repo, getStateManager().getRepoScore(repo), getStateManager().getState().mergedPRs),

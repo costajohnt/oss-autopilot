@@ -98,8 +98,10 @@ export const PickSnapshotSchema = z
       'NONE',
     ] as const).optional(),
     issueAuthorIsBot: z.boolean().optional(),
-    /** Open, non-draft PRs by others that close the issue or are in its repo. */
+    /** Open, non-draft PRs by others that close the issue (claims). */
     competingPRs: z.number().optional(),
+    /** Open PRs by others that only cross-reference the issue (not claims). */
+    mentioningPRs: z.number().optional(),
     /** The user had no merged PR in the repo yet. */
     firstInRepo: z.boolean().optional(),
     commentCount: z.number().optional(),

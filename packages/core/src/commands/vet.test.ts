@@ -126,7 +126,7 @@ describe('runVet', () => {
     ]);
   });
 
-  it('takes pick traits from one verification call, and skips the pick on a verified own PR', async () => {
+  it('takes pick traits from one verification call, and skips the pick on a ruled-out verdict', async () => {
     mockVetIssue.mockResolvedValue({
       issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
       recommendation: 'approve' as const,
@@ -146,7 +146,7 @@ describe('runVet', () => {
     mockFetchVerification.mockResolvedValue({
       owner: 'owner',
       repo: 'repo',
-      verdict: 'taken',
+      verdict: 'at-risk',
       linkedPRs: [otherPR],
       authorAssociation: 'OWNER',
       authorIsBot: false,
@@ -164,10 +164,13 @@ describe('runVet', () => {
       }),
     ]);
 
-    mockRecordPickSnapshots.mockClear();
-    mockFetchVerification.mockResolvedValue({ owner: 'owner', repo: 'repo', verdict: 'own-open-pr', linkedPRs: [] });
-    await runVet({ issueUrl: TEST_ISSUE_URL });
-    expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
+    // Same rule as vet-list: closed, taken and own-PR issues record no pick.
+    for (const verdict of ['closed', 'taken', 'own-open-pr']) {
+      mockRecordPickSnapshots.mockClear();
+      mockFetchVerification.mockResolvedValue({ owner: 'owner', repo: 'repo', verdict, linkedPRs: [] });
+      await runVet({ issueUrl: TEST_ISSUE_URL });
+      expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
+    }
   });
 
   it('includes grade with unknown merge rate when no repo score exists', async () => {
