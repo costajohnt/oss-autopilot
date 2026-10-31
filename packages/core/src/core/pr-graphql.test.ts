@@ -565,36 +565,36 @@ describe('batchFetchPRDetails', () => {
   });
 });
 
-describe('GraphQL vs REST status parity', () => {
-  /**
-   * Same underlying PR, expressed once as a GraphQL node and once as
-   * hand-written REST-equivalent signals. Both go through assembleFetchedPR;
-   * the resulting FetchedPR must be identical. This is the acceptance criterion:
-   * the transport must not change the computed status.
-   */
-  async function assembleFromGraphQL(node: any) {
-    const outcome = normalizePRNode(node);
-    if (outcome.kind !== 'ok') throw new Error('expected ok');
-    const d = outcome.data;
-    const signals: PRSignals = {
-      prUrl: 'https://github.com/o/r/pull/7',
-      owner: 'o',
-      repo: 'r',
-      number: 7,
-      id: d.id,
-      title: d.title === '' ? 'PR' : d.title,
-      body: d.body,
-      createdAt: d.createdAt,
-      updatedAt: d.updatedAt,
-      hasMergeConflict: d.hasMergeConflict,
-      comments: d.comments,
-      reviews: d.reviews,
-      reviewComments: d.reviewComments,
-      ciStatus: d.ciStatus,
-    };
-    return assembleFetchedPR(signals, CONFIG, async () => d.commitInfo);
-  }
+/**
+ * Same underlying PR, expressed once as a GraphQL node and once as
+ * hand-written REST-equivalent signals. Both go through assembleFetchedPR;
+ * the resulting FetchedPR must be identical. This is the acceptance criterion:
+ * the transport must not change the computed status.
+ */
+async function assembleFromGraphQL(node: any) {
+  const outcome = normalizePRNode(node);
+  if (outcome.kind !== 'ok') throw new Error('expected ok');
+  const d = outcome.data;
+  const signals: PRSignals = {
+    prUrl: 'https://github.com/o/r/pull/7',
+    owner: 'o',
+    repo: 'r',
+    number: 7,
+    id: d.id,
+    title: d.title === '' ? 'PR' : d.title,
+    body: d.body,
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+    hasMergeConflict: d.hasMergeConflict,
+    comments: d.comments,
+    reviews: d.reviews,
+    reviewComments: d.reviewComments,
+    ciStatus: d.ciStatus,
+  };
+  return assembleFetchedPR(signals, CONFIG, async () => d.commitInfo);
+}
 
+describe('GraphQL vs REST status parity', () => {
   it('produces identical results for a changes-requested + failing-CI PR', async () => {
     const node = makeNode({
       title: 'PR',
@@ -752,126 +752,127 @@ describe('GraphQL vs REST status parity', () => {
 
   // #1840: both paths ignore bot reviews. GraphQL reports an App as
   // `__typename: 'Bot'` with a bare login; REST as `name[bot]` + `type: 'Bot'`.
-  describe('bot reviews', () => {
-    const botGraphQL = {
-      author: { login: 'coderabbitai', __typename: 'Bot' },
-      body: 'automated review',
-      databaseId: 5,
-      state: 'APPROVED',
-      submittedAt: '2026-02-06T00:00:00Z',
+});
+
+describe('GraphQL vs REST status parity: bot reviews', () => {
+  const botGraphQL = {
+    author: { login: 'coderabbitai', __typename: 'Bot' },
+    body: 'automated review',
+    databaseId: 5,
+    state: 'APPROVED',
+    submittedAt: '2026-02-06T00:00:00Z',
+  };
+  const botRest = {
+    body: 'automated review',
+    id: 5,
+    state: 'APPROVED',
+    submitted_at: '2026-02-06T00:00:00Z',
+    user: { login: 'coderabbitai[bot]', type: 'Bot' },
+  };
+  const baseSignals: PRSignals = {
+    prUrl: 'https://github.com/o/r/pull/7',
+    owner: 'o',
+    repo: 'r',
+    number: 7,
+    id: 12_345,
+    title: 'PR',
+    body: '',
+    createdAt: '2026-02-01T00:00:00Z',
+    updatedAt: '2026-02-07T00:00:00Z',
+    hasMergeConflict: false,
+    comments: [],
+    reviews: [],
+    reviewComments: [],
+    ciStatus: computeCIStatus([], { state: 'success', statuses: [] }),
+  };
+  const commit = { date: '2026-02-04T00:00:00Z', author: 'contributor' };
+
+  it('does not treat a PR approved only by a bot as approved', async () => {
+    const node = makeNode({ title: 'PR', reviews: { totalCount: 1, nodes: [botGraphQL] } });
+    const prGraphql = await assembleFromGraphQL(node);
+    const prRest = await assembleFetchedPR({ ...baseSignals, reviews: [botRest] }, CONFIG, async () => commit);
+
+    expect(prGraphql.reviewDecision).toBe('review_required');
+    expect(prRest.reviewDecision).toBe('review_required');
+    expect(prGraphql.waitReason).toBe('pending_review');
+    expect(prRest.waitReason).toBe('pending_review');
+  });
+
+  it('reports changes_requested when a bot approves and a human requests changes', async () => {
+    const human = {
+      databaseId: 6,
+      state: 'CHANGES_REQUESTED',
+      body: 'please fix',
+      submittedAt: '2026-02-05T00:00:00Z',
+      author: { login: 'maintainer' },
     };
-    const botRest = {
-      body: 'automated review',
-      id: 5,
-      state: 'APPROVED',
-      submitted_at: '2026-02-06T00:00:00Z',
-      user: { login: 'coderabbitai[bot]', type: 'Bot' },
+    const node = makeNode({ title: 'PR', reviews: { totalCount: 2, nodes: [botGraphQL, human] } });
+    const prGraphql = await assembleFromGraphQL(node);
+    const prRest = await assembleFetchedPR(
+      {
+        ...baseSignals,
+        reviews: [
+          botRest,
+          {
+            user: { login: 'maintainer' },
+            body: 'please fix',
+            submitted_at: '2026-02-05T00:00:00Z',
+            state: 'CHANGES_REQUESTED',
+            id: 6,
+          },
+        ],
+      },
+      CONFIG,
+      async () => commit,
+    );
+
+    expect(prGraphql.reviewDecision).toBe('changes_requested');
+    expect(prRest.reviewDecision).toBe('changes_requested');
+  });
+
+  it('keeps changes_addressed when a bot requests changes after the fix commit', async () => {
+    const humanCR = {
+      author: { login: 'maintainer' },
+      body: 'please fix',
+      databaseId: 6,
+      state: 'CHANGES_REQUESTED',
+      submittedAt: '2026-02-03T00:00:00Z',
     };
-    const baseSignals: PRSignals = {
-      prUrl: 'https://github.com/o/r/pull/7',
-      owner: 'o',
-      repo: 'r',
-      number: 7,
-      id: 12_345,
+    const fixCommit = {
+      commit: {
+        author: { user: { login: 'contributor' } },
+        authoredDate: '2026-02-04T00:00:00Z',
+        oid: 'fix1',
+        status: null,
+        statusCheckRollup: null,
+      },
+    };
+    const node = makeNode({
+      commits: { nodes: [fixCommit] },
+      reviews: { nodes: [humanCR, { ...botGraphQL, state: 'CHANGES_REQUESTED' }], totalCount: 2 },
       title: 'PR',
-      body: '',
-      createdAt: '2026-02-01T00:00:00Z',
-      updatedAt: '2026-02-07T00:00:00Z',
-      hasMergeConflict: false,
-      comments: [],
-      reviews: [],
-      reviewComments: [],
-      ciStatus: computeCIStatus([], { state: 'success', statuses: [] }),
-    };
-    const commit = { date: '2026-02-04T00:00:00Z', author: 'contributor' };
-
-    it('does not treat a PR approved only by a bot as approved', async () => {
-      const node = makeNode({ title: 'PR', reviews: { totalCount: 1, nodes: [botGraphQL] } });
-      const prGraphql = await assembleFromGraphQL(node);
-      const prRest = await assembleFetchedPR({ ...baseSignals, reviews: [botRest] }, CONFIG, async () => commit);
-
-      expect(prGraphql.reviewDecision).toBe('review_required');
-      expect(prRest.reviewDecision).toBe('review_required');
-      expect(prGraphql.waitReason).toBe('pending_review');
-      expect(prRest.waitReason).toBe('pending_review');
     });
+    const prGraphql = await assembleFromGraphQL(node);
+    const prRest = await assembleFetchedPR(
+      {
+        ...baseSignals,
+        reviews: [
+          {
+            body: 'please fix',
+            id: 6,
+            state: 'CHANGES_REQUESTED',
+            submitted_at: '2026-02-03T00:00:00Z',
+            user: { login: 'maintainer' },
+          },
+          { ...botRest, state: 'CHANGES_REQUESTED' },
+        ],
+      },
+      CONFIG,
+      async () => commit,
+    );
 
-    it('reports changes_requested when a bot approves and a human requests changes', async () => {
-      const human = {
-        databaseId: 6,
-        state: 'CHANGES_REQUESTED',
-        body: 'please fix',
-        submittedAt: '2026-02-05T00:00:00Z',
-        author: { login: 'maintainer' },
-      };
-      const node = makeNode({ title: 'PR', reviews: { totalCount: 2, nodes: [botGraphQL, human] } });
-      const prGraphql = await assembleFromGraphQL(node);
-      const prRest = await assembleFetchedPR(
-        {
-          ...baseSignals,
-          reviews: [
-            botRest,
-            {
-              user: { login: 'maintainer' },
-              body: 'please fix',
-              submitted_at: '2026-02-05T00:00:00Z',
-              state: 'CHANGES_REQUESTED',
-              id: 6,
-            },
-          ],
-        },
-        CONFIG,
-        async () => commit,
-      );
-
-      expect(prGraphql.reviewDecision).toBe('changes_requested');
-      expect(prRest.reviewDecision).toBe('changes_requested');
-    });
-
-    it('keeps changes_addressed when a bot requests changes after the fix commit', async () => {
-      const humanCR = {
-        author: { login: 'maintainer' },
-        body: 'please fix',
-        databaseId: 6,
-        state: 'CHANGES_REQUESTED',
-        submittedAt: '2026-02-03T00:00:00Z',
-      };
-      const fixCommit = {
-        commit: {
-          author: { user: { login: 'contributor' } },
-          authoredDate: '2026-02-04T00:00:00Z',
-          oid: 'fix1',
-          status: null,
-          statusCheckRollup: null,
-        },
-      };
-      const node = makeNode({
-        commits: { nodes: [fixCommit] },
-        reviews: { nodes: [humanCR, { ...botGraphQL, state: 'CHANGES_REQUESTED' }], totalCount: 2 },
-        title: 'PR',
-      });
-      const prGraphql = await assembleFromGraphQL(node);
-      const prRest = await assembleFetchedPR(
-        {
-          ...baseSignals,
-          reviews: [
-            {
-              body: 'please fix',
-              id: 6,
-              state: 'CHANGES_REQUESTED',
-              submitted_at: '2026-02-03T00:00:00Z',
-              user: { login: 'maintainer' },
-            },
-            { ...botRest, state: 'CHANGES_REQUESTED' },
-          ],
-        },
-        CONFIG,
-        async () => commit,
-      );
-
-      expect(prGraphql.waitReason).toBe('changes_addressed');
-      expect(prRest.waitReason).toBe('changes_addressed');
-    });
+    expect(prGraphql.waitReason).toBe('changes_addressed');
+    expect(prRest.waitReason).toBe('changes_addressed');
   });
 });
 

@@ -18,6 +18,11 @@ export interface ReviewComment {
   pull_request_review_id?: number | null;
 }
 
+/** True when a review's author is a bot (#1840); bots never set the review decision. */
+function isBotReview(review: { user?: { login?: string; type?: string | null } | null }): boolean {
+  return isBotAuthor(review.user?.login ?? '', review.user?.type);
+}
+
 /**
  * Determine review decision from reviews list.
  * Groups reviews by user, keeping each user's latest verdict, then checks
@@ -42,7 +47,7 @@ export function determineReviewDecision(
   for (const review of reviews) {
     const login = review.user?.login;
     const state = review.state;
-    if (!login || !state || isBotAuthor(login, review.user?.type)) continue;
+    if (!login || !state || isBotReview(review)) continue;
     if (state === 'DISMISSED') {
       latestByUser.delete(login);
     } else if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {
@@ -78,7 +83,7 @@ export function getLatestChangesRequestedDate(
 ): string | undefined {
   let latest: string | undefined;
   for (const review of reviews) {
-    if (review.state !== 'CHANGES_REQUESTED' || isBotAuthor(review.user?.login ?? '', review.user?.type)) continue;
+    if (review.state !== 'CHANGES_REQUESTED' || isBotReview(review)) continue;
     if (review.submitted_at && (!latest || review.submitted_at > latest)) {
       latest = review.submitted_at;
     }
