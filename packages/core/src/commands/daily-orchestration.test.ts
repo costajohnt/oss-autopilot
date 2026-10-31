@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { FetchedPR, DailyDigest, CommentedIssue } from '../core/types.js';
+import type { FetchedPR, DailyDigest, CommentedIssue, StoredMergedPR } from '../core/types.js';
 import { makeFetchedPR } from '../core/test-utils.js';
 import type { FetchPRsResult } from '../core/pr-monitor.js';
 
@@ -49,7 +49,7 @@ const mockUndismissIssue = vi.fn();
 const mockGetStatusOverride = vi.fn();
 const mockAddMergedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
-const mockGetMergedPRs = vi.fn((): Array<{ url: string; title: string; mergedAt: string }> => []);
+const mockGetMergedPRs = vi.fn((): StoredMergedPR[] => []);
 const mockRenameRepo = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
