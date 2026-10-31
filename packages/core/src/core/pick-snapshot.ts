@@ -63,13 +63,9 @@ export interface PickTraits {
 /** Open PRs by others that really compete: closing the issue, or in the issue's repo. Drafts are left out. */
 export function competingPRCount(v: Pick<IssueVerification, 'owner' | 'repo' | 'linkedPRs'>): number {
   const sameRepo = `https://github.com/${v.owner}/${v.repo}/pull/`.toLowerCase();
-  return v.linkedPRs.filter(
-    (pr) =>
-      pr.state === 'open' &&
-      !pr.isOwn &&
-      !pr.isDraft &&
-      (pr.linkType === 'closing' || pr.url.toLowerCase().startsWith(sameRepo)),
-  ).length;
+  const isCompeting = (pr: IssueVerification['linkedPRs'][number]) =>
+    pr.linkType === 'closing' || pr.url.toLowerCase().startsWith(sameRepo);
+  return v.linkedPRs.filter((pr) => pr.state === 'open' && !pr.isOwn && !pr.isDraft && isCompeting(pr)).length;
 }
 
 /** The pick traits a verification already carries, so a pick costs no extra API call. */
