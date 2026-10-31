@@ -41,8 +41,8 @@ describe('pickSnapshotFromVet (#1824)', () => {
 describe('pick traits', () => {
   it('records labels, raw author association, bot flag, comments and first-in-repo', () => {
     const snap = pickSnapshotFromVet(vet({ issue: { ...vet().issue, labels: ['bug', 'help wanted'] } }), 'vet', {
-      authorAssociation: 'FIRST_TIME_CONTRIBUTOR',
-      authorIsBot: false,
+      issueAuthorAssociation: 'FIRST_TIME_CONTRIBUTOR',
+      issueAuthorIsBot: false,
       commentCount: 3,
       firstInRepo: true,
     });
@@ -106,8 +106,8 @@ const verification = (overrides: Partial<IssueVerification>) =>
 describe('traitsFromVerification', () => {
   it('carries author, comments and the competing count', () => {
     expect(traitsFromVerification(verification({}))).toEqual({
-      authorAssociation: 'NONE',
-      authorIsBot: true,
+      issueAuthorAssociation: 'NONE',
+      issueAuthorIsBot: true,
       commentCount: 4,
       competingPRs: 1,
       mentioningPRs: 0,
@@ -129,7 +129,7 @@ describe('traitsFromVerification', () => {
 
   it('leaves out traits GitHub did not return', () => {
     const traits = traitsFromVerification(verification({ authorAssociation: null, commentCount: null }));
-    expect(traits).not.toHaveProperty('authorAssociation');
+    expect(traits).not.toHaveProperty('issueAuthorAssociation');
     expect(traits).not.toHaveProperty('commentCount');
   });
 });

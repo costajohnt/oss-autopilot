@@ -44,7 +44,10 @@ function state(overrides: Partial<AgentState>): AgentState {
 }
 
 const labelled = (label: string) => merged(1, { pick: { ...pick(8), labels: [label] } });
-const labelKeys = (report: ReturnType<typeof computeEvalReport>) => report.byLabel.map((bucket) => bucket.key);
+function groupsOf(label: string): string[] {
+  const report = computeEvalReport(state({ mergedPRs: [labelled(label)] }));
+  return report.byLabel.map((bucket) => bucket.key);
+}
 
 describe('computeEvalReport (#1825)', () => {
   it('counts dormant PRs against the merge rate and computes medians', () => {
@@ -213,7 +216,6 @@ describe('computeEvalReport (#1825)', () => {
       ['debug', 'none of these'],
       ['docker', 'none of these'],
     ];
-    const groupsOf = (label: string) => labelKeys(computeEvalReport(state({ mergedPRs: [labelled(label)] })));
     expect(cases.map(([label]) => [label, groupsOf(label)])).toEqual(cases.map(([label, g]) => [label, [g]]));
   });
 

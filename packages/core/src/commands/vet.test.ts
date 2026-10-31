@@ -167,7 +167,7 @@ describe('runVet', () => {
     // Same rule as vet-list: closed, taken and own-PR issues record no pick.
     for (const verdict of ['closed', 'taken', 'own-open-pr']) {
       mockRecordPickSnapshots.mockClear();
-      mockFetchVerification.mockResolvedValue({ owner: 'owner', repo: 'repo', verdict, linkedPRs: [] });
+      mockFetchVerification.mockResolvedValue({ verdict, owner: 'owner', repo: 'repo', linkedPRs: [] });
       await runVet({ issueUrl: TEST_ISSUE_URL });
       expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
     }

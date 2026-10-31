@@ -31,7 +31,8 @@ export function pickSnapshotFromVet(
   // ponytail: when verification failed, scout's first linked PR gives a 0/1
   // lower bound; callers pass the verified count otherwise.
   const fromScout = vet.linkedPRClassification && Number(vet.linkedPRClassification === 'other_open');
-  const competingPRs = traits.competingPRs ?? fromScout;
+  const { competingPRs = fromScout, ...rest } = traits;
+  const recorded = Object.entries({ ...rest, competingPRs }).filter(([, value]) => value !== undefined);
   return {
     issueUrl: vet.issue.url,
     grade: vet.grade.score,
@@ -41,20 +42,15 @@ export function pickSnapshotFromVet(
     source,
     capturedAt: new Date().toISOString(),
     labels: vet.issue.labels,
-    ...(traits.authorAssociation !== undefined && { issueAuthorAssociation: traits.authorAssociation }),
-    ...(traits.authorIsBot !== undefined && { issueAuthorIsBot: traits.authorIsBot }),
-    ...(competingPRs !== undefined && { competingPRs }),
-    ...(traits.mentioningPRs !== undefined && { mentioningPRs: traits.mentioningPRs }),
-    ...(traits.firstInRepo !== undefined && { firstInRepo: traits.firstInRepo }),
-    ...(traits.commentCount !== undefined && { commentCount: traits.commentCount }),
+    ...(Object.fromEntries(recorded) as PickTraits),
   };
 }
 
 /** Vet-time facts the vet output itself does not carry. All optional: each is best-effort. */
 export interface PickTraits {
   /** GitHub author association of the issue author, raw (OWNER, NONE, ...). */
-  authorAssociation?: string;
-  authorIsBot?: boolean;
+  issueAuthorAssociation?: string;
+  issueAuthorIsBot?: boolean;
   commentCount?: number;
   /** Open, non-draft closing PRs by others, when the caller has a verification. */
   competingPRs?: number;
@@ -67,8 +63,8 @@ export interface PickTraits {
 export function traitsFromVerification(v: IssueVerification): PickTraits {
   const open = v.linkedPRs.filter((pr) => pr.state === 'open' && !pr.isOwn);
   return {
-    ...(v.authorAssociation !== null && { authorAssociation: v.authorAssociation }),
-    authorIsBot: v.authorIsBot,
+    ...(v.authorAssociation !== null && { issueAuthorAssociation: v.authorAssociation }),
+    issueAuthorIsBot: v.authorIsBot,
     ...(v.commentCount !== null && { commentCount: v.commentCount }),
     // Only a closing PR is a claim; a cross-reference is a mention (see issue-verification).
     competingPRs: open.filter((pr) => pr.linkType === 'closing' && !pr.isDraft).length,
