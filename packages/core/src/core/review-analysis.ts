@@ -18,6 +18,11 @@ export interface ReviewComment {
   pull_request_review_id?: number | null;
 }
 
+/** True when a review's author is a bot (#1840); bots never set the review decision. */
+function isBotReview(review: { user?: { login?: string; type?: string | null } | null }): boolean {
+  return isBotAuthor(review.user?.login ?? '', review.user?.type);
+}
+
 /**
  * Determine review decision from reviews list.
  * Groups reviews by user, keeping each user's latest verdict, then checks
@@ -26,9 +31,12 @@ export interface ReviewComment {
  * Only APPROVED, CHANGES_REQUESTED and DISMISSED change a reviewer's standing
  * verdict on GitHub. COMMENTED is also what GitHub records for every inline
  * reply, so it must not overwrite an earlier verdict from the same reviewer.
+ *
+ * Bot-authored reviews (e.g. an AI review bot posting APPROVE) are ignored so a
+ * bot alone never reads as maintainer approval or a changes request (#1840).
  */
 export function determineReviewDecision(
-  reviews: Array<{ state?: string | null; user?: { login?: string } | null }>,
+  reviews: Array<{ state?: string | null; user?: { login?: string; type?: string | null } | null }>,
 ): ReviewDecision {
   if (reviews.length === 0) {
     return 'review_required';
@@ -39,7 +47,7 @@ export function determineReviewDecision(
   for (const review of reviews) {
     const login = review.user?.login;
     const state = review.state;
-    if (!login || !state) continue;
+    if (!login || !state || isBotReview(review)) continue;
     if (state === 'DISMISSED') {
       latestByUser.delete(login);
     } else if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {
@@ -61,15 +69,22 @@ export function determineReviewDecision(
 }
 
 /**
- * Get the date of the latest CHANGES_REQUESTED review (from any reviewer).
+ * Get the date of the latest CHANGES_REQUESTED review (from any human reviewer).
  * Used to detect needs_changes status when review feedback is in inline comments.
+ * Bot reviews are skipped (#1840): a bot re-reviewing every push would otherwise
+ * move the date past the author's fix commit.
  */
 export function getLatestChangesRequestedDate(
-  reviews: Array<{ state?: string | null; submitted_at?: string | null }>,
+  reviews: Array<{
+    state?: string | null;
+    submitted_at?: string | null;
+    user?: { login?: string; type?: string | null } | null;
+  }>,
 ): string | undefined {
   let latest: string | undefined;
   for (const review of reviews) {
-    if (review.state === 'CHANGES_REQUESTED' && review.submitted_at && (!latest || review.submitted_at > latest)) {
+    if (review.state !== 'CHANGES_REQUESTED' || isBotReview(review)) continue;
+    if (review.submitted_at && (!latest || review.submitted_at > latest)) {
       latest = review.submitted_at;
     }
   }

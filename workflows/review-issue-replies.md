@@ -9,7 +9,7 @@
 
 First, filter `data.daily.commentedIssues` to entries with `status === 'new_response'`. **If the filtered list is empty** (no issues, undefined, or all already reviewed), inform the user: "No new issue replies to review." Then return to the core router (`commands/oss.md`) — **After Each Action** section.
 
-When there are issues to review, display each one with the user's original comment alongside the maintainer's reply so the thread stays readable in context (#1290). Both bodies are pre-truncated to 200 chars by the data layer.
+When there are issues to review, display each one (`issue` below is one filtered entry) with the user's original comment alongside the maintainer's reply so the thread stays readable in context (#1290). Both bodies are pre-truncated to 200 chars by the data layer.
 
 ```
 ## Issue Replies
@@ -20,19 +20,19 @@ Maintainers responded to your comments on these issues:
    https://github.com/owner/repo/issues/123
 
    You commented 5 days ago:
-   > {data.userLastCommentBody}
+   > {issue.userLastCommentBody}
 
-   @{data.lastResponseAuthor} replied:
-   > {data.lastResponseBody}
+   @{issue.lastResponseAuthor} replied:
+   > {issue.lastResponseBody}
 
 2. **owner/repo#456** — Another issue title
    https://github.com/owner/repo/issues/456
 
    You commented 2 days ago:
-   > {data.userLastCommentBody}
+   > {issue.userLastCommentBody}
 
-   @{data.lastResponseAuthor} replied:
-   > {data.lastResponseBody}
+   @{issue.lastResponseAuthor} replied:
+   > {issue.lastResponseBody}
 ```
 
 Both `userLastCommentBody` and `lastResponseBody` are present on every `new_response` entry. If a body is empty (rare; e.g. a comment that was edited to blank), render `> _(no text)_` instead of an empty quote line.
@@ -51,7 +51,7 @@ When the user picks "Reply with a question":
 
 1. **Surface context first.** Re-display the user's original comment and the maintainer's reply (the `userLastCommentBody` / `lastResponseBody` already shown above) so the user has both visible while composing the question.
 2. **Prompt for the question text.** Use a free-form input ("What do you want to ask?"). Keep it short — clarifying questions are typically 1–2 sentences. Discourage rehashing the original comment; the maintainer can scroll up.
-3. **Route through `draft-review-post`.** Pass the question text, target URL (`{data.url}`), and a hint that this is an issue comment (not a PR comment) so the skill emits the correct `gh issue comment {URL} --body-file ...` command.
+3. **Route through `draft-review-post`.** Pass the question text, target URL (`{issue.url}`), and a hint that this is an issue comment (not a PR comment) so the skill emits the correct `gh issue comment {URL} --body-file ...` command.
 4. **Do NOT dismiss the issue.** The issue stays in the next session's `commentedIssues` so the user is reminded if the maintainer hasn't replied yet. Auto-undismiss handles the case where the maintainer answers the follow-up.
 5. **Re-prompt for this same issue** with the standard action list above. The user can then mark-as-reviewed, skip, or pick a different action — the question is in their drafts folder either way.
 
