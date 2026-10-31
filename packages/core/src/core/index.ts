@@ -94,6 +94,7 @@ export {
   CRITICAL_STATUSES,
   applyStatusOverrides,
   computeRepoSignals,
+  computeLedgerRepoSignals,
   groupPRsByRepo,
   assessCapacity,
   collectActionableIssues,

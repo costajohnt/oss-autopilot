@@ -102,6 +102,12 @@ const LedgerPredictionFields = {
   lastCiStatus: z.string().optional(),
   /** When ledger-backfill got GitHub's answer for this PR; later runs skip it. */
   backfilledAt: z.string().optional(),
+  /**
+   * When ledger-backfill looked for `firstMaintainerResponseAt`. Entries
+   * backfilled before that lookup existed are re-queried once; a PR nobody
+   * answered keeps this stamp without the field, so it is not re-queried.
+   */
+  responseBackfilledAt: z.string().optional(),
 };
 
 export const StoredMergedPRSchema = z

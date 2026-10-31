@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { computeSuccessGrade, deriveGradeSignals, reconcileRecommendation } from './issue-grading.js';
+import {
+  computeSuccessGrade,
+  deriveGradeSignals,
+  gradeFromCandidate,
+  reconcileRecommendation,
+} from './issue-grading.js';
+import { computeLedgerRepoSignals } from './daily-logic.js';
 
 // Success score is on a 1-10 scale (#249 follow-up). The three signal bands
 // map to 10 / 7 / 4 / 1 (best→worst); the overall score is the worst of the
@@ -377,5 +383,28 @@ describe('computeSuccessGrade', () => {
       expect(result.score).toBe(7);
       expect(result.reason).toMatch(/unknown|missing/i);
     });
+  });
+});
+
+describe('grading with ledger-derived avgResponseDays', () => {
+  it('grades the response band from the median written by daily', () => {
+    const derived = computeLedgerRepoSignals(
+      [
+        {
+          url: 'https://github.com/o/r/pull/1',
+          openedAt: '2026-01-01T00:00:00Z',
+          firstMaintainerResponseAt: '2026-01-11T00:00:00Z',
+        },
+      ],
+      [],
+    ).get('o/r')!;
+    const grade = gradeFromCandidate({
+      repo: 'o/r',
+      projectHealth: { checkFailed: true } as never,
+      getRepoScore: () => ({ mergedPRCount: 4, closedWithoutMergeCount: 0, avgResponseDays: derived.avgResponseDays }),
+    });
+    // 10 days → the 7 band; without the value it would be an unknown.
+    expect(grade.reason).toContain('10-day avg response');
+    expect(grade.reason).not.toContain('maintainer responsiveness');
   });
 });
