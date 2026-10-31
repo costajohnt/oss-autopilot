@@ -57,6 +57,28 @@ describe('getFirstMaintainerResponseAt (#1461)', () => {
     const comments = [{ user: { login: 'Contributor' }, created_at: '2025-06-01T00:00:00Z' }];
     expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBeUndefined();
   });
+  it('uses the dormancy-clock maintainer rule: issue comments need a maintainer association, reviews do not', () => {
+    const comments = [
+      { user: { login: 'drive-by' }, author_association: 'NONE', created_at: '2025-06-01T00:00:00Z' },
+      { user: { login: 'codeowner' }, author_association: 'CONTRIBUTOR', created_at: '2025-06-02T00:00:00Z' },
+      { user: { login: 'maint' }, author_association: 'MEMBER', created_at: '2025-06-05T00:00:00Z' },
+    ];
+    const reviews = [
+      { user: { login: 'codeowner' }, author_association: 'CONTRIBUTOR', submitted_at: '2025-06-03T00:00:00Z' },
+    ];
+    expect(getFirstMaintainerResponseAt(comments, reviews, 'contributor')).toBe('2025-06-03T00:00:00Z');
+    expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBe('2025-06-05T00:00:00Z');
+    // Agrees with the dormancy clock on the same timeline.
+    expect(getLastMaintainerActivity(comments.slice(0, 2), [], [], [], 'contributor', '2025-05-01T00:00:00Z')).toEqual({
+      lastMaintainerActivityAt: '2025-05-01T00:00:00Z',
+      authorPingsSinceMaintainerActivity: 0,
+    });
+  });
+
+  it('skips bots identified only by user type', () => {
+    const comments = [{ user: { login: 'helper', type: 'Bot' }, created_at: '2025-06-01T00:00:00Z' }];
+    expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBeUndefined();
+  });
 });
 
 describe('determineReviewDecision', () => {

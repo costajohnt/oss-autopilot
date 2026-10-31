@@ -88,6 +88,7 @@ const LEDGER_FIELDS = [
   'lastReviewDecision',
   'lastCiStatus',
   'backfilledAt',
+  'responseRule',
   'closeReason',
   'selfCloseReason',
 ] as const;
@@ -811,6 +812,23 @@ export class StateManager {
   }
 
   /**
+   * Overwrite the first-response lookup on the merged or closed PR matching
+   * `url`. Unlike addMergedPRs/addClosedPRs, which only fill missing fields,
+   * this replaces `firstMaintainerResponseAt` (clearing it when `at` is
+   * undefined) so ledger-backfill can recompute values recorded under an older
+   * maintainer rule. No-op when no PR with that URL is stored.
+   */
+  setLedgerResponse(url: string, at: string | undefined, rule: number): void {
+    const entry =
+      this.state.mergedPRs?.find((pr) => pr.url === url) ?? this.state.closedPRs?.find((pr) => pr.url === url);
+    if (!entry) return;
+    if (at === undefined) delete entry.firstMaintainerResponseAt;
+    else entry.firstMaintainerResponseAt = at;
+    entry.responseRule = rule;
+    this.autoSave();
+  }
+
+  /**
    * Stamp `learningsExtractedAt` on the merged or closed PR matching `url` (#867).
    * No-op when no PR with that URL is stored.
    */
@@ -1172,33 +1190,6 @@ export class StateManager {
    */
   updateRepoScore(repo: string, updates: RepoScoreUpdate): void {
     repoScoring.updateRepoScore(this.state, repo, updates);
-    this.autoSave();
-  }
-
-  /**
-   * Increment the merged PR count for a repository.
-   * @param repo - Repository in "owner/repo" format
-   */
-  incrementMergedCount(repo: string): void {
-    repoScoring.incrementMergedCount(this.state, repo);
-    this.autoSave();
-  }
-
-  /**
-   * Increment the closed-without-merge PR count.
-   * @param repo - Repository in "owner/repo" format
-   */
-  incrementClosedCount(repo: string): void {
-    repoScoring.incrementClosedCount(this.state, repo);
-    this.autoSave();
-  }
-
-  /**
-   * Mark a repository as hostile (score zeroed).
-   * @param repo - Repository in "owner/repo" format
-   */
-  markRepoHostile(repo: string): void {
-    repoScoring.markRepoHostile(this.state, repo);
     this.autoSave();
   }
 

@@ -15,6 +15,7 @@ import {
   formatSummary,
   toShelvedPRRef,
   computeRepoSignals,
+  computeLedgerRepoSignals,
   groupPRsByRepo,
   computeActionMenu,
   applyStatusOverrides,
@@ -1121,5 +1122,111 @@ describe('lastReviewStateFromDigest (#1824)', () => {
       lastReviewDecision: 'changes_requested',
       lastCiStatus: 'failing',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeLedgerRepoSignals
+// ---------------------------------------------------------------------------
+
+const LEDGER_NOW = Date.parse('2026-06-01T00:00:00Z');
+const LEDGER_DAY_MS = 86_400_000;
+/** ISO timestamp `n` days after `base` (default 2026-01-01). */
+function isoDay(n: number, base = '2026-01-01T00:00:00Z'): string {
+  const date = new Date(Date.parse(base) + n * LEDGER_DAY_MS);
+  return date.toISOString();
+}
+
+describe('computeLedgerRepoSignals', () => {
+  const NOW = LEDGER_NOW;
+  let n = 0;
+  const pr = (fields: Omit<Parameters<typeof computeLedgerRepoSignals>[0][number], 'url'> = {}) => {
+    n += 1;
+    return { url: `https://github.com/o/r/pull/${n}`, ...fields };
+  };
+  const answered = (days: number) => pr({ openedAt: isoDay(0), firstMaintainerResponseAt: isoDay(days) });
+  const signals = (ledger: Array<ReturnType<typeof pr>>, open: Parameters<typeof computeLedgerRepoSignals>[1] = []) =>
+    computeLedgerRepoSignals(ledger, open, NOW).get('o/r');
+
+  it('takes the median days to first response, ignoring outliers', () => {
+    expect(signals([answered(1), answered(2.5), answered(90)])).toEqual({
+      avgResponseDays: 2.5,
+      hasHostileComments: false,
+    });
+  });
+
+  it('does not grade fast when most PRs closed unanswered (censored, not dropped)', () => {
+    const stale = Array.from({ length: 5 }, () =>
+      pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseRule: 2, closeReason: 'stale' }),
+    );
+    const avg = signals([...stale, answered(1)])?.avgResponseDays;
+    expect(avg).toBe(60);
+    expect(avg).toBeGreaterThanOrEqual(14);
+  });
+
+  it('ignores lower bounds under 14 days: PRs opened yesterday do not make a repo look fast', () => {
+    const waiting = [1, 2, 3].map((i) => ({
+      url: `https://github.com/o/r/pull/${800 + i}`,
+      createdAt: isoDay(-1, '2026-06-01T00:00:00Z'),
+    }));
+    const avg = signals([answered(20), answered(20)], waiting)?.avgResponseDays;
+    expect(avg).toBeNull(); // 2 exact samples; the 1-day waits are uninformative
+  });
+
+  it('ignores quick unanswered closes and self-closes as lower bounds', () => {
+    const quick = pr({ openedAt: isoDay(0), closedAt: isoDay(2), responseRule: 2, closeReason: 'rejected' });
+    const self = pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseRule: 2, closeReason: 'self-closed' });
+    expect(signals([quick, self, answered(20), answered(20)])?.avgResponseDays).toBeNull();
+  });
+
+  it('counts a confirmed-unanswered close only under the current maintainer rule', () => {
+    const legacy = pr({ openedAt: isoDay(0), closedAt: isoDay(60), responseRule: 1, closeReason: 'stale' });
+    expect(signals([legacy, answered(20), answered(20)])?.avgResponseDays).toBeNull();
+  });
+
+  it('uses mergedAt for merges without a recorded response and now for open PRs still waiting', () => {
+    const merged = pr({ openedAt: isoDay(0), mergedAt: isoDay(4) });
+    const open = [
+      { url: 'https://github.com/o/r/pull/900', createdAt: isoDay(0), firstMaintainerResponseAt: isoDay(2) },
+      { url: 'https://github.com/o/r/pull/901', createdAt: isoDay(-30, '2026-06-01T00:00:00Z') },
+    ];
+    // samples: 4 (merge), 2 (answered open), 30 (waiting) -> median 4
+    expect(signals([merged], open)?.avgResponseDays).toBe(4);
+  });
+
+  it('skips closed PRs not yet checked for a response', () => {
+    const unchecked = pr({ openedAt: isoDay(0), closedAt: isoDay(60) });
+    expect(signals([unchecked, answered(1), answered(2)])?.avgResponseDays).toBeNull();
+  });
+
+  it('is null below 3 samples, and with missing, unparseable, or negative spans', () => {
+    expect(signals([answered(1), answered(2)])?.avgResponseDays).toBeNull();
+    const unusable = [
+      pr({ openedAt: isoDay(0) }),
+      pr({ firstMaintainerResponseAt: isoDay(1) }),
+      pr({ openedAt: 'garbage', firstMaintainerResponseAt: isoDay(1) }),
+      pr({ openedAt: isoDay(5), firstMaintainerResponseAt: isoDay(1) }),
+    ];
+    expect(signals(unusable)).toEqual({ avgResponseDays: null, hasHostileComments: false });
+  });
+
+  it('excludes PRs opened more than 12 months ago', () => {
+    const old = pr({ openedAt: '2025-01-01T00:00:00Z', firstMaintainerResponseAt: '2025-01-21T00:00:00Z' });
+    expect(signals([old, old, answered(1), answered(1)])?.avgResponseDays).toBeNull();
+    expect(signals([old, answered(1), answered(1), answered(1)])?.avgResponseDays).toBe(1);
+  });
+
+  it('marks a repo hostile only when a closed PR there has closeReason ai-policy', () => {
+    const result = computeLedgerRepoSignals(
+      [pr({ closeReason: 'ai-policy' }), { url: 'https://github.com/x/y/pull/1', closeReason: 'rejected' }],
+      [],
+      NOW,
+    );
+    expect(result.get('o/r')?.hasHostileComments).toBe(true);
+    expect(result.get('x/y')?.hasHostileComments).toBe(false);
+  });
+
+  it('skips unparseable URLs', () => {
+    expect(computeLedgerRepoSignals([{ url: 'not-a-url', closeReason: 'ai-policy' }], []).size).toBe(0);
   });
 });

@@ -18,7 +18,7 @@ A repo where you merged four PRs two years ago can carry a history score of 9 wh
 - `rubricScore` — the fresh **health score** (the field name predates this page and is kept for back-compat).
 - `historyScore` — the cached **history score** for the same repo, included when the user has one in local state; absent otherwise.
 
-The success-likelihood score (`grade: {score, reason}`) is a third signal on a 1-10 scale, derived on every surface from the repo health scout fetches while vetting each candidate (merge rate, commit activity) plus the history score's response time where one exists; `vet` re-fetches health, so it can disagree with an earlier `search` grade when the repo changed in between. An `approve` whose grade is the bottom band is downgraded to `needs_review` (#332). See [Success Likelihood Score](#success-likelihood-score).
+The success-likelihood score (`grade: {score, reason}`) is a third signal on a 1-10 scale, derived on every surface from the repo health scout fetches while vetting each candidate (merge rate, commit activity) plus the history score's response time where one exists (`avgResponseDays`: the median days from open to first maintainer response across the user's PRs opened in that repo in the last 12 months, recomputed by `daily`; a merge with no recorded reply counts at its merge date, and an unanswered PR counts as a lower bound (its close date, or now if still open) once it has waited 14 days, so ignored PRs pull it slower while brand-new ones don't make it look fast; self-closes are left out, and it stays unknown below 3 PRs); `vet` re-fetches health, so it can disagree with an earlier `search` grade when the repo changed in between. An `approve` whose grade is the bottom band is downgraded to `needs_review` (#332). See [Success Likelihood Score](#success-likelihood-score).
 
 ## History score (yours)
 
@@ -70,7 +70,7 @@ If maintainer-health signals mark the repo as responsive (see `computeRepoSignal
 
 #### Hostility (−2)
 
-If OSS Autopilot has detected hostile maintainer comments on the user's PRs here (see `markRepoHostile`), subtract 2. This is a strong negative signal — combined with a few closed PRs, a repo can drop below the default `minRepoScoreThreshold` (4) and stop surfacing in `search` results entirely.
+If any of the user's closed PRs here was closed under an AI-contribution policy (ledger `closeReason: 'ai-policy'`, set by `ledger-backfill`), subtract 2. Daily re-derives this from the ledger each run (`computeLedgerRepoSignals` in `daily-logic.ts`), so correcting a mislabeled close clears it. This is a strong negative signal — combined with a few closed PRs, a repo can drop below the default `minRepoScoreThreshold` (4) and stop surfacing in `search` results entirely.
 
 #### Clamp [1, 10]
 

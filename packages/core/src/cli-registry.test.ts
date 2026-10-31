@@ -2213,7 +2213,7 @@ describe('ledger-backfill command', () => {
     mockRunLedgerBackfill.mockResolvedValue({
       queried: 12,
       unresolved: 1,
-      filled: { openedAt: 10, issueUrl: 7, closeReason: 3, pick: 4 },
+      filled: { openedAt: 10, issueUrl: 7, closeReason: 3, pick: 4, firstMaintainerResponseAt: 2 },
       listFiles: ['/tmp/list.md'],
       gistSyncWarning: 'push failed',
     });
@@ -2223,7 +2223,7 @@ describe('ledger-backfill command', () => {
     expect(mockRunLedgerBackfill).toHaveBeenCalledWith({ issueListPath: '/tmp/list.md' });
     const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
     expect(out).toContain('Queried 12 ledger PRs (1 unresolved).');
-    expect(out).toContain('openedAt 10, issueUrl 7, closeReason 3, pick 4');
+    expect(out).toContain('openedAt 10, issueUrl 7, closeReason 3, pick 4, firstMaintainerResponseAt 2');
     expect(out).toContain('Warning: push failed');
   });
 });

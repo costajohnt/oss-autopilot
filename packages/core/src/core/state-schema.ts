@@ -123,6 +123,13 @@ const LedgerPredictionFields = {
   lastCiStatus: z.string().optional(),
   /** When ledger-backfill got GitHub's answer for this PR; later runs skip it. */
   backfilledAt: z.string().optional(),
+  /**
+   * Version of the maintainer rule (`MAINTAINER_RESPONSE_RULE`) ledger-backfill
+   * last computed `firstMaintainerResponseAt` under. Entries with an older or
+   * missing version are re-queried once and their value overwritten; a PR
+   * nobody answered carries the current version without the field.
+   */
+  responseRule: z.number().int().optional(),
 };
 
 export const StoredMergedPRSchema = z

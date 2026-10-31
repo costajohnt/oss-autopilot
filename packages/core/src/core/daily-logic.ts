@@ -18,6 +18,8 @@
 import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
+import { parseGitHubUrl } from './urls.js';
+import { MAINTAINER_RESPONSE_RULE } from './review-analysis.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
   FetchedPR,
@@ -271,6 +273,132 @@ export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSi
     const isResponsive = repoPRs.some((pr) => pr.lastMaintainerComment && !STALE_STATUSES.has(pr.stalenessTier));
     const hasActiveMaintainers = repoPRs.some((pr) => !STALE_STATUSES.has(pr.stalenessTier));
     result.set(repo, { isResponsive, hasActiveMaintainers });
+  }
+  return result;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** Fewer samples than this and avgResponseDays stays null (unknown). */
+const MIN_RESPONSE_SAMPLES = 3;
+/** Only PRs opened within this window feed avgResponseDays. */
+const RESPONSE_WINDOW_DAYS = 365;
+/**
+ * A lower bound (unanswered PR) counts only at or above this many days: the
+ * top of the 7-point band in issue-grading's gradeResponsiveness. A shorter
+ * wait says nothing about the repo yet and would only pull the median fast.
+ */
+const CENSORED_MIN_DAYS = 14;
+
+const toMs = (t: string | undefined) => (t ? Date.parse(t) : undefined);
+
+/** Days from `openedAt` to `endMs`, or undefined when unusable or opened before `windowStart`. */
+function responseDays(
+  openedAt: string | undefined,
+  endMs: number | undefined,
+  windowStart: number,
+): number | undefined {
+  if (endMs === undefined || !openedAt) return undefined;
+  const startMs = Date.parse(openedAt);
+  if (startMs < windowStart) return undefined;
+  const days = (endMs - startMs) / MS_PER_DAY;
+  return Number.isFinite(days) && days >= 0 ? days : undefined;
+}
+
+/** Where a ledger entry's response sample ends, and whether that end is only a lower bound. */
+function ledgerSampleEnd(e: {
+  firstMaintainerResponseAt?: string;
+  mergedAt?: string;
+  closedAt?: string;
+  responseRule?: number;
+  closeReason?: string;
+}): { endMs: number | undefined; isLowerBound: boolean } {
+  // mergedAt stands in when no response was recorded; it errs slow.
+  const exact = toMs(e.firstMaintainerResponseAt) ?? toMs(e.mergedAt);
+  if (exact !== undefined) return { endMs: exact, isLowerBound: false };
+  const isConfirmedUnanswered = e.responseRule === MAINTAINER_RESPONSE_RULE && e.closeReason !== 'self-closed';
+  return { endMs: isConfirmedUnanswered ? toMs(e.closedAt) : undefined, isLowerBound: true };
+}
+
+/** Median of `values` (sorts in place), or null with fewer than `minCount`. */
+function medianOf(values: number[], minCount: number): number | null {
+  if (values.length < minCount) return null;
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  if (values.length % 2 === 1) return values[mid];
+  return (values[mid - 1] + values[mid]) / 2;
+}
+
+/**
+ * Per-repo signals derived from the outcome ledger, recomputed each daily run
+ * so a corrected ledger entry corrects the score (no one-way latching):
+ * - avgResponseDays: MEDIAN days to first maintainer response (name kept for
+ *   the schema; median so one forgotten PR doesn't skew it). Unanswered PRs
+ *   are censored, not dropped, so a repo that ignores most PRs can't grade
+ *   fast off the one it answered. Each PR opened in the last 12 months gives:
+ *   - answered: openedAt -> firstMaintainerResponseAt
+ *   - merged with no recorded response: openedAt -> mergedAt (the merge was
+ *     the response; errs slow, since any earlier reply went unrecorded)
+ *   - closed and confirmed unanswered under the current maintainer rule
+ *     (responseRule), except self-closes: openedAt -> closedAt, a lower bound
+ *   - open and still waiting: createdAt -> now, a lower bound
+ *   Lower bounds count only from 14 days (CENSORED_MIN_DAYS): a PR opened
+ *   yesterday or closed within days says nothing yet and would grade fast.
+ *   Null below 3 samples.
+ * - hasHostileComments: any closed PR here has closeReason 'ai-policy'.
+ *
+ * Repos with no ledger or open PR data are absent; callers treat absent as
+ * `{ avgResponseDays: null, hasHostileComments: false }`.
+ */
+export function computeLedgerRepoSignals(
+  ledger: ReadonlyArray<{
+    url: string;
+    openedAt?: string;
+    firstMaintainerResponseAt?: string;
+    mergedAt?: string;
+    closedAt?: string;
+    responseRule?: number;
+    closeReason?: string;
+  }>,
+  openPRs: ReadonlyArray<Pick<FetchedPR, 'url' | 'createdAt' | 'firstMaintainerResponseAt'>>,
+  nowMs: number = Date.now(),
+): Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }> {
+  const byRepo = new Map<string, { samples: number[]; hostile: boolean }>();
+  const windowStart = nowMs - RESPONSE_WINDOW_DAYS * MS_PER_DAY;
+  const add = (
+    url: string,
+    openedAt: string | undefined,
+    endMs: number | undefined,
+    isLowerBound: boolean,
+    closeReason?: string,
+  ) => {
+    const ref = parseGitHubUrl(url);
+    if (!ref) return;
+    const repo = `${ref.owner}/${ref.repo}`;
+    const entry = byRepo.get(repo) ?? { samples: [], hostile: false };
+    byRepo.set(repo, entry);
+    if (closeReason === 'ai-policy') entry.hostile = true;
+    const days = responseDays(openedAt, endMs, windowStart);
+    if (days !== undefined && (!isLowerBound || days >= CENSORED_MIN_DAYS)) entry.samples.push(days);
+  };
+  const seen = new Set<string>();
+  for (const e of ledger) {
+    seen.add(e.url);
+    const { endMs, isLowerBound } = ledgerSampleEnd(e);
+    add(e.url, e.openedAt, endMs, isLowerBound, e.closeReason);
+  }
+  for (const pr of openPRs) {
+    if (seen.has(pr.url)) continue;
+    const exact = toMs(pr.firstMaintainerResponseAt);
+    add(pr.url, pr.createdAt, exact ?? nowMs, exact === undefined);
+  }
+
+  const result = new Map<string, { avgResponseDays: number | null; hasHostileComments: boolean }>();
+  for (const [repo, { samples, hostile }] of byRepo) {
+    const median = medianOf(samples, MIN_RESPONSE_SAMPLES);
+    result.set(repo, {
+      avgResponseDays: median === null ? null : Math.round(median * 10) / 10,
+      hasHostileComments: hostile,
+    });
   }
   return result;
 }

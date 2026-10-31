@@ -4,7 +4,8 @@
     "openedAt": 1,
     "issueUrl": 1,
     "closeReason": 0,
-    "pick": 0
+    "pick": 0,
+    "firstMaintainerResponseAt": 0
   },
   "listFiles": [],
   "unresolved": 1,

@@ -702,7 +702,7 @@ export const commands: CLICommandDef[] = [
               console.log(`\nQueried ${data.queried} ledger PRs (${data.unresolved} unresolved).`);
               const f = data.filled;
               console.log(
-                `  Filled: openedAt ${f.openedAt}, issueUrl ${f.issueUrl}, closeReason ${f.closeReason}, pick ${f.pick}`,
+                `  Filled: openedAt ${f.openedAt}, issueUrl ${f.issueUrl}, closeReason ${f.closeReason}, pick ${f.pick}, firstMaintainerResponseAt ${f.firstMaintainerResponseAt}`,
               );
               console.log(`  List files scanned: ${data.listFiles.length}`);
               if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);

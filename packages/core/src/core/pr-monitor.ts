@@ -709,19 +709,6 @@ export class PRMonitor {
       },
     };
   }
-
-  /**
-   * Update repository scores based on observed PR (called when we detect merged/closed PRs).
-   * @param repo - Repository in "owner/repo" format
-   * @param wasMerged - true if the PR was merged, false if closed without merge
-   */
-  async updateRepoScoreFromObservedPR(repo: string, wasMerged: boolean): Promise<void> {
-    if (wasMerged) {
-      this.stateManager.incrementMergedCount(repo);
-    } else {
-      this.stateManager.incrementClosedCount(repo);
-    }
-  }
 }
 
 /** Timeline event kinds whose actor marks maintainer engagement. */

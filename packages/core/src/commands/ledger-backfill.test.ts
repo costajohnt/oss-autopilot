@@ -34,6 +34,30 @@ const node = (extra: object = {}) => ({
   },
 });
 
+const PAGE_QUERY_MARK = 'repository(owner: $o, name: $r)';
+const fans = (page: number) =>
+  Array.from({ length: 10 }, (_, i) => ({
+    author: { __typename: 'User', login: `fan${page}-${i}` },
+    authorAssociation: 'NONE',
+    createdAt: '2026-01-01T01:00:00Z',
+  }));
+const page = (nodes: object[], hasNextPage: boolean, endCursor: string) => ({
+  firstComments: { pageInfo: { hasNextPage, endCursor }, nodes },
+  reviews: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+});
+/** Batch queries get `batch`; follow-up page queries get `pages(n)` for the n-th follow-up. */
+function route(batch: object, pages: (n: number) => object) {
+  let n = 0;
+  mocks.graphql.mockImplementation(async (query: string) => {
+    if (!query.includes(PAGE_QUERY_MARK)) return batch;
+    n += 1;
+    return { repository: { pullRequest: pages(n) } };
+  });
+}
+
+/** Follow-up page queries the mock received. */
+const pageCalls = () => mocks.graphql.mock.calls.filter(([q]) => String(q).includes(PAGE_QUERY_MARK));
+
 function writeList(entry: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-backfill-'));
   const list = path.join(dir, 'issues.md');
@@ -42,15 +66,21 @@ function writeList(entry: string): string {
   return list;
 }
 
+/** Fresh state with one merged and one closed entry, none backfilled. */
+function freshLedger(): StateManager {
+  vi.clearAllMocks();
+  const sm = new StateManager(true);
+  mocks.state.current = sm;
+  sm.addMergedPRs([{ url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z' }]);
+  sm.addClosedPRs([{ url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z' }]);
+  return sm;
+}
+
 describe('runLedgerBackfill (#1824)', () => {
   let sm: StateManager;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    sm = new StateManager(true);
-    mocks.state.current = sm;
-    sm.addMergedPRs([{ url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z' }]);
-    sm.addClosedPRs([{ url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z' }]);
+    sm = freshLedger();
   });
 
   it('fills fields from one batched query, stamps entries, and skips them next run', async () => {
@@ -68,7 +98,7 @@ describe('runLedgerBackfill (#1824)', () => {
       queried: 2,
       unresolved: 0,
       warnings: ['no curated issue list found; list vet scores were not imported'],
-      filled: { openedAt: 2, issueUrl: 1, closeReason: 1, pick: 0 },
+      filled: { openedAt: 2, issueUrl: 1, closeReason: 1, pick: 0, firstMaintainerResponseAt: 0 },
     });
     expect(sm.getMergedPRs()[0]).toMatchObject({ openedAt: '2026-01-01T00:00:00Z', issueUrl: ISSUE });
     expect(sm.getMergedPRs()[0].backfilledAt).toBeDefined();
@@ -78,8 +108,69 @@ describe('runLedgerBackfill (#1824)', () => {
     expect(mocks.graphql).toHaveBeenCalledTimes(1);
   });
 
-  it('re-fetches self-closed entries recorded before selfCloseReason, once', async () => {
+  it('re-fetches entries backfilled before firstMaintainerResponseAt, once', async () => {
     sm.addMergedPRs([{ url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z', backfilledAt: 'x' }]);
+    sm.addClosedPRs([
+      { url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z', backfilledAt: 'x', responseRule: 2 },
+    ]);
+    mocks.graphql.mockResolvedValue({
+      p0: node({
+        firstComments: {
+          nodes: [
+            { author: { __typename: 'Bot', login: 'ci-helper' }, createdAt: '2026-01-01T01:00:00Z' },
+            { author: { __typename: 'User', login: 'me' }, createdAt: '2026-01-01T02:00:00Z' },
+            { author: { __typename: 'User', login: 'maint' }, createdAt: '2026-01-03T00:00:00Z' },
+          ],
+        },
+        reviews: { nodes: [{ author: { __typename: 'User', login: 'other' }, submittedAt: '2026-01-02T00:00:00Z' }] },
+      }),
+    });
+
+    const result = await runLedgerBackfill();
+    expect(result.queried).toBe(1);
+    expect(result.filled.firstMaintainerResponseAt).toBe(1);
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBe('2026-01-02T00:00:00Z');
+    const rerun = await runLedgerBackfill();
+    expect(rerun.queried).toBe(0);
+  });
+
+  it('counts issue comments only from maintainer associations', async () => {
+    mocks.graphql.mockResolvedValue({
+      p0: node({
+        firstComments: {
+          nodes: [
+            {
+              author: { __typename: 'User', login: 'fan' },
+              authorAssociation: 'NONE',
+              createdAt: '2026-01-01T01:00:00Z',
+            },
+            {
+              author: { __typename: 'User', login: 'maint' },
+              authorAssociation: 'OWNER',
+              createdAt: '2026-01-04T00:00:00Z',
+            },
+          ],
+        },
+      }),
+      p1: node(),
+    });
+    await runLedgerBackfill();
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBe('2026-01-04T00:00:00Z');
+  });
+
+  it('stamps an unanswered PR so it is not re-queried', async () => {
+    mocks.graphql.mockResolvedValue({ p0: node(), p1: node() });
+    await runLedgerBackfill();
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBeUndefined();
+    expect(sm.getMergedPRs()[0].responseRule).toBe(2);
+    const rerun = await runLedgerBackfill();
+    expect(rerun.queried).toBe(0);
+  });
+
+  it('re-fetches self-closed entries recorded before selfCloseReason, once', async () => {
+    sm.addMergedPRs([
+      { url: MERGED, title: 'm', mergedAt: '2026-01-02T00:00:00Z', backfilledAt: 'x', responseRule: 2 },
+    ]);
     sm.addClosedPRs([
       { url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z', backfilledAt: 'x', closeReason: 'self-closed' },
     ]);
@@ -178,5 +269,97 @@ describe('runLedgerBackfill (#1824)', () => {
     mocks.graphql.mockResolvedValue({});
     const list = writeList(`- [o/r#1](${MERGED}) - t\n  - **Pursue (8/10)** - ok\n  - **Done** - PR [#1](${MERGED})\n`);
     expect((await runLedgerBackfill({ issueListPath: list })).filled.pick).toBe(0);
+  });
+});
+
+describe('runLedgerBackfill first-response lookup', () => {
+  let sm: StateManager;
+
+  beforeEach(() => {
+    sm = freshLedger();
+  });
+
+  describe('paging past a page with no maintainer response', () => {
+    it('fetches later pages until a maintainer response turns up', async () => {
+      const maint = {
+        author: { __typename: 'User', login: 'maint' },
+        authorAssociation: 'MEMBER',
+        createdAt: '2026-01-05T00:00:00Z',
+      };
+      const first = node(page(fans(0), true, 'c1'));
+      route({ p0: first, p1: node() }, () => page([maint], false, 'c2'));
+      const result = await runLedgerBackfill();
+      expect(sm.getMergedPRs()[0]).toMatchObject({
+        firstMaintainerResponseAt: '2026-01-05T00:00:00Z',
+        responseRule: 2,
+      });
+      expect(result.filled.firstMaintainerResponseAt).toBe(1);
+      const [pageCall] = pageCalls();
+      expect(pageCall?.[1]).toMatchObject({ o: 'o', r: 'r', n: 1, c: 'c1' });
+    });
+
+    it('records the PR as unanswered after the page bound', async () => {
+      const first = node(page(fans(0), true, 'c0'));
+      route({ p0: first, p1: node() }, (n) => page(fans(n), true, `c${n}`));
+      await runLedgerBackfill();
+      expect(pageCalls()).toHaveLength(4); // 5 pages in all
+      expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBeUndefined();
+      expect(sm.getMergedPRs()[0].responseRule).toBe(2);
+      const rerun = await runLedgerBackfill();
+      expect(rerun.queried).toBe(0);
+    });
+
+    it('leaves the entry for the next run when a page fetch fails', async () => {
+      let calls = 0;
+      mocks.graphql.mockImplementation(async (query: string) => {
+        calls += 1;
+        if (!query.includes(PAGE_QUERY_MARK)) return { p0: node(page(fans(0), true, 'c0')), p1: node() };
+        throw new Error('boom');
+      });
+      const result = await runLedgerBackfill();
+      expect(calls).toBe(2);
+      expect(result.warnings.some((w) => w.includes('response lookup for'))).toBe(true);
+      expect(sm.getMergedPRs()[0].responseRule).toBeUndefined();
+      expect(sm.getClosedPRs()[0].responseRule).toBe(2);
+    });
+  });
+
+  it('recomputes a value recorded under the old maintainer rule once, then leaves it alone', async () => {
+    sm.addMergedPRs([
+      {
+        url: MERGED,
+        title: 'm',
+        mergedAt: '2026-01-02T00:00:00Z',
+        backfilledAt: 'x',
+        firstMaintainerResponseAt: '2026-01-01T01:00:00Z', // a drive-by comment under rule 1
+      },
+    ]);
+    sm.addClosedPRs([
+      { url: CLOSED, title: 'c', closedAt: '2026-01-03T00:00:00Z', backfilledAt: 'x', responseRule: 2 },
+    ]);
+    mocks.graphql.mockResolvedValue({
+      p0: node({
+        firstComments: {
+          nodes: [
+            {
+              author: { __typename: 'User', login: 'fan' },
+              authorAssociation: 'NONE',
+              createdAt: '2026-01-01T01:00:00Z',
+            },
+            {
+              author: { __typename: 'User', login: 'maint' },
+              authorAssociation: 'OWNER',
+              createdAt: '2026-01-06T00:00:00Z',
+            },
+          ],
+        },
+      }),
+    });
+    const first = await runLedgerBackfill();
+    expect(first.queried).toBe(1);
+    expect(sm.getMergedPRs()[0]).toMatchObject({ firstMaintainerResponseAt: '2026-01-06T00:00:00Z', responseRule: 2 });
+    const rerun = await runLedgerBackfill();
+    expect(rerun.queried).toBe(0);
+    expect(sm.getMergedPRs()[0].firstMaintainerResponseAt).toBe('2026-01-06T00:00:00Z');
   });
 });

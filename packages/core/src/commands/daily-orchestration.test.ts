@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { FetchedPR, DailyDigest, CommentedIssue } from '../core/types.js';
+import type { FetchedPR, DailyDigest, CommentedIssue, StoredMergedPR } from '../core/types.js';
 import { makeFetchedPR } from '../core/test-utils.js';
 import type { FetchPRsResult } from '../core/pr-monitor.js';
 
@@ -49,7 +49,7 @@ const mockUndismissIssue = vi.fn();
 const mockGetStatusOverride = vi.fn();
 const mockAddMergedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
-const mockGetMergedPRs = vi.fn((): Array<{ url: string; title: string; mergedAt: string }> => []);
+const mockGetMergedPRs = vi.fn((): StoredMergedPR[] => []);
 const mockRenameRepo = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
@@ -623,6 +623,12 @@ describe('executeDailyCheck() — output shape', () => {
 // executeDailyCheck() — repo score / merged count updates
 // ---------------------------------------------------------------------------
 
+/** ISO timestamp `days` before now; ledger response samples only count within 12 months. */
+function ago(days: number): string {
+  const date = new Date(Date.now() - days * 86_400_000);
+  return date.toISOString();
+}
+
 describe('executeDailyCheck() — repo score updates', () => {
   it('updates merged PR counts in state for each repo', async () => {
     const mergedRepos = new Map([
@@ -678,6 +684,47 @@ describe('executeDailyCheck() — repo score updates', () => {
     const warning = result.warnings.find((w) => w.phase === 'repo-scores' && w.operation === 'update merged counts');
     expect(warning).toBeDefined();
     expect(warning?.message).toContain('1 of 2 merged count update(s) failed');
+  });
+
+  it('writes ledger-derived avgResponseDays and hostility for every scored repo', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        repoScores: {
+          'owner/a': { repo: 'owner/a', mergedPRCount: 2, closedWithoutMergeCount: 0, score: 7 },
+          'owner/quiet': { repo: 'owner/quiet', mergedPRCount: 1, closedWithoutMergeCount: 0, score: 6 },
+        },
+      }),
+    );
+    mockGetMergedPRs.mockReturnValue([
+      {
+        url: 'https://github.com/owner/a/pull/1',
+        title: 'x',
+        mergedAt: ago(20),
+        openedAt: ago(30),
+        firstMaintainerResponseAt: ago(29),
+      },
+      {
+        url: 'https://github.com/owner/a/pull/2',
+        title: 'y',
+        mergedAt: ago(20),
+        openedAt: ago(30),
+        firstMaintainerResponseAt: ago(27),
+      },
+      // No recorded response: the merge (2 days in) stands in for it.
+      { url: 'https://github.com/owner/a/pull/3', title: 'z', mergedAt: ago(28), openedAt: ago(30) },
+    ]);
+
+    await executeDailyCheck('test-token');
+
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/a', {
+      avgResponseDays: 2,
+      signals: { hasHostileComments: false },
+    });
+    // No samples: reset to unknown rather than left at a stale value.
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/quiet', {
+      avgResponseDays: null,
+      signals: { hasHostileComments: false },
+    });
   });
 
   it('syncs trusted projects for repos with merged PRs', async () => {
