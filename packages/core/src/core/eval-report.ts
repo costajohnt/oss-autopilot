@@ -7,7 +7,7 @@
  * the denominator, so stalled work cannot flatter the number.
  */
 
-import type { AgentState, StoredClosedPR } from './types.js';
+import type { AgentState, PickSnapshot, StoredClosedPR } from './types.js';
 
 type Outcome = 'merged' | 'closed' | 'dormant';
 
@@ -28,6 +28,9 @@ interface OutcomeRow {
   selfCloseReason?: StoredClosedPR['selfCloseReason'];
   changesRequested?: boolean;
   ciFailing?: boolean;
+  /** No merged PR in the same repo when this PR was opened (pick-time value when recorded, else derived from the ledger). */
+  firstInRepo: boolean;
+  pick?: PickSnapshot;
 }
 
 export interface EvalBucket {
@@ -60,6 +63,14 @@ export interface EvalReport {
   byGrade: EvalBucket[];
   byStars: EvalBucket[];
   byMonth: EvalBucket[];
+  /** All outcomes: first PR in the repo vs returning. */
+  byFirstInRepo: EvalBucket[];
+  /** Picks only; picks recorded before the trait existed land in `not recorded`. */
+  byIssueAuthorRole: EvalBucket[];
+  /** Picks only: open PRs by others on the issue at pick time. */
+  byCompetingPRs: EvalBucket[];
+  /** Picks with labels only; one pick can count in several label groups. */
+  byLabel: EvalBucket[];
   closeReasons: Record<string, number>;
   quality: { withReviewState: number; changesRequestedShare: number | null; ciFailingShare: number | null };
   /** Vet-graded prediction/outcome pairs (merged + closed). */
@@ -138,13 +149,61 @@ function starRange(stars: number | undefined): string {
   return '10k+';
 }
 
+/** Normalized label groups for the label cut; a label matches by substring. */
+// Word boundaries by letters only: `\b` treats `_` as a word char, so
+// `good_first_issue` / `type_bug` would never match.
+const wordRe = (alternatives: string) => new RegExp(`(?:^|[^a-z])(?:${alternatives})(?![a-z])`);
+const LABEL_GROUPS: Array<[string, RegExp]> = [
+  ['good first issue', wordRe('good[ _-]?first|beginners?|easy|first.?timers?|starter(?![_-][a-z])')],
+  ['help wanted', wordRe('help[ _-]?wanted')],
+  ['bug', wordRe('bugs?')],
+  ['enhancement', wordRe('enhancements?|features?')],
+  ['documentation', wordRe('docs?|documentation')],
+];
+
+const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+const OUTSIDER_ASSOCIATIONS = new Set(['NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'MANNEQUIN']);
+
+/** Issue-author bucket from the raw association recorded at pick time. */
+function authorRole(pick: PickSnapshot): string {
+  if (pick.issueAuthorIsBot) return 'bot';
+  const a = pick.issueAuthorAssociation;
+  if (a === undefined) return NOT_RECORDED;
+  if (MAINTAINER_ASSOCIATIONS.has(a)) return 'maintainer';
+  if (a === 'CONTRIBUTOR') return 'contributor';
+  return OUTSIDER_ASSOCIATIONS.has(a) ? 'outsider' : 'unknown';
+}
+const NO_LABEL_GROUP = 'none of these';
+const NOT_RECORDED = 'not recorded';
+
+function labelGroups(labels: string[]): string[] {
+  const lower = labels.map((l) => l.toLowerCase());
+  const groups = LABEL_GROUPS.filter(([, re]) => lower.some((l) => re.test(l))).map(([g]) => g);
+  return groups.length > 0 ? groups : [NO_LABEL_GROUP];
+}
+
 function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
   const starsOf = (repo: string) => state.repoScores[repo]?.stargazersCount;
-  const common = (e: (typeof state.mergedPRs & object)[number] | (typeof state.closedPRs & object)[number]) => {
+  // Merge times per repo, so a PR is first-in-repo when no merge in the same
+  // repo precedes its opening. Works for entries recorded before picks existed.
+  // ponytail: only sees merges the ledger holds; older merges count as none.
+  const mergeTimes = new Map<string, number[]>();
+  const mergedLedger = state.mergedPRs ?? [];
+  for (const e of mergedLedger) {
+    const repo = repoOf(e.url).toLowerCase();
+    mergeTimes.set(repo, [...(mergeTimes.get(repo) ?? []), Date.parse(e.mergedAt)]);
+  }
+  const isFirstAt = (repo: string, at: number) => (mergeTimes.get(repo.toLowerCase()) ?? []).every((t) => t >= at);
+  const common = (
+    e: (typeof state.mergedPRs & object)[number] | (typeof state.closedPRs & object)[number],
+    at: string,
+  ) => {
     const repo = repoOf(e.url);
     return {
       url: e.url,
       repo,
+      firstInRepo: e.pick?.firstInRepo ?? isFirstAt(repo, Date.parse(e.openedAt ?? at)),
+      pick: e.pick,
       grade: e.pick?.grade,
       gradeSource: e.pick ? (e.pick.source === 'list' ? ('list' as const) : ('vet' as const)) : undefined,
       stars: e.pick?.stargazersCount ?? starsOf(repo),
@@ -154,13 +213,13 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
     };
   };
   const merged: OutcomeRow[] = (state.mergedPRs ?? []).map((e) => ({
-    ...common(e),
+    ...common(e, e.mergedAt),
     outcome: 'merged',
     month: e.mergedAt.slice(0, 7),
     hoursToMerge: hoursBetween(e.openedAt, e.mergedAt),
   }));
   const closed: OutcomeRow[] = (state.closedPRs ?? []).map((e) => ({
-    ...common(e),
+    ...common(e, e.closedAt),
     outcome: 'closed',
     month: e.closedAt.slice(0, 7),
     closeReason: e.closeReason,
@@ -168,7 +227,13 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
   }));
   const dormant: OutcomeRow[] = (state.lastDigest?.openPRs ?? [])
     .filter((pr) => pr.stalenessTier === 'dormant')
-    .map((pr) => ({ url: pr.url, repo: pr.repo, outcome: 'dormant', stars: starsOf(pr.repo) }));
+    .map((pr) => ({
+      url: pr.url,
+      repo: pr.repo,
+      outcome: 'dormant',
+      stars: starsOf(pr.repo),
+      firstInRepo: isFirstAt(pr.repo, Date.parse(pr.createdAt)),
+    }));
   return [...merged, ...closed, ...dormant];
 }
 
@@ -195,6 +260,8 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
       approachClosuresByMonth[r.month] = (approachClosuresByMonth[r.month] ?? 0) + 1;
     }
   }
+
+  const picked = rows.filter((r) => r.pick);
 
   const reviewed = rows.filter((r) => r.changesRequested !== undefined);
   const ciKnown = rows.filter((r) => r.ciFailing !== undefined);
@@ -236,6 +303,35 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
       rows.filter((r) => r.month),
       (r) => r.month!,
     ).sort((a, b) => b.key.localeCompare(a.key)),
+    byFirstInRepo: groupBy(rows, (r) => (r.firstInRepo ? 'first in repo' : 'returning'), [
+      'first in repo',
+      'returning',
+    ]),
+    byIssueAuthorRole: groupBy(picked, (r) => authorRole(r.pick!), [
+      'maintainer',
+      'contributor',
+      'outsider',
+      'bot',
+      'unknown',
+      NOT_RECORDED,
+    ]),
+    byCompetingPRs: groupBy(
+      picked,
+      (r) => {
+        const n = r.pick!.competingPRs;
+        if (n === undefined) return NOT_RECORDED;
+        return n === 0 ? '0' : '1+';
+      },
+      ['0', '1+', NOT_RECORDED],
+    ),
+    byLabel: [...LABEL_GROUPS.map(([g]) => g), NO_LABEL_GROUP]
+      .map((g) =>
+        bucket(
+          g,
+          picked.filter((r) => r.pick!.labels && labelGroups(r.pick!.labels).includes(g)),
+        ),
+      )
+      .filter((b) => b.n > 0),
     closeReasons,
     quality: {
       withReviewState: reviewed.length,
@@ -278,6 +374,10 @@ export function formatEvalMarkdown(r: EvalReport): string {
     ...table('By grade at pick time', r.byGrade),
     ...table('By repo stars', r.byStars),
     ...table('By month', r.byMonth.slice(0, 12)),
+    ...table('First PR in repo vs returning', r.byFirstInRepo),
+    ...table('By issue author (picks)', r.byIssueAuthorRole),
+    ...table('By competing PRs at pick time (picks)', r.byCompetingPRs),
+    ...table('By issue label (picks; one pick can match several)', r.byLabel),
     '## Close reasons',
     '',
     ...Object.entries(r.closeReasons)

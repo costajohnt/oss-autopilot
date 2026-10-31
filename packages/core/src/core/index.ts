@@ -122,6 +122,7 @@ export {
   fetchIssueVerification,
   verifyIssuesBatch,
   MAX_VERIFY_CONCURRENCY,
+  RULED_OUT_VERDICTS,
   type BatchVerificationResult,
   type IssueAvailabilityVerdict,
   type IssueVerification,
@@ -183,4 +184,4 @@ export {
   type PRIssueCommentEntry,
 } from './pr-comments-fetcher.js';
 export * from './types.js';
-export { pickSnapshotFromVet, persistPickSnapshots } from './pick-snapshot.js';
+export { pickSnapshotFromVet, persistPickSnapshots, traitsFromVerification, isFirstInRepo } from './pick-snapshot.js';

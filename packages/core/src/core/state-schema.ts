@@ -84,6 +84,27 @@ export const PickSnapshotSchema = z
     source: openEnum(['vet', 'vet-list', 'list'] as const),
     /** When the vet ran. Absent for `list` picks: the list does not record vet dates reliably. */
     capturedAt: z.string().optional(),
+    // Issue traits at vet time, for the eval's trait cuts. Older snapshots lack them.
+    labels: z.array(z.string()).optional(),
+    /** Raw GitHub author association of the issue author; the eval buckets it. */
+    issueAuthorAssociation: openEnum([
+      'OWNER',
+      'MEMBER',
+      'COLLABORATOR',
+      'CONTRIBUTOR',
+      'FIRST_TIMER',
+      'FIRST_TIME_CONTRIBUTOR',
+      'MANNEQUIN',
+      'NONE',
+    ] as const).optional(),
+    issueAuthorIsBot: z.boolean().optional(),
+    /** Open, non-draft PRs by others that close the issue (claims). */
+    competingPRs: z.number().optional(),
+    /** Open PRs by others that only cross-reference the issue (not claims). */
+    mentioningPRs: z.number().optional(),
+    /** The user had no merged PR in the repo yet. */
+    firstInRepo: z.boolean().optional(),
+    commentCount: z.number().optional(),
   })
   .passthrough();
 

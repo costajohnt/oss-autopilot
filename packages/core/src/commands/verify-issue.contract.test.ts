@@ -44,6 +44,9 @@ describe('verify-issue --json contract', () => {
           state: 'CLOSED',
           stateReason: 'COMPLETED',
           closedAt: '2026-06-01T00:00:00Z',
+          authorAssociation: 'MEMBER',
+          author: { __typename: 'User', login: 'reporter' },
+          comments: { totalCount: 5 },
           assignees: { nodes: [{ login: 'maintainer' }] },
           timelineItems: {
             pageInfo: { hasNextPage: false, endCursor: null },

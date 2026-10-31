@@ -43,6 +43,12 @@ function state(overrides: Partial<AgentState>): AgentState {
   });
 }
 
+const labelled = (label: string) => merged(1, { pick: { ...pick(8), labels: [label] } });
+function groupsOf(label: string): string[] {
+  const report = computeEvalReport(state({ mergedPRs: [labelled(label)] }));
+  return report.byLabel.map((bucket) => bucket.key);
+}
+
 describe('computeEvalReport (#1825)', () => {
   it('counts dormant PRs against the merge rate and computes medians', () => {
     const report = computeEvalReport(
@@ -99,6 +105,118 @@ describe('computeEvalReport (#1825)', () => {
       }),
     );
     expect(report.quality).toEqual({ withReviewState: 2, changesRequestedShare: 0.5, ciFailingShare: 0.5 });
+  });
+
+  it('derives first-in-repo at PR open time from the ledger, preferring the pick-time value', () => {
+    const report = computeEvalReport(
+      state({
+        mergedPRs: [
+          merged(1),
+          merged(2, { mergedAt: '2026-09-12T00:00:00Z' }), // opened alongside #1, before it merged
+          merged(7, { openedAt: '2026-09-15T00:00:00Z', mergedAt: '2026-09-16T00:00:00Z' }),
+        ],
+        closedPRs: [
+          closed(3, { closedAt: '2026-09-05T00:00:00Z' }), // no openedAt: falls back to closedAt
+          closed(4, { openedAt: '2026-09-08T00:00:00Z' }),
+          closed(8),
+        ],
+        lastDigest: {
+          openPRs: [
+            makeFetchedPR({
+              url: 'https://github.com/o/r/pull/5',
+              repo: 'o/r',
+              stalenessTier: 'dormant',
+              createdAt: '2026-10-01T00:00:00Z',
+            }),
+            makeFetchedPR({ url: 'https://github.com/x/y/pull/1', repo: 'x/y', stalenessTier: 'dormant' }),
+          ],
+        } as AgentState['lastDigest'],
+      }),
+    );
+    // first: merged #1 #2, closed #3 #4, dormant x/y; returning: merged #7, closed #8, dormant o/r
+    expect(report.byFirstInRepo).toMatchObject([
+      { key: 'first in repo', n: 5, merged: 2, closed: 2, dormant: 1 },
+      { key: 'returning', n: 3, merged: 1, closed: 1, dormant: 1 },
+    ]);
+
+    const recordedPick = { ...pick(8), firstInRepo: false };
+    const recorded = computeEvalReport(state({ mergedPRs: [merged(1, { pick: recordedPick })] }));
+    expect(recorded.byFirstInRepo).toMatchObject([{ key: 'returning', n: 1 }]);
+  });
+
+  it('counts two PRs opened in parallel in a new repo as both first-in-repo', () => {
+    const report = computeEvalReport(
+      state({
+        mergedPRs: [
+          merged(1, { openedAt: '2026-09-01T00:00:00Z', mergedAt: '2026-09-03T00:00:00Z' }),
+          merged(2, { openedAt: '2026-09-02T00:00:00Z', mergedAt: '2026-09-10T00:00:00Z' }),
+        ],
+      }),
+    );
+    expect(report.byFirstInRepo.map((b) => [b.key, b.n])).toEqual([['first in repo', 2]]);
+  });
+
+  it('buckets trait cuts over picks, with older picks under not recorded', () => {
+    const withTraits = (grade: number, issueAuthorAssociation: string, extra = {}) => ({
+      ...pick(grade),
+      issueAuthorAssociation,
+      ...extra,
+    });
+    const picks = [
+      withTraits(8, 'OWNER', { competingPRs: 0, labels: ['type: bug', 'good first issue'] }),
+      pick(8),
+      undefined,
+      withTraits(8, 'FIRST_TIMER', { labels: ['debug', 'docker', 'starter-kit'] }),
+      withTraits(8, 'NONE', { issueAuthorIsBot: true, labels: ['docs'] }),
+      withTraits(8, 'SOMETHING_NEW'),
+    ];
+    const contributorPick = withTraits(6, 'CONTRIBUTOR', { competingPRs: 2, labels: ['question'] });
+    const report = computeEvalReport(
+      state({
+        mergedPRs: picks.map((p, i) => merged(i + 10, p && { pick: p })),
+        closedPRs: [closed(4, { pick: contributorPick })],
+      }),
+    );
+    expect(report.byIssueAuthorRole.map((b) => [b.key, b.n])).toEqual([
+      ['maintainer', 1],
+      ['contributor', 1],
+      ['outsider', 1],
+      ['bot', 1],
+      ['unknown', 1],
+      ['not recorded', 1],
+    ]);
+    expect(report.byCompetingPRs.map((b) => [b.key, b.n])).toEqual([
+      ['0', 1],
+      ['1+', 1],
+      ['not recorded', 4],
+    ]);
+    // One pick counts in both bug and good first issue; debug/docker/starter-kit match nothing;
+    // picks without labels are left out.
+    expect(report.byLabel.map((b) => [b.key, b.n])).toEqual([
+      ['good first issue', 1],
+      ['bug', 1],
+      ['documentation', 1],
+      ['none of these', 2],
+    ]);
+    expect(formatEvalMarkdown(report)).toContain('By issue label (picks; one pick can match several)');
+  });
+
+  it('matches label groups on letter boundaries, including underscore and dash forms', () => {
+    const cases: Array<[string, string]> = [
+      ['good_first_issue', 'good first issue'],
+      ['good-first-issue', 'good first issue'],
+      ['first-timers-only', 'good first issue'],
+      ['starter', 'good first issue'],
+      ['help_wanted', 'help wanted'],
+      ['type_bug', 'bug'],
+      ['kind/bug', 'bug'],
+      ['feature_request', 'enhancement'],
+      ['docs', 'documentation'],
+      ['starter-kit', 'none of these'],
+      ['debug', 'none of these'],
+      ['docker', 'none of these'],
+    ];
+    expect(cases.map(([label]) => [label, groupsOf(label)])).toEqual(cases.map(([label, g]) => [label, [g]]));
   });
 
   it('renders an empty ledger without throwing', () => {

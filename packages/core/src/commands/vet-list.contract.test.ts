@@ -91,6 +91,10 @@ function verified(
       verdict,
       verdictReason: `verdict: ${verdict}`,
       userLogin: 'costajohnt',
+      author: null,
+      authorAssociation: null,
+      authorIsBot: false,
+      commentCount: null,
       ...overrides,
     },
   };

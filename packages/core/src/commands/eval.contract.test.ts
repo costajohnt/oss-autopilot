@@ -1,8 +1,9 @@
 /**
  * --json contract test for the `eval` command (#1825).
  *
- * Golden-file test: a fixed ledger fixture (vet pick, list pick, close
- * reason, review state, dormant PR) and a pinned clock.
+ * Golden-file test: a fixed ledger fixture (vet pick with traits, list pick,
+ * repeat merge in one repo, close reason, review state, dormant PR) and a
+ * pinned clock.
  * Update goldens on intentional shape changes with:
  *   npx vitest run -u src/commands/eval.contract.test.ts
  */
@@ -36,7 +37,18 @@ describe('eval --json contract', () => {
             stargazersCount: 2500,
             source: 'vet',
             capturedAt: '2026-10-07T00:00:00Z',
+            labels: ['bug', 'good first issue'],
+            issueAuthorAssociation: 'MEMBER',
+            competingPRs: 0,
+            firstInRepo: true,
+            commentCount: 2,
           },
+        },
+        {
+          url: 'https://github.com/octo/alpha/pull/6',
+          title: 'Fix lexer',
+          mergedAt: '2026-10-20T00:00:00Z',
+          openedAt: '2026-10-18T00:00:00Z',
         },
         {
           url: 'https://github.com/octo/beta/pull/2',
@@ -62,7 +74,12 @@ describe('eval --json contract', () => {
       ],
       lastDigest: {
         openPRs: [
-          makeFetchedPR({ url: 'https://github.com/octo/beta/pull/5', repo: 'octo/beta', stalenessTier: 'dormant' }),
+          makeFetchedPR({
+            url: 'https://github.com/octo/beta/pull/5',
+            repo: 'octo/beta',
+            stalenessTier: 'dormant',
+            createdAt: '2026-09-25T00:00:00Z',
+          }),
         ],
       } as never,
     });

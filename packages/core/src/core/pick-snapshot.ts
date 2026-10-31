@@ -6,9 +6,10 @@
 
 import type { VetOutput } from '../formatters/json.js';
 import { errorMessage } from './errors.js';
+import type { IssueVerification } from './issue-verification.js';
 import { warn } from './logger.js';
 import { maybeCheckpoint, type StateManager } from './state.js';
-import type { PickSnapshot } from './types.js';
+import type { PickSnapshot, RepoScore, StoredMergedPR } from './types.js';
 
 const MODULE = 'pick-snapshot';
 
@@ -20,9 +21,18 @@ const MODULE = 'pick-snapshot';
 // ponytail: scout reports only the first linked PR, so a standalone `vet` of an
 // issue whose first reference is someone else's PR can still miss the user's
 // own. First-wins in recordPickSnapshots limits this to never-vetted issues.
-export function pickSnapshotFromVet(vet: VetOutput, source: PickSnapshot['source']): PickSnapshot | undefined {
+export function pickSnapshotFromVet(
+  vet: VetOutput,
+  source: PickSnapshot['source'],
+  traits: PickTraits = {},
+): PickSnapshot | undefined {
   if (vet.linkedPRClassification?.startsWith('user_')) return undefined;
   const stars = (vet.projectHealth as { stargazersCount?: unknown } | null | undefined)?.stargazersCount;
+  // ponytail: when verification failed, scout's first linked PR gives a 0/1
+  // lower bound; callers pass the verified count otherwise.
+  const fromScout = vet.linkedPRClassification && Number(vet.linkedPRClassification === 'other_open');
+  const { competingPRs = fromScout, ...rest } = traits;
+  const recorded = Object.entries({ ...rest, competingPRs }).filter(([, value]) => value !== undefined);
   return {
     issueUrl: vet.issue.url,
     grade: vet.grade.score,
@@ -31,7 +41,46 @@ export function pickSnapshotFromVet(vet: VetOutput, source: PickSnapshot['source
     ...(typeof stars === 'number' && { stargazersCount: stars }),
     source,
     capturedAt: new Date().toISOString(),
+    labels: vet.issue.labels,
+    ...(Object.fromEntries(recorded) as PickTraits),
   };
+}
+
+/** Vet-time facts the vet output itself does not carry. All optional: each is best-effort. */
+export interface PickTraits {
+  /** GitHub author association of the issue author, raw (OWNER, NONE, ...). */
+  issueAuthorAssociation?: string;
+  issueAuthorIsBot?: boolean;
+  commentCount?: number;
+  /** Open, non-draft closing PRs by others, when the caller has a verification. */
+  competingPRs?: number;
+  /** Open PRs by others that only cross-reference the issue. */
+  mentioningPRs?: number;
+  firstInRepo?: boolean;
+}
+
+/** The pick traits a verification already carries, so a pick costs no extra API call. */
+export function traitsFromVerification(v: IssueVerification): PickTraits {
+  const open = v.linkedPRs.filter((pr) => pr.state === 'open' && !pr.isOwn);
+  return {
+    ...(v.authorAssociation !== null && { issueAuthorAssociation: v.authorAssociation }),
+    issueAuthorIsBot: v.authorIsBot,
+    ...(v.commentCount !== null && { commentCount: v.commentCount }),
+    // Only a closing PR is a claim; a cross-reference is a mention (see issue-verification).
+    competingPRs: open.filter((pr) => pr.linkType === 'closing' && !pr.isDraft).length,
+    mentioningPRs: open.filter((pr) => pr.linkType === 'cross-referenced').length,
+  };
+}
+
+/** True when neither the repo score nor the merged ledger shows a merged PR by the user in `repo`. */
+export function isFirstInRepo(
+  repo: string,
+  repoScore: Pick<RepoScore, 'mergedPRCount'> | undefined,
+  mergedPRs: ReadonlyArray<Pick<StoredMergedPR, 'url'>> | undefined,
+): boolean {
+  if ((repoScore?.mergedPRCount ?? 0) > 0) return false;
+  const prefix = `https://github.com/${repo}/`.toLowerCase();
+  return (mergedPRs ?? []).every((pr) => !pr.url.toLowerCase().startsWith(prefix));
 }
 
 /**
