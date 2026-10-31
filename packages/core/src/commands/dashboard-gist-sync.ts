@@ -50,6 +50,8 @@ export class GistSyncCoordinator {
   // exactly the event that can destroy it (refreshFromGist wholesale-replaces
   // state). These clear only when a checkpoint PUSH succeeds.
   private pendingGistSyncWarnings: string[] = [];
+  /** `refreshGeneration` when the oldest pending warning was recorded. */
+  private pendingSince = 0;
 
   private lastRecoveryAttemptAt = 0;
   private recoveryHaltedReason: string | null = null;
@@ -82,9 +84,15 @@ export class GistSyncCoordinator {
    * so any previously pending warning is resolved with it. */
   recordGistSyncOutcome(warning: string | null): void {
     if (warning === null) {
+      // ...unless a Gist refresh replaced state since the warning was
+      // recorded (a mutation's own conflict recovery does that without going
+      // through pullFromGist): the push then carried the Gist's copy, not the
+      // un-pushed change, so it is a loss, not a resolution (#1443 invariant).
+      if (this.manager.refreshGeneration !== this.pendingSince) this.convertPendingWarningsToLossNotices();
       this.pendingGistSyncWarnings = [];
       return;
     }
+    if (this.pendingGistSyncWarnings.length === 0) this.pendingSince = this.manager.refreshGeneration;
     if (!this.pendingGistSyncWarnings.includes(warning)) {
       this.pendingGistSyncWarnings.push(warning);
     }

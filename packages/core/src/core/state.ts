@@ -145,6 +145,11 @@ export async function maybeCheckpoint(
   reapply?: () => void,
 ): Promise<string | null> {
   if (!stateManager.isGistMode()) return null;
+  // Re-apply before the push, not only on conflict: a sibling mutation's
+  // conflict recovery (another MCP tool body running in parallel) may have
+  // swapped `this.state` since the caller mutated, orphaning its change.
+  // `reapply` is an absolute set, so this is a no-op in the common case.
+  reapply?.();
   try {
     return await pushOrWarn(stateManager, callerModule);
   } catch (err) {
@@ -176,9 +181,26 @@ async function recoverConflict(
   reapply: () => void,
   conflict: unknown,
 ): Promise<string | null> {
+  let isRefreshed: boolean;
   try {
-    if (!(await stateManager.refreshFromGist({ force: true }))) return notSynced(callerModule, conflict);
+    // Inside runMutation so the refresh counts as mutation-driven: a reapply
+    // follows, which is what distinguishes it from the depth-0 forced reload
+    // that refreshFromGist refuses while changes are un-pushed.
+    isRefreshed = await stateManager.runMutation(() => stateManager.refreshFromGist({ force: true }));
+  } catch (err) {
+    return notSynced(callerModule, err);
+  }
+  if (!isRefreshed) return notSynced(callerModule, conflict);
+  // From here the in-memory state is the Gist's copy: a reapply failure
+  // means the mutation is gone, not "saved".
+  try {
     reapply();
+  } catch (err) {
+    const msg = `Gist conflict recovery failed; state was refreshed from the Gist and re-applying the mutation threw, so the mutation was LOST, re-run the command: ${errorMessage(err)}`;
+    warn(callerModule, msg);
+    return msg;
+  }
+  try {
     return await pushOrWarn(stateManager, callerModule);
   } catch (err) {
     return notSynced(callerModule, err);
@@ -228,6 +250,9 @@ export class StateManager {
   private staleness: StalenessInfo | null = null;
   private lastSuccessfulRefreshAt: string | null = null;
   private mutationDepth = 0;
+  /** Gist mode: a mutation was saved since the last successful push. */
+  private unpushed = false;
+  private refreshCount = 0;
   private loadRecovery: LoadRecoveryInfo | null = null;
 
   /**
@@ -413,6 +438,7 @@ export class StateManager {
    */
   save(options: { allowReloadAndLoseMutation?: boolean } = {}): void {
     this.state.lastRunAt = new Date().toISOString();
+    if (this.gistStore) this.unpushed = true;
 
     if (this.inMemoryOnly) {
       return;
@@ -471,6 +497,7 @@ export class StateManager {
     // left untouched here — a concurrent remote write is recoverable (refresh +
     // retry), not a degradation of the Gist itself.
     this.gistDegraded = !isPushed;
+    if (isPushed) this.unpushed = false;
     return isPushed;
   }
 
@@ -595,9 +622,14 @@ export class StateManager {
    * Run `fn` as an in-flight mutation: non-forced `refreshFromGist()` calls
    * are skipped until it settles so a concurrent refresh cannot swap
    * `this.state` out from under it (audit 2026-10-30 M2).
+   *
+   * Deliberately a counter, not a serializing promise chain: parallel MCP
+   * tool bodies from one host message may depend on each other through the
+   * host, so queuing them would deadlock. The gap that leaves (a sibling's
+   * *forced* conflict-recovery refresh swaps the state object mid-body) is
+   * closed by `maybeCheckpoint` re-applying every mutation right before its
+   * push; bodies that cannot re-apply (`daily`) watch `refreshGeneration`.
    */
-  // ponytail: a counter, not a lock; concurrent bodies still share one state
-  // object. Upgrade to a promise chain if interleaved mutations ever bite.
   async runMutation<T>(fn: () => Promise<T>): Promise<T> {
     this.mutationDepth++;
     try {
@@ -605,6 +637,21 @@ export class StateManager {
     } finally {
       this.mutationDepth--;
     }
+  }
+
+  /**
+   * Number of times a Gist refresh replaced the in-memory state. A successful
+   * push resolves earlier un-pushed changes only if this did not advance in
+   * between (the #1443 loss-notice invariant); a long run compares it to the
+   * value at its start to learn its mutations were swapped out.
+   */
+  get refreshGeneration(): number {
+    return this.refreshCount;
+  }
+
+  /** Gist mode: whether a saved mutation has not reached the Gist yet. */
+  hasUnpushedChanges(): boolean {
+    return this.unpushed;
   }
 
   /**
@@ -619,6 +666,14 @@ export class StateManager {
     // (audit 2026-10-30 M2). Skip it while one is running; `force` is for
     // the conflict-recovery path, which the mutation itself drives.
     if (this.mutationDepth > 0 && !options.force) return false;
+    // A forced refresh outside any mutation (the MCP/dashboard conflict
+    // retry) has nothing that will re-apply un-pushed changes afterwards, so
+    // it would silently push the remote back over them: refuse, and let the
+    // retried body surface the conflict honestly.
+    if (options.force && this.mutationDepth === 0 && this.unpushed) {
+      warn(MODULE, 'Forced Gist refresh refused: local changes are not pushed yet and nothing would re-apply them');
+      return false;
+    }
     const result = await this.gistStore.refreshFromGist(options);
     // StateManager keeps its boolean shape (callers rely on truthy-check
     // semantics) but consults the discriminated union internally to know
@@ -657,6 +712,11 @@ export class StateManager {
       // Successful refresh clears any prior staleness (#1193).
       this.lastSuccessfulRefreshAt = new Date().toISOString();
       this.staleness = null;
+      this.refreshCount++;
+      if (this.unpushed) {
+        warn(MODULE, 'Gist refresh replaced local state that still had un-pushed changes; they were not synced');
+        this.unpushed = false;
+      }
     } else if (this.gistStore.lastRefreshError) {
       // Distinguish "fetch failed" (set marker) from "throttled" (preserve
       // any existing marker, set nothing new).

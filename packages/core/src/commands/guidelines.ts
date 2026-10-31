@@ -200,17 +200,17 @@ export async function runMarkExtracted(options: RepoOption): Promise<MarkExtract
   const sm = getStateManager();
   const repoUrlPrefix = `https://github.com/${options.repo}/`;
   const now = new Date().toISOString();
-  let marked = 0;
-  const apply = (): void => {
-    marked = 0;
+  const mark = (): number => {
+    let n = 0;
     for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
       if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
       sm.markPRLearningsExtracted(pr.url, now);
-      marked++;
+      n++;
     }
+    return n;
   };
-  apply();
-  const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, apply) : null;
+  const marked = mark();
+  const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, mark) : null;
   return { repo: options.repo, marked, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
