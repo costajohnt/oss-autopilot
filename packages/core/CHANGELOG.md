@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.37.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.36.0...core-v3.37.0) (2026-10-31)
+
+
+### Features
+
+* **eval:** record issue traits at pick time and cut outcomes by them ([#1847](https://github.com/costajohnt/oss-autopilot/issues/1847)) ([b272afa](https://github.com/costajohnt/oss-autopilot/commit/b272afa5ebc06602479f17143da46961663ce9ed))
+* populate repo response time and hostile signals from the ledger ([#1848](https://github.com/costajohnt/oss-autopilot/issues/1848)) ([e5d9e93](https://github.com/costajohnt/oss-autopilot/commit/e5d9e934d46f88a8f3c8ce738e583d7252169747))
+
+
+### Bug Fixes
+
+* ignore bot reviews in the review decision; fix pr-responder relationship signal ([#1845](https://github.com/costajohnt/oss-autopilot/issues/1845)) ([4e21b71](https://github.com/costajohnt/oss-autopilot/commit/4e21b716019d6d8e26c1a8ee11528da1b88f8b4b))
+
 ## [3.36.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.35.0...core-v3.36.0) (2026-10-30)
 
 
