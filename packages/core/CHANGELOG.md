@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.38.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.37.0...core-v3.38.0) (2026-11-01)
+
+
+### Features
+
+* **eval:** report vet grade coverage and record a pick before every contribution ([#1854](https://github.com/costajohnt/oss-autopilot/issues/1854)) ([70817f5](https://github.com/costajohnt/oss-autopilot/commit/70817f5ef1112a6dfe9208c9c7a56abf370bb044))
+
 ## [3.37.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.36.0...core-v3.37.0) (2026-10-31)
 
 
