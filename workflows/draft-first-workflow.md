@@ -9,6 +9,19 @@
 
 ## Step 1: Pre-flight Checks
 
+### 1-pre. Record the Pick (required)
+
+The eval report can only measure whether vet grades predict merges when every pick carries a grade recorded before the PR exists (once your own PR links the issue, `vet` no longer records one). So when `issueContext.url` is an issue URL, run:
+
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" vet "{issueContext.url}" --json
+```
+
+- Skip only if `vet` (CLI, MCP tool, or `vet-list`) already ran on this issue this session. The first recorded grade wins, so a repeat only costs API calls.
+- This records the prediction; it is not a gate. Proceed whatever the grade or recommendation.
+- If the response carries `pickRecordError`, tell the user the grade was not saved, then proceed.
+- No issue (an audit finding, a maintainer request in chat): skip; there is nothing to grade.
+
 ### 1a. Verify Changes Exist
 
 ```bash

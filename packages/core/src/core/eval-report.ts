@@ -17,6 +17,8 @@ interface OutcomeRow {
   outcome: Outcome;
   /** YYYY-MM of the merge/close; dormant PRs have none. */
   month?: string;
+  /** The issue the PR closes, when the ledger knows it. */
+  issueUrl?: string;
   grade?: number;
   gradeSource?: 'vet' | 'list';
   stars?: number;
@@ -57,6 +59,12 @@ export interface EvalReport {
      * the grade <= 5 one, null until both sides have MIN_FLAG_N outcomes.
      */
     calibration: { gap: number | null; highN: number; lowN: number };
+    /**
+     * Merged and closed PRs that close an issue, and how many of them carry a
+     * vet-time grade. A low share means picks skipped `vet`, so calibration
+     * cannot be measured.
+     */
+    vetCoverage: { graded: number; of: number };
     /** Closures as ai-policy or rejected, per close month. */
     approachClosuresByMonth: Record<string, number>;
   };
@@ -202,6 +210,7 @@ function collectRows(state: Readonly<AgentState>): OutcomeRow[] {
     return {
       url: e.url,
       repo,
+      issueUrl: e.issueUrl,
       firstInRepo: e.pick?.firstInRepo ?? isFirstAt(repo, Date.parse(e.openedAt ?? at)),
       pick: e.pick,
       grade: e.pick?.grade,
@@ -262,6 +271,7 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
   }
 
   const picked = rows.filter((r) => r.pick);
+  const closesIssue = rows.filter((r) => r.issueUrl && r.outcome !== 'dormant');
 
   const reviewed = rows.filter((r) => r.changesRequested !== undefined);
   const ciKnown = rows.filter((r) => r.ciFailing !== undefined);
@@ -295,6 +305,7 @@ export function computeEvalReport(state: Readonly<AgentState>, now: Date = new D
         rows.filter((r) => (r.stars ?? 0) >= 1000),
       ),
       calibration: { gap, highN: high.length, lowN: low.length },
+      vetCoverage: { graded: closesIssue.filter((r) => r.gradeSource === 'vet').length, of: closesIssue.length },
       approachClosuresByMonth,
     },
     byGrade,
@@ -367,6 +378,7 @@ export function formatEvalMarkdown(r: EvalReport): string {
     '',
     `- Merge rate on repos with 1k+ stars: **${pct(h.mergeRate1kStars.mergeRate)}** (n=${h.mergeRate1kStars.n})`,
     `- Calibration gap, vet grades (grade>=7 minus grade<=5 merge rate): **${h.calibration.gap ?? 'n/a'}** (n=${h.calibration.highN} vs ${h.calibration.lowN}; needs ${MIN_FLAG_N} each)`,
+    `- Vet grade recorded at pick: **${h.vetCoverage.graded} of ${h.vetCoverage.of}** merged or closed PRs that close an issue`,
     `- Approach or AI-policy closures by month: ${recentMonths.length ? recentMonths.map((m) => `${m}: ${h.approachClosuresByMonth[m]}`).join(', ') : 'none'}`,
     `- Overall: ${r.totals.n} outcomes, merge rate ${pct(r.totals.mergeRate)} (dormant counted as not merged)`,
     '',

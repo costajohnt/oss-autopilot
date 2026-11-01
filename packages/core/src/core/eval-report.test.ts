@@ -43,6 +43,8 @@ function state(overrides: Partial<AgentState>): AgentState {
   });
 }
 
+const issueUrl = (n: number) => `https://github.com/o/r/issues/${n}`;
+
 const labelled = (label: string) => merged(1, { pick: { ...pick(8), labels: [label] } });
 function groupsOf(label: string): string[] {
   const report = computeEvalReport(state({ mergedPRs: [labelled(label)] }));
@@ -95,6 +97,16 @@ describe('computeEvalReport (#1825)', () => {
     expect(full.flags).toContain(
       'vet grades do not separate outcomes: grade>=7 merges at 0% (n=5), grade<=5 at 100% (n=5)',
     );
+  });
+
+  it('reports vet coverage over merged and closed PRs that close an issue', () => {
+    const vetGraded = merged(1, { issueUrl: issueUrl(1), pick: pick(8) });
+    const listGraded = merged(2, { issueUrl: issueUrl(2), pick: pick(9, 'list') });
+    const ungraded = merged(3, { issueUrl: issueUrl(3) });
+    const noIssue = merged(4);
+    const report = computeEvalReport(state({ mergedPRs: [vetGraded, listGraded, ungraded, noIssue] }));
+    expect(report.headlines.vetCoverage).toEqual({ graded: 1, of: 3 });
+    expect(formatEvalMarkdown(report)).toContain('Vet grade recorded at pick: **1 of 3**');
   });
 
   it('reports quality shares only over PRs with recorded review state', () => {
