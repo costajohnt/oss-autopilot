@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.39.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.38.0...core-v3.39.0) (2026-11-02)
+
+
+### Features
+
+* **daily:** prompt a status update on the linked issue when an own PR closes unmerged ([#1865](https://github.com/costajohnt/oss-autopilot/issues/1865)) ([2bdb1a7](https://github.com/costajohnt/oss-autopilot/commit/2bdb1a774ad19d26a3df40d994acfac66b184072))
+* **daily:** surface maintainer notes left on recently merged PRs ([#1866](https://github.com/costajohnt/oss-autopilot/issues/1866)) ([06fc259](https://github.com/costajohnt/oss-autopilot/commit/06fc2590ec286330de0e2221b38a9b60760aaf39))
+* **daily:** track PRs you reviewed and surface author follow-ups ([#1868](https://github.com/costajohnt/oss-autopilot/issues/1868)) ([5986218](https://github.com/costajohnt/oss-autopilot/commit/5986218455ec74cc8f930df19e5a7abd3996ee86))
+* **issues:** surface any substantive reply on issues you're engaged in ([#1867](https://github.com/costajohnt/oss-autopilot/issues/1867)) ([a086673](https://github.com/costajohnt/oss-autopilot/commit/a086673eef413e7ce22cce8bfd5012f80530f12c))
+
+
+### Bug Fixes
+
+* **checklist:** treat semver options under a release-impact heading as pick-one ([#1858](https://github.com/costajohnt/oss-autopilot/issues/1858)) ([287cb9e](https://github.com/costajohnt/oss-autopilot/commit/287cb9ef83381ff252af468222e6f21ca74116c3)), closes [#1853](https://github.com/costajohnt/oss-autopilot/issues/1853)
+* **dashboard:** push saved-but-unpushed state before every Gist pull ([#1864](https://github.com/costajohnt/oss-autopilot/issues/1864)) ([7d9fac8](https://github.com/costajohnt/oss-autopilot/commit/7d9fac8b3f2e1a17979ed64c1f7a594a941cd8af))
+* **oss:** refresh before session end and always acknowledge maintainer thanks ([#1859](https://github.com/costajohnt/oss-autopilot/issues/1859)) ([3ac4ff1](https://github.com/costajohnt/oss-autopilot/commit/3ac4ff16ef39743e5908eaacba73a81b85a3f405))
+
 ## [3.38.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.37.0...core-v3.38.0) (2026-11-01)
 
 
