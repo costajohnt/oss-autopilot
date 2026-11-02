@@ -296,9 +296,13 @@ export interface DashboardFetchResult {
 }
 
 /**
- * The partial-data banner entry for the issue monitor's notices (#1862): the
- * direct-fetch cap, a gone issue, a truncated thread. The monitor already
- * logged each one; the banner lists operations, so they collapse to one label.
+ * The partial-data banner entry for the issue monitor's warnings (#1862): a
+ * gone issue, a truncated thread, an engagement time that does not parse.
+ * The monitor already logged each one; the banner lists operations, so they
+ * collapse to one label. The monitor's `notices` (issues deferred by the
+ * comment-fetch cap) are not failures and never reach the banner: on a user
+ * with many active claims the cap can bite every run, and a permanent
+ * "partial data" banner would hide real failures behind it.
  */
 function engagedScanLabels(issueMonitorWarnings: readonly string[]): string[] {
   return issueMonitorWarnings.length > 0 ? ['scan engaged issues'] : [];
@@ -413,6 +417,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       issues: [] as CommentedIssue[],
       failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
       warnings: [] as string[],
+      notices: [] as string[],
     };
   });
 

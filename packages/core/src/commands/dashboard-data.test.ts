@@ -942,7 +942,7 @@ describe('fetchDashboardData', () => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([]);
     mockFetchUserMergedPRCounts.mockResolvedValue(makePRCountsResult());
     mockFetchUserClosedPRCounts.mockResolvedValue(makePRCountsResult());
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [], notices: [] });
     mockFetchMergedPRsSince.mockResolvedValue([]);
     mockFetchClosedPRsSince.mockResolvedValue([]);
 
@@ -1257,14 +1257,28 @@ describe('fetchDashboardData', () => {
         issues: [],
         failures: [],
         warnings: [
-          '3 engaged issues missing from the comment search were not fetched this run',
-          'https://github.com/o/r/issues/5: issue no longer reachable (HTTP 404: Not Found); dropped',
+          'https://github.com/o/r/issues/5: issue no longer reachable (NOT_FOUND: gone); dropped',
+          'https://github.com/o/r/issues/6: comment thread longer than the pagination cap',
         ],
+        notices: [],
       });
 
       const result = await fetchDashboardData('test-token');
 
       expect(result.partialFailures).toEqual(['scan engaged issues']);
+    });
+
+    it('keeps the comment-fetch cap notice out of the partial-data banner: nothing failed', async () => {
+      mockFetchCommentedIssues.mockResolvedValue({
+        issues: [],
+        failures: [],
+        warnings: [],
+        notices: ['5 engaged issues with new activity were not scanned this run'],
+      });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(result.partialFailures).toEqual([]);
     });
 
     it('adds no banner entry when the issue monitor has nothing to report', async () => {

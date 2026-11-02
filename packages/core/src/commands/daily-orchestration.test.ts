@@ -262,7 +262,7 @@ beforeEach(() => {
   mockGetMergedPRs.mockReturnValue([]);
 
   // Default issue conversation response (no issues)
-  mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [] });
+  mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [], notices: [] });
   mockHasUserCommentSince.mockResolvedValue(false);
   mockFetchPRClosedBy.mockResolvedValue('testuser');
   mockReleaseIssue.mockReturnValue('not_tracked');
@@ -548,7 +548,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
       mockFetchRepoMetadata.mockResolvedValue(new Map<string, { stars: number; language: string | null }>());
       mockFetchRecentlyClosedPRs.mockResolvedValue([]);
       mockFetchRecentlyMergedPRs.mockResolvedValue([]);
-      mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [] });
+      mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [], notices: [] });
       mockIsPRShelved.mockReturnValue(false);
       mockGetIssueDismissedAt.mockReturnValue(undefined);
       mockSave.mockImplementation(() => {});
@@ -1117,7 +1117,7 @@ describe('executeDailyCheck() — issue conversation', () => {
 
   it('includes non-dismissed issues in commentedIssues', async () => {
     const issue = makeIssue();
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [], warnings: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [], warnings: [], notices: [] });
     mockGetIssueDismissedAt.mockReturnValue(undefined);
 
     const result = await executeDailyCheck('test-token');
@@ -1128,7 +1128,7 @@ describe('executeDailyCheck() — issue conversation', () => {
 
   it('filters out dismissed issues that have no new activity', async () => {
     const issue = makeIssue({ url: 'https://github.com/owner/repo/issues/11' });
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [], warnings: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [], warnings: [], notices: [] });
     // Dismissed AFTER the last known activity
     mockGetIssueDismissedAt.mockReturnValue('2026-01-20T00:00:00Z');
 
@@ -1153,7 +1153,7 @@ describe('executeDailyCheck() — issue conversation', () => {
       daysSinceUserComment: 5,
       isFromMaintainer: true,
     };
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [], warnings: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [], warnings: [], notices: [] });
     // Dismissed BEFORE the new response
     mockGetIssueDismissedAt.mockReturnValue('2026-01-15T00:00:00Z');
 
@@ -1261,7 +1261,8 @@ describe('executeDailyCheck() — engaged issues (#1862)', () => {
     mockFetchCommentedIssues.mockResolvedValue({
       issues: [],
       failures: [],
-      warnings: ['30 engaged issues were missing from the comment search; only the first 25 were fetched'],
+      warnings: ['https://github.com/o/r/issues/5: issue no longer reachable (NOT_FOUND: gone); dropped'],
+      notices: [],
     });
 
     const result = await executeDailyCheck('test-token');
@@ -1271,10 +1272,30 @@ describe('executeDailyCheck() — engaged issues (#1862)', () => {
         {
           phase: 'fetch',
           operation: 'fetch commented issues',
-          message: '30 engaged issues were missing from the comment search; only the first 25 were fetched',
+          message: 'https://github.com/o/r/issues/5: issue no longer reachable (NOT_FOUND: gone); dropped',
         },
       ]),
     );
+  });
+
+  it('records a comment-fetch cap notice under the fetch phase at info severity: nothing failed', async () => {
+    mockFetchCommentedIssues.mockResolvedValue({
+      issues: [],
+      failures: [],
+      warnings: [],
+      notices: ['5 engaged issues with new activity were not scanned this run'],
+    });
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.warnings).toEqual([
+      {
+        phase: 'fetch',
+        operation: 'fetch commented issues',
+        message: '5 engaged issues with new activity were not scanned this run',
+        severity: 'info',
+      },
+    ]);
   });
 
   it('resurfaces a dismissed engaged issue when a community reply arrives after the dismiss, and keeps it hidden otherwise', async () => {
@@ -1284,6 +1305,7 @@ describe('executeDailyCheck() — engaged issues (#1862)', () => {
       issues: [engagedReply('2026-02-01T00:00:00Z')],
       failures: [],
       warnings: [],
+      notices: [],
     });
     const resurfaced = await executeDailyCheck('test-token');
     expect(resurfaced.commentedIssues.map((i) => i.url)).toEqual(['https://github.com/owner/repo/issues/13']);
@@ -1294,6 +1316,7 @@ describe('executeDailyCheck() — engaged issues (#1862)', () => {
       issues: [engagedReply('2026-01-14T00:00:00Z')],
       failures: [],
       warnings: [],
+      notices: [],
     });
     const hidden = await executeDailyCheck('test-token');
     expect(hidden.commentedIssues).toEqual([]);
@@ -2025,7 +2048,7 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): supersede, n
       labels: [],
       daysSinceUserComment: 5,
     };
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [waiting], failures: [], warnings: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [waiting], failures: [], warnings: [], notices: [] });
     mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
 
     const result = await executeDailyCheck('test-token');
@@ -2050,7 +2073,7 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): supersede, n
       daysSinceUserComment: 5,
       isFromMaintainer: true,
     };
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [reply], failures: [], warnings: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [reply], failures: [], warnings: [], notices: [] });
     mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
 
     const result = await executeDailyCheck('test-token');

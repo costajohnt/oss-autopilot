@@ -16,8 +16,10 @@
  *   emoji-only reactions do not, except that a bare status request on a
  *   claimed issue is addressed to the claimant and counts. Engaged issues
  *   the comment search does not return (the user never commented, or not
- *   within the window) are fetched directly, up to
- *   {@link MAX_DIRECT_ENGAGED_FETCHES} per run.
+ *   within the window) are looked up in batched GraphQL queries, and the
+ *   ones still open and updated since the engagement have their comments
+ *   read directly, up to {@link MAX_DIRECT_ENGAGED_FETCHES} per run, most
+ *   recently updated first.
  */
 
 import { Octokit } from '@octokit/rest';
@@ -37,6 +39,7 @@ import { splitRepo, extractOwnerRepo, isOwnRepo, parseGitHubUrl, issueRefKey } f
 import { runWorkerPool, DEFAULT_CONCURRENCY } from './concurrency.js';
 import type { AgentConfig, CommentedIssue, IssueConversationStatus, IssueEngagement } from './types.js';
 import { toIssueEngagement, type EngagedIssue } from './engaged-issues.js';
+import { lookupEngagedIssues, type EngagedIssueLookup, type EngagedIssueRef } from './engaged-issue-lookup.js';
 import {
   ConfigurationError,
   ValidationError,
@@ -51,11 +54,13 @@ const MODULE = 'issue-conversation';
 const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
 
 /**
- * Most engaged issues fetched directly per run when the comment search
- * misses them (#1862). Each costs one issue lookup plus its comment pages,
- * all ETag-cached, so a quiet day is mostly 304s; the cap bounds a first run
- * for a user with many open claims. Strongest engagements come first, so
- * the open-PR and claim issues are the ones kept.
+ * Most engaged issues whose comments are read directly per run when the
+ * comment search misses them (#1862). Only issues the batched lookup found
+ * open and updated since the engagement count; each costs its comment pages,
+ * ETag-cached, so a quiet day is mostly 304s. The cap bounds a first run for
+ * a user with many active claims. Most recently updated issues come first,
+ * so an issue that gets a new comment moves to the front on the next run
+ * and nothing with fresh activity is left behind for good.
  */
 export const MAX_DIRECT_ENGAGED_FETCHES = 25;
 
@@ -71,12 +76,24 @@ interface IssueItem {
 }
 
 interface Candidate {
-  /** Present for search results; a direct fetch fills it in from the issue lookup. */
-  item?: IssueItem;
+  /** From the search result, or from the batched lookup for a direct fetch. */
+  item: IssueItem;
   url: string;
   repoFullName: string;
-  number: number;
   engagement?: EngagedIssue;
+}
+
+/** A direct candidate with the issue's update time, for the cap's ordering. */
+interface DirectCandidate {
+  candidate: Candidate;
+  updatedMs: number;
+}
+
+/** The result's non-fatal channels, filled in as the run goes. */
+interface RunReport {
+  warnings: string[];
+  notices: string[];
+  failures: Array<{ issueUrl: string; error: string }>;
 }
 
 export interface FetchCommentedIssuesOptions {
@@ -90,11 +107,20 @@ export interface FetchCommentedIssuesResult {
   issues: CommentedIssue[];
   failures: Array<{ issueUrl: string; error: string }>;
   /**
-   * Non-fatal notices for the run's warning channel: the direct-fetch cap,
-   * a claimed or open-PR issue that is gone, a comment thread too long to
-   * read to the end, an engagement time that does not parse.
+   * Non-fatal problems for the run's warning channel: a claimed or open-PR
+   * issue that is gone, a comment thread too long to read to the end, an
+   * engagement time that does not parse. Each means the result may be
+   * missing or misreporting something the user can act on.
    */
   warnings: string[];
+  /**
+   * Informational only: engaged issues with new activity whose comments were
+   * not read this run because the comment-fetch cap bit. Nothing failed, and
+   * an issue that is updated again moves to the front of the next run. Daily
+   * records these at `info` severity; the dashboard does not count them as
+   * partial data.
+   */
+  notices: string[];
 }
 
 interface TimelineEntry {
@@ -118,12 +144,6 @@ function excerpt(body: string): string {
 function describeError(error: unknown): string {
   const status = getHttpStatusCode(error);
   return status === undefined ? errorMessage(error) : `HTTP ${status}: ${errorMessage(error)}`;
-}
-
-/** 404/410: the issue is gone (deleted, transferred, or now private). */
-function isGoneError(error: unknown): boolean {
-  const status = getHttpStatusCode(error);
-  return status === 404 || status === 410;
 }
 
 /**
@@ -191,7 +211,8 @@ export class IssueConversationMonitor {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - maxDays);
     const since = cutoffDate.toISOString().split('T', 1)[0];
-    const warnings: string[] = [];
+    const report: RunReport = { warnings: [], notices: [], failures: [] };
+    const { warnings, failures } = report;
 
     debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
 
@@ -232,7 +253,7 @@ export class IssueConversationMonitor {
       if (item.user?.login?.toLowerCase() === username.toLowerCase()) continue;
       if (!this.isRepoAllowed(repoFullName, config)) continue;
 
-      candidates.push({ item, repoFullName, engagement: engaged.get(key), url: item.html_url, number: item.number });
+      candidates.push({ item, repoFullName, engagement: engaged.get(key), url: item.html_url });
     }
 
     // Live engaged issues the search did not return are looked up directly.
@@ -243,39 +264,22 @@ export class IssueConversationMonitor {
       if (!parsed || !this.isRepoAllowed(`${parsed.owner}/${parsed.repo}`, config)) continue;
       missing.push(entry);
     }
-    // `engaged` iterates strongest reason first (open PR, claim, then closed
-    // and merged links), so the cap drops finished-PR links before claims.
-    const skipped = missing.slice(MAX_DIRECT_ENGAGED_FETCHES);
-    if (skipped.length > 0) {
-      warnings.push(
-        `${skipped.length} engaged issue${skipped.length === 1 ? '' : 's'} missing from the comment search ${skipped.length === 1 ? 'was' : 'were'} not fetched this run (cap of ${MAX_DIRECT_ENGAGED_FETCHES} direct lookups; open-PR and claimed issues come first), so replies there may be missed: ${skipped.map((e) => e.url).join(', ')}`,
-      );
-    }
-    for (const entry of missing.slice(0, MAX_DIRECT_ENGAGED_FETCHES)) {
-      const parsed = parseGitHubUrl(entry.url);
-      if (!parsed) continue;
-      candidates.push({
-        url: entry.url,
-        repoFullName: `${parsed.owner}/${parsed.repo}`,
-        number: parsed.number,
-        engagement: entry,
-      });
-    }
+    candidates.push(...(await this.collectDirectCandidates(missing, username, cutoffDate, report)));
+    // Lookup failures are already in `failures`; the analysis tallies below
+    // count only the candidates the pool analyzed.
+    const lookupFailures = failures.length;
 
     debug(MODULE, `Found ${candidates.length} commented issues to check`);
 
     // Fetch comments for each issue using worker pool.
     const results: CommentedIssue[] = [];
-    const failures: Array<{ issueUrl: string; error: string }> = [];
 
     await runWorkerPool(
       candidates,
       async (candidate) => {
         try {
-          const item = candidate.item ?? (await this.fetchEngagedIssue(candidate, username, cutoffDate));
-          if (!item) return;
           const issue = await this.analyzeIssueConversation(
-            item,
+            candidate.item,
             candidate.repoFullName,
             username,
             candidate.engagement,
@@ -300,16 +304,6 @@ export class IssueConversationMonitor {
           // dashboard-data.ts rethrow rate-limit/auth from their phase catches,
           // aborting the run just like PRMonitor's 429s do.
           if (isRateLimitOrAuthError(error)) throw error;
-          if (candidate.item === undefined && isGoneError(error)) {
-            // Only a direct fetch can see a 404/410: the issue was deleted,
-            // transferred, or made private since the PR or claim linked it.
-            // Worth telling the user only while something of theirs still
-            // points at it (a claim to release, an open PR's closing link).
-            const message = `${candidate.url}: issue no longer reachable (${describeError(error)}); dropped`;
-            if (isActionableEngagement(candidate.engagement)) warnings.push(message);
-            else debug(MODULE, message);
-            return;
-          }
           const msg = describeError(error);
           failures.push({ issueUrl: candidate.url, error: msg });
           warn(MODULE, `Error analyzing issue ${candidate.url}: ${msg}`);
@@ -318,16 +312,22 @@ export class IssueConversationMonitor {
       MAX_CONCURRENT_REQUESTS,
     );
 
-    if (failures.length > 0) {
-      warn(MODULE, `${failures.length}/${candidates.length} issue analysis call(s) failed`);
+    const analysisFailures = failures.length - lookupFailures;
+    if (lookupFailures > 0) {
+      warn(MODULE, `${lookupFailures} engaged issue lookup(s) failed`);
     }
-    if (failures.length === candidates.length && candidates.length > 0) {
+    if (analysisFailures > 0) {
+      warn(MODULE, `${analysisFailures}/${candidates.length} issue analysis call(s) failed`);
+    }
+    if (analysisFailures === candidates.length && candidates.length > 0) {
       warn(
         MODULE,
         `All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (network, GitHub availability).`,
       );
     }
     for (const message of warnings) warn(MODULE, message);
+    // Notices are informational: in the result for the daily envelope, not on stderr.
+    for (const message of report.notices) debug(MODULE, message);
 
     // Sort: new_response first, then waiting, then acknowledged
     const statusOrder: Record<IssueConversationStatus, number> = {
@@ -341,7 +341,7 @@ export class IssueConversationMonitor {
       MODULE,
       `Analyzed ${results.length} issue conversations (${results.filter((i) => i.status === 'new_response').length} with new responses)`,
     );
-    return { issues: results, failures, warnings };
+    return { failures, warnings, issues: results, notices: report.notices };
   }
 
   /** Repo-level exclusions shared by the search results and the direct fetches. */
@@ -356,41 +356,110 @@ export class IssueConversationMonitor {
   }
 
   /**
-   * Look up an engaged issue the comment search did not return (#1862).
-   * Returns undefined, with a debug line, when the number is a pull request,
-   * the issue is closed, the user authored it, or nothing on it changed
-   * since the later of the search window's start and the engagement step.
-   * The window keeps this path consistent with the commenter search (a
-   * reply older than `maxDays` is not surfaced either way); the engagement
-   * step tightens it because only comments after that step can be replies
-   * to the user, so an issue untouched since then has nothing to report.
-   * ETag-cached like the comment pages. Errors propagate to the worker.
+   * Candidates for the engaged issues the comment search did not return
+   * (#1862): one batched GraphQL lookup for all of them, then the issues
+   * still open, not the user's own, and updated since the later of the
+   * search window's start and the engagement step, most recently updated
+   * first, up to {@link MAX_DIRECT_ENGAGED_FETCHES}. The window keeps this
+   * path consistent with the commenter search (a reply older than `maxDays`
+   * is not surfaced either way); the engagement step tightens it because
+   * only comments after that step can be replies to the user. The issues
+   * past the cap are named in a notice; the next run reorders by update
+   * time again, so one that is commented on moves to the front.
+   *
+   * @throws The lookup's rate-limit or auth error; other lookup failures are
+   *   recorded per issue in `report.failures`.
    */
-  private async fetchEngagedIssue(
-    candidate: Candidate,
+  private async collectDirectCandidates(
+    missing: EngagedIssue[],
     username: string,
     cutoffDate: Date,
-  ): Promise<IssueItem | undefined> {
-    const { owner, repo } = splitRepo(candidate.repoFullName);
-    const url = `/repos/${owner}/${repo}/issues/${candidate.number}`;
-    const issue = await cachedRequest(
-      getHttpCache(),
-      url,
-      (headers) =>
-        this.octokit.issues.get({ owner, repo, headers, issue_number: candidate.number }) as Promise<{
-          data: Awaited<ReturnType<Octokit['issues']['get']>>['data'];
-          headers: Record<string, string>;
-        }>,
-    );
+    report: RunReport,
+  ): Promise<Candidate[]> {
+    const refs: EngagedIssueRef[] = [];
+    for (const entry of missing) {
+      const parsed = parseGitHubUrl(entry.url);
+      if (parsed) refs.push({ owner: parsed.owner, repo: parsed.repo, number: parsed.number, url: entry.url });
+    }
+    if (refs.length === 0) return [];
+    const lookups = await lookupEngagedIssues(this.octokit, refs);
+
+    const active: DirectCandidate[] = [];
+    for (const entry of missing) {
+      const outcome = lookups.get(entry.url);
+      if (!outcome) continue;
+      const direct = this.toDirectCandidate(entry, outcome, username, cutoffDate, report);
+      if (direct) active.push(direct);
+    }
+    active.sort((a, b) => b.updatedMs - a.updatedMs);
+
+    const deferred = active.slice(MAX_DIRECT_ENGAGED_FETCHES);
+    if (deferred.length > 0) {
+      const plural = deferred.length === 1 ? '' : 's';
+      report.notices.push(
+        `${deferred.length} engaged issue${plural} with new activity ${deferred.length === 1 ? 'was' : 'were'} not scanned this run (cap of ${MAX_DIRECT_ENGAGED_FETCHES} comment fetches per run, most recently updated first; an issue moves to the front as soon as it is updated again): ${deferred.map((d) => d.candidate.url).join(', ')}`,
+      );
+    }
+    return active.slice(0, MAX_DIRECT_ENGAGED_FETCHES).map((d) => d.candidate);
+  }
+
+  /**
+   * The direct candidate one lookup outcome yields, or undefined with the
+   * reason logged: a lookup failure (recorded), a gone issue (a warning only
+   * while a claim or an open PR still points at it), a pull request number,
+   * a closed issue, one the user authored, or one untouched since the
+   * engagement.
+   */
+  private toDirectCandidate(
+    entry: EngagedIssue,
+    outcome: EngagedIssueLookup,
+    username: string,
+    cutoffDate: Date,
+    report: RunReport,
+  ): DirectCandidate | undefined {
+    if (outcome.kind === 'failed') {
+      report.failures.push({ issueUrl: entry.url, error: outcome.error });
+      warn(MODULE, `Error looking up engaged issue ${entry.url}: ${outcome.error}`);
+      return undefined;
+    }
+    if (outcome.kind === 'gone') {
+      // The issue was deleted, transferred, or made private since the PR or
+      // claim linked it. Worth telling the user only while something of
+      // theirs still points at it (a claim to release, an open PR's closing
+      // link); a finished PR's link is history.
+      const message = `${entry.url}: issue no longer reachable (${outcome.reason}); dropped`;
+      if (isActionableEngagement(entry)) report.warnings.push(message);
+      else debug(MODULE, message);
+      return undefined;
+    }
     const skip = (reason: string): undefined => {
-      debug(MODULE, `Skipping engaged issue ${candidate.url}: ${reason}`);
+      debug(MODULE, `Skipping engaged issue ${entry.url}: ${reason}`);
     };
-    if (issue.pull_request) return skip('the number is a pull request');
-    if (issue.state !== 'open') return skip(`issue is ${issue.state}`);
-    if (issue.user?.login?.toLowerCase() === username.toLowerCase()) return skip('authored by the user');
-    const activitySinceMs = Math.max(cutoffDate.getTime(), parseMs(candidate.engagement?.since));
-    if (Date.parse(issue.updated_at) < activitySinceMs) return skip(`not updated since ${issue.updated_at}`);
-    return { html_url: issue.html_url, number: issue.number, title: issue.title, labels: issue.labels };
+    if (outcome.kind === 'pull_request') return skip('the number is a pull request');
+
+    const { node } = outcome;
+    if (node.state !== 'OPEN') return skip(`issue is ${node.state.toLowerCase()}`);
+    if (node.author?.login.toLowerCase() === username.toLowerCase()) return skip('authored by the user');
+    const updatedMs = parseMs(node.updatedAt);
+    const activitySinceMs = Math.max(cutoffDate.getTime(), parseMs(entry.since));
+    if (updatedMs < activitySinceMs) return skip(`not updated since ${node.updatedAt}`);
+
+    const parsed = parseGitHubUrl(entry.url);
+    if (!parsed) return undefined;
+    const labelNodes = node.labels?.nodes ?? [];
+    const item: IssueItem = {
+      html_url: node.url,
+      number: node.number,
+      title: node.title,
+      labels: labelNodes.filter((label) => label !== null).map((label) => label.name),
+    };
+    const candidate: Candidate = {
+      item,
+      url: entry.url,
+      repoFullName: `${parsed.owner}/${parsed.repo}`,
+      engagement: entry,
+    };
+    return { candidate, updatedMs };
   }
 
   /**

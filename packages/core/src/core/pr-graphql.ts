@@ -447,8 +447,8 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   };
 }
 
-/** Split an array into fixed-size chunks. */
-function chunk<T>(items: T[], size: number): T[][] {
+/** Split an array into fixed-size chunks. Shared with the engaged-issue lookup. */
+export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;

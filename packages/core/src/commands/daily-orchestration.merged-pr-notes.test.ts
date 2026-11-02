@@ -218,7 +218,7 @@ beforeEach(() => {
   mockFetchRecentlyMergedPRs.mockResolvedValue([]);
   mockFetchMergedPRActivity.mockResolvedValue(activity());
   mockGenerateDigest.mockReturnValue(makeDigest());
-  mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [] });
+  mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [], notices: [] });
   mockHasUserCommentSince.mockResolvedValue(false);
   mockFetchPRClosedBy.mockResolvedValue(USER);
   mockGetIssueDismissedAt.mockReturnValue(undefined);

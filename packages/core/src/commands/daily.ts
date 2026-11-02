@@ -44,6 +44,7 @@ import {
   type ClosedPR,
   type CommentedIssue,
   type CommentedIssueWithResponse,
+  type FetchCommentedIssuesResult,
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
@@ -245,6 +246,25 @@ interface PartitionedPRs {
  * Retrieves open PRs, merged/closed counts, recently closed/merged PRs, and
  * issue conversation data — all in parallel where possible.
  */
+/**
+ * Record the issue monitor's non-fatal notes under the fetch phase (#1862).
+ * Its warnings (a gone issue, a truncated thread) are degradations; its
+ * notices (issues the comment-fetch cap deferred to a later run) are not:
+ * they stay in the envelope so the user can see what was left for next
+ * time, marked `info` so consumers do not render the run as degraded.
+ */
+function recordIssueMonitorNotes(
+  warnings: DailyWarning[],
+  result: Pick<FetchCommentedIssuesResult, 'warnings' | 'notices'>,
+): void {
+  for (const message of result.warnings) {
+    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
+  }
+  for (const message of result.notices) {
+    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', severity: 'info', message });
+  }
+}
+
 async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyWarning[]): Promise<FetchedPRData> {
   // Fetch all open PRs fresh from GitHub
   const fetchResult = await prMonitor.fetchUserOpenPRs();
@@ -345,13 +365,12 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
       issues: [] as CommentedIssue[],
       failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
       warnings: [] as string[],
+      notices: [] as string[],
     };
   });
 
-  const { issues: commentedIssues, warnings: issueMonitorWarnings } = issueConversationResult;
-  for (const message of issueMonitorWarnings) {
-    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
-  }
+  const { issues: commentedIssues } = issueConversationResult;
+  recordIssueMonitorNotes(warnings, issueConversationResult);
   if (issueConversationResult.failures.length > 0) {
     warnings.push({
       phase: 'fetch',
