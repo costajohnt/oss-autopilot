@@ -52,6 +52,15 @@ fi
 
 CLI_BUNDLE="${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
 
+# --- Prebuilt layout --------------------------------------------------------
+# The `directory` branch (scripts/build-directory-branch.sh) ships the bundle
+# from the published npm tarball with no package.json or src/ beside it.
+# There is nothing to rebuild from, and the bundle is self-contained, so it
+# is current by definition.
+if [ -f "${CLI_BUNDLE}" ] && [ ! -f "${PLUGIN_ROOT}/packages/core/package.json" ]; then
+  exit 0
+fi
+
 # --- Staleness check ------------------------------------------------------
 needs_rebuild=false
 if [ ! -f "${CLI_BUNDLE}" ]; then

@@ -417,6 +417,17 @@ EOF
     pass
 }
 
+case_prebuilt_layout_returns_0() {
+    # The `directory` branch ships only dist/cli.bundle.cjs (no package.json,
+    # src/ or node_modules). There is nothing to rebuild from, so the helper
+    # must report current instead of attempting an install that cannot work.
+    rm -rf "${PLUGIN}/packages/core/src" "${PLUGIN}/packages/core/package.json" \
+        "${PLUGIN}/packages/core/tsconfig.json" "${PLUGIN}/packages/core/node_modules"
+    out=$(PATH="/usr/bin:/bin" "$SUBJECT" "$PLUGIN" 2>/dev/null)
+    rc=$?
+    [ "$rc" = 0 ] && [ -z "$out" ] && pass || fail "expected exit 0 and no stdout for a prebuilt layout, got $rc '$out'"
+}
+
 # --- Driver ----------------------------------------------------------------
 
 echo "Running build-cli-if-stale.sh tests..."
@@ -434,6 +445,7 @@ run case_dep_stamp_fresh_skips_check          case_dep_stamp_fresh_skips_check
 run case_dep_versions_match_no_rebuild        case_dep_versions_match_no_rebuild
 run case_dep_stale_version_triggers_refresh   case_dep_stale_version_triggers_refresh
 run case_dep_registry_error_skips_gracefully  case_dep_registry_error_skips_gracefully
+run case_prebuilt_layout_returns_0           case_prebuilt_layout_returns_0
 
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed."
