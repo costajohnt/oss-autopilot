@@ -4,22 +4,26 @@
  * The vitest setup file points HOME at a fresh temp dir, so the singleton
  * writes a real state.json there. Each test starts from no state file and a
  * reset singleton; "reload" tests reset the singleton again so the next
- * command reads the file back from disk.
+ * command reads the file back from disk. Cross-machine (Gist) behaviour is
+ * in core/gist-state-store.concurrency.test.ts.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
+import os from 'node:os';
 import { getStatePath, getStateManager, resetStateManager } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { runWorkClaim, runWorkFinish, runWorkList, runWorkRelease } from './work.js';
 
 const NOW = Date.parse('2026-11-02T12:00:00.000Z');
 const HOUR = 3_600_000;
+const WEEK = 168 * HOUR;
 const ISSUE_A = 'https://github.com/owner/repo/issues/1';
 const ISSUE_B = 'https://github.com/owner/repo/issues/2';
 const ISSUE_C = 'https://github.com/owner/repo/issues/3';
 const PR_URL = 'https://github.com/owner/repo/pull/9';
-const SESSION = 'air/20261102T1200';
+const SESSION = 'air/20261102T120000-1a2b';
+const OTHER_SESSION = 'mbp/20261102T120500-9f9f';
 
 function freshState(): void {
   resetStateManager();
@@ -31,15 +35,30 @@ function reload(): void {
   resetStateManager();
 }
 
-function readDisk(): { workClaims?: Array<{ url: string; status: string; session: string }> } {
+interface DiskClaim {
+  url: string;
+  status: string;
+  session: string;
+  expiresAt: string;
+  host?: string;
+  [key: string]: unknown;
+}
+
+function readDisk(): { workClaims?: DiskClaim[] } {
   return JSON.parse(fs.readFileSync(getStatePath(), 'utf8'));
+}
+
+function iso(ms: number): string {
+  const at = new Date(ms);
+  return at.toISOString();
 }
 
 async function claimImpl(url: string, worktree: string, extra: Partial<Parameters<typeof runWorkClaim>[0]> = {}) {
   return runWorkClaim({ url, kind: 'implementation', session: SESSION, worktree, ...extra });
 }
 
-describe('work claim / finish / release / list (real StateManager)', () => {
+/** Fake clock at NOW and an empty state file around every test of the enclosing describe. */
+function useFreshState(): void {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -48,12 +67,19 @@ describe('work claim / finish / release / list (real StateManager)', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     freshState();
   });
+}
+
+describe('work claim / finish / release / list: lifecycle, expiry and the cap (real StateManager)', () => {
+  useFreshState();
 
   it('round-trips a claim through disk: claim, reload, list, finish, reload, release, reload', async () => {
     const claimed = await claimImpl(ISSUE_A, '/work/wt/a', { branch: 'fix/thing' });
-    expect(claimed.replaced).toBe(false);
+    expect(claimed.outcome).toBe('claimed');
+    // Local mode has nothing to sync to, so the claim is as shared as it gets.
+    expect(claimed.synced).toBe(true);
     expect(claimed.claim).toMatchObject({
       kind: 'implementation',
       url: ISSUE_A,
@@ -61,6 +87,7 @@ describe('work claim / finish / release / list (real StateManager)', () => {
       status: 'running',
       branch: 'fix/thing',
       worktree: '/work/wt/a',
+      host: os.hostname(),
       startedAt: '2026-11-02T12:00:00.000Z',
       expiresAt: '2026-11-03T12:00:00.000Z',
     });
@@ -71,6 +98,7 @@ describe('work claim / finish / release / list (real StateManager)', () => {
     expect(listed.claims.map((c) => c.url)).toEqual([ISSUE_A]);
     expect(listed.expiredCount).toBe(0);
     expect(listed.now).toBe('2026-11-02T12:00:00.000Z');
+    expect(listed.warnings).toBeUndefined();
 
     const finished = await runWorkFinish({ url: ISSUE_A });
     expect(finished.claim).toMatchObject({ status: 'finished', finishedAt: '2026-11-02T12:00:00.000Z' });
@@ -92,29 +120,71 @@ describe('work claim / finish / release / list (real StateManager)', () => {
   it('pr claims default to a 12-hour TTL, implementations to 24, and --ttl overrides both', async () => {
     const pr = await runWorkClaim({ url: PR_URL, kind: 'pr', session: SESSION });
     expect(pr.claim.expiresAt).toBe('2026-11-03T00:00:00.000Z');
+    // A pr claim has no checkout, so no host either.
+    expect(pr.claim.host).toBeUndefined();
     const custom = await claimImpl(ISSUE_A, '/work/wt/a', { ttlHours: 1.5 });
     expect(custom.claim.expiresAt).toBe('2026-11-02T13:30:00.000Z');
   });
 
-  it('ignores expired claims on list and vet paths, and prunes them on the next write', async () => {
+  it('finish keeps the branch collectable for a week past finishedAt, whatever the running TTL was', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    await claimImpl(ISSUE_B, '/work/wt/b', { ttlHours: 168 });
+    vi.setSystemTime(NOW + 20 * HOUR);
+
+    const short = await runWorkFinish({ url: ISSUE_A });
+    expect(short.claim?.expiresAt).toBe(iso(NOW + 20 * HOUR + WEEK));
+    const long = await runWorkFinish({ url: ISSUE_B });
+    expect(long.claim?.expiresAt).toBe(iso(NOW + 20 * HOUR + WEEK));
+
+    // Still offered three days later, well past the original 24 h.
+    vi.setSystemTime(NOW + 3 * 24 * HOUR);
+    reload();
+    const listed = await runWorkList();
+    expect(listed.claims.map((c) => c.status)).toEqual(['finished', 'finished']);
+  });
+
+  it('re-claiming its own finished implementation keeps it finished; release then claim starts over', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    const finished = await runWorkFinish({ url: ISSUE_A });
+    vi.setSystemTime(NOW + HOUR);
+
+    const renewed = await claimImpl(ISSUE_A, '/work/wt/a');
+    expect(renewed.outcome).toBe('renewed');
+    expect(renewed.claim).toMatchObject({ status: 'finished', finishedAt: finished.claim?.finishedAt });
+    // The renewal uses the finished TTL, not the 24 h running default.
+    expect(renewed.claim.expiresAt).toBe(iso(NOW + HOUR + WEEK));
+    expect(readDisk().workClaims?.[0]).toMatchObject({ status: 'finished' });
+
+    await runWorkRelease({ url: ISSUE_A });
+    const restarted = await claimImpl(ISSUE_A, '/work/wt/a');
+    expect(restarted.outcome).toBe('claimed');
+    expect(restarted.claim).toMatchObject({ status: 'running', expiresAt: iso(NOW + HOUR + 24 * HOUR) });
+    expect(restarted.claim.finishedAt).toBeUndefined();
+  });
+
+  it('ignores expired claims on list, finish and release, and leaves the file alone until a real write', async () => {
     await claimImpl(ISSUE_A, '/work/wt/a', { ttlHours: 1 });
     await runWorkClaim({ url: PR_URL, kind: 'pr', session: SESSION, ttlHours: 1 });
+    const before = fs.statSync(getStatePath()).mtimeMs;
 
     vi.setSystemTime(NOW + HOUR + 1);
     reload();
     const listed = await runWorkList();
     expect(listed.claims).toEqual([]);
     expect(listed.expiredCount).toBe(2);
-    // Read-only: still on disk until a write.
-    expect(readDisk().workClaims).toHaveLength(2);
 
-    // Expired, so nothing to finish or release...
+    // Expired, so nothing to finish or release, and neither writes: a
+    // prune-only save would mark the state un-pushed for a change nobody made.
     const finished = await runWorkFinish({ url: ISSUE_A });
     expect(finished.claim).toBeNull();
-    // ...and a release of an expired item reports nothing released but prunes.
     const released = await runWorkRelease({ url: PR_URL });
     expect(released.released).toEqual([]);
-    expect(readDisk().workClaims).toEqual([]);
+    expect(readDisk().workClaims).toHaveLength(2);
+    expect(fs.statSync(getStatePath()).mtimeMs).toBe(before);
+
+    // The next claim write prunes them.
+    await claimImpl(ISSUE_B, '/work/wt/b');
+    expect(readDisk().workClaims?.map((c) => c.url)).toEqual([ISSUE_B]);
   });
 
   it('a new claim prunes expired entries and the expired checkout no longer blocks', async () => {
@@ -122,8 +192,29 @@ describe('work claim / finish / release / list (real StateManager)', () => {
     vi.setSystemTime(NOW + HOUR + 1);
 
     const next = await claimImpl(ISSUE_B, '/work/wt/a');
-    expect(next.replaced).toBe(false);
+    expect(next.outcome).toBe('claimed');
     expect(readDisk().workClaims?.map((c) => c.url)).toEqual([ISSUE_B]);
+  });
+
+  it('warns when pruning a claim whose expiresAt is not a date, and does not count it as live', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: DiskClaim[] };
+    state.workClaims[0].expiresAt = 'soon';
+    fs.writeFileSync(getStatePath(), JSON.stringify(state));
+    reload();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const listed = await runWorkList();
+    expect(listed.claims).toEqual([]);
+    expect(listed.expiredCount).toBe(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    await claimImpl(ISSUE_B, '/work/wt/b');
+    expect(readDisk().workClaims?.map((c) => c.url)).toEqual([ISSUE_B]);
+    const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(logged.some((line) => line.includes(`Pruning work claim on ${ISSUE_A}`) && line.includes('"soon"'))).toBe(
+      true,
+    );
   });
 
   it('enforces maxConcurrentImplementations (default 2) with a clear error', async () => {
@@ -138,11 +229,11 @@ describe('work claim / finish / release / list (real StateManager)', () => {
 
     // A pr claim is not an implementation and is unaffected by the cap.
     await expect(runWorkClaim({ url: PR_URL, kind: 'pr', session: SESSION })).resolves.toMatchObject({
-      replaced: false,
+      outcome: 'claimed',
     });
     // Raising the cap lets the third one through.
     getStateManager().updateConfig({ maxConcurrentImplementations: 3 });
-    await expect(claimImpl(ISSUE_C, '/work/wt/c')).resolves.toMatchObject({ replaced: false });
+    await expect(claimImpl(ISSUE_C, '/work/wt/c')).resolves.toMatchObject({ outcome: 'claimed' });
   });
 
   it('a finished implementation frees a cap slot but keeps its checkout', async () => {
@@ -151,7 +242,7 @@ describe('work claim / finish / release / list (real StateManager)', () => {
     await runWorkFinish({ url: ISSUE_A });
 
     await expect(claimImpl(ISSUE_C, '/work/wt/a')).rejects.toThrow(/already hosts an implementation/);
-    await expect(claimImpl(ISSUE_C, '/work/wt/c')).resolves.toMatchObject({ replaced: false });
+    await expect(claimImpl(ISSUE_C, '/work/wt/c')).resolves.toMatchObject({ outcome: 'claimed' });
   });
 
   it('refuses two running implementations in the same checkout, however the path is spelled', async () => {
@@ -163,26 +254,65 @@ describe('work claim / finish / release / list (real StateManager)', () => {
     );
     expect(readDisk().workClaims).toHaveLength(1);
   });
+});
 
-  it('re-claiming the same item renews it in place (replaced: true) and keeps the order of others', async () => {
+describe('work claim / finish / release / list: hosts, sessions and foreign claims (real StateManager)', () => {
+  useFreshState();
+
+  it('the same checkout path on another host is a different checkout', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: DiskClaim[] };
+    state.workClaims[0].host = 'other-machine';
+    fs.writeFileSync(getStatePath(), JSON.stringify(state));
+    reload();
+
+    await expect(claimImpl(ISSUE_B, '/work/wt/a')).resolves.toMatchObject({ outcome: 'claimed' });
+    expect(readDisk().workClaims?.map((c) => c.host)).toEqual(['other-machine', os.hostname()]);
+  });
+
+  it('re-claiming the same item renews it in place (outcome: renewed) and keeps the order of others', async () => {
     await claimImpl(ISSUE_A, '/work/wt/a');
     await claimImpl(ISSUE_B, '/work/wt/b');
 
     vi.setSystemTime(NOW + 2 * HOUR);
     const renewed = await claimImpl('https://github.com/OWNER/repo/issues/1', '/work/wt/a');
-    expect(renewed.replaced).toBe(true);
+    expect(renewed.outcome).toBe('renewed');
     expect(renewed.claim.expiresAt).toBe('2026-11-03T14:00:00.000Z');
     const listed = await runWorkList();
     expect(listed.claims.map((c) => c.url)).toEqual([ISSUE_B, 'https://github.com/OWNER/repo/issues/1']);
   });
 
-  it('a different session can take over a pr claim (the workflow asks first)', async () => {
+  it("refuses another session's live claim unless takeover is passed, then reports took-over", async () => {
     await runWorkClaim({ url: PR_URL, kind: 'pr', session: 'air/1' });
-    const taken = await runWorkClaim({ url: PR_URL, kind: 'pr', session: 'mbp/2' });
-    expect(taken.replaced).toBe(true);
+    await claimImpl(ISSUE_A, '/work/wt/a', { session: 'air/1' });
+
+    await expect(runWorkClaim({ url: PR_URL, kind: 'pr', session: 'mbp/2' })).rejects.toThrow(
+      `${PR_URL} is already claimed: pr claimed in session air/1 (0 min, running). Pass --takeover`,
+    );
+    await expect(claimImpl(ISSUE_A, '/work/wt/other', { session: 'mbp/2' })).rejects.toThrow(/already claimed/);
+    expect(readDisk().workClaims?.map((c) => c.session)).toEqual(['air/1', 'air/1']);
+
+    const taken = await runWorkClaim({ url: PR_URL, kind: 'pr', session: 'mbp/2', takeover: true });
+    expect(taken.outcome).toBe('took-over');
+    const takenImpl = await claimImpl(ISSUE_A, '/work/wt/other', { session: 'mbp/2', takeover: true });
+    expect(takenImpl.outcome).toBe('took-over');
+    expect(takenImpl.claim.status).toBe('running');
     const listed = await runWorkList();
-    expect(listed.claims).toHaveLength(1);
-    expect(listed.claims[0].session).toBe('mbp/2');
+    expect(listed.claims.map((c) => c.session)).toEqual(['mbp/2', 'mbp/2']);
+  });
+
+  it('finish with --session refuses a claim another session holds and leaves it running', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+
+    await expect(runWorkFinish({ url: ISSUE_A, session: OTHER_SESSION })).rejects.toThrow(
+      `The claim on ${ISSUE_A} belongs to session ${SESSION}, not ${OTHER_SESSION}; it was not marked finished.`,
+    );
+    expect(readDisk().workClaims?.[0]).toMatchObject({ status: 'running' });
+
+    const own = await runWorkFinish({ url: ISSUE_A, session: SESSION });
+    expect(own.claim?.status).toBe('finished');
+    // Without a live claim there is nothing to mismatch: the agent sees null and reports "not recorded".
+    await expect(runWorkFinish({ url: ISSUE_B, session: OTHER_SESSION })).resolves.toMatchObject({ claim: null });
   });
 
   it('releases every claim a session holds, optionally only one kind, leaving other sessions alone', async () => {
@@ -224,12 +354,13 @@ describe('work claim / finish / release / list (real StateManager)', () => {
     ).rejects.toThrow(/--kind must be/);
     await expect(claimImpl(ISSUE_A, '/x', { ttlHours: 0 })).rejects.toThrow(/--ttl/);
     await expect(claimImpl(ISSUE_A, '/x', { ttlHours: 200 })).rejects.toThrow(/--ttl/);
-    // Release needs a selector.
+    // Release needs a selector; finish's session is validated like claim's.
     await expect(runWorkRelease({})).rejects.toThrow(/needs a URL or --session/);
-    // A remote run is a valid location.
-    await expect(
-      runWorkClaim({ url: ISSUE_A, kind: 'implementation', session: SESSION, runId: 'run-42' }),
-    ).resolves.toMatchObject({ claim: { runId: 'run-42' } });
+    await expect(runWorkFinish({ url: ISSUE_A, session: ' ' })).rejects.toThrow(/--session must not be empty/);
+    // A remote run is a valid location and carries no host.
+    const remote = await runWorkClaim({ url: ISSUE_A, kind: 'implementation', session: SESSION, runId: 'run-42' });
+    expect(remote.claim).toMatchObject({ runId: 'run-42' });
+    expect(remote.claim.host).toBeUndefined();
     expect(readDisk().workClaims).toHaveLength(1);
   });
 
@@ -240,5 +371,50 @@ describe('work claim / finish / release / list (real StateManager)', () => {
     expect(finished.claim).toBeNull();
     expect(byUrl.released).toEqual([]);
     expect(bySession.released).toEqual([]);
+  });
+
+  it("keeps a newer release's claim byte-for-byte through claim, finish and release on other items (#1831)", async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    const foreign = {
+      kind: 'review',
+      url: 'https://github.com/owner/repo/pull/77',
+      session: 'newer-client/1',
+      startedAt: '2026-11-02T11:00:00.000Z',
+      expiresAt: '2026-11-09T11:00:00.000Z',
+      status: 'paused',
+      reviewer: 'someone',
+      nested: { depth: 2, flags: ['a', 'b'] },
+    };
+    const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: unknown[] };
+    state.workClaims.push(foreign);
+    fs.writeFileSync(getStatePath(), JSON.stringify(state));
+    reload();
+
+    await claimImpl(ISSUE_B, '/work/wt/b');
+    await runWorkFinish({ url: ISSUE_B });
+    await runWorkRelease({ url: ISSUE_A });
+    reload();
+    const listed = await runWorkList();
+    expect(listed.claims.map((c) => c.url)).toEqual([foreign.url, ISSUE_B]);
+
+    const stored = readDisk().workClaims?.find((c) => c.url === foreign.url);
+    expect(JSON.stringify(stored)).toBe(JSON.stringify(foreign));
+  });
+
+  it('drops a claim it cannot read instead of rejecting the whole state, keeping the others', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: unknown[] };
+    state.workClaims.push({ url: ISSUE_B }, 'not even an object');
+    fs.writeFileSync(getStatePath(), JSON.stringify(state));
+    reload();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const listed = await runWorkList();
+    expect(listed.claims.map((c) => c.url)).toEqual([ISSUE_A]);
+    expect(listed.expiredCount).toBe(0);
+    const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(logged.some((line) => line.includes('2 unreadable work claim(s)'))).toBe(true);
+    // No backup restore, no fresh state: the readable claim survived the load.
+    expect(getStateManager().getLoadRecovery()).toBeNull();
   });
 });

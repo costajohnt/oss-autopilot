@@ -280,7 +280,7 @@ Then read `${CLAUDE_PLUGIN_ROOT}/workflows/action-menu.md` and follow the instru
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work claim "{prUrl}" --kind pr --session "{sessionName}" --json
 ```
 
-`replaced: true` means another session held it (the Action Menu already asked before a takeover; otherwise it was this session renewing). Release it when the PR's action completes (`work release "{prUrl}" --json`); Session End releases whatever is left. A failed claim command is not a blocker: say so once and continue.
+`outcome` is `claimed`, `renewed` (this session already held it) or `took-over` (another session's claim was replaced: only after the user picked "Take it over here" in the Action Menu, which adds `--takeover`; without the flag the command fails with "already claimed ... session X", so ask and re-run or leave it). `synced: false` means the claim is on this machine only (Gist push failed or Gist persistence degraded): say "claimed locally only; another machine may start the same work" and let the user decide whether to proceed. Release it when the PR's action completes (`work release "{prUrl}" --json`); Session End releases whatever is left. A failed claim command is not a blocker: say so once and continue.
 
 ### Phase Routing Table
 
@@ -385,7 +385,18 @@ When user selects "Done for now":
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work release --session "{sessionName}" --kind pr --json
    ```
 
-   Only `pr` claims: an implementation this session dispatched keeps its claim so another session (or the next run here) can collect it. If the command fails, say so and continue; the claims expire on their own (12 h). Then, if the `work list` refresh shows implementations still `running` or `finished`, list them in the summary below so the user knows what is still in flight.
+   Only `pr` claims: an implementation this session dispatched keeps its claim so another session (or the next run here) can collect it. If the command fails, say so and continue; the claims expire on their own (12 h).
+
+   **Stranded local runs (#1856).** Then run `work list --json` and, for each `implementation` claim with `status: "running"`, a `worktree` and this session's `sessionName`, check the worktree (the agent may have finished without running `work finish`, or died):
+
+   ```bash
+   git -C "{claim.worktree}" log --oneline "{upstreamRemote}/{upstreamDefault}..HEAD"
+   ```
+
+   - Commits listed → the branch is ready: run `work finish "{claim.url}" --session "{sessionName}" --json` so it is offered as "Collect finished implementations" next time.
+   - No commits (or the worktree is gone) → ask: "Release the claim (drop the run)" / "Leave it running" (keep the claim; note it in the summary so the user knows a run is still open). Never release a claim held by another session here.
+
+   Finally, list every implementation still `running` or `finished` in the summary below so the user knows what is still in flight.
 
 1. **Refresh once before closing (#1852).** Skip this step if it already ran this session (a second "Done for now" always closes), or if the last digest's `generatedAt` is less than 5 minutes before now (`date -u`). Otherwise re-run the daily check and list the PRs in `openPRs` whose `lastMaintainerComment.createdAt` is newer than the `generatedAt` of the previous digest shown to the user. (any non-bot commenter other than the user, so label them "new comments", not "maintainer comments"). If there are any, show them and return to the **Action Menu**; the user can handle them (via "Other: #N" when a PR has no menu item) or pick "Done for now" again to close.
 2. Print the summary:

@@ -179,7 +179,9 @@ export type {
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
 export type {
   WorkClaimOptions,
+  WorkClaimOutcome,
   WorkClaimOutput,
+  WorkFinishOptions,
   WorkFinishOutput,
   WorkReleaseOptions,
   WorkReleaseOutput,

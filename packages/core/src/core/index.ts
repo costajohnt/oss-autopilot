@@ -253,11 +253,14 @@ export * from './types.js';
 export { pickSnapshotFromVet, persistPickSnapshots, traitsFromVerification, isFirstInRepo } from './pick-snapshot.js';
 export {
   WORK_CLAIM_DEFAULT_TTL_HOURS,
+  WORK_CLAIM_FINISHED_TTL_HOURS,
   WORK_CLAIM_MAX_TTL_HOURS,
   workClaimKey,
   isWorkClaimActive,
   activeWorkClaims,
   findWorkClaim,
+  heldByOtherSession,
+  finishWorkClaim,
   finishedImplementations,
   runningImplementations,
   normalizeWorktreePath,

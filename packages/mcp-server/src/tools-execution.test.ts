@@ -490,6 +490,30 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
     expect(new Set(tools.map((t) => t.name))).toEqual(new Set(smoke.map(([tool]) => tool)));
   });
 
+  it('work-claim forwards takeover, requires an absolute worktree, and work-finish forwards session (#1856, #1852)', async () => {
+    const claim = vi.mocked(commands.runWorkClaim);
+    claim.mockResolvedValueOnce({ outcome: 'took-over' } as never);
+    const base = { url: ISSUE, kind: 'implementation', session: 'air/1' };
+    const taken = await client.callTool({
+      name: 'work-claim',
+      arguments: { ...base, worktree: '/work/wt/a', takeover: true },
+    });
+    expect(taken.isError).toBeFalsy();
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({ worktree: '/work/wt/a', takeover: true }));
+
+    claim.mockClear();
+    const relative = await client.callTool({ name: 'work-claim', arguments: { ...base, worktree: 'wt/a' } });
+    expect(relative.isError).toBe(true);
+    expect(firstTextContent(relative).text).toContain('absolute path');
+    expect(claim).not.toHaveBeenCalled();
+
+    const finish = vi.mocked(commands.runWorkFinish);
+    finish.mockResolvedValueOnce({ url: ISSUE, claim: null } as never);
+    await client.callTool({ name: 'work-finish', arguments: { url: ISSUE, session: 'air/1' } });
+    expect(finish).toHaveBeenCalledWith({ url: ISSUE, session: 'air/1' });
+    finish.mockClear();
+  });
+
   it.each(smoke)('%s: handler result comes back in the ok envelope', async (tool, handler, args) => {
     const fn = vi.mocked(commands[handler] as (...a: unknown[]) => Promise<unknown>);
     fn.mockResolvedValueOnce({ smoke: tool });

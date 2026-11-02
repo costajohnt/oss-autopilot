@@ -28,36 +28,37 @@ import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { GistConcurrencyError } from './errors.js';
 import { StateManager, maybeCheckpoint } from './state.js';
-import { AgentStateSchema } from './state-schema.js';
+import { AgentStateSchema, type WorkClaim } from './state-schema.js';
+import { claimWork, finishWork, listWork, releaseWork } from '../commands/work.js';
 
 // ── Path mock (shared with gist-state-store.test.ts pattern) ─────────────────
 
-let mockTmpDir = '';
+const mockScratch = { dir: '' };
 
 vi.mock('./paths.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./paths.js')>();
   return {
     ...actual,
     getDataDir: () => {
-      if (!mockTmpDir) throw new Error('mockTmpDir not set');
-      if (!fs.existsSync(mockTmpDir)) {
-        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      if (!mockScratch.dir) throw new Error('mockScratch.dir not set');
+      if (!fs.existsSync(mockScratch.dir)) {
+        fs.mkdirSync(mockScratch.dir, { recursive: true, mode: 0o700 });
       }
-      return mockTmpDir;
+      return mockScratch.dir;
     },
     getGistIdPath: () => {
-      if (!mockTmpDir) throw new Error('mockTmpDir not set');
-      if (!fs.existsSync(mockTmpDir)) {
-        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      if (!mockScratch.dir) throw new Error('mockScratch.dir not set');
+      if (!fs.existsSync(mockScratch.dir)) {
+        fs.mkdirSync(mockScratch.dir, { recursive: true, mode: 0o700 });
       }
-      return path.join(mockTmpDir, 'gist-id');
+      return path.join(mockScratch.dir, 'gist-id');
     },
     getStateCachePath: () => {
-      if (!mockTmpDir) throw new Error('mockTmpDir not set');
-      if (!fs.existsSync(mockTmpDir)) {
-        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      if (!mockScratch.dir) throw new Error('mockScratch.dir not set');
+      if (!fs.existsSync(mockScratch.dir)) {
+        fs.mkdirSync(mockScratch.dir, { recursive: true, mode: 0o700 });
       }
-      return path.join(mockTmpDir, 'state-cache.json');
+      return path.join(mockScratch.dir, 'state-cache.json');
     },
   };
 });
@@ -243,7 +244,7 @@ describe('GistStateStore concurrency (#1191)', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gist-store-concurrency-'));
-    mockTmpDir = tmpDir;
+    mockScratch.dir = tmpDir;
     // Pre-seed the local gist-id file so all bootstrap() calls take the
     // "load by ID" path (gist-state-store.ts:148-160) instead of search/create.
     fs.writeFileSync(path.join(tmpDir, 'gist-id'), GIST_ID, { mode: 0o600 });
@@ -251,7 +252,7 @@ describe('GistStateStore concurrency (#1191)', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    mockTmpDir = '';
+    mockScratch.dir = '';
   });
 
   it("a mutation that conflicts with another machine's push is re-applied on the refreshed baseline, not dropped (audit 2026-10-30 H1)", async () => {
@@ -570,3 +571,161 @@ async function runStaleBaselineClaimScenario(gistId: string): Promise<{
     localSessions: machineA.getActiveWorkClaims().map((c) => c.session),
   };
 }
+
+// ── Work claims through the command path, two machines (#1856, #1852) ───────
+// Own describe (the one above sits at the per-function line ceiling) with the
+// same tmp-dir hooks. Each machine is a StateManager wired to its own
+// GistStateStore over one stateful mock, driven through the real `work`
+// commands (`claimWork` etc. take the manager explicitly).
+
+const WORK_GIST_ID = 'gist-work-claims-test';
+const SESSION_A = 'machine-a/1';
+const SESSION_B = 'machine-b/1';
+const SESSION_C = 'machine-c/1';
+
+function issue(n: number): string {
+  return `https://github.com/o/r/issues/${n}`;
+}
+
+function liveClaim(url: string, session: string, worktree: string): WorkClaim {
+  const startedAt = new Date();
+  const expiresAt = new Date(startedAt.getTime() + 3_600_000);
+  return {
+    url,
+    session,
+    worktree,
+    kind: 'implementation',
+    status: 'running',
+    startedAt: startedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+/** R0 with `claims` already recorded, as a Gist another machine wrote earlier. */
+function initialStateWithClaims(claims: WorkClaim[]): string {
+  const state = JSON.parse(makeInitialStateJson()) as { workClaims?: WorkClaim[] };
+  state.workClaims = claims;
+  return JSON.stringify(state, null, 2);
+}
+
+/** A fresh process on one machine: bootstraps from the Gist and holds that copy. */
+async function attachMachine(mock: StatefulGistMock): Promise<{ machine: StateManager; store: GistStateStore }> {
+  const store = new GistStateStore(mock.octokit);
+  await store.bootstrap();
+  const machine = new StateManager(true);
+  (machine as unknown as { state: unknown }).state = AgentStateSchema.parse(
+    JSON.parse(store.cachedFiles.get(STATE_FILE_NAME)!),
+  );
+  (machine as unknown as { gistStore: unknown }).gistStore = store;
+  return { machine, store };
+}
+
+/** `session:url:status` per claim in the Gist, in stored order. */
+function remoteClaims(mock: StatefulGistMock): string[] {
+  const remote = mock.readState() as { workClaims: Array<{ url: string; session: string; status: string }> };
+  return remote.workClaims.map((c) => `${c.session}:${c.url}:${c.status}`);
+}
+
+function implementation(url: string, session: string, worktree: string, isTakeover = false) {
+  return { url, session, worktree, kind: 'implementation' as const, ...(isTakeover && { takeover: true }) };
+}
+
+describe('work claims across machines through the work commands (#1856, #1852)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gist-store-work-claims-'));
+    mockScratch.dir = tmpDir;
+    fs.writeFileSync(path.join(tmpDir, 'gist-id'), WORK_GIST_ID, { mode: 0o600 });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    mockScratch.dir = '';
+  });
+
+  it('both at cap-1 claiming different issues: the one whose push conflicts is refused and records nothing', async () => {
+    const seeded = liveClaim(issue(0), SESSION_C, '/work/wt/c');
+    const mock = makeStatefulGistMock(WORK_GIST_ID, initialStateWithClaims([seeded]));
+    const { machine: a } = await attachMachine(mock);
+    const { machine: b } = await attachMachine(mock);
+    const claimB = implementation(issue(1), SESSION_B, '/work/wt/b');
+    const claimA = implementation(issue(2), SESSION_A, '/work/wt/a');
+
+    await expect(claimWork(b, claimB)).resolves.toMatchObject({ outcome: 'claimed', synced: true });
+    // A passed its local check (one running) but the Gist now has two.
+    await expect(claimWork(a, claimA)).rejects.toThrow(
+      /Implementation cap reached: 2 of 2 running .*this claim was not saved/,
+    );
+
+    expect(remoteClaims(mock)).toEqual([`${SESSION_C}:${issue(0)}:running`, `${SESSION_B}:${issue(1)}:running`]);
+    // A holds the Gist's copy, without its own claim, and has nothing waiting to push.
+    expect(a.getActiveWorkClaims().map((c) => c.session)).toEqual([SESSION_C, SESSION_B]);
+    expect(a.hasUnpushedChanges()).toBe(false);
+  });
+
+  it('both claiming the same issue: the second is refused unless it takes over, and then replaces the first', async () => {
+    const mock = makeStatefulGistMock(WORK_GIST_ID, makeInitialStateJson());
+    const { machine: a } = await attachMachine(mock);
+    const { machine: b } = await attachMachine(mock);
+    const claimB = implementation(issue(1), SESSION_B, '/work/wt/b');
+    const claimA = implementation(issue(1), SESSION_A, '/work/wt/a');
+    const takeoverA = implementation(issue(1), SESSION_A, '/work/wt/a', true);
+
+    await claimWork(b, claimB);
+    await expect(claimWork(a, claimA)).rejects.toThrow(
+      new RegExp(`already claimed: implementation claimed in session ${SESSION_B} .*this claim was not saved`),
+    );
+    expect(remoteClaims(mock)).toEqual([`${SESSION_B}:${issue(1)}:running`]);
+
+    const taken = await claimWork(a, takeoverA);
+    expect(taken.outcome).toBe('took-over');
+    expect(taken.synced).toBe(true);
+    expect(remoteClaims(mock)).toEqual([`${SESSION_A}:${issue(1)}:running`]);
+  });
+
+  it('work list refreshes to see a claim pushed after this machine loaded, and flags a failed refresh as stale', async () => {
+    const mock = makeStatefulGistMock(WORK_GIST_ID, makeInitialStateJson());
+    const { machine: a, store: storeA } = await attachMachine(mock);
+    const { machine: b } = await attachMachine(mock);
+    const bypassThrottle = () => {
+      (storeA as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+    };
+
+    await claimWork(b, implementation(issue(1), SESSION_B, '/work/wt/b'));
+    bypassThrottle();
+    const fresh = await listWork(a);
+    expect(fresh.claims.map((c) => c.url)).toEqual([issue(1)]);
+    expect(fresh.warnings).toBeUndefined();
+
+    // B records a second claim, then A's refresh fails: A serves its copy and says so.
+    await claimWork(b, implementation(issue(2), SESSION_B, '/work/wt/b2'));
+    vi.mocked(mock.octokit.gists.get).mockRejectedValueOnce(new Error('ECONNRESET while fetching gist'));
+    bypassThrottle();
+    const stale = await listWork(a);
+    expect(stale.claims.map((c) => c.url)).toEqual([issue(1)]);
+    expect(stale.warnings).toHaveLength(1);
+    expect(stale.warnings?.[0]).toMatchObject({ phase: 'gist-staleness', operation: 'state refresh' });
+    expect(stale.warnings?.[0].message).toContain('ECONNRESET while fetching gist');
+  });
+
+  it('finish and release re-applied after a conflict change only their own URL', async () => {
+    const seeded = liveClaim(issue(1), SESSION_A, '/work/wt/a');
+    const mock = makeStatefulGistMock(WORK_GIST_ID, initialStateWithClaims([seeded]));
+    const { machine: a } = await attachMachine(mock);
+    const { machine: b } = await attachMachine(mock);
+
+    // B adds issue 2; A's finish of issue 1 then conflicts and is re-applied on B's copy.
+    await claimWork(b, implementation(issue(2), SESSION_B, '/work/wt/b'));
+    const finished = await finishWork(a, { url: issue(1), session: SESSION_A });
+    expect(finished.claim?.status).toBe('finished');
+    expect(finished.gistSyncWarning).toBeUndefined();
+    expect(remoteClaims(mock)).toEqual([`${SESSION_A}:${issue(1)}:finished`, `${SESSION_B}:${issue(2)}:running`]);
+
+    // Now B is stale (A pushed since); its release of issue 2 conflicts and keeps A's finished claim.
+    const released = await releaseWork(b, { url: issue(2) });
+    expect(released.released).toEqual([issue(2)]);
+    expect(released.gistSyncWarning).toBeUndefined();
+    expect(remoteClaims(mock)).toEqual([`${SESSION_A}:${issue(1)}:finished`]);
+  });
+});

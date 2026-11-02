@@ -1541,6 +1541,7 @@ export const commands: CLICommandDef[] = [
         .option('--worktree <path>', 'Checkout the implementation runs in (one running implementation per checkout)')
         .option('--run-id <id>', 'Remote worker run id, when the implementation runs off-machine')
         .option('--ttl <hours>', 'Claim lifetime in hours (default: 24 for implementation, 12 for pr)', Number)
+        .option('--takeover', 'Replace a live claim another session holds on this item (refused without it)')
         .option('--json', 'Output as JSON')
         .action(
           async (
@@ -1552,11 +1553,13 @@ export const commands: CLICommandDef[] = [
               worktree?: string;
               runId?: string;
               ttl?: number;
+              takeover?: boolean;
               json?: boolean;
             },
           ) => {
             const { WorkClaimOutputSchema } = await import('./formatters/json.js');
             const { runWorkClaim } = await import('./commands/work.js');
+            const verbs = { claimed: 'Claimed', renewed: 'Renewed', 'took-over': 'Took over' } as const;
             await executeAction(
               options,
               () =>
@@ -1568,11 +1571,13 @@ export const commands: CLICommandDef[] = [
                   worktree: options.worktree,
                   runId: options.runId,
                   ttlHours: options.ttl,
+                  takeover: options.takeover,
                 }),
               (data) => {
                 console.log(
-                  `${data.replaced ? 'Renewed' : 'Claimed'} ${data.claim.kind} on ${data.claim.url} for session ${data.claim.session} (expires ${data.claim.expiresAt})`,
+                  `${verbs[data.outcome]} ${data.claim.kind} on ${data.claim.url} for session ${data.claim.session} (expires ${data.claim.expiresAt})`,
                 );
+                if (!data.synced) console.log('Claimed locally only: other machines cannot see this claim yet.');
                 if (data.gistSyncWarning) console.log(`Warning: ${data.gistSyncWarning}`);
               },
               WorkClaimOutputSchema,
@@ -1583,13 +1588,14 @@ export const commands: CLICommandDef[] = [
       group
         .command('finish <url>')
         .description('Mark the implementation claim on an issue finished: its branch is ready to collect and review')
+        .option('--session <name>', 'Refuse unless the live claim belongs to this session')
         .option('--json', 'Output as JSON')
-        .action(async (url: string, options: { json?: boolean }) => {
+        .action(async (url: string, options: { session?: string; json?: boolean }) => {
           const { WorkFinishOutputSchema } = await import('./formatters/json.js');
           const { runWorkFinish } = await import('./commands/work.js');
           await executeAction(
             options,
-            () => runWorkFinish({ url }),
+            () => runWorkFinish({ url, session: options.session }),
             (data) => {
               console.log(data.claim ? `Finished: ${url} (session ${data.claim.session})` : `No live claim on ${url}.`);
               if (data.gistSyncWarning) console.log(`Warning: ${data.gistSyncWarning}`);
@@ -1652,6 +1658,8 @@ export const commands: CLICommandDef[] = [
               }
               if (data.expiredCount > 0)
                 console.log(`${data.expiredCount} expired claim(s) will be pruned on the next write.`);
+              const staleness = data.warnings ?? [];
+              for (const warning of staleness) console.log(`Warning (may be stale): ${warning.message}`);
             },
             WorkListOutputSchema,
           );

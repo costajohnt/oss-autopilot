@@ -976,7 +976,8 @@ export const InitOutputSchema = z.object({
 
 export const WorkClaimOutputSchema = z.object({
   claim: WorkClaimSchema,
-  replaced: z.boolean(),
+  outcome: z.enum(['claimed', 'renewed', 'took-over']),
+  synced: z.boolean(),
   gistSyncWarning: z.string().optional(),
 });
 
@@ -995,6 +996,7 @@ export const WorkListOutputSchema = z.object({
   claims: z.array(WorkClaimSchema),
   expiredCount: z.number().int().nonnegative(),
   now: z.string(),
+  warnings: z.array(DailyWarningSchema).optional(),
 });
 
 // ── #1190: plugin → CLI contract ─────────────────────────────────────

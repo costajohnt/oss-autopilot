@@ -2771,7 +2771,8 @@ describe('work subcommands', () => {
   };
 
   it('work claim passes every option through and validates the JSON against WorkClaimOutputSchema', async () => {
-    mockRunWorkClaim.mockResolvedValue({ claim, replaced: false });
+    const output = { claim, outcome: 'claimed', synced: true };
+    mockRunWorkClaim.mockResolvedValue(output);
     const program = buildProgram('work');
 
     await program.parseAsync([
@@ -2792,6 +2793,7 @@ describe('work subcommands', () => {
       'run-1',
       '--ttl',
       '2.5',
+      '--takeover',
       '--json',
     ]);
 
@@ -2803,31 +2805,35 @@ describe('work subcommands', () => {
       worktree: '/work/wt/a',
       runId: 'run-1',
       ttlHours: 2.5,
+      takeover: true,
     });
-    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkClaimOutputSchema' }, { claim, replaced: false });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkClaimOutputSchema' }, output);
   });
 
-  it('work claim display says Claimed or Renewed and surfaces a gist warning', async () => {
-    mockRunWorkClaim.mockResolvedValue({ claim, replaced: true, gistSyncWarning: 'not synced' });
-    const program = buildProgram('work');
+  it('work claim display names the outcome and says when the claim is local only', async () => {
+    const argv = ['node', 'cli', 'work', 'claim', ISSUE, '--kind', 'implementation', '--session', 'air/1200'];
+    const expires = '(expires 2026-11-03T12:00:00.000Z)';
+    mockRunWorkClaim.mockResolvedValue({ claim, outcome: 'renewed', synced: false, gistSyncWarning: 'not synced' });
+    let program = buildProgram('work');
+    await program.parseAsync(argv);
 
-    await program.parseAsync([
-      'node',
-      'cli',
-      'work',
-      'claim',
-      ISSUE,
-      '--kind',
-      'implementation',
-      '--session',
-      'air/1200',
-    ]);
-
+    expect(mockRunWorkClaim).toHaveBeenCalledWith(expect.objectContaining({ takeover: undefined }));
     expect(mockOutputJsonValidated).not.toHaveBeenCalled();
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      `Renewed implementation on ${ISSUE} for session air/1200 (expires 2026-11-03T12:00:00.000Z)`,
-    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Renewed implementation on ${ISSUE} for session air/1200 ${expires}`);
+    expect(consoleLogSpy).toHaveBeenCalledWith('Claimed locally only: other machines cannot see this claim yet.');
     expect(consoleLogSpy).toHaveBeenCalledWith('Warning: not synced');
+
+    consoleLogSpy.mockClear();
+    mockRunWorkClaim.mockResolvedValue({ claim, outcome: 'took-over', synced: true });
+    program = buildProgram('work');
+    await program.parseAsync(argv);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Took over implementation on ${ISSUE} for session air/1200 ${expires}`);
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+
+    mockRunWorkClaim.mockResolvedValue({ claim, outcome: 'claimed', synced: true });
+    program = buildProgram('work');
+    await program.parseAsync(argv);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Claimed implementation on ${ISSUE} for session air/1200 ${expires}`);
   });
 
   it('work claim routes a cap error through the JSON error envelope', async () => {
@@ -2852,15 +2858,16 @@ describe('work subcommands', () => {
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
-  it('work finish reports the finished claim or its absence', async () => {
+  it('work finish passes --session through and reports the finished claim or its absence', async () => {
     mockRunWorkFinish.mockResolvedValue({ url: ISSUE, claim: { ...claim, status: 'finished' } });
     let program = buildProgram('work');
-    await program.parseAsync(['node', 'cli', 'work', 'finish', ISSUE, '--json']);
-    expect(mockRunWorkFinish).toHaveBeenCalledWith({ url: ISSUE });
+    await program.parseAsync(['node', 'cli', 'work', 'finish', ISSUE, '--session', 'air/1200', '--json']);
+    expect(mockRunWorkFinish).toHaveBeenCalledWith({ url: ISSUE, session: 'air/1200' });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkFinishOutputSchema' }, expect.anything());
 
     program = buildProgram('work');
     await program.parseAsync(['node', 'cli', 'work', 'finish', ISSUE]);
+    expect(mockRunWorkFinish).toHaveBeenCalledWith({ url: ISSUE, session: undefined });
     expect(consoleLogSpy).toHaveBeenCalledWith(`Finished: ${ISSUE} (session air/1200)`);
 
     mockRunWorkFinish.mockResolvedValue({ url: ISSUE, claim: null, gistSyncWarning: 'w' });
@@ -2905,9 +2912,16 @@ describe('work subcommands', () => {
     );
     expect(consoleLogSpy).toHaveBeenCalledWith('1 expired claim(s) will be pruned on the next write.');
 
-    mockRunWorkList.mockResolvedValue({ claims: [], expiredCount: 0, now: '2026-11-02T12:00:00.000Z' });
+    const staleness = { phase: 'gist-staleness', operation: 'state refresh', message: 'Operating on cache state' };
+    mockRunWorkList.mockResolvedValue({
+      claims: [],
+      expiredCount: 0,
+      now: '2026-11-02T12:00:00.000Z',
+      warnings: [staleness],
+    });
     program = buildProgram('work');
     await program.parseAsync(['node', 'cli', 'work', 'list']);
     expect(consoleLogSpy).toHaveBeenCalledWith('No live work claims.');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Warning (may be stale): Operating on cache state');
   });
 });

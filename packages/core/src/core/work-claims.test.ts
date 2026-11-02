@@ -10,7 +10,9 @@ import {
   checkImplementationClaim,
   describeWorkClaim,
   findWorkClaim,
+  finishWorkClaim,
   finishedImplementations,
+  heldByOtherSession,
   isWorkClaimActive,
   normalizeWorktreePath,
   runningImplementations,
@@ -151,6 +153,41 @@ describe('checkImplementationClaim', () => {
     const claims = [claim(), claim({ url: ISSUE_B, worktree: '/work/wt/b' })];
     const conflict = checkImplementationClaim(claims, { url: ISSUE_C, worktree: '/work/wt/b' }, 2, NOW);
     expect(conflict?.reason).toBe('worktree');
+  });
+
+  it('compares checkouts within one host only; a claim without a host is compared on the path alone', () => {
+    const onAir = [claim({ host: 'air' })];
+    const next = { url: ISSUE_B, worktree: '/work/wt/a' };
+    expect(checkImplementationClaim(onAir, { ...next, host: 'mbp' }, 5, NOW)).toBeNull();
+    expect(checkImplementationClaim(onAir, { ...next, host: 'air' }, 5, NOW)?.reason).toBe('worktree');
+    expect(checkImplementationClaim(onAir, next, 5, NOW)?.reason).toBe('worktree');
+    expect(checkImplementationClaim([claim()], { ...next, host: 'mbp' }, 5, NOW)?.reason).toBe('worktree');
+  });
+});
+
+describe('heldByOtherSession', () => {
+  it("returns another session's live claim on the item and nothing for its own, an expired one, or none", () => {
+    const mine = claim();
+    expect(heldByOtherSession([mine], ISSUE_A, 'mbp/2', NOW)).toBe(mine);
+    expect(heldByOtherSession([mine], 'https://github.com/OWNER/repo/issues/1', 'air/1200', NOW)).toBeUndefined();
+    expect(heldByOtherSession([EXPIRED_A], ISSUE_A, 'mbp/2', NOW)).toBeUndefined();
+    expect(heldByOtherSession([mine], ISSUE_B, 'mbp/2', NOW)).toBeUndefined();
+  });
+});
+
+describe('finishWorkClaim', () => {
+  const at = iso(0);
+
+  it('marks the claim finished and keeps it collectable for the finished TTL past finishedAt', () => {
+    const finished = finishWorkClaim(claim(), at);
+    expect(finished).toMatchObject({ status: 'finished', finishedAt: at, expiresAt: iso(168 * HOUR) });
+    expect(finished.worktree).toBe('/work/wt/a');
+  });
+
+  it('never shortens a claim that already expires later, and repairs an unparseable expiry', () => {
+    const later = iso(200 * HOUR);
+    expect(finishWorkClaim(claim({ expiresAt: later }), at).expiresAt).toBe(later);
+    expect(finishWorkClaim(claim({ expiresAt: 'soon' }), at).expiresAt).toBe(iso(168 * HOUR));
   });
 });
 

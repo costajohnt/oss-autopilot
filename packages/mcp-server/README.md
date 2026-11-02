@@ -135,8 +135,8 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `startup` | Run startup checks (auth, state, config) | No |
 | `dismiss` | Dismiss an issue from notifications | No |
 | `undismiss` | Re-enable notifications for a dismissed issue | No |
-| `work-claim` | Claim an issue (`implementation`, while a fix is built in the background) or a PR (`pr`, while a session works it) so other sessions and machines see it (#1856, #1852) | No |
-| `work-finish` | Mark an implementation claim finished: its branch is ready to collect | No |
+| `work-claim` | Claim an issue (`implementation`, while a fix is built in the background) or a PR (`pr`, while a session works it) so other sessions and machines see it; a claim another session holds needs `takeover` (#1856, #1852) | No |
+| `work-finish` | Mark an implementation claim finished: its branch is ready to collect for a week (`session` refuses a claim held elsewhere) | No |
 | `work-release` | Drop the claim on a URL, or every claim a session holds | No |
 | `work-list` | List live work claims across sessions and machines | Yes |
 | `move` | Move a PR between states (attention, waiting, shelved, auto) | No |

@@ -7,7 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
-import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-schema.js';
+import { AgentStateSchema, NEWER_WRITER_HINT, malformedWorkClaimCount, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
 import { errorMessage, ConcurrencyError } from './errors.js';
@@ -485,6 +485,9 @@ export function loadState(): LoadStateResult {
       }
 
       const state = parsed.data;
+      const malformedClaims = malformedWorkClaimCount(raw, state);
+      if (malformedClaims > 0)
+        warn(MODULE, `State file has ${malformedClaims} unreadable work claim(s); they were dropped`);
 
       // `config.dismissedIssues` keys are issue AND PR URLs: `dismiss` accepts
       // a merged PR's URL for the merged-PR notes nudge (#1861). The former

@@ -21,10 +21,9 @@ import {
   OvernightRecord,
   SearchRotation,
   WorkClaim,
-  WorkClaimStatus,
 } from './types.js';
-import { AgentStateSchema } from './state-schema.js';
-import { activeWorkClaims, workClaimKey } from './work-claims.js';
+import { AgentStateSchema, malformedWorkClaimCount } from './state-schema.js';
+import { activeWorkClaims, finishWorkClaim, workClaimKey } from './work-claims.js';
 import { serializeState } from './state-prune.js';
 import {
   loadState,
@@ -705,8 +704,10 @@ export class StateManager {
         return false;
       }
       const wasUnpushed = this.unpushed;
+      let rawState: unknown;
       try {
-        this.state = AgentStateSchema.parse(JSON.parse(raw));
+        rawState = JSON.parse(raw);
+        this.state = AgentStateSchema.parse(rawState);
       } catch (err) {
         warn(MODULE, `Failed to parse refreshed Gist state: ${errorMessage(err)}`);
         // Same reasoning as the missing-file branch: parse failure leaves us
@@ -719,6 +720,7 @@ export class StateManager {
         };
         return false;
       }
+      this.warnMalformedWorkClaims(rawState);
       // Derived bookkeeping on the fresh copy, not a user change: it must
       // not count as un-pushed, so the flag is reset after it runs.
       this.tryReconcilePRCounts();
@@ -1385,6 +1387,31 @@ export class StateManager {
     return activeWorkClaims(this.getWorkClaims(), nowMs);
   }
 
+  /** Report claims the lenient parse dropped from a refreshed Gist copy (#1856); the local loader does the same. */
+  private warnMalformedWorkClaims(rawState: unknown): void {
+    const malformed = malformedWorkClaimCount(rawState, this.state);
+    if (malformed > 0) warn(MODULE, `Gist state has ${malformed} unreadable work claim(s); they were dropped`);
+  }
+
+  /**
+   * The live claims for a write that is about to replace the list: expired
+   * claims drop out here (pruning). One with an `expiresAt` that does not
+   * parse is pruned like any expired claim, but it is a data problem rather
+   * than the passage of time, so it is reported.
+   */
+  private pruneWorkClaims(nowMs: number): WorkClaim[] {
+    const stored = this.getWorkClaims();
+    for (const claim of stored) {
+      if (!Number.isFinite(Date.parse(claim.expiresAt))) {
+        warn(
+          MODULE,
+          `Pruning work claim on ${claim.url} (session ${claim.session}): expiresAt "${claim.expiresAt}" is not a date`,
+        );
+      }
+    }
+    return activeWorkClaims(stored, nowMs);
+  }
+
   /**
    * Record a claim, replacing any claim on the same item (#1856). Expired
    * claims are pruned in the same write. An absolute set: re-running it on a
@@ -1393,7 +1420,7 @@ export class StateManager {
    */
   upsertWorkClaim(claim: WorkClaim, nowMs = Date.now()): boolean {
     const key = workClaimKey(claim.url);
-    const live = this.getActiveWorkClaims(nowMs);
+    const live = this.pruneWorkClaims(nowMs);
     const isReplaced = live.some((c) => workClaimKey(c.url) === key);
     this.state.workClaims = [...live.filter((c) => workClaimKey(c.url) !== key), claim];
     this.autoSave();
@@ -1401,26 +1428,28 @@ export class StateManager {
   }
 
   /**
-   * Mark the live claim on `url` `finished` (or back to `running`). Expired
-   * claims are pruned in the same write.
+   * Mark the live claim on `url` finished at `at` (#1856): the branch is ready
+   * to collect, and `expiresAt` is extended so it stays collectable (see
+   * {@link finishWorkClaim}). Expired claims are pruned in the same write.
+   * Without a live claim nothing is written: a prune alone would mark the
+   * state un-pushed and raise a sync alarm for a change nobody made.
    * @returns the updated claim, or undefined when no live claim exists
    */
-  setWorkClaimStatus(url: string, status: WorkClaimStatus, at: string, nowMs = Date.now()): WorkClaim | undefined {
+  finishWorkClaim(url: string, at: string, nowMs = Date.now()): WorkClaim | undefined {
     const key = workClaimKey(url);
-    const storedCount = this.getWorkClaims().length;
-    let updated: WorkClaim | undefined;
-    this.state.workClaims = this.getActiveWorkClaims(nowMs).map((claim) => {
-      if (workClaimKey(claim.url) !== key) return claim;
-      updated = { ...claim, status, ...(status === 'finished' ? { finishedAt: at } : { finishedAt: undefined }) };
-      return updated;
-    });
-    if (updated || this.state.workClaims.length !== storedCount) this.autoSave();
+    const live = this.pruneWorkClaims(nowMs);
+    const existing = live.find((claim) => workClaimKey(claim.url) === key);
+    if (!existing) return undefined;
+    const updated = finishWorkClaim(existing, at);
+    this.state.workClaims = live.map((claim) => (claim === existing ? updated : claim));
+    this.autoSave();
     return updated;
   }
 
   /**
    * Drop claims: the one on `url`, or every claim held by `session` (optionally
-   * only of one `kind`). Expired claims are pruned in the same write.
+   * only of one `kind`). Expired claims are pruned in the same write; when
+   * nothing matches, nothing is written (see {@link finishWorkClaim}).
    * @returns the URLs of the live claims released
    */
   releaseWorkClaims(selector: { url?: string; session?: string; kind?: string }, nowMs = Date.now()): string[] {
@@ -1430,11 +1459,12 @@ export class StateManager {
       if (selector.session !== undefined && claim.session !== selector.session) return false;
       return selector.kind === undefined || claim.kind === selector.kind;
     };
-    const storedCount = this.getWorkClaims().length;
-    const live = this.getActiveWorkClaims(nowMs);
+    const live = this.pruneWorkClaims(nowMs);
     const released = live.filter((claim) => isMatch(claim)).map((claim) => claim.url);
-    this.state.workClaims = live.filter((claim) => !isMatch(claim));
-    if (released.length > 0 || live.length !== storedCount) this.autoSave();
+    if (released.length > 0) {
+      this.state.workClaims = live.filter((claim) => !isMatch(claim));
+      this.autoSave();
+    }
     return released;
   }
 

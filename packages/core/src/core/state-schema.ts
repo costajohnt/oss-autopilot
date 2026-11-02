@@ -699,13 +699,38 @@ export const WorkClaimSchema = z
     expiresAt: z.string(),
     status: openEnum(['running', 'finished'] as const),
     branch: z.string().optional(),
-    /** Absolute path of the checkout the implementation runs in; two running implementations never share one. */
+    /** Absolute path of the checkout the implementation runs in; two running implementations on one host never share one. */
     worktree: z.string().optional(),
+    /** Hostname the `worktree` path is on: the same path on two machines is two checkouts. */
+    host: z.string().optional(),
     /** Remote worker run id, when the implementation runs off-machine. */
     runId: z.string().optional(),
     finishedAt: z.string().optional(),
   })
   .loose();
+
+/**
+ * `state.workClaims`, parsed one claim at a time (#1856): a claim this
+ * release cannot read (a newer client's shape, or a corrupted entry) is
+ * dropped instead of rejecting the whole state, which would send the loader
+ * to a backup and lose every other machine's claims. Loaders compare the
+ * stored and parsed counts ({@link malformedWorkClaimCount}) to warn.
+ */
+const WorkClaimListSchema = z
+  .array(z.unknown())
+  .default([])
+  .transform((claims) =>
+    claims.flatMap((claim) => {
+      const parsed = WorkClaimSchema.safeParse(claim);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+
+/** How many entries of `raw.workClaims` the lenient parse dropped as malformed (#1856); 0 when none or no list. */
+export function malformedWorkClaimCount(raw: unknown, parsed: { workClaims: readonly unknown[] }): number {
+  const stored = raw !== null && typeof raw === 'object' ? (raw as { workClaims?: unknown }).workClaims : undefined;
+  return Array.isArray(stored) ? Math.max(0, stored.length - parsed.workClaims.length) : 0;
+}
 
 /**
  * Forward compatibility (#1831). The state Gist is shared by clients on
@@ -807,7 +832,7 @@ export const AgentStateSchema = z
      * the Gist; `work claim/finish/release` are the only writers. Expired
      * entries are ignored on read and pruned on write.
      */
-    workClaims: z.array(WorkClaimSchema).default([]),
+    workClaims: WorkClaimListSchema,
   })
   .passthrough();
 

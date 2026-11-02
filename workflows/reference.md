@@ -137,13 +137,16 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # across sessions and machines via state (and the Gist). An implementation
 # claim sits on an issue URL while a fix is built in the background (needs
 # --worktree or --run-id; refused past maxConcurrentImplementations or when
-# another implementation uses the same worktree); a pr claim sits on a PR URL
-# while this session does Tier 2 work on it. Claims expire (24h / 12h default).
-<prefix> work claim <url> --kind <implementation|pr> --session <name> [--branch <b>] [--worktree <path>] [--run-id <id>] [--ttl <hours>] --json
-<prefix> work finish <issue-url> --json                       # branch ready to collect
+# another implementation uses the same worktree on this host); a pr claim sits
+# on a PR URL while this session does Tier 2 work on it. A claim another
+# session holds is refused without --takeover. Claims expire (24h / 12h
+# default; a finished implementation stays collectable for 7 days). Output:
+# outcome (claimed | renewed | took-over) and synced (false = this machine only).
+<prefix> work claim <url> --kind <implementation|pr> --session <name> [--branch <b>] [--worktree <path>] [--run-id <id>] [--ttl <hours>] [--takeover] --json
+<prefix> work finish <issue-url> --session <name> --json      # branch ready to collect; refused if another session holds it; claim: null = not recorded
 <prefix> work release <url> --json                            # drop one claim
 <prefix> work release --session <name> [--kind pr] --json     # drop a session's claims (Session End)
-<prefix> work list --json                                     # live claims (Gist mode: refreshed first, throttled)
+<prefix> work list --json                                     # live claims (Gist mode: refreshed first, throttled; warnings[] when the refresh failed and the list may be stale)
 
 # Fetch the target repo's PR description template (used by the draft-first workflow)
 <prefix> pr-template <owner/repo> --json

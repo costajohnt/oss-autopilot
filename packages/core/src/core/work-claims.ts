@@ -29,6 +29,13 @@ export const WORK_CLAIM_DEFAULT_TTL_HOURS: Readonly<Record<WorkClaimKind, number
 /** Longest TTL `work claim --ttl` accepts, in hours (one week). */
 export const WORK_CLAIM_MAX_TTL_HOURS = 168;
 
+/**
+ * How long a finished implementation stays collectable, in hours (one week).
+ * `work finish` extends `expiresAt` to at least `finishedAt` plus this, so a
+ * branch finished late on a 24-hour claim is still offered the next morning.
+ */
+export const WORK_CLAIM_FINISHED_TTL_HOURS = 168;
+
 /** Identity of the item a claim is on: `owner/repo#number`, or the raw URL when it does not parse. */
 export function workClaimKey(url: string): string {
   return issueRefKey(url) ?? url.trim().toLowerCase();
@@ -49,6 +56,34 @@ export function activeWorkClaims(claims: readonly WorkClaim[], nowMs = Date.now(
 export function findWorkClaim(claims: readonly WorkClaim[], url: string, nowMs = Date.now()): WorkClaim | undefined {
   const key = workClaimKey(url);
   return activeWorkClaims(claims, nowMs).find((claim) => workClaimKey(claim.url) === key);
+}
+
+/**
+ * The live claim on `url` that a session other than `session` holds. Such a
+ * claim blocks `work claim` unless the caller passes `--takeover`: a second
+ * session must decide to take an item over, never do it by accident.
+ */
+export function heldByOtherSession(
+  claims: readonly WorkClaim[],
+  url: string,
+  session: string,
+  nowMs = Date.now(),
+): WorkClaim | undefined {
+  const existing = findWorkClaim(claims, url, nowMs);
+  if (existing === undefined || existing.session === session) return undefined;
+  return existing;
+}
+
+/**
+ * The claim as `work finish` records it: `finished`, stamped `finishedAt`,
+ * and kept at least {@link WORK_CLAIM_FINISHED_TTL_HOURS} past `at` so the
+ * branch stays collectable (a longer `expiresAt` already on the claim is kept).
+ */
+export function finishWorkClaim(claim: WorkClaim, at: string): WorkClaim {
+  const extended = new Date(Date.parse(at) + WORK_CLAIM_FINISHED_TTL_HOURS * 3_600_000);
+  const current = Date.parse(claim.expiresAt);
+  const expiresAt = Number.isFinite(current) && current > extended.getTime() ? claim.expiresAt : extended.toISOString();
+  return { ...claim, status: 'finished', finishedAt: at, expiresAt };
 }
 
 /** Live implementation claims whose branch is ready to collect. */
@@ -75,15 +110,25 @@ export interface ImplementationClaimConflict {
 }
 
 /**
+ * Whether two claims' checkouts can be the same directory: a path only
+ * identifies a checkout on one machine, so claims from different hosts never
+ * share one. A claim without `host` (written before the field existed) is
+ * compared on the path alone.
+ */
+function isSameHost(a: string | undefined, b: string | undefined): boolean {
+  return a === undefined || b === undefined || a === b;
+}
+
+/**
  * Check whether an implementation claim may start (#1856): at most
  * `maxConcurrentImplementations` implementations run at once (0 = no cap),
- * and no two live implementations share a checkout. A claim already held on
- * the same item is being renewed, so it never blocks itself. Returns null
- * when the claim may proceed.
+ * and no two live implementations on the same host share a checkout. A claim
+ * already held on the same item is being renewed or taken over, so it never
+ * blocks itself. Returns null when the claim may proceed.
  */
 export function checkImplementationClaim(
   claims: readonly WorkClaim[],
-  next: { url: string; worktree?: string },
+  next: { url: string; worktree?: string; host?: string },
   maxConcurrentImplementations: number,
   nowMs = Date.now(),
 ): ImplementationClaimConflict | null {
@@ -94,7 +139,10 @@ export function checkImplementationClaim(
 
   if (next.worktree !== undefined) {
     const wanted = normalizeWorktreePath(next.worktree);
-    const sharing = others.filter((claim) => claim.worktree && normalizeWorktreePath(claim.worktree) === wanted);
+    const sharing = others.filter(
+      (claim) =>
+        claim.worktree && isSameHost(claim.host, next.host) && normalizeWorktreePath(claim.worktree) === wanted,
+    );
     if (sharing.length > 0) {
       const holder = sharing[0];
       return {

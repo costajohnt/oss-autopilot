@@ -6,6 +6,7 @@
  *   - Annotations indicating read-only vs mutating behavior
  *   - wrapTool() helper for uniform ok/err handling
  */
+import path from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -822,18 +823,25 @@ export function registerTools(server: McpServer): void {
     'work-claim',
     {
       description:
-        'Claim an item so other sessions and machines see it is being worked on: an issue with kind "implementation" while a fix is built in the background (needs worktree or runId; refused past maxConcurrentImplementations or when another implementation uses the same worktree), or a PR with kind "pr" while this session does Tier 2 work on it. Re-claiming renews the expiry.',
+        'Claim an item so other sessions and machines see it is being worked on: an issue with kind "implementation" while a fix is built in the background (needs worktree or runId; refused past maxConcurrentImplementations or when another implementation uses the same worktree on this host), or a PR with kind "pr" while this session does Tier 2 work on it. Re-claiming renews this session\'s claim; a claim another session holds is refused unless takeover is true. synced: false means the claim exists on this machine only.',
       inputSchema: {
         url: githubIssueOrPrUrlSchema.describe('Issue URL for an implementation claim, PR URL for a pr claim'),
         kind: z.enum(['implementation', 'pr']).describe('implementation (issue) or pr (PR)'),
-        session: z.string().min(1).max(500).describe('Name of the session taking the claim, e.g. air/20261102T1207'),
+        session: z
+          .string()
+          .min(1)
+          .max(500)
+          .describe('Name of the session taking the claim, e.g. air/20261102T120733-3f9a'),
         branch: z.string().min(1).max(500).optional().describe('Branch the implementation is on'),
         worktree: z
           .string()
           .min(1)
           .max(500)
+          .refine((value) => path.isAbsolute(value), 'worktree must be an absolute path')
           .optional()
-          .describe('Checkout the implementation runs in; one running implementation per checkout'),
+          .describe(
+            'Absolute path of the checkout the implementation runs in; one running implementation per checkout',
+          ),
         runId: z
           .string()
           .min(1)
@@ -846,6 +854,10 @@ export function registerTools(server: McpServer): void {
           .max(168)
           .optional()
           .describe('Claim lifetime in hours (default 24 for implementation, 12 for pr)'),
+        takeover: z
+          .boolean()
+          .optional()
+          .describe('Replace a live claim another session holds on this item; without it such a claim is refused'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -857,9 +869,10 @@ export function registerTools(server: McpServer): void {
     'work-finish',
     {
       description:
-        'Mark the implementation claim on an issue finished: its branch is ready to collect and review. The claim stays (and search keeps skipping the issue) until it is released or expires.',
+        'Mark the implementation claim on an issue finished: its branch is ready to collect and review. The claim stays (and search keeps skipping the issue) for at least a week unless it is released. claim is null when no live claim exists.',
       inputSchema: {
         url: githubIssueOrPrUrlSchema.describe('Issue URL of the implementation claim'),
+        session: z.string().min(1).max(500).optional().describe('Refuse unless the live claim belongs to this session'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },

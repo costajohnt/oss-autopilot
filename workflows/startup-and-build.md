@@ -1,15 +1,19 @@
 # Startup and Build
 
 > **Session state:** No inputs required. Produces: `version`, `data.daily`, `dashboardUrl`, `issueList`, `overnight`, `setupComplete`, `autoDetected`, `authError`, `sessionName`, `workClaims`.
+> **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
-**Session name (#1852, #1856).** Before anything else, pick a name for this session and keep it for the whole run; work claims (`work claim --session`) carry it so another session, here or on another machine, can say "handled in session X":
+---
+
+## Session Name (#1852, #1856)
+
+Before anything else, pick a name for this session and keep it for the whole run; work claims (`work claim --session`) carry it so another session, here or on another machine, can say "handled in session X". Two sessions started in the same minute must not collide, so the name carries seconds and a random suffix:
 
 ```bash
-sessionName="$(hostname -s)/$(date -u +%Y%m%dT%H%M)"
+sessionName="$(hostname -s)/$(date -u +%Y%m%dT%H%M%S)-$(printf '%04x' "$RANDOM")"
 ```
 
-Store it as `sessionName`. Never reuse a name from a previous run.
-> **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
+Store it as `sessionName` (e.g. `air/20261102T120733-3f9a`). Never reuse a name from a previous run.
 
 ---
 

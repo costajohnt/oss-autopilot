@@ -34,7 +34,7 @@ Your curated issue list has {blockedCount} queued, all blocked. Time to find new
 WORK_OUT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work list --json)
 ```
 
-Use the `claims` array of that output in place of `data.daily.workClaims` (same shape). If the command fails, keep the startup list and say so once.
+Use the `claims` array of that output in place of `data.daily.workClaims` (same shape). If the command fails, keep the startup list and say so once. If the output carries `warnings` (the Gist refresh failed, so the list is this machine's copy and another machine's claims may be missing), append `(may be stale: {warnings[0].message})` to the header line below and do not treat an item as free just because no claim shows for it.
 
 Render one header line above the PR list whenever there is at least one implementation claim, counting `running` and `finished` separately and deriving the age from `startedAt` (`12 min`, `3 h`):
 
@@ -83,7 +83,7 @@ Then show the enriched format using the resolved PR's fields:
    └─ handled in session {claim.session} since {claim.startedAt as HH:MM UTC}
 ```
 
-Such a PR is never re-dispatched by "Work through all issues" or a specific-PR selection without asking: offer "Leave it to session {claim.session}" (default) / "Take it over here" (re-claims it for this session; the other session sees the takeover on its next menu refresh). A claim by this session's own `sessionName` (a PR this session already started on) needs no line.
+Such a PR is never re-dispatched by "Work through all issues" or a specific-PR selection without asking: offer "Leave it to session {claim.session}" (default) / "Take it over here" (re-claims it for this session with `work claim ... --takeover`; without the flag the CLI refuses a claim another session holds, and the other session sees the takeover on its next menu refresh). A claim by this session's own `sessionName` (a PR this session already started on) needs no line.
 
 **Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. The label mapping for `pr.maintainerActionHints` lives at `packages/core/src/core/maintainer-hints.ts` (`MAINTAINER_HINT_LABELS` + `formatMaintainerHints`) — that file is the source of truth (#1264). Documented mappings: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
 

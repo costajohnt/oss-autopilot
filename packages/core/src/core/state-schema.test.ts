@@ -7,6 +7,7 @@ import {
   AgentStateSchema,
   AgentConfigSchema,
   FetchedPRSchema,
+  malformedWorkClaimCount,
   MergedPRSchema,
   ClosedPRSchema,
   ShelvedPRRefSchema,
@@ -597,8 +598,9 @@ describe('WorkClaimSchema / state.workClaims (#1856, #1852)', () => {
   });
 
   it('round-trips a claim with its optional fields', () => {
-    const parsed = AgentStateSchema.parse({ version: 4, workClaims: [{ ...claim, branch: 'fix/x', runId: 'r1' }] });
-    expect(parsed.workClaims).toEqual([{ ...claim, branch: 'fix/x', runId: 'r1' }]);
+    const full = { ...claim, branch: 'fix/x', runId: 'r1', host: 'air', finishedAt: '2026-11-02T13:00:00.000Z' };
+    const parsed = AgentStateSchema.parse({ version: 4, workClaims: [full] });
+    expect(parsed.workClaims).toEqual([full]);
   });
 
   it('accepts a kind or status this release does not know, and extra fields, instead of rejecting the state (#1831)', () => {
@@ -609,8 +611,13 @@ describe('WorkClaimSchema / state.workClaims (#1856, #1852)', () => {
     expect(parsed.workClaims[0]).toMatchObject({ kind: 'review', status: 'paused', collectedBy: 'newer-client' });
   });
 
-  it('rejects a claim missing its identity fields', () => {
-    expect(AgentStateSchema.safeParse({ version: 4, workClaims: [{ url: claim.url }] }).success).toBe(false);
+  it('drops a claim it cannot read and keeps the rest, instead of rejecting the whole state (#1856)', () => {
+    const raw = { version: 4, workClaims: [{ url: claim.url }, claim, 'garbage', null] };
+    const parsed = AgentStateSchema.parse(raw);
+    expect(parsed.workClaims).toEqual([claim]);
+    expect(malformedWorkClaimCount(raw, parsed)).toBe(3);
+    expect(malformedWorkClaimCount({ version: 4 }, parsed)).toBe(0);
+    expect(malformedWorkClaimCount(null, parsed)).toBe(0);
   });
 
   it('survives serializeState unchanged (not pruned on save)', () => {
