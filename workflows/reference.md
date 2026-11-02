@@ -260,6 +260,7 @@ rejected with a did-you-mean suggestion.
 | `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler |
 | `workflows/dormant-pr-follow-up.md` | Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs |
 | `workflows/closed-pr-status-update.md` | Draft a status comment on the linked issue after an own PR closed unmerged (#1863) |
+| `workflows/merged-pr-notes.md` | Acknowledge or reply to maintainer notes left on recently merged PRs, one per thanks-only repo group (#1861) |
 | `workflows/plan-review.md` | Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review) |
 | `workflows/extract-learnings.md` | Distill per-repo contribution guidelines from merged/closed PR feedback (#867) |
 | `workflows/edit-guidelines.md` | Manual edit path for stored per-repo guidelines (load → edit → store, no extraction) |

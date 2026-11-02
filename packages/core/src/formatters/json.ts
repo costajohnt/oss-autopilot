@@ -23,6 +23,7 @@ import type { ContributionStats } from '../core/stats.js';
 import type { RepoCapStatus } from '../core/repo-cap.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { ClosedPRStatusUpdate } from '../core/closed-pr-status.js';
+import type { MergedPRNotes } from '../core/merged-pr-notes.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } from '../core/issue-verification.js';
 
@@ -131,7 +132,8 @@ export type DailyWarningPhase =
   | 'gist-checkpoint'
   | 'gist-staleness'
   | 'state-load'
-  | 'closed-pr-status';
+  | 'closed-pr-status'
+  | 'merged-pr-notes';
 
 /**
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
@@ -240,6 +242,16 @@ export interface DailyOutput {
    * goldens are unchanged. See {@link ClosedPRStatusUpdate}.
    */
   closedPRStatusUpdates?: ClosedPRStatusUpdate[];
+  /**
+   * Recently merged PRs carrying maintainer notes (thanks, a follow-up, a
+   * commit pushed on top) the user has not answered (#1861). Drives the
+   * `merged_pr_notes` action-menu item; the workflow classifies each note
+   * and drafts a reply through draft-review-post. Note excerpts are fenced
+   * as untrusted GitHub content. Present only when at least one entry
+   * exists, so merge-free runs and goldens are unchanged. See
+   * {@link MergedPRNotes}.
+   */
+  mergedPRNotes?: MergedPRNotes[];
 }
 
 /** Work order for the host's background learnings extraction (#1696). */
@@ -284,6 +296,8 @@ export interface CompactDailyOutput {
   pendingLearnings?: PendingLearnings;
   /** Closed-PR status nudges (#1863). See {@link DailyOutput.closedPRStatusUpdates}. */
   closedPRStatusUpdates?: ClosedPRStatusUpdate[];
+  /** Merged PRs with unanswered maintainer notes (#1861). See {@link DailyOutput.mergedPRNotes}. */
+  mergedPRNotes?: MergedPRNotes[];
 }
 
 /**
@@ -306,6 +320,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     listUpdates: output.listUpdates,
     pendingLearnings: output.pendingLearnings,
     closedPRStatusUpdates: output.closedPRStatusUpdates,
+    mergedPRNotes: output.mergedPRNotes,
   };
 }
 
@@ -373,6 +388,7 @@ const DailyWarningPhaseSchema = z.enum([
   'gist-staleness',
   'state-load',
   'closed-pr-status',
+  'merged-pr-notes',
 ]);
 
 const DailyWarningSchema = z.object({
@@ -607,6 +623,27 @@ const ClosedPRStatusUpdateSchema = z.object({
   closedAt: z.string(),
 });
 
+/** Mirrors one entry of `MergedPRNotes.notes` (#1861). */
+const MergedPRNoteSchema = z.object({
+  author: z.string(),
+  createdAt: z.string(),
+  kind: z.enum(['comment', 'review', 'review_comment', 'commit']),
+  excerpt: z.string(),
+});
+
+/** Mirrors {@link MergedPRNotes} (#1861). */
+const MergedPRNotesSchema = z.object({
+  prUrl: z.string(),
+  repo: z.string(),
+  number: z.number(),
+  title: z.string(),
+  mergedAt: z.string(),
+  notes: z.array(MergedPRNoteSchema),
+  maintainerCommits: z.number().int().nonnegative(),
+  thanksOnly: z.boolean(),
+  ackCoveredBy: z.string().optional(),
+});
+
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
   capacity: CapacityAssessmentSchema,
@@ -623,6 +660,7 @@ export const DailyOutputSchema = z.object({
   listUpdates: z.array(MergedPRListUpdateSchema).optional(),
   pendingLearnings: PendingLearningsSchema.optional(),
   closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
+  mergedPRNotes: z.array(MergedPRNotesSchema).optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -639,6 +677,7 @@ export const CompactDailyOutputSchema = z.object({
   listUpdates: z.array(MergedPRListUpdateSchema).optional(),
   pendingLearnings: PendingLearningsSchema.optional(),
   closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
+  mergedPRNotes: z.array(MergedPRNotesSchema).optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────

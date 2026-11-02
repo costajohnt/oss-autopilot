@@ -33,6 +33,7 @@ import {
   toClosedPRStatusUpdate,
   type ClosedPRStatusCandidate,
   type ClosedPRStatusUpdate,
+  type MergedPRNotes,
   type AttentionSummary,
   type DailyDigest,
   type FetchedPR,
@@ -44,7 +45,7 @@ import {
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
-import { errorMessage, getHttpStatusCode, isRateLimitOrAuthError } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { DEFAULT_CONCURRENCY, runWorkerPool } from '../core/concurrency.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
@@ -59,7 +60,6 @@ import {
   buildStalenessWarning,
   type DailyOutput,
   type DailyWarning,
-  type DailyWarningPhase,
   type CapacityAssessment,
   type ActionableIssue,
   type ActionMenu,
@@ -67,6 +67,14 @@ import {
   type PendingLearnings,
 } from '../formatters/json.js';
 import { reconcileMergedPRsWithList } from './merge-loop.js';
+import {
+  describeError,
+  httpStatusLabel,
+  isGoneError,
+  nonFatalCatchWithWarning,
+  recordWarning,
+} from './daily-warnings.js';
+import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
 
 const MODULE = 'daily';
 
@@ -89,41 +97,6 @@ const MODULE = 'daily';
 function batchOnFreshBaseline(stateManager: ReturnType<typeof getStateManager>, fn: () => void): void {
   stateManager.reloadIfChanged();
   stateManager.batch(fn);
-}
-
-/**
- * Record a non-fatal failure: push a structured entry into the run's warnings
- * collector AND emit the existing log line. Consumers (dashboard, MCP, tests)
- * inspect `DailyOutput.warnings` so a partial run is visible beyond log noise.
- * See #1042.
- */
-function recordWarning(
-  warnings: DailyWarning[],
-  phase: DailyWarningPhase,
-  operation: string,
-  err: unknown,
-  humanMessage?: string,
-): void {
-  const message = humanMessage ?? errorMessage(err);
-  warnings.push({ phase, operation, message });
-  warn(MODULE, `${operation}: ${message}`);
-}
-
-/**
- * Variant of `nonFatalCatch` that also records a structured warning. Returns
- * the fallback value on error (same semantics as `nonFatalCatch`) AND pushes
- * an entry into the collector so the failure shows up in `DailyOutput.warnings`.
- */
-function nonFatalCatchWithWarning<T>(opts: {
-  warnings: DailyWarning[];
-  phase: DailyWarningPhase;
-  operation: string;
-  fallback: T;
-}): (err: unknown) => T {
-  return (err: unknown): T => {
-    recordWarning(opts.warnings, opts.phase, opts.operation, err);
-    return opts.fallback;
-  };
 }
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
@@ -193,6 +166,13 @@ export interface DailyCheckResult {
    * {@link DailyOutput.closedPRStatusUpdates}.
    */
   closedPRStatusUpdates?: ClosedPRStatusUpdate[];
+  /**
+   * Recently merged PRs with maintainer notes the user has not answered
+   * (#1861). Set only when at least one exists; see
+   * {@link DailyOutput.mergedPRNotes}. Raw excerpts here; `toDailyOutput`
+   * fences them.
+   */
+  mergedPRNotes?: MergedPRNotes[];
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +192,8 @@ interface FetchedPRData {
   openedFromClosed: Record<string, number>;
   recentlyClosedPRs: ClosedPR[];
   recentlyMergedPRs: MergedPR[];
+  /** `recentlyMergedPRs` is the [] fallback of a failed fetch, not an empty result (Phases 3.6 and 3.7). */
+  recentlyMergedFetchFailed: boolean;
   commentedIssues: CommentedIssue[];
   /** Where this run's view of the user's PRs may have holes; see {@link SuccessorGaps}. */
   successorGaps: SuccessorGaps;
@@ -397,6 +379,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
 
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
+    recentlyMergedFetchFailed: didRecentlyMergedFetchFail,
     successorGaps,
     prs,
     failures,
@@ -749,6 +732,7 @@ function generateDigestOutput(
   previousLastDigestAt?: string,
   unextractedMergeCount?: number,
   closedPRStatusUpdates: ClosedPRStatusUpdate[] = [],
+  mergedPRNotes: MergedPRNotes[] = [],
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
@@ -833,6 +817,9 @@ function generateDigestOutput(
     { ...attention, closeSuggested },
     unextractedMergeCount,
     closedPRStatusUpdates.length,
+    // One action per entry the workflow handles on its own; covered
+    // thanks-only entries ride along with their carrier.
+    mergedPRNotes.filter((entry) => entry.ackCoveredBy === undefined).length,
   );
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -868,24 +855,6 @@ function generateDigestOutput(
     warnings,
     strategySummary,
   };
-}
-
-/** `HTTP 404` when the error carries a status, else undefined. */
-function httpStatusLabel(error: unknown): string | undefined {
-  const status = getHttpStatusCode(error);
-  return status === undefined ? undefined : `HTTP ${status}`;
-}
-
-/** 404/410: the issue or PR is gone (deleted, transferred, or now private). */
-function isGoneError(error: unknown): boolean {
-  const status = getHttpStatusCode(error);
-  return status === 404 || status === 410;
-}
-
-/** Warning text with the HTTP status in front when there is one. */
-function describeError(error: unknown): string {
-  const label = httpStatusLabel(error);
-  return label ? `${label}: ${errorMessage(error)}` : errorMessage(error);
 }
 
 const CLOSED_PR_STATUS_OPERATION = 'closed-PR status updates';
@@ -1159,6 +1128,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     ...(result.listUpdates && { listUpdates: result.listUpdates }),
     ...(result.pendingLearnings && { pendingLearnings: result.pendingLearnings }),
     ...(result.closedPRStatusUpdates && { closedPRStatusUpdates: result.closedPRStatusUpdates }),
+    ...(result.mergedPRNotes && { mergedPRNotes: result.mergedPRNotes.map((entry) => fenceMergedPRNotes(entry)) }),
   };
 }
 
@@ -1250,6 +1220,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     openedFromClosed,
     recentlyClosedPRs,
     recentlyMergedPRs,
+    recentlyMergedFetchFailed,
     commentedIssues,
     successorGaps,
   } = await fetchPRData(prMonitor, token, warnings);
@@ -1379,6 +1350,13 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     warnings,
   );
 
+  // Phase 3.7: maintainer notes on recently merged PRs (#1861). Read-only.
+  const mergedPRNotes = await runMergedPRNotesPhase(
+    prMonitor,
+    { recentlyMergedPRs, recentlyMergedFetchFailed },
+    warnings,
+  );
+
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).
   const previousLastDigestAt = getStateManager().getState().lastDigestAt;
@@ -1403,6 +1381,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     previousLastDigestAt,
     unextractedMergeCount,
     closedPRStatusUpdates,
+    mergedPRNotes,
   );
   if (listUpdates) {
     result.listUpdates = listUpdates;
@@ -1412,6 +1391,9 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   }
   if (closedPRStatusUpdates.length > 0) {
     result.closedPRStatusUpdates = closedPRStatusUpdates;
+  }
+  if (mergedPRNotes.length > 0) {
+    result.mergedPRNotes = mergedPRNotes;
   }
 
   // Checkpoint: push state to Gist if in Gist mode.

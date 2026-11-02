@@ -48,6 +48,11 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │   Own PR closed unmerged: draft what was found on the linked issue via
  │   │   draft-review-post (user posts themselves); claim released if tracked
  │   │
+ │   ├─ "Merged PRs with maintainer notes" ──► workflows/merged-pr-notes.md
+ │   │   A maintainer thanked the user or changed what shipped at merge time:
+ │   │   classify, draft one ack per thanks-only repo group or a reply naming
+ │   │   the change, via draft-review-post (user posts themselves)
+ │   │
  │   └─ "Done for now" ──► Session End (one refresh first; new maintainer
  │       comments return to the Action Menu once)
  │
@@ -273,6 +278,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | "Follow up on stuck-CI / dormant PRs" (`follow_up`) | `${CLAUDE_PLUGIN_ROOT}/workflows/dormant-pr-follow-up.md` | "Trigger" |
 | "Extract learnings from recently merged PRs" (`extract_learnings`, only when `autoExtractLearnings` is `false`) | `${CLAUDE_PLUGIN_ROOT}/workflows/extract-learnings.md` | "Steps" |
 | "Post status update on linked issue" (`closed_pr_status`) | `${CLAUDE_PLUGIN_ROOT}/workflows/closed-pr-status-update.md` | "Steps" |
+| "Merged PRs with maintainer notes" (`merged_pr_notes`) | `${CLAUDE_PLUGIN_ROOT}/workflows/merged-pr-notes.md` | "Steps" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Session End" |
 

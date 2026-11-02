@@ -52,6 +52,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
 | `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue via `draft-review-post`; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
+| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify via comment-decision, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
 | `plan-review.md` | `/plan-ready` | Plan-phase review convergence loop — catches design problems before code exists (#1249) |
@@ -292,7 +293,7 @@ interface AgentState {
 Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 - `config.shelvedPRUrls: string[]` — PR URLs manually shelved (excluded from capacity and actionable items, auto-unshelved when maintainers engage)
 - `config.statusOverrides: Record<string, StatusOverride>` — Manual PR status overrides set via `move` command. Auto-clears when the PR has new activity
-- `config.dismissedIssues: Record<string, string>` — Issue URLs mapped to dismiss timestamps
+- `config.dismissedIssues: Record<string, string>` — Issue URLs (and, since #1861, merged-PR URLs) mapped to dismiss timestamps
 
 ### What's NOT Stored (v2 Design)
 

@@ -770,9 +770,10 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     'dismiss',
     {
-      description: 'Dismiss a GitHub issue so it no longer appears in notifications.',
+      description:
+        'Dismiss a GitHub issue so it no longer appears in notifications, or a merged PR so its maintainer notes stop being raised.',
       inputSchema: {
-        url: githubIssueUrlSchema.describe('Full GitHub issue URL to dismiss'),
+        url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to dismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -783,9 +784,9 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     'undismiss',
     {
-      description: 'Undismiss a previously dismissed issue, re-enabling notifications.',
+      description: 'Undismiss a previously dismissed issue or merged PR, re-enabling notifications.',
       inputSchema: {
-        url: githubIssueUrlSchema.describe('Full GitHub issue URL to undismiss'),
+        url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to undismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },

@@ -33,6 +33,7 @@ import { getHttpCache, cachedRequest } from './http-cache.js';
 
 import { getCIStatus } from './ci-analysis.js';
 import { type ActivityEvent, type ReviewComment } from './review-analysis.js';
+import type { MergedPRActivity, MergedPRActivityList } from './merged-pr-notes.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import { batchFetchPRDetails, type PRRef, type NormalizedPRData, type BatchPRResult } from './pr-graphql.js';
 import {
@@ -93,6 +94,12 @@ export interface FetchPRsResult {
    * could be missing from the list. Absent when the search was complete.
    */
   searchTruncated?: true;
+}
+
+/** Value of a settled promise known to have fulfilled (the caller already rethrew any rejection). */
+function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === 'rejected') throw result.reason;
+  return result.value;
 }
 
 /**
@@ -706,6 +713,64 @@ export class PRMonitor {
   async fetchRecentlyMergedPRs(days: number = 7): Promise<MergedPR[]> {
     const config = this.stateManager.getState().config;
     return fetchRecentlyMergedPRsImpl(this.octokit, config, days);
+  }
+
+  /**
+   * Everything the merged-PR notes selection reads for one PR (#1861): issue
+   * comments, reviews, inline review comments and commits, each paginated.
+   * Four calls per PR (more past 100 items). `truncatedLists` names the
+   * lists that hit the pagination cap; the lists arrive oldest-first, so it
+   * is the newest activity (including the user's own reply) that would be
+   * missing from those.
+   *
+   * The four calls run together; when more than one fails, a rate-limit or
+   * auth error is rethrown ahead of the others so the run stops instead of
+   * reporting a 404 that the throttled call never got to verify.
+   *
+   * @throws {ValidationError} If `prUrl` is not a GitHub PR URL
+   * @throws Octokit errors (404 when the PR is gone, rate limit, auth) unchanged
+   */
+  async fetchMergedPRActivity(prUrl: string): Promise<MergedPRActivity & { truncatedLists: MergedPRActivityList[] }> {
+    const parsed = parseGitHubUrl(prUrl);
+    if (!parsed || parsed.type !== 'pull') {
+      throw new ValidationError(`Invalid PR URL format: ${prUrl}`);
+    }
+    const { owner, repo, number } = parsed;
+    const settled = await Promise.allSettled([
+      paginateAllDetailed((page) =>
+        this.octokit.issues.listComments({ owner, repo, page, issue_number: number, per_page: 100 }),
+      ),
+      paginateAllDetailed((page) =>
+        this.octokit.pulls.listReviews({ owner, repo, page, pull_number: number, per_page: 100 }),
+      ),
+      paginateAllDetailed((page) =>
+        this.octokit.pulls.listReviewComments({ owner, repo, page, pull_number: number, per_page: 100 }),
+      ),
+      paginateAllDetailed((page) =>
+        this.octokit.pulls.listCommits({ owner, repo, page, pull_number: number, per_page: 100 }),
+      ),
+    ]);
+    const rejections = settled.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (rejections.length > 0) {
+      const fatal = rejections.find((result) => isRateLimitOrAuthError(result.reason));
+      throw (fatal ?? rejections[0]).reason;
+    }
+    const comments = fulfilledValue(settled[0]);
+    const reviews = fulfilledValue(settled[1]);
+    const reviewComments = fulfilledValue(settled[2]);
+    const commits = fulfilledValue(settled[3]);
+    const truncatedLists: MergedPRActivityList[] = [];
+    if (comments.truncated) truncatedLists.push('comments');
+    if (reviews.truncated) truncatedLists.push('reviews');
+    if (reviewComments.truncated) truncatedLists.push('review comments');
+    if (commits.truncated) truncatedLists.push('commits');
+    return {
+      truncatedLists,
+      comments: comments.items,
+      reviews: reviews.items,
+      reviewComments: reviewComments.items,
+      commits: commits.items,
+    };
   }
 
   /**

@@ -486,28 +486,10 @@ export function loadState(): LoadStateResult {
 
       const state = parsed.data;
 
-      // Strip PR URLs from dismissedIssues (PR dismiss removed).
-      // This filters values inside a known field — Zod .strip() only removes unknown keys.
-      try {
-        let needsCleanupSave = false;
-        if (state.config.dismissedIssues) {
-          const PR_URL_RE = /\/pull\/\d+$/;
-          for (const url of Object.keys(state.config.dismissedIssues)) {
-            if (PR_URL_RE.test(url)) {
-              delete state.config.dismissedIssues[url];
-              needsCleanupSave = true;
-            }
-          }
-        }
-        if (needsCleanupSave) {
-          atomicWriteFileSync(statePath, serializeState(state), 0o600);
-          mtimeMs = safeGetMtimeMs(statePath); // our own write, as above
-          warn(MODULE, 'Cleaned up dismissed PR URLs from persisted state');
-        }
-      } catch (cleanupError) {
-        warn(MODULE, `Failed to clean up removed features from state: ${errorMessage(cleanupError)}`);
-        // Continue with loaded state — cleanup will be retried on next load
-      }
+      // `config.dismissedIssues` keys are issue AND PR URLs: `dismiss` accepts
+      // a merged PR's URL for the merged-PR notes nudge (#1861). The former
+      // "PR dismiss removed" load-time strip of `/pull/N` keys is gone; it
+      // would have undone every PR dismiss on the next load.
 
       // Log appropriate message based on version
       const repoCount = Object.keys(state.repoScores).length;

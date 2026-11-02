@@ -11,6 +11,7 @@ import { SearchRotationSchema } from '../core/state-schema.js';
 import { computeStrategy } from '../core/strategy.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
 import { loadSkippedIssuesDetailed } from './skip-file-parser.js';
+import { ISSUE_URL_PATTERN } from './validation.js';
 
 /**
  * Fraction of search slots reserved for candidates that matched neither
@@ -118,10 +119,12 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
   // window lapsed. `undismiss` deletes the map entry, so only current
   // dismissals are merged. Scout filters by URL alone; repo/number are
   // best-effort from the URL and title is unknown, same as the skip file.
+  // The same map also holds dismissed merged-PR URLs (#1861); those are not
+  // issues scout could surface, so only `/issues/` URLs are forwarded.
   const skippedIssues = [...skippedIssuesLoad.issues];
   const skippedUrls = new Set(skippedIssues.map((s) => s.url));
   for (const [url, dismissedAt] of Object.entries(config.dismissedIssues ?? {})) {
-    if (skippedUrls.has(url)) continue;
+    if (skippedUrls.has(url) || !ISSUE_URL_PATTERN.test(url)) continue;
     const parsed = parseGitHubUrl(url);
     skippedIssues.push({
       url,

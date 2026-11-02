@@ -118,6 +118,21 @@ export {
   type ClosedPRStatusCandidate,
   type IssueLinkedPR,
 } from './closed-pr-status.js';
+export {
+  collectMergedPRNotes,
+  groupThanksOnlyAcknowledgments,
+  isThanksOnlyNote,
+  latestNoteAt,
+  omitAcknowledgedViaCarrier,
+  scanMergedPR,
+  MERGED_PR_NOTES_PRE_MERGE_GRACE_MS,
+  type CarrierReply,
+  type MergedPRActivity,
+  type MergedPRNote,
+  type MergedPRNoteKind,
+  type MergedPRNotes,
+  type MergedPRScan,
+} from './merged-pr-notes.js';
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export {
   classifyLinkedPR,

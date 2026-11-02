@@ -38,6 +38,10 @@
       "purpose": "Draft a status comment on the linked issue after an own PR closed unmerged (#1863)"
     },
     {
+      "file": "workflows/merged-pr-notes.md",
+      "purpose": "Acknowledge or reply to maintainer notes left on recently merged PRs, one per thanks-only repo group (#1861)"
+    },
+    {
       "file": "workflows/plan-review.md",
       "purpose": "Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review)"
     },
