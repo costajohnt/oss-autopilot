@@ -617,6 +617,74 @@ describe('IssueConversationMonitor — direct fetch of engaged issues missing fr
     });
   });
 
+  it('lends the engagement to a transferred issue the search already returned, instead of a second candidate', async () => {
+    // The claim names owner/repo#42, now transferred to new-org/new-repo#7,
+    // where the user has commented since: the search returns it there under
+    // a key the claim does not carry. One candidate, read once, and the
+    // community reply counts under the engaged rule (the #343 filter would
+    // have dropped it on a passing comment).
+    const movedUrl = 'https://github.com/new-org/new-repo/issues/7';
+    searchReturns([{ ...makeSearchItem(), html_url: movedUrl, number: 7, title: 'Moved issue' }]);
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    commentsAre([
+      makeComment('testuser', 'On it.', '2026-02-02T10:00:00Z'),
+      makeComment('community-member', 'A long substantive reply about the design here.', YESTERDAY),
+    ]);
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.graphql.mock.calls[0][1]).toEqual({ o0: 'owner', r0: 'repo', n0: 42 });
+    expect(commentFetchedNumbers()).toEqual([7]);
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      url: movedUrl,
+      repo: 'new-org/new-repo',
+      number: 7,
+      title: 'Moved issue',
+      status: 'new_response',
+      lastResponseAuthor: 'community-member',
+      engagement: { reason: 'claim' },
+    });
+  });
+
+  it('skips a transferred issue the search returned but filtered out (the user authored it)', async () => {
+    const movedUrl = 'https://github.com/new-org/new-repo/issues/7';
+    searchReturns([{ ...makeSearchItem(), html_url: movedUrl, number: 7, user: { login: 'testuser' } }]);
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.issues.listComments).not.toHaveBeenCalled();
+    expect(issues).toEqual([]);
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it.each([
+    ['an excluded repo', 'https://github.com/new-org/new-repo/issues/7', { excludeRepos: ['new-org/new-repo'] }],
+    ['an excluded org', 'https://github.com/new-org/new-repo/issues/7', { excludeOrgs: ['New-Org'] }],
+    ['a blocklisted repo', 'https://github.com/new-org/new-repo/issues/7', { aiPolicyBlocklist: ['New-Org/New-Repo'] }],
+    ["the user's own repo", 'https://github.com/TestUser/own-project/issues/7', {}],
+  ])('skips a claimed issue transferred into %s without reading its comments', async (_label, movedUrl, config) => {
+    Object.assign(mocks.state.config, config);
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.graphql).toHaveBeenCalledTimes(1);
+    expect(mocks.octokit.issues.listComments).not.toHaveBeenCalled();
+    expect(issues).toEqual([]);
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
   it.each([
     ['a pull request number', { __typename: 'PullRequest' }],
     ['a closed issue', makeNode({ state: 'CLOSED' })],

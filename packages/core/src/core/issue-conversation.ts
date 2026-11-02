@@ -39,7 +39,12 @@ import { splitRepo, extractOwnerRepo, isOwnRepo, parseGitHubUrl, issueRefKey } f
 import { runWorkerPool, DEFAULT_CONCURRENCY } from './concurrency.js';
 import type { AgentConfig, CommentedIssue, IssueConversationStatus, IssueEngagement } from './types.js';
 import { toIssueEngagement, type EngagedIssue } from './engaged-issues.js';
-import { lookupEngagedIssues, type EngagedIssueLookup, type EngagedIssueRef } from './engaged-issue-lookup.js';
+import {
+  lookupEngagedIssues,
+  type EngagedIssueLookup,
+  type EngagedIssueNode,
+  type EngagedIssueRef,
+} from './engaged-issue-lookup.js';
 import {
   ConfigurationError,
   ValidationError,
@@ -96,6 +101,23 @@ interface RunReport {
   failures: Array<{ issueUrl: string; error: string }>;
 }
 
+/** What one run's direct fetches need from the search phase that preceded them. */
+interface DirectFetchContext {
+  username: string;
+  config: AgentConfig;
+  /** Start of the comment search window. */
+  cutoffDate: Date;
+  /**
+   * `issueRefKey` of every issue the search returned, including the ones it
+   * filtered out, plus every direct candidate already built. A lookup that
+   * lands on one of these (a transferred issue) adds no second candidate.
+   */
+  seenKeys: Set<string>;
+  /** The search candidates by `issueRefKey`, so a transfer onto one can carry its engagement over. */
+  searchCandidates: ReadonlyMap<string, Candidate>;
+  report: RunReport;
+}
+
 export interface FetchCommentedIssuesOptions {
   /** Window for the comment search, in days (default 30). */
   maxDays?: number;
@@ -143,6 +165,12 @@ function parseMs(value: string | undefined): number {
 
 function excerpt(body: string): string {
   return body.slice(0, 200) + (body.length > 200 ? '...' : '');
+}
+
+/** The label names on a looked-up issue node; GitHub may return null entries. */
+function labelNames(node: EngagedIssueNode): string[] {
+  const labelNodes = node.labels?.nodes ?? [];
+  return labelNodes.filter((label) => label !== null).map((label) => label.name);
 }
 
 function describeError(error: unknown): string {
@@ -240,6 +268,7 @@ export class IssueConversationMonitor {
     // Also parse repo info for each candidate to avoid re-parsing in analyzeIssueConversation.
     const candidates: Candidate[] = [];
     const seenKeys = new Set<string>();
+    const searchCandidates = new Map<string, Candidate>();
     for (const item of data.items) {
       // Defensive: skip pull requests in case type:issue qualifier is unreliable
       if (item.pull_request) continue;
@@ -257,7 +286,9 @@ export class IssueConversationMonitor {
       if (item.user?.login?.toLowerCase() === username.toLowerCase()) continue;
       if (!this.isRepoAllowed(repoFullName, config)) continue;
 
-      candidates.push({ item, repoFullName, engagement: engaged.get(key), url: item.html_url });
+      const candidate: Candidate = { item, repoFullName, engagement: engaged.get(key), url: item.html_url };
+      candidates.push(candidate);
+      searchCandidates.set(key, candidate);
     }
 
     // Live engaged issues the search did not return are looked up directly.
@@ -268,7 +299,8 @@ export class IssueConversationMonitor {
       if (!parsed || !this.isRepoAllowed(`${parsed.owner}/${parsed.repo}`, config)) continue;
       missing.push(entry);
     }
-    candidates.push(...(await this.collectDirectCandidates(missing, username, cutoffDate, report)));
+    const context: DirectFetchContext = { username, config, cutoffDate, seenKeys, searchCandidates, report };
+    candidates.push(...(await this.collectDirectCandidates(missing, context)));
     // Lookup failures are already in `failures`; the analysis tallies below
     // count only the candidates the pool analyzed.
     const lookupFailures = failures.length;
@@ -373,12 +405,7 @@ export class IssueConversationMonitor {
    * @throws The lookup's rate-limit or auth error; other lookup failures are
    *   recorded per issue in `report.failures`.
    */
-  private async collectDirectCandidates(
-    missing: EngagedIssue[],
-    username: string,
-    cutoffDate: Date,
-    report: RunReport,
-  ): Promise<Candidate[]> {
+  private async collectDirectCandidates(missing: EngagedIssue[], context: DirectFetchContext): Promise<Candidate[]> {
     const refs: EngagedIssueRef[] = [];
     for (const entry of missing) {
       const parsed = parseGitHubUrl(entry.url);
@@ -391,7 +418,7 @@ export class IssueConversationMonitor {
     for (const entry of missing) {
       const outcome = lookups.get(entry.url);
       if (!outcome) continue;
-      const direct = this.toDirectCandidate(entry, outcome, username, cutoffDate, report);
+      const direct = this.toDirectCandidate(entry, outcome, context);
       if (direct) active.push(direct);
     }
     active.sort((a, b) => b.updatedMs - a.updatedMs);
@@ -399,7 +426,7 @@ export class IssueConversationMonitor {
     const deferred = active.slice(MAX_DIRECT_ENGAGED_FETCHES);
     if (deferred.length > 0) {
       const plural = deferred.length === 1 ? '' : 's';
-      report.warnings.push(
+      context.report.warnings.push(
         `${deferred.length} engaged issue${plural} with new activity ${deferred.length === 1 ? 'was' : 'were'} not scanned this run (cap of ${MAX_DIRECT_ENGAGED_FETCHES} comment fetches per run, most recently updated first; replies there stay unseen until fewer issues are busier): ${deferred.map((d) => d.candidate.url).join(', ')}`,
       );
     }
@@ -413,15 +440,18 @@ export class IssueConversationMonitor {
    * a closed issue, one the user authored, or one untouched since the
    * engagement. The candidate's repo and number come from the node's URL,
    * not the engagement's: GitHub follows a transferred issue to its new
-   * repo, and the comments live there.
+   * repo, and the comments live there. So the repo exclusions and the
+   * search dedupe run again on that URL: a transfer into an excluded repo
+   * is skipped, and one onto an issue the search already returned adds no
+   * second candidate but lends that one the engagement (the engaged reply
+   * rule applies there too) unless it has its own.
    */
   private toDirectCandidate(
     entry: EngagedIssue,
     outcome: EngagedIssueLookup,
-    username: string,
-    cutoffDate: Date,
-    report: RunReport,
+    context: DirectFetchContext,
   ): DirectCandidate | undefined {
+    const { username, cutoffDate, report } = context;
     if (outcome.kind === 'failed') {
       report.failures.push({ issueUrl: entry.url, error: outcome.error });
       warn(MODULE, `Error looking up engaged issue ${entry.url}: ${outcome.error}`);
@@ -454,20 +484,40 @@ export class IssueConversationMonitor {
       report.warnings.push(`${entry.url}: skipped; GitHub returned it at an unparseable URL "${node.url}"`);
       return undefined;
     }
-    const labelNodes = node.labels?.nodes ?? [];
-    const item: IssueItem = {
-      html_url: node.url,
-      number: node.number,
-      title: node.title,
-      labels: labelNodes.filter((label) => label !== null).map((label) => label.name),
-    };
-    const candidate: Candidate = {
-      item,
-      url: node.url,
-      repoFullName: `${parsed.owner}/${parsed.repo}`,
-      engagement: entry,
-    };
+    const repoFullName = `${parsed.owner}/${parsed.repo}`;
+    const covered = this.transferredIssueCoverage(entry, node.url, repoFullName, context);
+    if (covered) return skip(covered);
+
+    const item: IssueItem = { html_url: node.url, number: node.number, title: node.title, labels: labelNames(node) };
+    const candidate: Candidate = { item, repoFullName, url: node.url, engagement: entry };
     return { candidate, updatedMs };
+  }
+
+  /**
+   * Why a looked-up issue needs no candidate at the URL GitHub returned it,
+   * or undefined when it does (and its key is then marked seen). Only a
+   * transferred issue can be covered: the engagement's own repo passed the
+   * exclusions before the lookup and its own key was not among the search
+   * results. A transfer into an excluded repo is skipped; one onto an
+   * issue the search returned lends that candidate the engagement unless
+   * it has its own, so the engaged reply rule applies there.
+   */
+  private transferredIssueCoverage(
+    entry: EngagedIssue,
+    url: string,
+    repoFullName: string,
+    { config, seenKeys, searchCandidates }: DirectFetchContext,
+  ): string | undefined {
+    if (!this.isRepoAllowed(repoFullName, config)) return `now at ${url}, a repo that is excluded`;
+    const key = issueRefKey(url) ?? url;
+    const found = searchCandidates.get(key);
+    if (found) {
+      found.engagement ??= entry;
+      return `now at ${url}, which the search already returned`;
+    }
+    if (seenKeys.has(key)) return `now at ${url}, which is already covered`;
+    seenKeys.add(key);
+    return undefined;
   }
 
   /**
