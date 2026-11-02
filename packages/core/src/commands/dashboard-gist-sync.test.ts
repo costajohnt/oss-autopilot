@@ -140,12 +140,14 @@ describe('GistSyncCoordinator', () => {
       expect(mockMaybeCheckpoint).toHaveBeenCalledWith(currentManager, 'dashboard-server');
       expect(sync.withPendingGistWarnings(undefined)).toBeUndefined();
     });
+  });
+
+  describe('unwarned saves', () => {
     it('flushPendingGistSync pushes saved-but-unpushed state even with no recorded warning', async () => {
       // fetchDashboardData saves the digest without a checkpoint; the pull
       // that follows must not revert it (stale "un-pushed changes" banner).
-      currentManager = makeManager({ hasUnpushedChanges: vi.fn(() => true) });
+      currentManager.hasUnpushedChanges.mockReturnValue(true);
       const sync = makeCoordinator();
-      mockMaybeCheckpoint.mockResolvedValueOnce(null);
 
       await sync.flushPendingGistSync();
       expect(mockMaybeCheckpoint).toHaveBeenCalledWith(currentManager, 'dashboard-server');
