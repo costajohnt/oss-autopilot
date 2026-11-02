@@ -269,4 +269,6 @@ export {
   describeWorkClaim,
   workClaimVetFields,
   type ImplementationClaimConflict,
+  type CheckoutLocation,
 } from './work-claims.js';
+export { getMachineId } from './machine-id.js';

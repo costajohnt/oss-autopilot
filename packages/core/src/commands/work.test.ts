@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getStatePath, getStateManager, resetStateManager } from '../core/index.js';
+import { getMachineId, getStatePath, getStateManager, resetStateManager } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { runWorkClaim, runWorkFinish, runWorkList, runWorkRelease } from './work.js';
 
@@ -27,6 +27,8 @@ const SESSION = 'air/20261102T120000-1a2b';
 const OTHER_SESSION = 'mbp/20261102T120500-9f9f';
 /** What `work claim` stores as `host`: the short hostname, as `hostname -s` prints it. */
 const SHORT_HOST = os.hostname().split('.', 1)[0];
+/** What `work claim` stores as `machineId`: the id file under the temp HOME, created here on first need. */
+const MACHINE_ID = getMachineId();
 
 function freshState(): void {
   resetStateManager();
@@ -44,11 +46,20 @@ interface DiskClaim {
   session: string;
   expiresAt: string;
   host?: string;
+  machineId?: string;
   [key: string]: unknown;
 }
 
 function readDisk(): { workClaims?: DiskClaim[] } {
   return JSON.parse(fs.readFileSync(getStatePath(), 'utf8'));
+}
+
+/** Rewrite the first stored claim on disk as if another machine had written it, then drop the singleton. */
+function rewriteFirstClaim(patch: Partial<DiskClaim>): void {
+  const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: DiskClaim[] };
+  Object.assign(state.workClaims[0], patch);
+  fs.writeFileSync(getStatePath(), JSON.stringify(state));
+  reload();
 }
 
 function iso(ms: number): string {
@@ -91,6 +102,7 @@ describe('work claim / finish / release / list: lifecycle, expiry and the cap (r
       branch: 'fix/thing',
       worktree: '/work/wt/a',
       host: SHORT_HOST,
+      machineId: MACHINE_ID,
       startedAt: '2026-11-02T12:00:00.000Z',
       expiresAt: '2026-11-03T12:00:00.000Z',
     });
@@ -123,8 +135,9 @@ describe('work claim / finish / release / list: lifecycle, expiry and the cap (r
   it('pr claims default to a 12-hour TTL, implementations to 24, and --ttl overrides both', async () => {
     const pr = await runWorkClaim({ url: PR_URL, kind: 'pr', session: SESSION });
     expect(pr.claim.expiresAt).toBe('2026-11-03T00:00:00.000Z');
-    // A pr claim has no checkout, so no host either.
+    // A pr claim has no checkout, so no host or machine id either.
     expect(pr.claim.host).toBeUndefined();
+    expect(pr.claim.machineId).toBeUndefined();
     const custom = await claimImpl(ISSUE_A, '/work/wt/a', { ttlHours: 1.5 });
     expect(custom.claim.expiresAt).toBe('2026-11-02T13:30:00.000Z');
   });
@@ -262,15 +275,31 @@ describe('work claim / finish / release / list: lifecycle, expiry and the cap (r
 describe('work claim / finish / release / list: hosts, sessions and foreign claims (real StateManager)', () => {
   useFreshState();
 
-  it('the same checkout path on another host is a different checkout', async () => {
+  it('the same checkout path on another machine (another machineId) is a different checkout', async () => {
     await claimImpl(ISSUE_A, '/work/wt/a');
-    const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: DiskClaim[] };
-    state.workClaims[0].host = 'other-machine';
-    fs.writeFileSync(getStatePath(), JSON.stringify(state));
-    reload();
+    rewriteFirstClaim({ host: 'other-machine', machineId: 'other-id' });
 
     await expect(claimImpl(ISSUE_B, '/work/wt/a')).resolves.toMatchObject({ outcome: 'claimed' });
     expect(readDisk().workClaims?.map((c) => c.host)).toEqual(['other-machine', SHORT_HOST]);
+    expect(readDisk().workClaims?.map((c) => c.machineId)).toEqual(['other-id', MACHINE_ID]);
+  });
+
+  it('a renamed host with this machine id is still this machine: the same path is refused', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    rewriteFirstClaim({ host: `${SHORT_HOST}-2` });
+
+    await expect(claimImpl(ISSUE_B, '/work/wt/a')).rejects.toThrow(/already hosts an implementation/);
+    expect(readDisk().workClaims).toHaveLength(1);
+  });
+
+  it('a legacy claim without machineId keeps the hostname rule: another host is free, this host is not', async () => {
+    await claimImpl(ISSUE_A, '/work/wt/a');
+    rewriteFirstClaim({ host: 'other-machine', machineId: undefined });
+    await expect(claimImpl(ISSUE_B, '/work/wt/a')).resolves.toMatchObject({ outcome: 'claimed' });
+
+    await runWorkRelease({ url: ISSUE_B });
+    rewriteFirstClaim({ host: SHORT_HOST, machineId: undefined });
+    await expect(claimImpl(ISSUE_C, '/work/wt/a')).rejects.toThrow(/already hosts an implementation/);
   });
 
   it('stores the short hostname (`hostname -s`): a domain suffix changes with the network, the machine does not', async () => {
@@ -280,17 +309,15 @@ describe('work claim / finish / release / list: hosts, sessions and foreign clai
     expect(readDisk().workClaims?.[0]?.host).toBe('air');
   });
 
-  it('a renamed host (air to air-2) is still caught when the claimed checkout exists on this machine', async () => {
+  it('a symlink to a checkout in use on this machine is the same checkout', async () => {
     const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-claim-'));
+    const link = `${checkout}-link`;
+    fs.symlinkSync(checkout, link);
     try {
       await claimImpl(ISSUE_A, checkout);
-      const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: DiskClaim[] };
-      state.workClaims[0].host = `${SHORT_HOST}-2`;
-      fs.writeFileSync(getStatePath(), JSON.stringify(state));
-      reload();
-
-      await expect(claimImpl(ISSUE_B, checkout)).rejects.toThrow(/already hosts an implementation/);
+      await expect(claimImpl(ISSUE_B, link)).rejects.toThrow(/already hosts an implementation/);
     } finally {
+      fs.rmSync(link, { force: true });
       fs.rmSync(checkout, { recursive: true, force: true });
     }
   });
@@ -382,10 +409,11 @@ describe('work claim / finish / release / list: hosts, sessions and foreign clai
     // Release needs a selector; finish's session is validated like claim's.
     await expect(runWorkRelease({})).rejects.toThrow(/needs a URL or --session/);
     await expect(runWorkFinish({ url: ISSUE_A, session: ' ' })).rejects.toThrow(/--session must not be empty/);
-    // A remote run is a valid location and carries no host.
+    // A remote run is a valid location and carries no host or machine id.
     const remote = await runWorkClaim({ url: ISSUE_A, kind: 'implementation', session: SESSION, runId: 'run-42' });
     expect(remote.claim).toMatchObject({ runId: 'run-42' });
     expect(remote.claim.host).toBeUndefined();
+    expect(remote.claim.machineId).toBeUndefined();
     expect(readDisk().workClaims).toHaveLength(1);
   });
 

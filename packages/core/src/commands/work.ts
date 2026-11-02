@@ -22,6 +22,7 @@ import {
   checkImplementationClaim,
   describeWorkClaim,
   findWorkClaim,
+  getMachineId,
   getStateManager,
   heldByOtherSession,
   maybeCheckpoint,
@@ -156,8 +157,10 @@ interface ClaimInput {
   session: string;
   branch?: string;
   worktree?: string;
-  /** Short hostname of this machine (`hostname -s`), set with `worktree` so the same path on another machine is not a conflict. */
+  /** Short hostname of this machine (`hostname -s`), set with `worktree`: shown in menus, and the checkout identity for claims without `machineId`. */
   host?: string;
+  /** This machine's id (`~/.oss-autopilot/machine-id`), set with `worktree` so the same path on another machine is not a conflict; absent when the id file is unusable. */
+  machineId?: string;
   runId?: string;
   /** Explicit `--ttl`; the default depends on the kind and on whether a finished claim is being renewed. */
   ttlHours?: number;
@@ -173,6 +176,18 @@ function shortHostname(): string {
   return os.hostname().split('.', 1)[0];
 }
 
+/**
+ * The validated `--worktree` with the identity of the machine it is on:
+ * the short hostname (display, and the legacy comparison key) and the
+ * machine id (the comparison key; absent when the id file is unusable).
+ * Empty when no worktree was given.
+ */
+function checkoutIdentity(rawWorktree: string | undefined): Pick<ClaimInput, 'worktree' | 'host' | 'machineId'> {
+  const worktree = validateField('worktree', rawWorktree);
+  if (worktree === undefined) return {};
+  return { worktree: normalizeWorktreePath(worktree), host: shortHostname(), machineId: getMachineId() };
+}
+
 function validateClaimInput(options: WorkClaimOptions): ClaimInput {
   const kind = validateKind(options.kind);
   validateClaimUrl(options.url, kind);
@@ -180,17 +195,15 @@ function validateClaimInput(options: WorkClaimOptions): ClaimInput {
   if (session === undefined) throw new ValidationError('--session is required');
   const branch = validateField('branch', options.branch);
   const runId = validateField('run-id', options.runId);
-  const rawWorktree = validateField('worktree', options.worktree);
-  const worktree = rawWorktree === undefined ? undefined : normalizeWorktreePath(rawWorktree);
-  if (kind === 'implementation' && worktree === undefined && runId === undefined) {
+  const checkout = checkoutIdentity(options.worktree);
+  if (kind === 'implementation' && runId === undefined && checkout.worktree === undefined) {
     throw new ValidationError(
       'An implementation claim needs --worktree (local checkout) or --run-id (remote worker run)',
     );
   }
-  const host = worktree === undefined ? undefined : shortHostname();
   const ttlHours = validateTtl(options.ttlHours);
   const isTakeover = options.takeover === true;
-  return { kind, session, branch, worktree, host, runId, ttlHours, url: options.url, takeover: isTakeover };
+  return { kind, session, branch, ...checkout, runId, ttlHours, url: options.url, takeover: isTakeover };
 }
 
 /**
@@ -228,7 +241,6 @@ function buildClaim(input: ClaimInput, existing: WorkClaim | undefined, nowMs: n
   const finishedOwn = isOwnFinishedClaim(input, existing) ? existing : undefined;
   const ttlHours =
     input.ttlHours ?? (finishedOwn ? WORK_CLAIM_FINISHED_TTL_HOURS : WORK_CLAIM_DEFAULT_TTL_HOURS[input.kind]);
-  const { branch, worktree, host, runId } = input;
   return {
     kind: input.kind,
     url: input.url,
@@ -236,11 +248,20 @@ function buildClaim(input: ClaimInput, existing: WorkClaim | undefined, nowMs: n
     startedAt: isoAt(nowMs),
     expiresAt: isoAt(nowMs + ttlHours * 3_600_000),
     status: finishedOwn ? 'finished' : 'running',
+    ...locationFields(input),
+    ...(finishedOwn?.finishedAt !== undefined && { finishedAt: finishedOwn.finishedAt }),
+  };
+}
+
+/** The optional location fields of `input` that are set, so an absent one is left off the stored claim. */
+function locationFields(input: ClaimInput): Pick<WorkClaim, 'branch' | 'worktree' | 'host' | 'machineId' | 'runId'> {
+  const { branch, worktree, host, machineId, runId } = input;
+  return {
     ...(branch !== undefined && { branch }),
     ...(worktree !== undefined && { worktree }),
     ...(host !== undefined && { host }),
+    ...(machineId !== undefined && { machineId }),
     ...(runId !== undefined && { runId }),
-    ...(finishedOwn?.finishedAt !== undefined && { finishedAt: finishedOwn.finishedAt }),
   };
 }
 
@@ -267,7 +288,7 @@ function outcomeFor(existing: WorkClaim | undefined, session: string): WorkClaim
  * one-implementation-per-checkout rule has something to compare, and it is
  * refused when `maxConcurrentImplementations` running implementations
  * already exist or another live implementation uses the same checkout on
- * this host. A live claim another session holds is refused unless `takeover`
+ * this machine. A live claim another session holds is refused unless `takeover`
  * is set (the workflow asks first); this session's own claim is renewed.
  *
  * In Gist mode the checks run again on the Gist's copy when the push

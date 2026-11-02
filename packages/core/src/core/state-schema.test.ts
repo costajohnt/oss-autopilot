@@ -598,7 +598,14 @@ describe('WorkClaimSchema / state.workClaims (#1856, #1852)', () => {
   });
 
   it('round-trips a claim with its optional fields', () => {
-    const full = { ...claim, branch: 'fix/x', runId: 'r1', host: 'air', finishedAt: '2026-11-02T13:00:00.000Z' };
+    const full = {
+      ...claim,
+      branch: 'fix/x',
+      runId: 'r1',
+      host: 'air',
+      machineId: 'm1',
+      finishedAt: '2026-11-02T13:00:00.000Z',
+    };
     const parsed = AgentStateSchema.parse({ version: 4, workClaims: [full] });
     expect(parsed.workClaims).toEqual([full]);
   });

@@ -823,7 +823,7 @@ export function registerTools(server: McpServer): void {
     'work-claim',
     {
       description:
-        'Claim an item so other sessions and machines see it is being worked on: an issue with kind "implementation" while a fix is built in the background (needs worktree or runId; refused past maxConcurrentImplementations or when another implementation uses the same worktree on this host), or a PR with kind "pr" while this session does Tier 2 work on it. Re-claiming renews this session\'s claim; a claim another session holds is refused unless takeover is true. synced: false means the claim exists on this machine only.',
+        'Claim an item so other sessions and machines see it is being worked on: an issue with kind "implementation" while a fix is built in the background (needs worktree or runId; refused past maxConcurrentImplementations or when another implementation uses the same worktree on this machine), or a PR with kind "pr" while this session does Tier 2 work on it. Re-claiming renews this session\'s claim; a claim another session holds is refused unless takeover is true. synced: false means the claim exists on this machine only.',
       inputSchema: {
         url: githubIssueOrPrUrlSchema.describe('Issue URL for an implementation claim, PR URL for a pr claim'),
         kind: z.enum(['implementation', 'pr']).describe('implementation (issue) or pr (PR)'),

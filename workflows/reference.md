@@ -137,7 +137,8 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # across sessions and machines via state (and the Gist). An implementation
 # claim sits on an issue URL while a fix is built in the background (needs
 # --worktree or --run-id; refused past maxConcurrentImplementations or when
-# another implementation uses the same worktree on this host); a pr claim sits
+# another implementation uses the same worktree on this machine, identified by
+# ~/.oss-autopilot/machine-id); a pr claim sits
 # on a PR URL while this session does Tier 2 work on it. A claim another
 # session holds is refused without --takeover. Claims expire (24h / 12h
 # default; a finished implementation stays collectable for 7 days). Output:

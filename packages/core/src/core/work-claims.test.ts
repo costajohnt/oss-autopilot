@@ -54,6 +54,18 @@ function claim(overrides: Partial<WorkClaim> = {}): WorkClaim {
 
 const EXPIRED_A = claim({ expiresAt: JUST_EXPIRED });
 
+/** A real directory and a symlink to it, both removed after the test. */
+function checkoutWithLink(): { real: string; link: string } {
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-claims-'));
+  const link = `${real}-link`;
+  fs.symlinkSync(real, link);
+  onTestFinished(() => {
+    fs.rmSync(link, { force: true });
+    fs.rmSync(real, { recursive: true, force: true });
+  });
+  return { real, link };
+}
+
 describe('isWorkClaimActive / activeWorkClaims', () => {
   it('treats a claim as live until expiresAt and expired from then on', () => {
     const live = claim({ expiresAt: iso(1) });
@@ -158,31 +170,51 @@ describe('checkImplementationClaim', () => {
     expect(conflict?.reason).toBe('worktree');
   });
 
-  it('compares checkouts within one host only; a claim without a host is compared on the path alone', () => {
-    const onAir = [claim({ host: 'air' })];
-    const next = { url: ISSUE_B, worktree: '/work/wt/a' };
-    expect(checkImplementationClaim(onAir, { ...next, host: 'mbp' }, 5, NOW)).toBeNull();
-    expect(checkImplementationClaim(onAir, { ...next, host: 'air' }, 5, NOW)?.reason).toBe('worktree');
-    expect(checkImplementationClaim(onAir, next, 5, NOW)?.reason).toBe('worktree');
-    expect(checkImplementationClaim([claim()], { ...next, host: 'mbp' }, 5, NOW)?.reason).toBe('worktree');
-  });
-
-  it('compares checkouts that exist on this machine by canonical path, whatever host either claim names', () => {
-    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-claims-'));
-    const link = `${real}-link`;
-    fs.symlinkSync(real, link);
-    onTestFinished(() => {
-      fs.rmSync(link, { force: true });
-      fs.rmSync(real, { recursive: true, force: true });
+  describe('checkouts across machines', () => {
+    it('legacy claims (no machineId) compare on the host and the normalized path; no host means the path alone', () => {
+      const onAir = [claim({ host: 'air' })];
+      const next = { url: ISSUE_B, worktree: '/work/wt/a' };
+      expect(checkImplementationClaim(onAir, { ...next, host: 'mbp' }, 5, NOW)).toBeNull();
+      expect(checkImplementationClaim(onAir, { ...next, host: 'air' }, 5, NOW)?.reason).toBe('worktree');
+      expect(checkImplementationClaim(onAir, next, 5, NOW)?.reason).toBe('worktree');
+      expect(checkImplementationClaim([claim()], { ...next, host: 'mbp' }, 5, NOW)?.reason).toBe('worktree');
     });
 
-    // A renamed machine (air -> air-2) or a symlinked path still points at the checkout in use.
-    const onAir = [claim({ host: 'air', worktree: real })];
-    const viaLink = { url: ISSUE_B, worktree: link, host: 'air-2' };
-    expect(checkImplementationClaim(onAir, viaLink, 5, NOW)?.reason).toBe('worktree');
-    // A different directory that also exists here is not the same checkout, even on the same host.
-    const sibling = { url: ISSUE_B, worktree: os.tmpdir(), host: 'air' };
-    expect(checkImplementationClaim(onAir, sibling, 5, NOW)).toBeNull();
+    it('a legacy claim is compared on the hostname rule even when only one side carries a machineId', () => {
+      const legacy = [claim({ host: 'air' })];
+      const withId = { url: ISSUE_B, worktree: '/work/wt/a', machineId: 'm1' };
+      expect(checkImplementationClaim(legacy, { ...withId, host: 'air' }, 5, NOW)?.reason).toBe('worktree');
+      expect(checkImplementationClaim(legacy, { ...withId, host: 'mbp' }, 5, NOW)).toBeNull();
+      const stamped = [claim({ host: 'air', machineId: 'm1' })];
+      const noId = { url: ISSUE_B, worktree: '/work/wt/a' };
+      expect(checkImplementationClaim(stamped, { ...noId, host: 'air' }, 5, NOW)?.reason).toBe('worktree');
+      expect(checkImplementationClaim(stamped, { ...noId, host: 'mbp' }, 5, NOW)).toBeNull();
+    });
+
+    it('two machines (different ids) with the same existing path never conflict, whatever the host says', () => {
+      const { real } = checkoutWithLink();
+      const onFirst = [claim({ host: 'air', worktree: real, machineId: 'm1' })];
+      const onSecond = { url: ISSUE_B, worktree: real, host: 'air', machineId: 'm2' };
+      expect(checkImplementationClaim(onFirst, onSecond, 5, NOW)).toBeNull();
+    });
+
+    it('the same machine id with a symlinked path is the same checkout', () => {
+      const { real, link } = checkoutWithLink();
+      const onReal = [claim({ host: 'air', worktree: real, machineId: 'm1' })];
+      const viaLink = { url: ISSUE_B, worktree: link, host: 'air', machineId: 'm1' };
+      expect(checkImplementationClaim(onReal, viaLink, 5, NOW)?.reason).toBe('worktree');
+      // A different directory that also exists here is not the same checkout.
+      const sibling = { url: ISSUE_B, worktree: os.tmpdir(), host: 'air', machineId: 'm1' };
+      expect(checkImplementationClaim(onReal, sibling, 5, NOW)).toBeNull();
+    });
+
+    it('a renamed host with the same machine id is still the same checkout, even for a path that does not exist', () => {
+      const onAir = [claim({ host: 'air', machineId: 'm1' })];
+      const renamed = { url: ISSUE_B, worktree: '/work/wt/a/', host: 'air-2', machineId: 'm1' };
+      expect(checkImplementationClaim(onAir, renamed, 5, NOW)?.reason).toBe('worktree');
+      const elsewhere = { url: ISSUE_B, worktree: '/work/wt/b', host: 'air-2', machineId: 'm1' };
+      expect(checkImplementationClaim(onAir, elsewhere, 5, NOW)).toBeNull();
+    });
   });
 });
 

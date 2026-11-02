@@ -110,58 +110,64 @@ export interface ImplementationClaimConflict {
   blocking: WorkClaim[];
 }
 
+/** The location fields of a claim that identify its checkout. */
+export type CheckoutLocation = Pick<WorkClaim, 'worktree' | 'host' | 'machineId'>;
+
 /**
- * Whether two claims' checkouts can be the same directory: a path only
- * identifies a checkout on one machine, so claims from different hosts never
- * share one. A claim without `host` (written before the field existed) is
- * compared on the path alone.
+ * Legacy rule for claims written before `machineId` existed: a path only
+ * identifies a checkout on one host, so claims from different hosts never
+ * share one. A claim without `host` is compared on the path alone.
  */
 function isSameHost(a: string | undefined, b: string | undefined): boolean {
   return a === undefined || b === undefined || a === b;
 }
 
-/** The canonical path of a directory on this machine (symlinks resolved), or null when it does not exist here. */
-function localRealPath(normalized: string): string | null {
+/**
+ * The canonical form of a normalized path on this machine: its real path
+ * (symlinks resolved) when it exists here, else the normalized path itself.
+ */
+function canonicalLocalPath(normalized: string): string {
   try {
     return fs.realpathSync(normalized);
   } catch {
-    return null;
+    return normalized;
   }
 }
 
 /**
- * Whether `claim`'s checkout is the directory `wanted` (already normalized;
- * `wantedReal` is its canonical path when it exists on this machine). Two
- * paths that both exist here are compared canonically whatever `host` says:
- * a renamed machine (`air` to `air-2`) or a symlinked path must not let a
- * second implementation into a checkout that is visibly in use. Otherwise
- * the stored path is compared on the same host only.
+ * Whether `claim`'s checkout is the directory `wanted` (already normalized).
+ *
+ * When both claims carry a `machineId`, that decides which machine the path
+ * is on: different ids never conflict, whatever the path or host, and on the
+ * same id the paths are compared canonically ({@link canonicalLocalPath}),
+ * so a renamed host (`air` to `air-2`) or a symlinked path still refuses a
+ * second implementation in a checkout in use. A claim without an id on
+ * either side (written before the field existed, or by a machine whose id
+ * file is unreadable) falls back to the hostname rule: the same normalized
+ * path on the same `host`, with no real-path resolution, since the stored
+ * path may be another machine's.
  */
-function isSameCheckout(
-  claim: Pick<WorkClaim, 'worktree' | 'host'>,
-  wanted: string,
-  wantedReal: string | null,
-  host: string | undefined,
-): boolean {
+function isSameCheckout(claim: CheckoutLocation, wanted: string, next: CheckoutLocation): boolean {
   if (!claim.worktree) return false;
   const theirs = normalizeWorktreePath(claim.worktree);
-  const theirsReal = wantedReal === null ? null : localRealPath(theirs);
-  if (theirsReal !== null) return theirsReal === wantedReal;
-  return isSameHost(claim.host, host) && theirs === wanted;
+  if (claim.machineId !== undefined && next.machineId !== undefined) {
+    if (claim.machineId !== next.machineId) return false;
+    return canonicalLocalPath(theirs) === canonicalLocalPath(wanted);
+  }
+  return isSameHost(claim.host, next.host) && theirs === wanted;
 }
 
 /**
  * Check whether an implementation claim may start (#1856): at most
  * `maxConcurrentImplementations` implementations run at once (0 = no cap),
- * and no two live implementations share a checkout (the same path on the
- * same host, or the same directory on this machine; see
- * {@link isSameCheckout}). A claim
- * already held on the same item is being renewed or taken over, so it never
- * blocks itself. Returns null when the claim may proceed.
+ * and no two live implementations share a checkout (the same directory on
+ * the same machine; see {@link isSameCheckout}). A claim already held on the
+ * same item is being renewed or taken over, so it never blocks itself.
+ * Returns null when the claim may proceed.
  */
 export function checkImplementationClaim(
   claims: readonly WorkClaim[],
-  next: { url: string; worktree?: string; host?: string },
+  next: { url: string } & CheckoutLocation,
   maxConcurrentImplementations: number,
   nowMs = Date.now(),
 ): ImplementationClaimConflict | null {
@@ -172,8 +178,7 @@ export function checkImplementationClaim(
 
   if (next.worktree !== undefined) {
     const wanted = normalizeWorktreePath(next.worktree);
-    const wantedReal = localRealPath(wanted);
-    const sharing = others.filter((claim) => isSameCheckout(claim, wanted, wantedReal, next.host));
+    const sharing = others.filter((claim) => isSameCheckout(claim, wanted, next));
     if (sharing.length > 0) {
       const holder = sharing[0];
       return {

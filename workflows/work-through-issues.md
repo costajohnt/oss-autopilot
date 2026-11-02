@@ -492,7 +492,7 @@ Store in session context: `featureBranch`, `upstreamRemote`, `upstreamDefault`, 
 
 Implementing is not a blocking step. Decide where the implementation runs, claim it, create its checkout, hand it off, then return to the Action Menu in the same turn. The order matters: the claim comes before any checkout is created, so a refused claim leaves nothing to clean up, and the branch is created inside the worktree, never in this checkout.
 
-1. **Pick a lane and its location.** Local: a dedicated worktree for this issue, `worktreePath = $(cd .. && pwd)/<repo>-<issue-number>` (an absolute path; do not create it yet), never the checkout another implementation is using. Remote: the user's worker, which returns a run id. One implementation per checkout on a host; the CLI refuses a second claim on the same worktree path.
+1. **Pick a lane and its location.** Local: a dedicated worktree for this issue, `worktreePath = $(cd .. && pwd)/<repo>-<issue-number>` (an absolute path; do not create it yet), never the checkout another implementation is using. Remote: the user's worker, which returns a run id. One implementation per checkout on a machine; the CLI refuses a second claim on the same worktree path here (it tells machines apart by `~/.oss-autopilot/machine-id`, so the same path on another machine is free).
 2. **Claim it** before creating anything or dispatching, so search and vet skip the issue and other sessions see it:
 
    ```bash

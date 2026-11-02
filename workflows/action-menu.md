@@ -28,7 +28,7 @@ Your curated issue list has {blockedCount} queued, all blocked. Time to find new
 
 ### In-Flight Work Header (#1856, #1852)
 
-`data.daily.workClaims` lists the live work claims: implementations running or finished in the background (`kind: "implementation"`, on issue URLs) and PRs a session is doing Tier 2 work on (`kind: "pr"`). Each carries `session`, `startedAt`, `expiresAt`, `status` (`running` | `finished`) and, for implementations, `branch`, `worktree` or `runId`. The field is absent when nothing is claimed. Every time the menu is shown after the first, refresh the list first; it is cheap (local state, or in Gist mode a refresh throttled to once per 30 s, so a claim another machine pushed since startup shows up):
+`data.daily.workClaims` lists the live work claims: implementations running or finished in the background (`kind: "implementation"`, on issue URLs) and PRs a session is doing Tier 2 work on (`kind: "pr"`). Each carries `session`, `startedAt`, `expiresAt`, `status` (`running` | `finished`) and, for implementations, `branch`, `worktree` (with `host`, the short hostname to show, and `machineId`, which says which machine the path is on) or `runId`. The field is absent when nothing is claimed. Every time the menu is shown after the first, refresh the list first; it is cheap (local state, or in Gist mode a refresh throttled to once per 30 s, so a claim another machine pushed since startup shows up):
 
 ```bash
 WORK_OUT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work list --json)

@@ -699,10 +699,16 @@ export const WorkClaimSchema = z
     expiresAt: z.string(),
     status: openEnum(['running', 'finished'] as const),
     branch: z.string().optional(),
-    /** Absolute path of the checkout the implementation runs in; two running implementations on one host never share one. */
+    /** Absolute path of the checkout the implementation runs in; two live implementations on one machine never share one. */
     worktree: z.string().optional(),
-    /** Short hostname (`hostname -s`) the `worktree` path is on: the same path on two machines is two checkouts. */
+    /** Short hostname (`hostname -s`) the `worktree` path is on; a display field, and the checkout identity for claims without `machineId`. */
     host: z.string().optional(),
+    /**
+     * Id of the machine the `worktree` path is on (`~/.oss-autopilot/machine-id`,
+     * a UUID written once per machine, never synced): the same path on two
+     * machines is two checkouts, and a renamed host is still one machine.
+     */
+    machineId: z.string().optional(),
     /** Remote worker run id, when the implementation runs off-machine. */
     runId: z.string().optional(),
     finishedAt: z.string().optional(),

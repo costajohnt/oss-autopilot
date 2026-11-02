@@ -223,6 +223,7 @@ ETag-based caching for GitHub API responses:
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
 | `repo-score-manager.ts` | Repository score tracking with TTL-based staleness |
 | `gist-state-store.ts` | Gist-based persistence layer for cross-machine state sync |
+| `machine-id.ts` | `getMachineId` — the random UUID in `~/.oss-autopilot/machine-id` (local only) that tells work claims which machine a worktree path is on (#1856) |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
 | `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
@@ -314,6 +315,7 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 ├── backups/              # Auto-backups before each state write
 ├── cache/                # ETag-based HTTP response cache
 ├── gist-id               # Gist ID for cross-machine state sync (opt-in)
+├── machine-id            # Random UUID identifying this machine on work claims (local only, never synced)
 ├── state-cache.json      # Local cache of gist state for offline access
 └── dashboard-server.pid  # Running dashboard server PID + port
 ```
