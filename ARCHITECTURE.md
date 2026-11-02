@@ -320,6 +320,8 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 └── dashboard-server.pid  # Running dashboard server PID + port
 ```
 
+If this directory is copied to another machine (Migration Assistant, a dotfiles sync) while the old machine stays in use, delete `~/.oss-autopilot/machine-id` on the new one so the two machines stop sharing an id and their work claims stay distinct.
+
 ## Security Model
 
 - **Token resolution**: `$GITHUB_TOKEN` env var is checked first; `gh auth token` is the fallback. Token is cached in-memory per session, never written to disk.

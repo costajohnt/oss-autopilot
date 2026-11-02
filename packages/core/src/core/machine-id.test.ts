@@ -11,6 +11,16 @@ import { getMachineId } from './machine-id.js';
 import { getMachineIdPath } from './paths.js';
 import { enableDebug } from './logger.js';
 
+// Real fs throughout; only `existsSync` is a spy so one test can stage the
+// "file appeared between the check and the write" race.
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof fs>('node:fs');
+  return { ...actual, existsSync: vi.fn(actual.existsSync) };
+});
+
+const mockExistsSync = vi.mocked(fs.existsSync);
+const { existsSync: realExistsSync } = await vi.importActual<typeof fs>('node:fs');
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /** Each test gets its own HOME so a broken id file in one cannot leak into the next. */
@@ -24,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env.HOME = scratch.previousHome;
+  mockExistsSync.mockReset();
   vi.restoreAllMocks();
   fs.rmSync(scratch.home, { recursive: true, force: true });
 });
@@ -55,6 +66,28 @@ describe('getMachineId', () => {
     const fresh = getMachineId();
     expect(fresh).toMatch(UUID);
     expect(fs.readFileSync(idPath, 'utf8')).toBe(`${fresh}\n`);
+  });
+
+  it('keeps the id another process wrote between the existence check and the create', () => {
+    // The check sees no id file; by the time this process writes, another one has created it.
+    // Only that first check on the id file is staged; the data dir check and the re-read stay real.
+    const idPath = getMachineIdPath();
+    fs.writeFileSync(idPath, 'other-session-id\n');
+    const race = { pending: true };
+    mockExistsSync.mockImplementation((target) => {
+      if (race.pending && String(target) === idPath) {
+        race.pending = false;
+        return false;
+      }
+      return realExistsSync(target);
+    });
+    enableDebug();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(getMachineId()).toBe('other-session-id');
+    expect(fs.readFileSync(idPath, 'utf8')).toBe('other-session-id\n');
+    const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(logged.some((line) => line.includes('created by another process'))).toBe(true);
   });
 
   it('returns no id, with a debug line, when the file can neither be read nor written', () => {

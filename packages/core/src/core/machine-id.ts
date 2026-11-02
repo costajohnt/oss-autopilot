@@ -25,12 +25,35 @@ function readStoredMachineId(filePath: string): string | null {
   return stored.length > 0 ? stored : null;
 }
 
-/** The stored id, or a fresh UUID written to `filePath` (private to the user). Throws when the file is unusable. */
+function isFileExistsError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'EEXIST';
+}
+
+/**
+ * The stored id, or a fresh UUID written to `filePath` (private to the user).
+ * Throws when the file is unusable.
+ *
+ * The create is exclusive (`wx`): two sessions starting on a fresh machine at
+ * once would otherwise both see no file and each write its own id, and the
+ * loser's claims would carry an id that no longer exists on disk. When the
+ * file appeared between the read and the write, the id it holds wins.
+ */
 function readOrCreateMachineId(filePath: string): string {
   const stored = readStoredMachineId(filePath);
   if (stored !== null) return stored;
   const created = randomUUID();
-  fs.writeFileSync(filePath, `${created}\n`, { encoding: 'utf8', mode: 0o600 });
+  try {
+    fs.writeFileSync(filePath, `${created}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    if (!isFileExistsError(err)) throw err;
+    const concurrent = readStoredMachineId(filePath);
+    if (concurrent !== null) {
+      debug(MODULE, `Machine id file ${filePath} was created by another process; using its id`);
+      return concurrent;
+    }
+    // The file exists but holds no id (an empty file): replace its contents.
+    fs.writeFileSync(filePath, `${created}\n`, { encoding: 'utf8', mode: 0o600 });
+  }
   debug(MODULE, `Created machine id file ${filePath}`);
   return created;
 }
