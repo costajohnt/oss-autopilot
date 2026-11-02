@@ -3537,3 +3537,39 @@ describe('restActivityEvents', () => {
     ]);
   });
 });
+
+/** Hand the next PRMonitor an Octokit stub without reassigning the shared instance (#1863 tests). */
+function useOctokit(get: ReturnType<typeof vi.fn>): void {
+  vi.mocked(getOctokit).mockReturnValueOnce({ issues: { get } } as unknown as ReturnType<typeof getOctokit>);
+}
+
+describe('PRMonitor fetchPRClosedBy (#1863)', () => {
+  beforeEach(() => {
+    vi.mocked(getStateManager).mockReturnValue(makeStateManagerMock({ config: {} }));
+  });
+
+  it('asks issues.get for the PR and returns the closer login', async () => {
+    const get = vi.fn().mockResolvedValue({ data: { closed_by: { login: 'TestUser' } } });
+    useOctokit(get);
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchPRClosedBy('https://github.com/owner/repo/pull/42')).resolves.toBe('TestUser');
+    expect(get).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', issue_number: 42 });
+  });
+
+  it('returns undefined when GitHub reports no closer', async () => {
+    useOctokit(vi.fn().mockResolvedValue({ data: { closed_by: null } }));
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchPRClosedBy('https://github.com/owner/repo/pull/42')).resolves.toBeUndefined();
+  });
+
+  it('rejects a non-GitHub URL without calling the API and lets API errors through unchanged', async () => {
+    const get = vi.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+    useOctokit(get);
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchPRClosedBy('https://example.com/pull/1')).rejects.toThrow('Invalid PR URL');
+    expect(get).not.toHaveBeenCalled();
+    await expect(monitor.fetchPRClosedBy('https://github.com/owner/repo/pull/42')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});

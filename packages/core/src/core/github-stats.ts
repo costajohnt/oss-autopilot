@@ -47,6 +47,47 @@ export function closingIssueUrl(body: string | null | undefined, prUrl: string):
   return target ? `https://github.com/${target}/issues/${m[2] ?? m[4]}` : undefined;
 }
 
+/**
+ * A github.com issue or pull URL, rewritten to ` owner/repo#N ` before the
+ * mention scan so one simple pattern covers both spellings. The padding
+ * spaces keep the rewritten form clear of the word boundary rule below.
+ */
+const ISSUE_URL_RE = /https:\/\/github\.com\/([\w-]+\/[\w.-]+)\/(?:issues|pull)\/(\d+)\b/g;
+
+/**
+ * `owner/repo#12` or a bare `#12`, closing keyword or not. Owners are GitHub
+ * logins (word characters and hyphens, no dots), and the mention must not
+ * sit inside a word or path (`C#5`, `example.com/page#5`), mirroring
+ * GitHub's autolink rule.
+ */
+const ISSUE_MENTION_RE = /(?<![\w/.-])([\w-]+\/[\w.-]+)?#(\d+)\b/g;
+
+/**
+ * Every issue or PR a PR's title and body mention (#1863), as canonical issue
+ * URLs (`https://github.com/owner/repo/issues/N`). Issues and PRs share one
+ * number space per repo, so `/pull/N` folds into the same URL and a bare `#N`
+ * resolves against the PR's own repo. Unlike {@link closingIssueUrl} no
+ * closing keyword is needed: a follow-up PR that says "supersedes #8" or
+ * "alternative approach for #12" links too. Deduplicated, in order of
+ * appearance; HTML comments and code are ignored like in `closingIssueUrl`.
+ */
+export function mentionedIssueUrls(
+  title: string | null | undefined,
+  body: string | null | undefined,
+  prUrl: string,
+): string[] {
+  const own = extractOwnerRepo(prUrl);
+  const text = `${title ?? ''}\n${body?.slice(0, MAX_BODY_CHARS) ?? ''}`
+    .replaceAll(NON_PROSE_RE, ' ')
+    .replaceAll(ISSUE_URL_RE, ' $1#$2 ');
+  const urls = new Set<string>();
+  for (const m of text.matchAll(ISSUE_MENTION_RE)) {
+    const target = m[1] ?? (own && `${own.owner}/${own.repo}`);
+    if (target) urls.add(`https://github.com/${target}/issues/${m[2]}`);
+  }
+  return [...urls];
+}
+
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */
 type SearchItem = {
   html_url: string;

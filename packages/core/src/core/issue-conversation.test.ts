@@ -164,6 +164,17 @@ describe('IssueConversationMonitor', () => {
       await expect(monitor.hasUserCommentSince(issueUrl, since)).resolves.toBe(false);
     });
 
+    it('ignores comments whose author was deleted (null user)', async () => {
+      mockOctokitInstance.issues.listComments.mockResolvedValue({
+        data: [
+          { user: null, body: 'ghost comment', created_at: '2026-06-03T00:00:00Z', author_association: 'NONE' },
+          { body: 'no user field at all', created_at: '2026-06-03T00:00:00Z', author_association: 'NONE' },
+        ],
+      });
+      const monitor = new IssueConversationMonitor('token');
+      await expect(monitor.hasUserCommentSince(issueUrl, since)).resolves.toBe(false);
+    });
+
     it('rejects a non-issue URL and a missing username', async () => {
       const monitor = new IssueConversationMonitor('token');
       await expect(monitor.hasUserCommentSince('https://example.com/not-github', since)).rejects.toThrow(

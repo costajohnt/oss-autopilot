@@ -662,6 +662,29 @@ export class PRMonitor {
   }
 
   /**
+   * Login of the account that closed a PR (#1863), or undefined when GitHub
+   * reports none. The Search API items behind `fetchRecentlyClosedPRs` carry
+   * no `closed_by`, so this is one `issues.get` per PR (PRs are issues to
+   * that endpoint). Lets the daily run act only on PRs the user closed
+   * themselves, not ones a maintainer or bot closed.
+   *
+   * @throws {ValidationError} If `prUrl` is not a GitHub PR or issue URL
+   * @throws Octokit errors (404 when the PR is gone, rate limit, auth) unchanged
+   */
+  async fetchPRClosedBy(prUrl: string): Promise<string | undefined> {
+    const parsed = parseGitHubUrl(prUrl);
+    if (!parsed) {
+      throw new ValidationError(`Invalid PR URL format: ${prUrl}`);
+    }
+    const { data } = await this.octokit.issues.get({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+    });
+    return data.closed_by?.login ?? undefined;
+  }
+
+  /**
    * Fetch PRs merged in the last N days.
    * @param days - Lookback window in days (default: 7)
    * @returns Recently merged PRs

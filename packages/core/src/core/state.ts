@@ -50,13 +50,20 @@ import * as guidelinesStoreModule from './guidelines-store.js';
 export const OVERNIGHT_REPORT_DOCUMENT = 'overnight-report.md';
 import { renderGistWarning, type GistHealth, type GistWarningCause } from './gist-health.js';
 import { getStatePath, getStateCachePath, getGistIdPath } from './paths.js';
-import { parseGitHubUrl } from './urls.js';
+import { parseGitHubUrl, issueRefKey } from './urls.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
 export type { LoadRecoveryInfo } from './state-persistence.js';
 export type { Stats } from './repo-score-manager.js';
 
 const MODULE = 'state';
+
+/**
+ * Outcome of {@link StateManager.releaseIssue} (#1863): the claim was
+ * removed, the issue was never tracked, or a claim recorded at/after the
+ * cutoff was deliberately kept.
+ */
+export type ReleaseIssueResult = 'released' | 'not_tracked' | 'newer_claim';
 
 /**
  * Validate stored-PR URL shape before persistence (mirror of the read-side
@@ -1015,21 +1022,52 @@ export class StateManager {
   }
 
   /**
-   * Release a claim: drop the issue from `activeIssues` so it no longer
-   * counts toward capacity or reads as in progress (#1863). Called by the
-   * daily run when the user's PR for the issue closed without merge.
+   * Release a claim: drop the issue from `activeIssues` (#1863). Called by
+   * the daily run when the user closed their own PR for the issue unmerged.
+   *
+   * What changes: the issue leaves the tracked set that
+   * `IssueConversationMonitor.fetchCommentedIssues` excludes, so from the
+   * next run it re-enters the commented-issue monitor like any other issue
+   * the user has commented on, and it stops reading as in progress wherever
+   * `activeIssues` is listed. Capacity is NOT affected: `assessCapacity`
+   * counts open PRs only, never tracked issues.
+   *
+   * Matching uses {@link issueRefKey} (case-insensitive owner/repo, trailing
+   * slash and fragment ignored), falling back to the exact string for a URL
+   * that does not parse. The removal cannot be undone, so with
+   * `claimedBefore` set the entry is kept when its `updatedAt` is at or after
+   * that instant: `updatedAt` is the claim stamp the `claim` command writes
+   * (`createdAt` there is the issue's GitHub creation date), so a claim made
+   * after the PR closed is a deliberate re-claim that must survive.
+   * Unparseable timestamps keep the entry for the same reason.
+   *
    * @param issueUrl - URL of the issue to release
-   * @returns true if an entry was removed, false if the issue was not tracked
+   * @param claimedBefore - ISO instant (the PR's close time); only a claim
+   *   recorded strictly before it is released
    */
-  releaseIssue(issueUrl: string): boolean {
-    const index = this.state.activeIssues.findIndex((i) => i.url === issueUrl);
+  releaseIssue(issueUrl: string, claimedBefore?: string): ReleaseIssueResult {
+    const key = issueRefKey(issueUrl);
+    const index = this.state.activeIssues.findIndex((i) => (key ? issueRefKey(i.url) === key : i.url === issueUrl));
     if (index === -1) {
-      return false;
+      debug(MODULE, `releaseIssue: ${issueUrl} is not tracked; nothing to release`);
+      return 'not_tracked';
     }
-    const [released] = this.state.activeIssues.splice(index, 1);
-    debug(MODULE, `Released issue claim: ${released.repo}#${released.number}`);
+    const entry = this.state.activeIssues[index];
+    if (claimedBefore !== undefined) {
+      const claimedMs = Date.parse(entry.updatedAt);
+      const cutoffMs = Date.parse(claimedBefore);
+      if (Number.isNaN(claimedMs) || Number.isNaN(cutoffMs) || claimedMs >= cutoffMs) {
+        debug(
+          MODULE,
+          `releaseIssue: keeping ${entry.repo}#${entry.number}; claim stamp ${entry.updatedAt} is not before ${claimedBefore}`,
+        );
+        return 'newer_claim';
+      }
+    }
+    this.state.activeIssues.splice(index, 1);
+    debug(MODULE, `Released issue claim: ${entry.repo}#${entry.number}`);
     this.autoSave();
-    return true;
+    return 'released';
   }
 
   // === Trusted Projects ===

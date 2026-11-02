@@ -46,7 +46,7 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │
  │   ├─ "Post status update on linked issue" ──► workflows/closed-pr-status-update.md
  │   │   Own PR closed unmerged: draft what was found on the linked issue via
- │   │   draft-review-post (user posts themselves); claim already released
+ │   │   draft-review-post (user posts themselves); claim released if tracked
  │   │
  │   └─ "Done for now" ──► Session End (one refresh first; new maintainer
  │       comments return to the Action Menu once)

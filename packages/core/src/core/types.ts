@@ -231,6 +231,16 @@ export interface FetchedPR {
    * body has no closing keyword.
    */
   issueUrl?: string;
+  /**
+   * Every issue or PR the title and body mention, closing keyword or not
+   * (`#12`, `owner/repo#12`, issue or pull URL), as canonical issue URLs
+   * (`mentionedIssueUrls`, #1863). Widens the supersede check: a follow-up
+   * PR that says "supersedes #8" or "another take on #12" counts as the
+   * successor of a closed PR even without `Fixes #12`. Parsed at assembly
+   * time so the daily run needs no extra API calls; empty when nothing is
+   * mentioned.
+   */
+  mentionedIssueUrls?: string[];
 
   /** Computed by `determineStatus()` based on the fields below. */
   status: FetchedPRStatus;

@@ -124,4 +124,22 @@ describe('assembleFetchedPR issue link (#1863)', () => {
     const pr = await assembleFetchedPR(signals({ body: 'See #12 for context.' }), CONFIG, undefined);
     expect(pr.issueUrl).toBeUndefined();
   });
+
+  it('collects every mention from title and body into mentionedIssueUrls, keyword or not', async () => {
+    const pr = await assembleFetchedPR(
+      signals({ title: 'Supersedes #9', body: 'See #12 for context. Fixes other/lib#3.' }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.mentionedIssueUrls).toEqual([
+      'https://github.com/o/r/issues/9',
+      'https://github.com/o/r/issues/12',
+      'https://github.com/other/lib/issues/3',
+    ]);
+  });
+
+  it('leaves mentionedIssueUrls empty when nothing is mentioned', async () => {
+    const pr = await assembleFetchedPR(signals({ body: 'No links here.' }), CONFIG, undefined);
+    expect(pr.mentionedIssueUrls).toEqual([]);
+  });
 });

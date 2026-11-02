@@ -17,6 +17,7 @@ import {
   fetchRecentlyClosedPRs,
   PR_COUNTS_CACHE_TTL_MS,
   closingIssueUrl,
+  mentionedIssueUrls,
 } from './github-stats.js';
 
 // Mock getHttpCache to return a cache backed by a temp directory
@@ -824,5 +825,62 @@ describe('closingIssueUrl (#1824)', () => {
     ]);
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
     expect(result[0].issueUrl).toBe('https://github.com/org/repo/issues/77');
+  });
+});
+
+describe('mentionedIssueUrls (#1863)', () => {
+  const pr = 'https://github.com/owner/repo/pull/9';
+
+  it.each([
+    [
+      'Supersedes #8',
+      'Fixes #12',
+      ['https://github.com/owner/repo/issues/8', 'https://github.com/owner/repo/issues/12'],
+    ],
+    [
+      'Retry',
+      'Another take on #12, see other/lib#44',
+      ['https://github.com/owner/repo/issues/12', 'https://github.com/other/lib/issues/44'],
+    ],
+    ['Retry', 'Replaces https://github.com/owner/repo/pull/8 (#8)', ['https://github.com/owner/repo/issues/8']],
+    [
+      'Retry',
+      'Context: https://github.com/up/stream/issues/5#issuecomment-9',
+      ['https://github.com/up/stream/issues/5'],
+    ],
+    [
+      'Retry',
+      '(#3) and [#4] and #5.',
+      [
+        'https://github.com/owner/repo/issues/3',
+        'https://github.com/owner/repo/issues/4',
+        'https://github.com/owner/repo/issues/5',
+      ],
+    ],
+  ])('parses title %j + body %j', (title, body, expected) => {
+    expect(mentionedIssueUrls(title, body, pr)).toEqual(expected);
+  });
+
+  it.each([
+    ['C#5 is a language', []],
+    ['see example.com/page#5', []],
+    ['#12abc is not a number', []],
+    ['<!-- #123 template example -->', []],
+    ['Use `#1` to link.', []],
+    ['```\nFixes #2\n```', []],
+    ['', []],
+  ])('ignores %j', (body, expected) => {
+    expect(mentionedIssueUrls('Title', body, pr)).toEqual(expected);
+  });
+
+  it('handles null and undefined title/body', () => {
+    expect(mentionedIssueUrls(null, undefined, pr)).toEqual([]);
+    expect(mentionedIssueUrls(undefined, 'See #7', pr)).toEqual(['https://github.com/owner/repo/issues/7']);
+  });
+
+  it('stays fast on an unterminated comment opener', () => {
+    const start = Date.now();
+    expect(mentionedIssueUrls('t', '<!--'.repeat(100_000), pr)).toEqual([]);
+    expect(Date.now() - start).toBeLessThan(5000);
   });
 });
