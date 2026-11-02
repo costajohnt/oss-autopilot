@@ -252,3 +252,82 @@ describe('daily --json contract', () => {
     expect(result.listUpdates![0].issueUrl).toBe('https://github.com/octocat/spoon-knife/issues/40');
   });
 });
+
+// Separate describe: the main one sits at the max-lines-per-function ceiling.
+describe('daily --json contract: review follow-ups (#1857)', () => {
+  it('reviewedPRs passes through full and compact output with fenced excerpts and subjects and validates (#1857)', () => {
+    const entry = {
+      prUrl: 'https://github.com/octocat/spoon-knife/pull/46',
+      repo: 'octocat/spoon-knife',
+      number: 46,
+      title: 'Add retries',
+      author: 'contributor',
+      reviewedAt: '2026-06-01T00:00:00Z',
+      reviewedSha: 'aaaaaaa',
+      headSha: 'bbbbbbb',
+      compareRange: 'aaaaaaa...bbbbbbb',
+      compareUrl: 'https://github.com/octocat/spoon-knife/compare/aaaaaaa...bbbbbbb',
+      rebased: false,
+      mergedUpstream: false,
+      baseUnknown: false,
+      commits: [{ sha: 'bbbbbbb', author: 'contributor', date: '2026-06-02T00:00:00Z', subject: 'Split the helper' }],
+      moreCommits: 0,
+      authorComments: 1,
+      questions: [
+        {
+          author: 'contributor',
+          createdAt: '2026-06-02T00:01:00Z',
+          kind: 'review_comment' as const,
+          reason: 'reply' as const,
+          excerpt: 'Is a 30s cap enough?',
+          url: 'https://github.com/octocat/spoon-knife/pull/46#discussion_r1',
+        },
+      ],
+      moreQuestions: 0,
+      latestActivityAt: '2026-06-02T00:01:00Z',
+    };
+    const result = toDailyOutput(makeFixture({ reviewedPRs: [entry] }));
+    expectSchemaValid(result);
+    expect(result.reviewedPRs).toHaveLength(1);
+    const fenced = result.reviewedPRs![0];
+    expect({ ...fenced, questions: undefined, commits: undefined }).toEqual({
+      ...entry,
+      questions: undefined,
+      commits: undefined,
+    });
+    expect(fenced.questions.map((q) => q.excerpt)).toEqual([
+      wrapUntrustedContent('Is a 30s cap enough?', 'octocat/spoon-knife#46', {
+        author: 'contributor',
+        source: 'pr-comment',
+      }),
+    ]);
+    expect(fenced.commits.map((c) => c.subject)).toEqual([
+      wrapUntrustedContent('Split the helper', 'octocat/spoon-knife#46', {
+        author: 'contributor',
+        source: 'pr-commit',
+      }),
+    ]);
+    expect({ ...fenced.questions[0], excerpt: undefined }).toEqual({ ...entry.questions[0], excerpt: undefined });
+    const compact = toCompactDailyOutput(result);
+    expect(compact.reviewedPRs).toEqual(result.reviewedPRs);
+    expect(CompactDailyOutputSchema.parse(compact).reviewedPRs).toEqual(result.reviewedPRs);
+    // A minimal entry (no reviewed SHA, no range, plain-comment base) validates too.
+    const rebased = toDailyOutput(
+      makeFixture({
+        reviewedPRs: [
+          {
+            ...entry,
+            reviewedSha: undefined,
+            compareRange: undefined,
+            compareUrl: undefined,
+            baseUnknown: true,
+            questions: [],
+          },
+        ],
+      }),
+    );
+    expectSchemaValid(rebased);
+    // Runs with no follow-ups carry no key at all, so goldens are unchanged.
+    expect('reviewedPRs' in toDailyOutput(makeFixture())).toBe(false);
+  });
+});

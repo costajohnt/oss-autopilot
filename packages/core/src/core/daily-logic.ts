@@ -576,6 +576,7 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
  * @param unextractedMergeCount - Recently merged PRs whose learnings have not been extracted yet (#1463); non-zero adds an extract_learnings item
  * @param closedPRStatusCount - Closed-unmerged PRs whose linked issue still needs a status update (#1863); non-zero adds a closed_pr_status item
  * @param mergedPRNotesCount - Recently merged PRs carrying maintainer notes the user has not answered (#1861); non-zero adds a merged_pr_notes item
+ * @param reviewedPRCount - PRs the user reviewed where the author pushed or replied since (#1857); non-zero adds a review_follow_ups item
  * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
@@ -586,6 +587,7 @@ export function computeActionMenu(
   unextractedMergeCount?: number,
   closedPRStatusCount = 0,
   mergedPRNotesCount = 0,
+  reviewedPRCount = 0,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
@@ -677,6 +679,22 @@ export function computeActionMenu(
       key: 'merged_pr_notes',
       label: `Merged PR${mergedPRNotesCount === 1 ? '' : 's'} with maintainer notes (${mergedPRNotesCount})`,
       description: 'Maintainers left thanks or a follow-up note at merge; draft a short acknowledgment or reply',
+    });
+  }
+
+  // Review follow-ups (#1857) — a PR the user reviewed (not authored) where
+  // the author pushed commits or replied since the user's last review or
+  // comment. Routes to workflows/review-follow-ups.md, which re-reviews the
+  // compare range (or the commit list after a rebase) through review-panel
+  // and drafts answers through draft-review-post; nothing posts
+  // automatically. Self-clears once the user reviews or comments again,
+  // dismisses the PR URL, or the PR closes. Never counted in capacity.
+  if (reviewedPRCount > 0) {
+    items.push({
+      key: 'review_follow_ups',
+      label: `Review follow-ups (${reviewedPRCount})`,
+      description:
+        'PRs you reviewed where the author pushed or replied since; re-review the changes and answer their questions',
     });
   }
 

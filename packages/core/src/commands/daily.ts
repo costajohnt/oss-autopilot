@@ -35,6 +35,7 @@ import {
   type ClosedPRStatusCandidate,
   type ClosedPRStatusUpdate,
   type MergedPRNotes,
+  type ReviewedPRFollowUp,
   type AttentionSummary,
   type DailyDigest,
   type FetchedPR,
@@ -76,6 +77,7 @@ import {
   recordWarning,
 } from './daily-warnings.js';
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
+import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
 import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
 
 const MODULE = 'daily';
@@ -154,6 +156,12 @@ export interface DailyCheckResult {
    * fences them.
    */
   mergedPRNotes?: MergedPRNotes[];
+  /**
+   * PRs the user reviewed where the author pushed or replied since (#1857).
+   * Set only when at least one exists; see {@link DailyOutput.reviewedPRs}.
+   * Raw excerpts here; `toDailyOutput` fences them.
+   */
+  reviewedPRs?: ReviewedPRFollowUp[];
 }
 
 // ---------------------------------------------------------------------------
@@ -727,6 +735,7 @@ function generateDigestOutput(
   unextractedMergeCount?: number,
   closedPRStatusUpdates: ClosedPRStatusUpdate[] = [],
   mergedPRNotes: MergedPRNotes[] = [],
+  reviewedPRs: ReviewedPRFollowUp[] = [],
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
@@ -778,6 +787,8 @@ function generateDigestOutput(
     // One action per entry the workflow handles on its own; covered
     // thanks-only entries ride along with their carrier.
     mergedPRNotes.filter((entry) => entry.ackCoveredBy === undefined).length,
+    // Other people's PRs: a menu item, never a capacity or attention count.
+    reviewedPRs.length,
   );
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -1087,6 +1098,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     ...(result.pendingLearnings && { pendingLearnings: result.pendingLearnings }),
     ...(result.closedPRStatusUpdates && { closedPRStatusUpdates: result.closedPRStatusUpdates }),
     ...(result.mergedPRNotes && { mergedPRNotes: result.mergedPRNotes.map((entry) => fenceMergedPRNotes(entry)) }),
+    ...(result.reviewedPRs && { reviewedPRs: result.reviewedPRs.map((entry) => fenceReviewedPR(entry)) }),
   };
 }
 
@@ -1103,6 +1115,8 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
  *   3. updateAnalytics    — store monthly chart data
  *   4. partitionPRs       — shelve/unshelve, generate digest
  *   5. generateDigestOutput — capacity, dismiss filter, action menu assembly
+ * plus the read-only side phases 3.6 (closed-PR status), 3.7 (merged-PR
+ * notes) and 3.8 (review follow-ups on PRs the user reviewed, #1857).
  *
  * @param token - GitHub personal access token
  * @returns Deduplicated daily output
@@ -1315,6 +1329,9 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     warnings,
   );
 
+  // Phase 3.8: review follow-ups on PRs the user reviewed (#1857). Read-only.
+  const reviewedPRs = await runReviewedPRsPhase(prMonitor, warnings);
+
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).
   const previousLastDigestAt = getStateManager().getState().lastDigestAt;
@@ -1340,6 +1357,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     unextractedMergeCount,
     closedPRStatusUpdates,
     mergedPRNotes,
+    reviewedPRs,
   );
   if (listUpdates) {
     result.listUpdates = listUpdates;
@@ -1353,6 +1371,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   if (mergedPRNotes.length > 0) {
     result.mergedPRNotes = mergedPRNotes;
   }
+  if (reviewedPRs.length > 0) result.reviewedPRs = reviewedPRs;
 
   // Checkpoint: push state to Gist if in Gist mode.
   // If getStateManagerAsync was not called before this command ran,

@@ -1461,17 +1461,25 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('dismiss <url>')
-        .description('Dismiss notifications for an issue or merged PR (resurfaces on new activity)')
+        .description('Dismiss notifications for an issue or PR (resurfaces on new activity)')
+        .option(
+          '--head <sha>',
+          "PR URLs only: the PR's full head SHA now, so the review follow-up stays hidden until a new push or comment",
+        )
         .option('--json', 'Output as JSON')
-        .action((url, options) =>
+        .action((url: string, options: { head?: string; json?: boolean }) =>
           executeAction(
             options,
-            async () => (await import('./commands/dismiss.js')).runDismiss({ url }),
+            async () => (await import('./commands/dismiss.js')).runDismiss({ url, head: options.head }),
             (data) => {
               if (data.dismissed) {
                 console.log(`Dismissed: ${url}`);
                 console.log('Notifications are now muted.');
-                console.log('New responses after this point will resurface automatically.');
+                console.log(
+                  options.head
+                    ? 'A new push or a comment after this point will resurface it automatically.'
+                    : 'New responses after this point will resurface automatically.',
+                );
               } else {
                 console.log('Already dismissed.');
               }
@@ -1488,7 +1496,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('undismiss <url>')
-        .description('Undismiss an issue or merged PR (re-enable notifications)')
+        .description('Undismiss an issue or PR (re-enable notifications)')
         .option('--json', 'Output as JSON')
         .action((url, options) =>
           executeAction(

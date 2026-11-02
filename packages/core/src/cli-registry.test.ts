@@ -697,6 +697,20 @@ describe('--json vs display output branching', () => {
     expect(mockOutputJson).toHaveBeenCalledWith({ dismissed: true });
   });
 
+  it('dismiss passes --head through and says a push resurfaces the PR (#1857)', async () => {
+    mockRunDismiss.mockResolvedValue({ dismissed: true });
+    const program = buildProgram('dismiss');
+    const prUrl = 'https://github.com/owner/repo/pull/42';
+    const head = 'a'.repeat(40);
+
+    await program.parseAsync(['node', 'cli', 'dismiss', prUrl, '--head', head]);
+
+    expect(mockRunDismiss).toHaveBeenCalledWith({ url: prUrl, head });
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      'A new push or a comment after this point will resurface it automatically.',
+    );
+  });
+
   it('dismiss display should show human-readable output', async () => {
     mockRunDismiss.mockResolvedValue({ dismissed: true });
     const program = buildProgram('dismiss');

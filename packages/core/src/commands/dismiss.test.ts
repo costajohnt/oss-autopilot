@@ -51,6 +51,26 @@ describe('runDismiss', () => {
     expect(mockDismissIssue).not.toHaveBeenCalled();
   });
 
+  it('records the head for a PR URL, lowercased (review follow-ups skip, #1857)', async () => {
+    mockDismissIssue.mockReturnValue(true);
+    const head = 'ABCDEF0123456789abcdef0123456789abcdef01';
+    const result = await runDismiss({ url: TEST_PR_URL, head });
+
+    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_PR_URL, expect.any(String), {
+      refresh: true,
+      headSha: head.toLowerCase(),
+    });
+    expect(result).toEqual({ dismissed: true, url: TEST_PR_URL });
+  });
+
+  it('rejects a short or malformed head, and a head with an issue URL, before touching state', async () => {
+    const { ValidationError } = await import('../core/errors.js');
+    await expect(runDismiss({ url: TEST_PR_URL, head: 'abc1234' })).rejects.toThrow(ValidationError);
+    await expect(runDismiss({ url: TEST_PR_URL, head: 'g'.repeat(40) })).rejects.toThrow(ValidationError);
+    await expect(runDismiss({ url: TEST_ISSUE_URL, head: 'a'.repeat(40) })).rejects.toThrow(/PR URLs only/);
+    expect(mockDismissIssue).not.toHaveBeenCalled();
+  });
+
   it('should report not dismissed when issue is already dismissed', async () => {
     mockDismissIssue.mockReturnValue(false);
     const result = await runDismiss({ url: TEST_ISSUE_URL });

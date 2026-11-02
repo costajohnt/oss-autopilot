@@ -504,4 +504,19 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
     expect(firstTextContent(result).text).toContain(`${tool} smoke failure`);
     fn.mockClear();
   });
+
+  it('dismiss forwards an optional head (review follow-ups skip, #1857) and rejects a short one at the schema', async () => {
+    const fn = vi.mocked(commands.runDismiss);
+    fn.mockResolvedValueOnce({ dismissed: true, url: PR });
+    const head = 'a'.repeat(40);
+
+    const result = await client.callTool({ name: 'dismiss', arguments: { url: PR, head } });
+    expect(result.isError).toBeFalsy();
+    expect(fn).toHaveBeenCalledWith({ url: PR, head });
+    fn.mockClear();
+
+    const short = await client.callTool({ name: 'dismiss', arguments: { url: PR, head: 'abc1234' } });
+    expect(short.isError).toBe(true);
+    expect(fn).not.toHaveBeenCalled();
+  });
 });

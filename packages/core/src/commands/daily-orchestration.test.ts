@@ -77,6 +77,9 @@ vi.mock('../core/index.js', async (importOriginal) => {
     fetchRecentlyMergedPRs = mockFetchRecentlyMergedPRs;
     fetchPRClosedBy = mockFetchPRClosedBy;
     fetchMergedPRActivity = mockFetchMergedPRActivity;
+    fetchReviewedOpenPRs = vi.fn().mockResolvedValue({ prs: [], warnings: [] });
+    fetchReviewedPRActivity = vi.fn();
+    fetchCompareStatus = vi.fn();
     generateDigest = mockGenerateDigest;
   }
 

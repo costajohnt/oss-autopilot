@@ -771,9 +771,14 @@ export function registerTools(server: McpServer): void {
     'dismiss',
     {
       description:
-        'Dismiss a GitHub issue so it no longer appears in notifications, or a merged PR so its maintainer notes stop being raised.',
+        'Dismiss a GitHub issue so it no longer appears in notifications, or a PR so its merged-PR maintainer notes or review follow-up stop being raised. For a review follow-up, pass the entry’s headSha as `head` so the PR stays hidden until a new push or comment.',
       inputSchema: {
         url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to dismiss'),
+        head: z
+          .string()
+          .regex(/^[0-9a-f]{40}$/i, 'Must be a full 40-character hex commit SHA')
+          .optional()
+          .describe("PR URLs only: the PR's full head SHA at dismiss time (the review follow-up entry's headSha)"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -784,7 +789,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     'undismiss',
     {
-      description: 'Undismiss a previously dismissed issue or merged PR, re-enabling notifications.',
+      description: 'Undismiss a previously dismissed issue or PR, re-enabling notifications.',
       inputSchema: {
         url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to undismiss'),
       },

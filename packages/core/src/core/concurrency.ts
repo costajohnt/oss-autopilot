@@ -2,6 +2,8 @@
  * Concurrency primitives shared across modules.
  */
 
+import { isRateLimitOrAuthError } from './errors.js';
+
 /** Default concurrency limit for parallel GitHub API requests. */
 export const DEFAULT_CONCURRENCY = 5;
 
@@ -36,4 +38,16 @@ export async function runWorkerPool<T>(
   };
   const workerCount = Math.min(concurrency, items.length);
   await Promise.all(Array.from({ length: workerCount }, () => poolWorker()));
+}
+
+/**
+ * Rethrow the first rejection among `settled`, a rate-limit or auth error
+ * ahead of any other so a run stops instead of reporting a 404 that the
+ * throttled call never got to verify. No-op when nothing rejected.
+ */
+export function rethrowRejections(settled: readonly PromiseSettledResult<unknown>[]): void {
+  const rejections = settled.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (rejections.length === 0) return;
+  const fatal = rejections.find((result) => isRateLimitOrAuthError(result.reason));
+  throw (fatal ?? rejections[0]).reason;
 }

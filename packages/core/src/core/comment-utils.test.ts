@@ -9,7 +9,26 @@ import {
   isReactionOnlyComment,
   isQuoteReplyTo,
   isStatusNudge,
+  proseWithoutCode,
 } from './comment-utils.js';
+
+describe('proseWithoutCode (#1857)', () => {
+  it('drops quote lines, fenced and indented code, and inline code spans, keeping the prose around them', () => {
+    const body = [
+      '> @alice wrote this',
+      'Thanks @bob, see `@carol` below:',
+      '```',
+      'echo @dave',
+      '```',
+      '    @erin indented',
+      'and `a` or `b` stay out, @frank stays in.',
+    ].join('\n');
+    const prose = proseWithoutCode(body);
+    expect(prose).toContain('@bob');
+    expect(prose).toContain('@frank');
+    for (const gone of ['@alice', '@carol', '@dave', '@erin', '`']) expect(prose).not.toContain(gone);
+  });
+});
 
 describe('isBotAuthor', () => {
   it('should detect authors with [bot] suffix', () => {

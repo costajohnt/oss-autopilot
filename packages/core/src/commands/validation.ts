@@ -14,6 +14,13 @@ export const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/
 /** Matches GitHub issue or PR URLs: /issues/123 or /pull/123 */
 export const ISSUE_OR_PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+$/;
 
+/**
+ * Matches a full 40-hex commit SHA, as GitHub reports PR heads (#1857). A
+ * short SHA is rejected: the daily run compares the recorded head with the
+ * PR's full head SHA by equality, so an abbreviated one would never match.
+ */
+export const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
 /** Maximum allowed URL length */
 const MAX_URL_LENGTH = 2048;
 /** Maximum allowed PR/issue number */
@@ -46,6 +53,17 @@ export function validateUrl(url: string): string {
     throw new ValidationError(`URL exceeds maximum length of ${MAX_URL_LENGTH} characters`);
   }
   return url;
+}
+
+/**
+ * Validate a full commit SHA (40 hex digits). Returns it lowercased, throws
+ * if abbreviated or malformed.
+ */
+export function validateCommitSha(sha: string): string {
+  if (!COMMIT_SHA_PATTERN.test(sha)) {
+    throw new ValidationError(`Invalid commit SHA: ${sha}. Expected the full 40-character hex SHA`);
+  }
+  return sha.toLowerCase();
 }
 
 /**

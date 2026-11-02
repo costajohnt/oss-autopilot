@@ -51,6 +51,7 @@ describe('AgentStateSchema', () => {
       expect(result.config.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib']);
       expect(result.config.shelvedPRUrls).toEqual([]);
       expect(result.config.dismissedIssues).toEqual({});
+      expect(result.config.dismissedPRHeads).toEqual({});
       expect(result.config.projectCategories).toEqual([]);
       expect(result.config.preferredOrgs).toEqual([]);
     });
@@ -328,8 +329,20 @@ describe('AgentConfigSchema', () => {
       expect(result.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib']);
       expect(result.shelvedPRUrls).toEqual([]);
       expect(result.dismissedIssues).toEqual({});
+      expect(result.dismissedPRHeads).toEqual({});
       expect(result.projectCategories).toEqual([]);
       expect(result.preferredOrgs).toEqual([]);
+    });
+
+    it('keeps dismissedPRHeads entries and defaults the key for states written before it existed (#1857)', () => {
+      const prUrl = 'https://github.com/owner/repo/pull/42';
+      const sha = 'a'.repeat(40);
+      expect(AgentConfigSchema.parse({ dismissedPRHeads: { [prUrl]: sha } }).dismissedPRHeads).toEqual({
+        [prUrl]: sha,
+      });
+      // A state saved before the key existed: dismissedIssues carries the PR, dismissedPRHeads is filled in empty.
+      const legacy = AgentConfigSchema.parse({ dismissedIssues: { [prUrl]: '2026-06-02T12:00:00.000Z' } });
+      expect(legacy.dismissedPRHeads).toEqual({});
     });
 
     it('should preserve overridden values while defaulting the rest', () => {
