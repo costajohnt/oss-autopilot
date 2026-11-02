@@ -34,6 +34,7 @@ interface FakeManager {
   isGistMode: ReturnType<typeof vi.fn>;
   isGistDegraded: ReturnType<typeof vi.fn>;
   refreshFromGist: ReturnType<typeof vi.fn>;
+  hasUnpushedChanges: ReturnType<typeof vi.fn>;
   getGistHealth: () => unknown;
 }
 
@@ -43,6 +44,7 @@ function makeManager(overrides: Partial<Record<keyof FakeManager, unknown>> = {}
     isGistMode: vi.fn(() => false),
     isGistDegraded: vi.fn(() => false),
     refreshFromGist: vi.fn(async () => false),
+    hasUnpushedChanges: vi.fn(() => false),
     // Derived like the real StateManager.getGistHealth (#1444): one
     // isGistMode() consumption per probe, then EITHER getState (local arm)
     // or isGistDegraded (gist arm) — keeps mockReturnValueOnce sequences in
@@ -134,6 +136,17 @@ describe('GistSyncCoordinator', () => {
 
       sync.recordGistSyncOutcome('push failed: a');
       // The retry succeeds (null) — the warning lifecycle ends with the push.
+      await sync.flushPendingGistSync();
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(currentManager, 'dashboard-server');
+      expect(sync.withPendingGistWarnings(undefined)).toBeUndefined();
+    });
+    it('flushPendingGistSync pushes saved-but-unpushed state even with no recorded warning', async () => {
+      // fetchDashboardData saves the digest without a checkpoint; the pull
+      // that follows must not revert it (stale "un-pushed changes" banner).
+      currentManager = makeManager({ hasUnpushedChanges: vi.fn(() => true) });
+      const sync = makeCoordinator();
+      mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
       await sync.flushPendingGistSync();
       expect(mockMaybeCheckpoint).toHaveBeenCalledWith(currentManager, 'dashboard-server');
       expect(sync.withPendingGistWarnings(undefined)).toBeUndefined();
