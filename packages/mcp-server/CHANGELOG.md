@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.10.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.10.0...mcp-v5.10.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **mcp:** stop HTTP tests leaking orphaned tsx server processes ([#1875](https://github.com/costajohnt/oss-autopilot/issues/1875)) ([6e87b86](https://github.com/costajohnt/oss-autopilot/commit/6e87b863896bdf6d45baf3eccc5910fbb6443a1f))
+
 ## [5.10.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.9.1...mcp-v5.10.0) (2026-11-02)
 
 
