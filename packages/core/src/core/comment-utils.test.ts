@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+import { isBotAuthor, isAcknowledgmentComment, isReactionOnlyComment, isQuoteReplyTo } from './comment-utils.js';
 
 describe('isBotAuthor', () => {
   it('should detect authors with [bot] suffix', () => {
@@ -115,5 +115,58 @@ describe('isAcknowledgmentComment', () => {
     expect(isAcknowledgmentComment('This needs a rebase')).toBe(false);
     expect(isAcknowledgmentComment('Can you add tests')).toBe(false);
     expect(isAcknowledgmentComment('I disagree with this approach')).toBe(false);
+  });
+});
+
+describe('isReactionOnlyComment (#1862)', () => {
+  it('treats "+1", "same here" and "any update" style comments as reactions', () => {
+    expect(isReactionOnlyComment('+1')).toBe(true);
+    expect(isReactionOnlyComment('+1!')).toBe(true);
+    expect(isReactionOnlyComment('Same here.')).toBe(true);
+    expect(isReactionOnlyComment('me too')).toBe(true);
+    expect(isReactionOnlyComment('Any update?')).toBe(true);
+    expect(isReactionOnlyComment('bump')).toBe(true);
+  });
+
+  it('treats emoji-only, shortcode-only and empty comments as reactions', () => {
+    expect(isReactionOnlyComment('👍')).toBe(true);
+    expect(isReactionOnlyComment('🎉 🎉')).toBe(true);
+    expect(isReactionOnlyComment(':+1: :tada:')).toBe(true);
+    expect(isReactionOnlyComment('')).toBe(true);
+    expect(isReactionOnlyComment('   \n ')).toBe(true);
+    expect(isReactionOnlyComment('+1 👍')).toBe(true);
+  });
+
+  it('keeps anything that says more', () => {
+    expect(isReactionOnlyComment('Same here on Windows 11 with 3.2.0, the probe below reproduces it')).toBe(false);
+    expect(isReactionOnlyComment('Thanks for wanting to work on this! I would rather see a flag.')).toBe(false);
+    expect(isReactionOnlyComment('+1, and the fix should also cover the CLI path')).toBe(false);
+    expect(isReactionOnlyComment('Any update on the review? Happy to rebase.')).toBe(false);
+  });
+});
+
+describe('isQuoteReplyTo (#1862)', () => {
+  const userComment = 'I can take this one.\nPlan: add a `--dry-run` flag and keep the default behaviour unchanged.';
+
+  it('matches a GitHub "Quote reply" of the comment', () => {
+    const reply =
+      '> Plan: add a `--dry-run` flag and keep the default behaviour unchanged.\n\nPlease do not; a flag is the wrong shape here.';
+    expect(isQuoteReplyTo(reply, userComment)).toBe(true);
+  });
+
+  it('matches a nested or whitespace-reflowed quote', () => {
+    expect(isQuoteReplyTo('>> I can take   this one.\n\nGreat', userComment)).toBe(true);
+    expect(isQuoteReplyTo('  >  i CAN take this one.', userComment)).toBe(true);
+  });
+
+  it('ignores quotes of someone else and quotes too short to identify a comment', () => {
+    expect(isQuoteReplyTo('> We should close this as wontfix.\n\nAgreed', userComment)).toBe(false);
+    expect(isQuoteReplyTo('> I can\n\nyes', userComment)).toBe(false);
+    expect(isQuoteReplyTo('I can take this one.', userComment)).toBe(false);
+  });
+
+  it('never matches a short or empty source comment', () => {
+    expect(isQuoteReplyTo('> +1\n\nsame', '+1')).toBe(false);
+    expect(isQuoteReplyTo('> anything here at all', '')).toBe(false);
   });
 });

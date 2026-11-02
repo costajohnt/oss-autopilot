@@ -1,30 +1,117 @@
 /**
- * Issue Conversation Monitor — tracks issues the user has commented on
- * and detects maintainer responses that need attention.
+ * Issue Conversation Monitor — tracks issues the user has commented on or is
+ * working on, and detects replies that need attention.
  *
  * Follows the same pattern as PRMonitor: stateless fetch from GitHub,
  * bounded concurrency via worker pool, bot/acknowledgment filtering.
+ *
+ * Two reply rules apply (#1862):
+ * - On an issue the user only commented on in passing, a reply counts when
+ *   it is directed at the user: from a maintainer (OWNER / MEMBER /
+ *   COLLABORATOR), @mentions the user, or quotes the user's comment (#343).
+ * - On an engaged issue (claimed, or linked from one of the user's PRs; see
+ *   `collectEngagedIssues`), any substantive non-bot comment after the
+ *   user's last word counts. Short thanks and "+1" / emoji-only reactions
+ *   do not. Engaged issues the comment search does not return (the user
+ *   never commented, or not within the window) are fetched directly, up to
+ *   {@link MAX_DIRECT_ENGAGED_FETCHES} per run.
  */
 
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
-import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+import { isBotAuthor, isAcknowledgmentComment, isReactionOnlyComment, isQuoteReplyTo } from './comment-utils.js';
 import { paginateAll, paginateAllDetailed } from './pagination.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './dates.js';
-import { splitRepo, extractOwnerRepo, isOwnRepo, parseGitHubUrl } from './urls.js';
+import { splitRepo, extractOwnerRepo, isOwnRepo, parseGitHubUrl, issueRefKey } from './urls.js';
 import { runWorkerPool, DEFAULT_CONCURRENCY } from './concurrency.js';
-import type { CommentedIssue, IssueConversationStatus } from './types.js';
-import { ConfigurationError, ValidationError, errorMessage, isRateLimitOrAuthError } from './errors.js';
+import type { AgentConfig, CommentedIssue, IssueConversationStatus, IssueEngagement } from './types.js';
+import { toIssueEngagement, type EngagedIssue } from './engaged-issues.js';
+import {
+  ConfigurationError,
+  ValidationError,
+  errorMessage,
+  getHttpStatusCode,
+  isRateLimitOrAuthError,
+} from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'issue-conversation';
 
 const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
 
+/**
+ * Most engaged issues fetched directly per run when the comment search
+ * misses them (#1862). Each costs one issue lookup plus its comment pages,
+ * all ETag-cached, so a quiet day is mostly 304s; the cap bounds a first run
+ * for a user with many open claims. Strongest engagements come first, so
+ * the open-PR and claim issues are the ones kept.
+ */
+export const MAX_DIRECT_ENGAGED_FETCHES = 25;
+
 /** Associations that indicate someone with repo-level permissions. */
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+/** The search-result fields the analysis reads; a direct fetch builds the same shape. */
+interface IssueItem {
+  html_url: string;
+  number: number;
+  title: string;
+  labels?: Array<string | { name?: string }>;
+}
+
+interface Candidate {
+  /** Present for search results; a direct fetch fills it in from the issue lookup. */
+  item?: IssueItem;
+  url: string;
+  repoFullName: string;
+  number: number;
+  engagement?: IssueEngagement;
+}
+
+export interface FetchCommentedIssuesOptions {
+  /** Window for the comment search, in days (default 30). */
+  maxDays?: number;
+  /** The user's engaged issues (#1862); see `collectEngagedIssues`. */
+  engaged?: ReadonlyMap<string, EngagedIssue>;
+}
+
+export interface FetchCommentedIssuesResult {
+  issues: CommentedIssue[];
+  failures: Array<{ issueUrl: string; error: string }>;
+  /** Non-fatal notices for the run's warning channel: the direct-fetch cap, issues that are gone. */
+  warnings: string[];
+}
+
+interface TimelineEntry {
+  author: string;
+  body: string;
+  createdAt: string;
+  isUser: boolean;
+  authorAssociation: string;
+}
+
+function parseMs(value: string | undefined): number {
+  if (!value) return -Infinity;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
+function excerpt(body: string): string {
+  return body.slice(0, 200) + (body.length > 200 ? '...' : '');
+}
+
+function describeError(error: unknown): string {
+  const status = getHttpStatusCode(error);
+  return status === undefined ? errorMessage(error) : `HTTP ${status}: ${errorMessage(error)}`;
+}
+
+/** 404/410: the issue is gone (deleted, transferred, or now private). */
+function isGoneError(error: unknown): boolean {
+  const status = getHttpStatusCode(error);
+  return status === 404 || status === 410;
+}
 
 export class IssueConversationMonitor {
   private octokit: Octokit;
@@ -64,13 +151,14 @@ export class IssueConversationMonitor {
   }
 
   /**
-   * Fetch issues the user has commented on and determine conversation state.
-   * Filters out: user-authored issues, user-owned repos, excluded repos/orgs,
-   * AI policy blocklisted repos, already-tracked issues, and pull requests.
+   * Fetch issues the user has commented on or is engaged in and determine
+   * conversation state. Filters out: user-authored issues, user-owned repos,
+   * excluded repos/orgs, AI policy blocklisted repos, and pull requests.
+   * Engaged issues (#1862) are scanned under the wider reply rule and
+   * fetched directly when the comment search misses them.
    */
-  async fetchCommentedIssues(
-    maxDays: number = 30,
-  ): Promise<{ issues: CommentedIssue[]; failures: Array<{ issueUrl: string; error: string }> }> {
+  async fetchCommentedIssues(options: FetchCommentedIssuesOptions = {}): Promise<FetchCommentedIssuesResult> {
+    const { maxDays = 30, engaged = new Map<string, EngagedIssue>() } = options;
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
@@ -81,6 +169,7 @@ export class IssueConversationMonitor {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - maxDays);
     const since = cutoffDate.toISOString().split('T', 1)[0];
+    const warnings: string[] = [];
 
     debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
 
@@ -100,18 +189,10 @@ export class IssueConversationMonitor {
       );
     }
 
-    // Build sets for filtering
-    const trackedIssues = this.stateManager.getState().activeIssues || [];
-    const trackedIssueKeys = new Set(
-      trackedIssues
-        .filter((i) => i.status === 'claimed' || i.status === 'in_progress' || i.status === 'pr_submitted')
-        .map((i) => `${i.repo}#${i.number}`),
-    );
-    const blocklist = new Set((config.aiPolicyBlocklist || []).map((r) => r.toLowerCase()));
-
-    // Filter out PRs, user-authored issues, excluded repos, blocklisted repos, and already-tracked issues.
+    // Filter out PRs, user-authored issues, excluded repos, and blocklisted repos.
     // Also parse repo info for each candidate to avoid re-parsing in analyzeIssueConversation.
-    const candidates: Array<{ item: (typeof data.items)[0]; repoFullName: string }> = [];
+    const candidates: Candidate[] = [];
+    const seenKeys = new Set<string>();
     for (const item of data.items) {
       // Defensive: skip pull requests in case type:issue qualifier is unreliable
       if (item.pull_request) continue;
@@ -121,27 +202,41 @@ export class IssueConversationMonitor {
         warn(MODULE, `Skipping issue with unparseable URL: ${item.html_url}`);
         continue;
       }
-
-      const { owner, repo } = parsed;
-      const repoFullName = `${owner}/${repo}`;
-
-      // Skip issues in user-owned repos (we only care about contributing to others' projects)
-      if (isOwnRepo(owner, username)) continue;
+      const repoFullName = `${parsed.owner}/${parsed.repo}`;
+      const key = issueRefKey(item.html_url) ?? item.html_url;
+      seenKeys.add(key);
 
       // Skip user-authored issues
       if (item.user?.login?.toLowerCase() === username.toLowerCase()) continue;
+      if (!this.isRepoAllowed(repoFullName, config)) continue;
 
-      // Skip excluded repos and orgs
-      if (config.excludeRepos.includes(repoFullName)) continue;
-      if (config.excludeOrgs?.some((org) => owner.toLowerCase() === org.toLowerCase())) continue;
+      const engagedEntry = engaged.get(key);
+      const engagement = engagedEntry && toIssueEngagement(engagedEntry);
+      candidates.push({ item, repoFullName, engagement, url: item.html_url, number: item.number });
+    }
 
-      // Skip blocklisted repos
-      if (blocklist.has(repoFullName.toLowerCase())) continue;
-
-      // Skip issues already in the tracked pipeline
-      if (trackedIssueKeys.has(`${repoFullName}#${item.number}`)) continue;
-
-      candidates.push({ item, repoFullName });
+    // Live engaged issues the search did not return are looked up directly.
+    const missing: EngagedIssue[] = [];
+    for (const entry of engaged.values()) {
+      if (!entry.fetchWhenMissing || seenKeys.has(entry.key)) continue;
+      const parsed = extractOwnerRepo(entry.url);
+      if (!parsed || !this.isRepoAllowed(`${parsed.owner}/${parsed.repo}`, config)) continue;
+      missing.push(entry);
+    }
+    if (missing.length > MAX_DIRECT_ENGAGED_FETCHES) {
+      warnings.push(
+        `${missing.length} engaged issues were missing from the comment search; only the first ${MAX_DIRECT_ENGAGED_FETCHES} (open-PR and claimed issues first) were fetched, so replies on the rest may be missed this run.`,
+      );
+    }
+    for (const entry of missing.slice(0, MAX_DIRECT_ENGAGED_FETCHES)) {
+      const parsed = parseGitHubUrl(entry.url);
+      if (!parsed) continue;
+      candidates.push({
+        url: entry.url,
+        repoFullName: `${parsed.owner}/${parsed.repo}`,
+        number: parsed.number,
+        engagement: toIssueEngagement(entry),
+      });
     }
 
     debug(MODULE, `Found ${candidates.length} commented issues to check`);
@@ -152,18 +247,27 @@ export class IssueConversationMonitor {
 
     await runWorkerPool(
       candidates,
-      async ({ item, repoFullName }) => {
+      async (candidate) => {
         try {
-          const issue = await this.analyzeIssueConversation(item, repoFullName, username);
+          const item = candidate.item ?? (await this.fetchEngagedIssue(candidate, username, cutoffDate));
+          if (!item) return;
+          const issue = await this.analyzeIssueConversation(
+            item,
+            candidate.repoFullName,
+            username,
+            candidate.engagement,
+          );
           if (issue) {
             results.push(issue);
-          } else {
-            failures.push({
-              issueUrl: item.html_url,
-              error:
-                'No user comment found despite commenter: search match (possible pagination or eventual consistency)',
-            });
+            return;
           }
+          // An engaged issue with nothing to report is not a failure.
+          if (candidate.engagement) return;
+          failures.push({
+            issueUrl: candidate.url,
+            error:
+              'No user comment found despite commenter: search match (possible pagination or eventual consistency)',
+          });
         } catch (error) {
           // Rate-limit / auth failures must propagate, not degrade to "fewer
           // results" — under throttling every sibling analysis fails the same
@@ -172,9 +276,15 @@ export class IssueConversationMonitor {
           // dashboard-data.ts rethrow rate-limit/auth from their phase catches,
           // aborting the run just like PRMonitor's 429s do.
           if (isRateLimitOrAuthError(error)) throw error;
-          const msg = errorMessage(error);
-          failures.push({ issueUrl: item.html_url, error: msg });
-          warn(MODULE, `Error analyzing issue ${item.html_url}: ${msg}`);
+          if (candidate.item === undefined && isGoneError(error)) {
+            // Only a direct fetch can see a 404/410: the issue was deleted,
+            // transferred, or made private since the PR or claim linked it.
+            warnings.push(`${candidate.url}: issue no longer reachable (${describeError(error)}); dropped`);
+            return;
+          }
+          const msg = describeError(error);
+          failures.push({ issueUrl: candidate.url, error: msg });
+          warn(MODULE, `Error analyzing issue ${candidate.url}: ${msg}`);
         }
       },
       MAX_CONCURRENT_REQUESTS,
@@ -189,6 +299,7 @@ export class IssueConversationMonitor {
         `All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (network, GitHub availability).`,
       );
     }
+    for (const message of warnings) warn(MODULE, message);
 
     // Sort: new_response first, then waiting, then acknowledged
     const statusOrder: Record<IssueConversationStatus, number> = {
@@ -202,17 +313,166 @@ export class IssueConversationMonitor {
       MODULE,
       `Analyzed ${results.length} issue conversations (${results.filter((i) => i.status === 'new_response').length} with new responses)`,
     );
-    return { issues: results, failures };
+    return { issues: results, failures, warnings };
+  }
+
+  /** Repo-level exclusions shared by the search results and the direct fetches. */
+  private isRepoAllowed(repoFullName: string, config: AgentConfig): boolean {
+    const { owner } = splitRepo(repoFullName);
+    // Skip issues in user-owned repos (we only care about contributing to others' projects)
+    if (isOwnRepo(owner, config.githubUsername)) return false;
+    if (config.excludeRepos.includes(repoFullName)) return false;
+    if (config.excludeOrgs?.some((org) => owner.toLowerCase() === org.toLowerCase())) return false;
+    const blocklist = (config.aiPolicyBlocklist || []).map((r) => r.toLowerCase());
+    return !blocklist.includes(repoFullName.toLowerCase());
+  }
+
+  /**
+   * Look up an engaged issue the comment search did not return (#1862).
+   * Returns undefined, with a debug line, when the number is a pull request,
+   * the issue is closed, the user authored it, or nothing on it changed
+   * inside the search window (the comments cannot hold a new reply then).
+   * ETag-cached like the comment pages. Errors propagate to the worker.
+   */
+  private async fetchEngagedIssue(
+    candidate: Candidate,
+    username: string,
+    cutoffDate: Date,
+  ): Promise<IssueItem | undefined> {
+    const { owner, repo } = splitRepo(candidate.repoFullName);
+    const url = `/repos/${owner}/${repo}/issues/${candidate.number}`;
+    const issue = await cachedRequest(
+      getHttpCache(),
+      url,
+      (headers) =>
+        this.octokit.issues.get({ owner, repo, headers, issue_number: candidate.number }) as Promise<{
+          data: Awaited<ReturnType<Octokit['issues']['get']>>['data'];
+          headers: Record<string, string>;
+        }>,
+    );
+    const skip = (reason: string): undefined => {
+      debug(MODULE, `Skipping engaged issue ${candidate.url}: ${reason}`);
+    };
+    if (issue.pull_request) return skip('the number is a pull request');
+    if (issue.state !== 'open') return skip(`issue is ${issue.state}`);
+    if (issue.user?.login?.toLowerCase() === username.toLowerCase()) return skip('authored by the user');
+    if (Date.parse(issue.updated_at) < cutoffDate.getTime()) return skip(`not updated since ${issue.updated_at}`);
+    return { html_url: issue.html_url, number: issue.number, title: issue.title, labels: issue.labels };
   }
 
   /**
    * Analyze a single issue's comment thread to determine conversation status.
+   * Returns null when there is nothing to report: the user never commented
+   * on a non-engaged issue (the search said otherwise), or an engaged issue
+   * the user never commented on has no reply yet (nothing to wait for).
    */
   private async analyzeIssueConversation(
-    item: { html_url: string; number: number; title: string; labels?: Array<{ name?: string }> },
+    item: IssueItem,
     repoFullName: string,
     username: string,
+    engagement: IssueEngagement | undefined,
   ): Promise<CommentedIssue | null> {
+    const timeline = await this.fetchTimeline(item, repoFullName, username);
+
+    // Find the user's last comment
+    let userLastComment: TimelineEntry | undefined;
+    for (const entry of timeline) {
+      if (entry.isUser) userLastComment = entry;
+    }
+
+    if (!userLastComment && !engagement) {
+      // Shouldn't happen with commenter: search, but be safe
+      warn(MODULE, `No user comment found for ${item.html_url} despite commenter: search match`);
+      return null;
+    }
+
+    // The user's last word on the thread: their last comment, or the later
+    // of that and the engagement step (claim, PR opened) on engaged issues.
+    const userLastWordMs = Math.max(parseMs(userLastComment?.createdAt), parseMs(engagement?.since));
+    if (userLastWordMs === -Infinity) {
+      warn(MODULE, `Skipping ${item.html_url}: no user comment and an unreadable engagement time`);
+      return null;
+    }
+
+    const userMention = `@${username.toLowerCase()}`;
+    const userLastCommentBody = userLastComment?.body;
+    // Directed at the user (#343, extended by #1862 with quote replies):
+    //   1. From a maintainer (OWNER/MEMBER/COLLABORATOR) — inherently authoritative
+    //   2. @mentions the user — explicitly addressed
+    //   3. Quotes the user's last comment — explicitly addressed
+    // This filters out community "+1" and "me too" noise.
+    const isDirectedAtUser = (entry: TimelineEntry): boolean =>
+      MAINTAINER_ASSOCIATIONS.has(entry.authorAssociation) ||
+      entry.body.toLowerCase().includes(userMention) ||
+      (userLastCommentBody !== undefined && isQuoteReplyTo(entry.body, userLastCommentBody));
+    // On an engaged issue every non-reaction comment is relevant (#1862).
+    const isRelevant = (entry: TimelineEntry): boolean =>
+      engagement ? !isReactionOnlyComment(entry.body) : isDirectedAtUser(entry);
+
+    // A reply: by someone else after the user's last word, substantive and relevant.
+    const isAfterUser = (entry: TimelineEntry): boolean =>
+      !entry.isUser && !isBotAuthor(entry.author) && parseMs(entry.createdAt) > userLastWordMs;
+    const isReply = (entry: TimelineEntry): boolean =>
+      isAfterUser(entry) && !isAcknowledgmentComment(entry.body) && isRelevant(entry);
+    let lastResponse: TimelineEntry | undefined;
+    for (const entry of timeline) {
+      if (isReply(entry)) lastResponse = entry;
+    }
+
+    if (!userLastComment && !lastResponse) {
+      debug(MODULE, `Engaged issue ${item.html_url} has no reply after ${engagement?.since}; nothing to report`);
+      return null;
+    }
+
+    const labels = (item.labels || []).map((l) => (typeof l === 'string' ? l : l.name || '')).filter(Boolean);
+    // One of the two is set: the -Infinity check above returned otherwise.
+    const userLastWordAt = userLastComment?.createdAt ?? engagement?.since ?? '';
+
+    // Body excerpts stay RAW here on purpose (#1372): these objects feed the
+    // dashboard SPA and the CLI text renderers directly, and the matching
+    // above (acknowledgment / @mention / quote) operates on raw text. The
+    // `<github-content>` fence is applied at the agent-facing serialization
+    // boundary in `toDailyOutput()` (commands/daily.ts).
+    const base = {
+      repo: repoFullName,
+      number: item.number,
+      title: item.title,
+      url: item.html_url,
+      userLastCommentedAt: userLastWordAt,
+      userLastCommentBody: excerpt(userLastComment?.body ?? ''),
+      labels,
+      daysSinceUserComment: daysBetween(new Date(userLastWordMs), new Date()),
+      ...(engagement && { engagement }),
+    };
+
+    if (lastResponse) {
+      return {
+        ...base,
+        status: 'new_response' as const,
+        lastResponseAuthor: lastResponse.author,
+        lastResponseBody: excerpt(lastResponse.body),
+        lastResponseAt: lastResponse.createdAt,
+        isFromMaintainer: MAINTAINER_ASSOCIATIONS.has(lastResponse.authorAssociation),
+      };
+    }
+
+    // No relevant response found. Determine whether the user or a relevant
+    // commenter spoke last. Irrelevant community comments are excluded from
+    // this check too (#343). A relevant comment the engagement step already
+    // answered (posted before the claim or the PR) does not count as waiting.
+    const lastRelevantComment = [...timeline].reverse().find((e) => {
+      if (isBotAuthor(e.author)) return false;
+      return e.isUser || isRelevant(e);
+    });
+    const isWaiting =
+      lastRelevantComment !== undefined &&
+      !lastRelevantComment.isUser &&
+      parseMs(lastRelevantComment.createdAt) > userLastWordMs;
+    return { ...base, status: isWaiting ? ('waiting' as const) : ('acknowledged' as const) };
+  }
+
+  /** All comments on the issue, oldest first, with deleted-account comments dropped. */
+  private async fetchTimeline(item: IssueItem, repoFullName: string, username: string): Promise<TimelineEntry[]> {
     const { owner, repo } = splitRepo(repoFullName);
 
     const cache = getHttpCache();
@@ -248,13 +508,7 @@ export class IssueConversationMonitor {
       );
     }
 
-    const timeline: Array<{
-      author: string;
-      body: string;
-      createdAt: string;
-      isUser: boolean;
-      authorAssociation: string;
-    }> = [];
+    const timeline: TimelineEntry[] = [];
     for (const comment of allComments) {
       if (!comment.user?.login) continue; // Skip comments from deleted accounts
       const author = comment.user.login;
@@ -271,89 +525,6 @@ export class IssueConversationMonitor {
     }
 
     timeline.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    // Find the user's last comment
-    let userLastComment: (typeof timeline)[0] | undefined;
-    for (const entry of timeline) {
-      if (entry.isUser) userLastComment = entry;
-    }
-
-    // If user never commented (shouldn't happen with commenter: search, but be safe)
-    if (!userLastComment) {
-      warn(MODULE, `No user comment found for ${item.html_url} despite commenter: search match`);
-      return null;
-    }
-
-    const userLastCommentTime = new Date(userLastComment.createdAt);
-
-    // Only surface comments directed at the user (#343):
-    //   1. From a maintainer (OWNER/MEMBER/COLLABORATOR) — inherently authoritative
-    //   2. @mentions the user — explicitly addressed
-    // This filters out community "+1" and "me too" noise.
-    const userMention = `@${username.toLowerCase()}`;
-
-    function isDirectedAtUser(entry: { authorAssociation: string; body: string }): boolean {
-      return MAINTAINER_ASSOCIATIONS.has(entry.authorAssociation) || entry.body.toLowerCase().includes(userMention);
-    }
-
-    // Find the last substantive, directed response after the user's last comment
-    let lastResponse: { author: string; body: string; createdAt: string; authorAssociation: string } | undefined;
-    for (const entry of timeline) {
-      if (entry.isUser) continue;
-      if (isBotAuthor(entry.author)) continue;
-
-      const entryTime = new Date(entry.createdAt);
-      if (entryTime > userLastCommentTime) {
-        if (isAcknowledgmentComment(entry.body)) continue;
-        if (!isDirectedAtUser(entry)) continue;
-
-        lastResponse = {
-          author: entry.author,
-          body: entry.body.slice(0, 200) + (entry.body.length > 200 ? '...' : ''),
-          createdAt: entry.createdAt,
-          authorAssociation: entry.authorAssociation,
-        };
-      }
-    }
-
-    const labels = (item.labels || []).map((l) => l.name || '').filter(Boolean);
-
-    // Body excerpts stay RAW here on purpose (#1372): these objects feed the
-    // dashboard SPA and the CLI text renderers directly, and the matching
-    // above (acknowledgment / @mention) operates on raw text. The
-    // `<github-content>` fence is applied at the agent-facing serialization
-    // boundary in `toDailyOutput()` (commands/daily.ts).
-    const base = {
-      repo: repoFullName,
-      number: item.number,
-      title: item.title,
-      url: item.html_url,
-      userLastCommentedAt: userLastComment.createdAt,
-      userLastCommentBody: userLastComment.body.slice(0, 200) + (userLastComment.body.length > 200 ? '...' : ''),
-      labels,
-      daysSinceUserComment: daysBetween(userLastCommentTime, new Date()),
-    };
-
-    if (lastResponse) {
-      return {
-        ...base,
-        status: 'new_response' as const,
-        lastResponseAuthor: lastResponse.author,
-        lastResponseBody: lastResponse.body,
-        lastResponseAt: lastResponse.createdAt,
-        isFromMaintainer: MAINTAINER_ASSOCIATIONS.has(lastResponse.authorAssociation),
-      };
-    }
-
-    // No directed response found. Determine whether the user or a relevant
-    // commenter (maintainer / @mention) spoke last. Irrelevant community
-    // comments are excluded from this check too (#343).
-    const lastRelevantComment = [...timeline].reverse().find((e) => {
-      if (isBotAuthor(e.author)) return false;
-      if (e.isUser) return true;
-      return isDirectedAtUser(e);
-    });
-    const status = lastRelevantComment?.isUser ? ('acknowledged' as const) : ('waiting' as const);
-    return { ...base, status };
+    return timeline;
   }
 }

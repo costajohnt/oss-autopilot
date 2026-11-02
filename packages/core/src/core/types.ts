@@ -425,17 +425,47 @@ export type IssueConversationStatus =
   | 'waiting' // Last non-bot commenter is not the user; no substantive (non-acknowledgment) response found
   | 'acknowledged'; // User was the last non-bot commenter; no action needed
 
+/** How the user is engaged on an issue (#1862), strongest first. */
+export type EngagementReason = 'open_pr' | 'claim' | 'closed_pr' | 'merged_pr';
+
+/** Why a commented-issue entry was scanned under the engaged rule (#1862). */
+export interface IssueEngagement {
+  /** Strongest reason when several apply (open PR, then claim, closed PR, merged PR). */
+  reason: EngagementReason;
+  /** The PR behind `reason`, for the PR reasons. */
+  prUrl?: string;
+  /**
+   * ISO time of the user's latest engagement step: the claim stamp, or when
+   * the PR was opened (its close/merge time when the opening time is not
+   * known). Comments at or before it were answered by the engagement itself,
+   * so only later ones can be replies to the user.
+   */
+  since: string;
+}
+
 /** Base fields shared by all issue conversation states. */
 interface CommentedIssueBase {
   repo: string; // "owner/repo"
   number: number;
   title: string;
   url: string;
+  /**
+   * When the user last spoke on the thread. For an engaged issue the user
+   * never commented on, the engagement time (`engagement.since`: the claim
+   * or the PR opening) with an empty `userLastCommentBody`.
+   */
   userLastCommentedAt: string;
   /** User's most recent comment body, truncated to 200 chars (+ "..." suffix when truncated). #1290 */
   userLastCommentBody: string;
   labels: string[];
   daysSinceUserComment: number;
+  /**
+   * Set when the issue was scanned under the engaged rule (#1862): the user
+   * claimed it or one of their PRs links it, so any substantive non-bot
+   * comment after their last word counts as a reply, not only maintainer or
+   * @mention ones. Absent for issues the user only commented on in passing.
+   */
+  engagement?: IssueEngagement;
 }
 
 /** Issue where someone responded after the user's last comment. */

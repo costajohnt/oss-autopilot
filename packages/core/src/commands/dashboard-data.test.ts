@@ -868,6 +868,7 @@ describe('fetchDashboardData', () => {
   function makeDefaultState(overrides: Record<string, unknown> = {}) {
     return {
       version: 3,
+      activeIssues: [],
       repoScores: {},
       config: {
         setupComplete: true,
@@ -941,7 +942,7 @@ describe('fetchDashboardData', () => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([]);
     mockFetchUserMergedPRCounts.mockResolvedValue(makePRCountsResult());
     mockFetchUserClosedPRCounts.mockResolvedValue(makePRCountsResult());
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [] });
     mockFetchMergedPRsSince.mockResolvedValue([]);
     mockFetchClosedPRsSince.mockResolvedValue([]);
 

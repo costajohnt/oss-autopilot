@@ -11,6 +11,7 @@ import {
   getOctokit,
   CRITICAL_STATUSES,
   applyStatusOverrides,
+  collectEngagedIssues,
   toShelvedPRRef,
   buildStarFilter,
   firstMaintainerResponseFromDigest,
@@ -359,7 +360,6 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     recentlyMergedPRs,
     mergedResult,
     closedResult,
-    fetchedIssues,
     newMergedPRs,
     newClosedPRs,
   ] = await Promise.all([
@@ -372,21 +372,6 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     prMonitor
       .fetchUserClosedPRCounts(starFilter)
       .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>())),
-    // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
-    issueMonitor.fetchCommentedIssues().catch((error) => {
-      if (isRateLimitOrAuthError(error)) throw error;
-      const msg = errorMessage(error);
-      if (msg.includes('No GitHub username configured')) {
-        warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
-      } else {
-        warn(MODULE, `Issue conversation fetch failed: ${msg}`);
-        partialFailures.push('fetch issue conversations');
-      }
-      return {
-        issues: [] as CommentedIssue[],
-        failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
-      };
-    }),
     fetchMergedPRsSince(octokit, config, mergedFetchSince).catch(
       trackingCatch('fetch merged PRs for storage', [] as StoredMergedPR[]),
     ),
@@ -395,7 +380,36 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     ),
   ]);
 
-  const commentedIssues = fetchedIssues.issues;
+  // Issue conversations run after the PR lists: the engaged set (#1862)
+  // needs the open, recently closed and recently merged PRs. The fetch has
+  // custom messaging based on the error content, so it keeps its bespoke catch.
+  const engaged = collectEngagedIssues({
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    claims: stateManager.getState().activeIssues,
+    openPRs: prs,
+    ledgerClosedPRs: stateManager.getClosedPRs(),
+    ledgerMergedPRs: stateManager.getMergedPRs(),
+  });
+  const fetchedIssues = await issueMonitor.fetchCommentedIssues({ engaged }).catch((error) => {
+    if (isRateLimitOrAuthError(error)) throw error;
+    const msg = errorMessage(error);
+    if (msg.includes('No GitHub username configured')) {
+      warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
+    } else {
+      warn(MODULE, `Issue conversation fetch failed: ${msg}`);
+      partialFailures.push('fetch issue conversations');
+    }
+    return {
+      issues: [] as CommentedIssue[],
+      failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      warnings: [] as string[],
+    };
+  });
+
+  // The monitor already logged each of these; the banner just needs them.
+  const { issues: commentedIssues, warnings: issueMonitorWarnings } = fetchedIssues;
+  partialFailures.push(...issueMonitorWarnings);
   if (fetchedIssues.failures.length > 0) {
     warn(MODULE, `${fetchedIssues.failures.length} issue conversation check(s) failed`);
   }

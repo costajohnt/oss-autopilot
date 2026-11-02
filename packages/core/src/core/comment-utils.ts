@@ -64,3 +64,68 @@ export function isAcknowledgmentComment(body: string): boolean {
 
   return ackKeywords.some((kw) => lower.includes(kw));
 }
+
+/**
+ * Whole-comment phrases that add nothing to a thread once emoji, emoji
+ * shortcodes and punctuation are stripped (#1862).
+ */
+const LOW_SIGNAL_PHRASES = new Set([
+  '+1',
+  'bump',
+  'same',
+  'same here',
+  'same issue',
+  'same problem',
+  'me too',
+  'me as well',
+  'any update',
+  'any updates',
+  'any news',
+  'following',
+  'subscribed',
+  'ping',
+  'up',
+]);
+
+/**
+ * Whether a comment is a reaction rather than a reply (#1862): nothing but
+ * emoji, `:shortcode:`s or punctuation, or one of the "+1" / "same here" /
+ * "any update" phrases. Used on engaged issues, where any substantive
+ * non-bot comment counts as a reply, to keep me-too traffic out. Anything
+ * longer or wordier passes: a false negative here surfaces one extra reply,
+ * a false positive hides one.
+ */
+export function isReactionOnlyComment(body: string): boolean {
+  const words = body
+    .replaceAll(/:[\w+-]+:/g, ' ')
+    .replaceAll(/[^\p{L}\p{N}+]+/gu, ' ')
+    .trim()
+    .toLowerCase();
+  return words === '' || LOW_SIGNAL_PHRASES.has(words);
+}
+
+/** Shortest quoted line that identifies a comment; "> yes" matches too much. */
+const MIN_QUOTE_LENGTH = 12;
+
+function collapseWhitespace(text: string): string {
+  return text.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
+ * Whether `body` quotes `quoted` (#1862): a Markdown `>` block in `body`
+ * contains a line (at least `MIN_QUOTE_LENGTH` characters once
+ * whitespace is collapsed) that appears verbatim in `quoted`. GitHub's
+ * "Quote reply" copies the quoted comment line by line with a `> ` prefix,
+ * so a reply built that way is addressed to the quoted comment's author as
+ * explicitly as an @mention. Nested quotes (`> > text`) are read too.
+ */
+export function isQuoteReplyTo(body: string, quoted: string): boolean {
+  const source = collapseWhitespace(quoted).toLowerCase();
+  if (source.length < MIN_QUOTE_LENGTH) return false;
+  for (const line of body.split('\n')) {
+    if (!line.trimStart().startsWith('>')) continue;
+    const text = collapseWhitespace(line.replace(/^\s*(?:>\s*)+/, '')).toLowerCase();
+    if (text.length >= MIN_QUOTE_LENGTH && source.includes(text)) return true;
+  }
+  return false;
+}

@@ -282,4 +282,19 @@ describe('buildDashboardJson omits dismissed issue responses', () => {
 
     expect(data.issueResponses.map((i) => i.url)).toEqual([kept.url]);
   });
+
+  it('resurfaces a dismissed issue once a newer reply arrives, matching the daily run (#1862)', () => {
+    const sm = getStateManager();
+    const stale = makeResponse(1);
+    const resurfaced = Object.assign(makeResponse(2), {
+      lastResponseAt: '2026-05-04T00:00:00Z',
+      isFromMaintainer: false,
+    });
+    sm.dismissIssue(stale.url, '2026-05-03T00:00:00Z');
+    sm.dismissIssue(resurfaced.url, '2026-05-03T00:00:00Z');
+
+    const data = buildDashboardJson(makeDailyDigest(), sm.getState(), [stale, resurfaced], [], []);
+
+    expect(data.issueResponses.map((i) => i.url)).toEqual([resurfaced.url]);
+  });
 });

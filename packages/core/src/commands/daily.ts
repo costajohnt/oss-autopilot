@@ -24,6 +24,8 @@ import {
   assessCapacity,
   collectActionableIssues,
   computeActionMenu,
+  collectEngagedIssues,
+  isCoveredByDismiss,
   toShelvedPRRef,
   formatBriefSummary,
   formatSummary,
@@ -295,61 +297,74 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
   let didRecentlyMergedFetchFail = false;
-  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
-    [
-      prMonitor.fetchUserMergedPRCounts(starFilter).catch(
-        nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch merged PR counts',
-          fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
-        }),
-      ),
-      prMonitor.fetchUserClosedPRCounts(starFilter).catch(
-        nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch closed PR counts',
-          fallback: emptyPRCountsResult<number>(),
-        }),
-      ),
-      prMonitor.fetchRecentlyClosedPRs().catch(
-        nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch recently closed PRs',
-          fallback: [] as ClosedPR[],
-        }),
-      ),
-      prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
-        // Phase 3.6 treats a fallback here as an incomplete view of the
-        // user's PRs (a just-merged successor would be invisible).
-        didRecentlyMergedFetchFail = true;
-        return nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch recently merged PRs',
-          fallback: [] as MergedPR[],
-        })(error);
+  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs] = await Promise.all([
+    prMonitor.fetchUserMergedPRCounts(starFilter).catch(
+      nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch merged PR counts',
+        fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
       }),
-      // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
-      issueMonitor.fetchCommentedIssues().catch((error) => {
-        if (isRateLimitOrAuthError(error)) throw error;
-        const msg = errorMessage(error);
-        const needsSetup = msg.includes('No GitHub username configured');
-        const humanMessage = needsSetup
-          ? `Issue conversation tracking requires setup: ${msg}`
-          : `Issue conversation fetch failed: ${msg}`;
-        recordWarning(warnings, 'fetch', 'fetch commented issues', error, humanMessage);
-        return {
-          issues: [] as CommentedIssue[],
-          failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
-        };
+    ),
+    prMonitor.fetchUserClosedPRCounts(starFilter).catch(
+      nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch closed PR counts',
+        fallback: emptyPRCountsResult<number>(),
       }),
-    ],
-  );
+    ),
+    prMonitor.fetchRecentlyClosedPRs().catch(
+      nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch recently closed PRs',
+        fallback: [] as ClosedPR[],
+      }),
+    ),
+    prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
+      // Phase 3.6 treats a fallback here as an incomplete view of the
+      // user's PRs (a just-merged successor would be invisible).
+      didRecentlyMergedFetchFail = true;
+      return nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch recently merged PRs',
+        fallback: [] as MergedPR[],
+      })(error);
+    }),
+  ]);
 
-  const commentedIssues = issueConversationResult.issues;
+  // Issue conversations run after the PR lists: the engaged set (#1862)
+  // needs the open, recently closed and recently merged PRs. The fetch has
+  // custom messaging based on the error content, so it keeps its bespoke catch.
+  const engaged = collectEngagedIssues({
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    claims: state.activeIssues,
+    openPRs: prs,
+    ledgerClosedPRs: getStateManager().getClosedPRs(),
+    ledgerMergedPRs: getStateManager().getMergedPRs(),
+  });
+  const issueConversationResult = await issueMonitor.fetchCommentedIssues({ engaged }).catch((error) => {
+    if (isRateLimitOrAuthError(error)) throw error;
+    const msg = errorMessage(error);
+    const needsSetup = msg.includes('No GitHub username configured');
+    const humanMessage = needsSetup
+      ? `Issue conversation tracking requires setup: ${msg}`
+      : `Issue conversation fetch failed: ${msg}`;
+    recordWarning(warnings, 'fetch', 'fetch commented issues', error, humanMessage);
+    return {
+      issues: [] as CommentedIssue[],
+      failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      warnings: [] as string[],
+    };
+  });
+
+  const { issues: commentedIssues, warnings: issueMonitorWarnings } = issueConversationResult;
+  for (const message of issueMonitorWarnings) {
+    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
+  }
   if (issueConversationResult.failures.length > 0) {
     warnings.push({
       phase: 'fetch',
@@ -765,15 +780,14 @@ function generateDigestOutput(
         const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
         if (!dismissedAt) return true; // Not dismissed — include
         if (issue.status === 'new_response') {
-          const responseTime = new Date(issue.lastResponseAt).getTime();
-          const dismissTime = new Date(dismissedAt).getTime();
-          if (isNaN(responseTime) || isNaN(dismissTime)) {
+          if (isNaN(Date.parse(issue.lastResponseAt)) || isNaN(Date.parse(dismissedAt))) {
             // Invalid timestamp — fail open (include issue to be safe) without
             // permanently removing dismiss record (may be a transient data issue)
             warn(MODULE, `Invalid timestamp in dismiss check for ${issue.url}, including issue`);
             return true;
           }
-          if (responseTime > dismissTime) {
+          // Same comparison the dashboard uses (#1862), so both surfaces agree.
+          if (!isCoveredByDismiss(dismissedAt, issue.lastResponseAt)) {
             // New activity after dismiss — auto-undismiss and resurface
             warn(
               MODULE,

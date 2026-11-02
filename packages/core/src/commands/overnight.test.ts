@@ -133,6 +133,16 @@ describe('bucketize', () => {
           lastResponseAuthor: 'm',
         },
         { repo: 'o/r', number: 10, title: 't', url: 'https://github.com/o/r/issues/10', status: 'waiting' },
+        {
+          repo: 'o/r',
+          number: 11,
+          title: 't',
+          url: 'https://github.com/o/r/issues/11',
+          status: 'new_response',
+          isFromMaintainer: false,
+          lastResponseAuthor: 'c',
+          engagement: { reason: 'claim', since: '2026-06-01T00:00:00Z' },
+        },
       ] as never,
     });
 
@@ -141,8 +151,10 @@ describe('bucketize', () => {
       ['incomplete_checklist', 'https://github.com/o/r/pull/4'],
       ['needs_response', 'https://github.com/o/r/pull/5'],
       ['issue_reply', 'https://github.com/o/r/issues/9'],
+      ['issue_reply', 'https://github.com/o/r/issues/11'],
     ]);
-    expect(judgment[2].reason).toContain('a maintainer');
+    expect(judgment[2].reason).toBe('a maintainer replied on an issue you commented on');
+    expect(judgment[3].reason).toBe('c replied on an issue you are working on');
   });
 });
 

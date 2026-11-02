@@ -464,33 +464,26 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(0);
   });
 
-  it('should filter out already-tracked issues', async () => {
+  it('no longer drops tracked issues: a claim is an engagement, not an exclusion (#1862)', async () => {
     mockState = {
       ...defaultState(),
-      config: {
-        ...defaultState().config,
-        aiPolicyBlocklist: [],
-      },
-      activeIssues: [
-        {
-          repo: 'owner/repo',
-          number: 42,
-          status: 'claimed',
-        },
-      ],
+      activeIssues: [{ repo: 'owner/repo', number: 42, status: 'claimed' }],
     };
-
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
-      data: {
-        items: [makeSearchItem()],
-        total_count: 1,
-      },
+      data: { items: [makeSearchItem()], total_count: 1 },
+    });
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'I will take this', '2026-02-01T10:00:00Z'),
+        makeComment('maintainer', 'Go ahead', '2026-02-02T10:00:00Z', 'MEMBER'),
+      ],
     });
 
     const monitor = new IssueConversationMonitor('fake-token');
     const { issues } = await monitor.fetchCommentedIssues();
 
-    expect(issues).toHaveLength(0);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
   });
 
   it('should handle empty comment threads', async () => {

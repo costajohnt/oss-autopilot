@@ -189,6 +189,17 @@ function loadListItems(): { items: ReturnType<typeof parseIssueList>['available'
   }
 }
 
+/** Who replied, and whether the user is working on the issue (#1862) or only commented. */
+function issueReplyReason(issue: {
+  isFromMaintainer: boolean;
+  lastResponseAuthor: string;
+  engagement?: unknown;
+}): string {
+  const who = issue.isFromMaintainer ? 'a maintainer' : issue.lastResponseAuthor;
+  const where = issue.engagement ? 'are working on' : 'commented on';
+  return `${who} replied on an issue you ${where}`;
+}
+
 /** Pure: split the daily check into prepare vs judgment items. */
 export function bucketize(
   daily: Pick<DailyOutput, 'actionableIssues' | 'commentedIssues'>,
@@ -220,7 +231,7 @@ export function bucketize(
       url: c.url,
       type: 'issue_reply',
       label: `[Issue reply] ${c.repo}#${c.number}`,
-      reason: `${c.isFromMaintainer ? 'a maintainer' : c.lastResponseAuthor} replied on an issue you commented on`,
+      reason: issueReplyReason(c),
     });
   }
 
