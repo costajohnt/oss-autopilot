@@ -76,7 +76,7 @@ interface Candidate {
   url: string;
   repoFullName: string;
   number: number;
-  engagement?: IssueEngagement;
+  engagement?: EngagedIssue;
 }
 
 export interface FetchCommentedIssuesOptions {
@@ -232,9 +232,7 @@ export class IssueConversationMonitor {
       if (item.user?.login?.toLowerCase() === username.toLowerCase()) continue;
       if (!this.isRepoAllowed(repoFullName, config)) continue;
 
-      const engagedEntry = engaged.get(key);
-      const engagement = engagedEntry && toIssueEngagement(engagedEntry);
-      candidates.push({ item, repoFullName, engagement, url: item.html_url, number: item.number });
+      candidates.push({ item, repoFullName, engagement: engaged.get(key), url: item.html_url, number: item.number });
     }
 
     // Live engaged issues the search did not return are looked up directly.
@@ -260,7 +258,7 @@ export class IssueConversationMonitor {
         url: entry.url,
         repoFullName: `${parsed.owner}/${parsed.repo}`,
         number: parsed.number,
-        engagement: toIssueEngagement(entry),
+        engagement: entry,
       });
     }
 
@@ -405,7 +403,7 @@ export class IssueConversationMonitor {
     item: IssueItem,
     repoFullName: string,
     username: string,
-    engagement: IssueEngagement | undefined,
+    engagement: EngagedIssue | undefined,
     warnings: string[],
   ): Promise<CommentedIssue | null> {
     const { timeline, truncated } = await this.fetchTimeline(item, repoFullName, username);
@@ -462,11 +460,13 @@ export class IssueConversationMonitor {
     // On an engaged issue (#1862) a comment is relevant when it is directed
     // at the user (a maintainer's "any update?" is short but still a reply),
     // when it says more than a reaction, or, on a claimed issue, when it is a
-    // bare status request: "any update?" there asks the claimant.
+    // bare status request: "any update?" there asks the claimant. `claimed`,
+    // not `reason`: an open PR outranks the claim as the reason, and the
+    // claimant is still the one being asked.
     const isRelevant = (entry: TimelineEntry): boolean => {
       if (isDirectedAtUser(entry)) return true;
       if (!engagement) return false;
-      if (engagement.reason === 'claim' && isStatusNudge(entry.body)) return true;
+      if (engagement.claimed && isStatusNudge(entry.body)) return true;
       return !isReactionOnlyComment(entry.body);
     };
 
@@ -503,7 +503,7 @@ export class IssueConversationMonitor {
       userLastCommentBody: excerpt(userLastComment?.body ?? ''),
       labels,
       daysSinceUserComment: daysBetween(new Date(userLastWordMs), new Date()),
-      ...(engagement && { engagement }),
+      ...(engagement && { engagement: toIssueEngagement(engagement) }),
     };
 
     if (lastResponse) {

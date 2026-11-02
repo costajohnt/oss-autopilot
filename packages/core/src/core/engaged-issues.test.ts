@@ -49,6 +49,7 @@ describe('collectEngagedIssues', () => {
         url: 'https://github.com/Org/Repo/issues/10',
         reason: 'claim',
         since: '2026-06-01T00:00:00Z',
+        claimed: true,
         fetchWhenMissing: true,
       },
     ]);
@@ -115,6 +116,7 @@ describe('collectEngagedIssues', () => {
       url: 'https://github.com/org/repo/issues/11',
       reason: 'merged_pr',
       prUrl: 'https://github.com/org/repo/pull/21',
+      claimed: false,
       fetchWhenMissing: true,
     });
     expect(engaged.get('org/repo#11')).not.toHaveProperty('since');
@@ -224,7 +226,7 @@ describe('collectEngagedIssues: ledger links, own PRs and merging', () => {
     expect(Array.from(engaged, ([key]) => key)).toEqual([KEY]);
   });
 
-  it('merges several engagements of one issue: strongest reason, latest since, fetch if any is live', () => {
+  it('merges several engagements of one issue: strongest reason, latest since, claimed and fetched if any is', () => {
     const engaged = collectEngagedIssues(
       input({
         ledgerMergedPRs: [
@@ -242,9 +244,20 @@ describe('collectEngagedIssues: ledger links, own PRs and merging', () => {
         reason: 'open_pr',
         prUrl: 'https://github.com/org/repo/pull/20',
         since: '2026-06-05T00:00:00Z',
+        // The open PR wins the reason, but the claim is not forgotten.
+        claimed: true,
         fetchWhenMissing: true,
       },
     ]);
+  });
+
+  it('marks an issue linked only from PRs as not claimed, in either fold order', () => {
+    const openPR = { url: 'https://github.com/org/repo/pull/20', issueUrl: ISSUE, createdAt: '2026-06-02T00:00:00Z' };
+    const mergedPR = { url: 'https://github.com/org/repo/pull/5', issueUrl: ISSUE, mergedAt: '2026-06-01T00:00:00Z' };
+    expect(collectEngagedIssues(input({ openPRs: [openPR] })).get(KEY)?.claimed).toBe(false);
+    expect(collectEngagedIssues(input({ openPRs: [openPR], recentlyMergedPRs: [mergedPR] })).get(KEY)?.claimed).toBe(
+      false,
+    );
   });
 
   it('drops prUrl when a claim outranks a closed-PR link, and keeps the only known since', () => {
@@ -261,6 +274,7 @@ describe('collectEngagedIssues: ledger links, own PRs and merging', () => {
       url: 'https://github.com/Org/Repo/issues/10',
       reason: 'claim',
       since: '2026-06-05T00:00:00Z',
+      claimed: true,
       fetchWhenMissing: true,
     });
   });

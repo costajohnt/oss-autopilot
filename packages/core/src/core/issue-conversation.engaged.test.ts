@@ -330,6 +330,34 @@ describe('IssueConversationMonitor — engaged reply rule: baselines, nudges and
     expect(issues[0]).toMatchObject({ status: 'new_response', lastResponseAuthor: 'community-member' });
   });
 
+  it('surfaces a community "any update?" on an issue that is claimed and has an open PR: the claimant is still asked', async () => {
+    // The open PR outranks the claim as the engagement reason; the nudge rule
+    // must key on the claim itself, not on the reason that won.
+    const engaged = collectEngagedIssues({
+      ...emptyInput,
+      claims: [{ url: ISSUE_URL, updatedAt: '2026-01-20T00:00:00Z', status: 'claimed' }],
+      openPRs: [{ url: PR_URL, issueUrl: ISSUE_URL, createdAt: PR_OPENED_AT }],
+    });
+    expect(engaged.get('owner/repo#42')).toMatchObject({ reason: 'open_pr', claimed: true });
+    searchReturns([makeSearchItem()]);
+    commentsAre([
+      makeComment('testuser', 'I can take this.', '2026-01-20T10:00:00Z'),
+      makeComment('community-member', 'Any update on this?', '2026-03-20T10:00:00Z'),
+    ]);
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues } = await monitor.fetchCommentedIssues({ engaged });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      status: 'new_response',
+      lastResponseAuthor: 'community-member',
+      engagement: { reason: 'open_pr', prUrl: PR_URL, since: PR_OPENED_AT },
+    });
+    // The digest projection stays as it was: `claimed` is internal to the monitor.
+    expect(issues[0].engagement).not.toHaveProperty('claimed');
+  });
+
   it('keeps a community "any update?" out on an issue the user has an open PR for: the PR is the update', async () => {
     searchReturns([makeSearchItem()]);
     commentsAre([
@@ -426,7 +454,7 @@ describe('IssueConversationMonitor — engaged reply rule: baselines, nudges and
     expect(issues[0].engagement).not.toHaveProperty('since');
   });
 
-  it('warns and skips an issue whose comment thread hit the pagination cap, naming the issue', async () => {
+  it('warns, naming the issue, when its comment thread hit the pagination cap, and still returns it', async () => {
     searchReturns([makeSearchItem()]);
     // Every page full: the cap drops the newest comments.
     mocks.octokit.issues.listComments.mockImplementation(({ page }: { page: number }) =>

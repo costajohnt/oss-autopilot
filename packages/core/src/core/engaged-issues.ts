@@ -39,6 +39,12 @@ export interface EngagedIssue extends IssueEngagement {
   /** Canonical `https://github.com/owner/repo/issues/N` URL. */
   url: string;
   /**
+   * Whether the user claimed the issue locally, whatever `reason` says. An
+   * open PR outranks the claim as the reason, but a bare "any update?" on the
+   * issue still asks the claimant, so the monitor reads this, not `reason`.
+   */
+  claimed: boolean;
+  /**
    * Fetch the issue directly when the comment search misses it. True for
    * live engagements (claims, open PRs, the recent closed/merged lists);
    * false for ledger links, which count only when the search already found
@@ -172,11 +178,12 @@ function ownPRKeys(input: EngagedIssuesInput): Set<string> {
   return keys;
 }
 
-/** Fold one engagement into the map: strongest reason, latest since, fetch if any is live. */
+/** Fold one engagement into the map: strongest reason, latest since, claimed or fetched if any is. */
 function record(byKey: Map<string, EngagedIssue>, engagement: Engagement): void {
   const parsed = parseGitHubUrl(engagement.issueUrl);
   const key = issueRefKey(engagement.issueUrl);
   if (!parsed || !key) return;
+  const isClaim = engagement.reason === 'claim';
   const current = byKey.get(key);
   if (!current) {
     byKey.set(key, {
@@ -185,10 +192,12 @@ function record(byKey: Map<string, EngagedIssue>, engagement: Engagement): void 
       reason: engagement.reason,
       ...(engagement.prUrl !== undefined && { prUrl: engagement.prUrl }),
       ...(engagement.since !== undefined && { since: engagement.since }),
+      claimed: isClaim,
       fetchWhenMissing: engagement.fetchWhenMissing,
     });
     return;
   }
+  current.claimed ||= isClaim;
   if (REASON_RANK[engagement.reason] < REASON_RANK[current.reason]) {
     current.reason = engagement.reason;
     if (engagement.prUrl === undefined) delete current.prUrl;
@@ -203,7 +212,8 @@ function record(byKey: Map<string, EngagedIssue>, engagement: Engagement): void 
 /**
  * Collect the user's engaged issues, keyed by `issueRefKey`. When several
  * engagements name one issue, the entry keeps the strongest reason (and its
- * PR), the latest `since`, and fetches directly if any engagement is live.
+ * PR), the latest `since`, is `claimed` if any engagement is a claim, and
+ * fetches directly if any engagement is live.
  * Links that do not parse as GitHub URLs, or that name one of the user's own
  * PRs, are skipped. Iteration order is strongest-reason first (engagements
  * are visited in that order, so an issue is inserted at its strongest
