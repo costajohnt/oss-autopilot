@@ -115,6 +115,15 @@ describe('runSetup', () => {
     await expect(runSetup({ set: ['maxOpenPRsPerRepo=-1'] })).rejects.toThrow();
   });
 
+  it('sets maxConcurrentImplementations (#1856), accepting 0 and rejecting negatives', async () => {
+    const result = (await runSetup({ set: ['maxConcurrentImplementations=0'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ maxConcurrentImplementations: 0 });
+    expect(result.settings).toEqual({ maxConcurrentImplementations: '0' });
+    await expect(runSetup({ set: ['maxConcurrentImplementations=-2'] })).rejects.toThrow();
+    expect(getSetupKeys()).toContain('maxConcurrentImplementations');
+  });
+
   it('should handle languages setting with comma-separated values', async () => {
     await runSetup({ set: ['languages=python,rust,go'] });
 

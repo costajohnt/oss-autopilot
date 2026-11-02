@@ -212,3 +212,42 @@ describe('runVet', () => {
     await expect(runVet({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow('Issue not found');
   });
 });
+
+function isoFromNow(offsetMs: number): string {
+  const at = new Date(Date.now() + offsetMs);
+  return at.toISOString();
+}
+
+describe('runVet — work claims (#1856)', () => {
+  it('skips an issue a session is already implementing, names the session, and records no pick', async () => {
+    const workClaim = {
+      kind: 'implementation',
+      url: TEST_ISSUE_URL,
+      session: 'air/1200',
+      startedAt: isoFromNow(-30 * 60_000),
+      expiresAt: isoFromNow(3_600_000),
+      status: 'running',
+      worktree: '/work/wt/a',
+    };
+    mockGetState.mockReturnValue({ config: { githubUsername: 'costajohnt' }, workClaims: [workClaim] });
+    mockVetIssue.mockResolvedValue({
+      issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['Active maintainers'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+    mockGetRepoScore.mockReturnValue(undefined);
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.recommendation).toBe('skip');
+    expect(result.reasonsToSkip).toEqual([
+      'Already being implemented: implementation claimed in session air/1200 (30 min, running)',
+    ]);
+    expect(result.workClaim).toEqual(workClaim);
+    expect(result.reasonsToApprove).toEqual(['Active maintainers']);
+    expect(mockRecordPickSnapshots).not.toHaveBeenCalled();
+  });
+});

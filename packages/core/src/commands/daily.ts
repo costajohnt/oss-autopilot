@@ -32,6 +32,9 @@ import {
   shouldSuggestClose,
   selectClosedPRStatusCandidates,
   toClosedPRStatusUpdate,
+  activeWorkClaims,
+  finishedImplementations,
+  type WorkClaim,
   type ClosedPRStatusCandidate,
   type ClosedPRStatusUpdate,
   type MergedPRNotes,
@@ -163,6 +166,11 @@ export interface DailyCheckResult {
    * Raw excerpts here; `toDailyOutput` fences them.
    */
   reviewedPRs?: ReviewedPRFollowUp[];
+  /**
+   * Live work claims (#1856, #1852). Set only when at least one exists; see
+   * {@link DailyOutput.workClaims}.
+   */
+  workClaims?: WorkClaim[];
 }
 
 // ---------------------------------------------------------------------------
@@ -800,6 +808,9 @@ function generateDigestOutput(
   // Close candidates are usually dormant and auto-shelved, so count them over
   // all open PRs (digest.openPRs includes shelved), not activePRs.
   const closeSuggested = digest.openPRs.filter(shouldSuggestClose).length;
+  // Live claims (#1856): read, never written, so an expired claim stays in
+  // state until the next `work` write prunes it.
+  const workClaims = activeWorkClaims(stateManager.getState().workClaims ?? []);
   const actionMenu = computeActionMenu(
     actionableIssues,
     capacity,
@@ -812,6 +823,7 @@ function generateDigestOutput(
     mergedPRNotes.filter((entry) => entry.ackCoveredBy === undefined).length,
     // Other people's PRs: a menu item, never a capacity or attention count.
     reviewedPRs.length,
+    finishedImplementations(workClaims).length,
   );
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -846,6 +858,7 @@ function generateDigestOutput(
     failures,
     warnings,
     strategySummary,
+    ...(workClaims.length > 0 && { workClaims }),
   };
 }
 
@@ -1122,6 +1135,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     ...(result.closedPRStatusUpdates && { closedPRStatusUpdates: result.closedPRStatusUpdates }),
     ...(result.mergedPRNotes && { mergedPRNotes: result.mergedPRNotes.map((entry) => fenceMergedPRNotes(entry)) }),
     ...(result.reviewedPRs && { reviewedPRs: result.reviewedPRs.map((entry) => fenceReviewedPR(entry)) }),
+    ...(result.workClaims && { workClaims: result.workClaims }),
   };
 }
 

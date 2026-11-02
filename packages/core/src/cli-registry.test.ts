@@ -67,6 +67,21 @@ vi.mock('./formatters/json.js', () => ({
   ComplianceScoreOutputSchema: { name: 'ComplianceScoreOutputSchema' },
   FeaturesOutputSchema: { name: 'FeaturesOutputSchema' },
   RepoVetOutputSchema: { name: 'RepoVetOutputSchema' },
+  WorkClaimOutputSchema: { name: 'WorkClaimOutputSchema' },
+  WorkFinishOutputSchema: { name: 'WorkFinishOutputSchema' },
+  WorkReleaseOutputSchema: { name: 'WorkReleaseOutputSchema' },
+  WorkListOutputSchema: { name: 'WorkListOutputSchema' },
+}));
+
+const mockRunWorkClaim = vi.fn();
+const mockRunWorkFinish = vi.fn();
+const mockRunWorkRelease = vi.fn();
+const mockRunWorkList = vi.fn();
+vi.mock('./commands/work.js', () => ({
+  runWorkClaim: mockRunWorkClaim,
+  runWorkFinish: mockRunWorkFinish,
+  runWorkRelease: mockRunWorkRelease,
+  runWorkList: mockRunWorkList,
 }));
 
 // ─── Mock dynamic command-module imports ────────────────────────────────────
@@ -2738,5 +2753,175 @@ describe('overnight subcommands', () => {
 
     expect(mockOutputJsonError).toHaveBeenCalledWith('daily check failed', expect.anything());
     expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+// ─── work claim / finish / release / list (#1856, #1852) ────────────────────
+
+describe('work subcommands', () => {
+  const ISSUE = 'https://github.com/owner/repo/issues/7';
+  const claim = {
+    kind: 'implementation',
+    url: ISSUE,
+    session: 'air/1200',
+    startedAt: '2026-11-02T12:00:00.000Z',
+    expiresAt: '2026-11-03T12:00:00.000Z',
+    status: 'running',
+    worktree: '/work/wt/a',
+  };
+
+  it('work claim passes every option through and validates the JSON against WorkClaimOutputSchema', async () => {
+    const output = { claim, outcome: 'claimed', synced: true };
+    mockRunWorkClaim.mockResolvedValue(output);
+    const program = buildProgram('work');
+
+    await program.parseAsync([
+      'node',
+      'cli',
+      'work',
+      'claim',
+      ISSUE,
+      '--kind',
+      'implementation',
+      '--session',
+      'air/1200',
+      '--branch',
+      'fix/x',
+      '--worktree',
+      '/work/wt/a',
+      '--run-id',
+      'run-1',
+      '--ttl',
+      '2.5',
+      '--takeover',
+      '--json',
+    ]);
+
+    expect(mockRunWorkClaim).toHaveBeenCalledWith({
+      url: ISSUE,
+      kind: 'implementation',
+      session: 'air/1200',
+      branch: 'fix/x',
+      worktree: '/work/wt/a',
+      runId: 'run-1',
+      ttlHours: 2.5,
+      takeover: true,
+    });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkClaimOutputSchema' }, output);
+  });
+
+  it('work claim display names the outcome and says when the claim is local only', async () => {
+    const argv = ['node', 'cli', 'work', 'claim', ISSUE, '--kind', 'implementation', '--session', 'air/1200'];
+    const expires = '(expires 2026-11-03T12:00:00.000Z)';
+    mockRunWorkClaim.mockResolvedValue({ claim, outcome: 'renewed', synced: false, gistSyncWarning: 'not synced' });
+    let program = buildProgram('work');
+    await program.parseAsync(argv);
+
+    expect(mockRunWorkClaim).toHaveBeenCalledWith(expect.objectContaining({ takeover: undefined }));
+    expect(mockOutputJsonValidated).not.toHaveBeenCalled();
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Renewed implementation on ${ISSUE} for session air/1200 ${expires}`);
+    expect(consoleLogSpy).toHaveBeenCalledWith('Claimed locally only: other machines cannot see this claim yet.');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Warning: not synced');
+
+    consoleLogSpy.mockClear();
+    mockRunWorkClaim.mockResolvedValue({ claim, outcome: 'took-over', synced: true });
+    program = buildProgram('work');
+    await program.parseAsync(argv);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Took over implementation on ${ISSUE} for session air/1200 ${expires}`);
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+
+    mockRunWorkClaim.mockResolvedValue({ claim, outcome: 'claimed', synced: true });
+    program = buildProgram('work');
+    await program.parseAsync(argv);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Claimed implementation on ${ISSUE} for session air/1200 ${expires}`);
+  });
+
+  it('work claim routes a cap error through the JSON error envelope', async () => {
+    mockRunWorkClaim.mockRejectedValue(new Error('Implementation cap reached'));
+    const program = buildProgram('work');
+
+    await expect(
+      program.parseAsync([
+        'node',
+        'cli',
+        'work',
+        'claim',
+        ISSUE,
+        '--kind',
+        'implementation',
+        '--session',
+        's',
+        '--json',
+      ]),
+    ).rejects.toThrow('process.exit called');
+    expect(mockOutputJsonError).toHaveBeenCalledWith('Implementation cap reached', 'UNKNOWN');
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('work finish passes --session through and reports the finished claim or its absence', async () => {
+    mockRunWorkFinish.mockResolvedValue({ url: ISSUE, claim: { ...claim, status: 'finished' } });
+    let program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'finish', ISSUE, '--session', 'air/1200', '--json']);
+    expect(mockRunWorkFinish).toHaveBeenCalledWith({ url: ISSUE, session: 'air/1200' });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkFinishOutputSchema' }, expect.anything());
+
+    program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'finish', ISSUE]);
+    expect(mockRunWorkFinish).toHaveBeenCalledWith({ url: ISSUE, session: undefined });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Finished: ${ISSUE} (session air/1200)`);
+
+    mockRunWorkFinish.mockResolvedValue({ url: ISSUE, claim: null, gistSyncWarning: 'w' });
+    program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'finish', ISSUE]);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`No live claim on ${ISSUE}.`);
+    expect(consoleLogSpy).toHaveBeenCalledWith('Warning: w');
+  });
+
+  it('work release accepts a URL or --session/--kind and lists what was released', async () => {
+    mockRunWorkRelease.mockResolvedValue({ released: [ISSUE] });
+    let program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'release', ISSUE, '--json']);
+    expect(mockRunWorkRelease).toHaveBeenCalledWith({ url: ISSUE, session: undefined, kind: undefined });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkReleaseOutputSchema' }, { released: [ISSUE] });
+
+    program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'release', '--session', 'air/1200', '--kind', 'pr']);
+    expect(mockRunWorkRelease).toHaveBeenCalledWith({ url: undefined, session: 'air/1200', kind: 'pr' });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Released 1 claim(s):\n  ${ISSUE}`);
+
+    mockRunWorkRelease.mockResolvedValue({ released: [], gistSyncWarning: 'w' });
+    program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'release', ISSUE]);
+    expect(consoleLogSpy).toHaveBeenCalledWith('No live claims matched; nothing released.');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Warning: w');
+  });
+
+  it('work list prints each live claim with its location and the expired count', async () => {
+    const remote = { ...claim, url: 'https://github.com/owner/repo/issues/8', worktree: undefined, runId: 'run-9' };
+    mockRunWorkList.mockResolvedValue({ claims: [claim, remote], expiredCount: 1, now: '2026-11-02T12:00:00.000Z' });
+    let program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'list', '--json']);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'WorkListOutputSchema' }, expect.anything());
+
+    program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'list']);
+    expect(consoleLogSpy).toHaveBeenCalledWith('2 live work claim(s):');
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  [implementation/running] ${ISSUE} — session air/1200 /work/wt/a`);
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '  [implementation/running] https://github.com/owner/repo/issues/8 — session air/1200 run-9',
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('1 expired claim(s) will be pruned on the next write.');
+
+    const staleness = { phase: 'gist-staleness', operation: 'state refresh', message: 'Operating on cache state' };
+    mockRunWorkList.mockResolvedValue({
+      claims: [],
+      expiredCount: 0,
+      now: '2026-11-02T12:00:00.000Z',
+      warnings: [staleness],
+    });
+    program = buildProgram('work');
+    await program.parseAsync(['node', 'cli', 'work', 'list']);
+    expect(consoleLogSpy).toHaveBeenCalledWith('No live work claims.');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Warning (may be stale): Operating on cache state');
   });
 });

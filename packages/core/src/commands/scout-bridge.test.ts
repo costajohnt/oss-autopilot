@@ -637,3 +637,72 @@ describe('buildCandidateLinkedPR', () => {
     expect(result?.isStalled).toBe(false);
   });
 });
+
+function isoFromNow(offsetMs: number): string {
+  const at = new Date(Date.now() + offsetMs);
+  return at.toISOString();
+}
+
+describe('buildScoutState — work claims (#1856)', () => {
+  const EXPIRED_AT = isoFromNow(-1);
+  const STARTED_AT = isoFromNow(-60_000);
+  const claim = (overrides: Partial<import('../core/types.js').WorkClaim> = {}) => ({
+    kind: 'implementation' as const,
+    url: 'https://github.com/owner/repo/issues/42',
+    session: 'air/1200',
+    startedAt: STARTED_AT,
+    expiresAt: isoFromNow(3_600_000),
+    status: 'running' as const,
+    worktree: '/work/wt/a',
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+  });
+
+  it('forwards an issue under a live implementation claim to the skip list so search does not resurface it', () => {
+    const state = makeAgentState({ workClaims: [claim()], config: { skippedIssuesPath: undefined } });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    expect(buildScoutState().skippedIssues).toEqual([
+      {
+        url: 'https://github.com/owner/repo/issues/42',
+        repo: 'owner/repo',
+        number: 42,
+        title: '',
+        skippedAt: STARTED_AT,
+        reason: 'implementation in progress (session air/1200)',
+        permanent: true,
+      },
+    ]);
+  });
+
+  it('forwards finished claims too, but not expired ones or pr claims', () => {
+    const state = makeAgentState({
+      workClaims: [
+        claim({ status: 'finished' }),
+        claim({ url: 'https://github.com/owner/repo/issues/43', expiresAt: EXPIRED_AT }),
+        claim({ kind: 'pr', url: 'https://github.com/owner/repo/pull/44' }),
+      ],
+      config: { skippedIssuesPath: undefined },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    expect(buildScoutState().skippedIssues.map((s) => s.url)).toEqual(['https://github.com/owner/repo/issues/42']);
+  });
+
+  it('lists an issue that is both dismissed and claimed exactly once', () => {
+    const url = 'https://github.com/owner/repo/issues/42';
+    const state = makeAgentState({
+      workClaims: [claim()],
+      config: { skippedIssuesPath: undefined, dismissedIssues: { [url]: '2026-05-01T10:00:00.000Z' } },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const skipped = buildScoutState().skippedIssues;
+    expect(skipped.map((s) => s.url)).toEqual([url]);
+    expect(skipped[0].reason).toBe('dismissed');
+  });
+});

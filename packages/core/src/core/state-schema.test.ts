@@ -7,6 +7,7 @@ import {
   AgentStateSchema,
   AgentConfigSchema,
   FetchedPRSchema,
+  malformedWorkClaimCount,
   MergedPRSchema,
   ClosedPRSchema,
   ShelvedPRRefSchema,
@@ -334,6 +335,12 @@ describe('AgentConfigSchema', () => {
       expect(result.preferredOrgs).toEqual([]);
     });
 
+    it('defaults maxConcurrentImplementations to 2 and keeps an explicit value, including 0 (#1856)', () => {
+      expect(AgentConfigSchema.parse({}).maxConcurrentImplementations).toBe(2);
+      expect(AgentConfigSchema.parse({ maxConcurrentImplementations: 0 }).maxConcurrentImplementations).toBe(0);
+      expect(() => AgentConfigSchema.parse({ maxConcurrentImplementations: -1 })).toThrow();
+    });
+
     it('keeps dismissedPRHeads entries and defaults the key for states written before it existed (#1857)', () => {
       const prUrl = 'https://github.com/owner/repo/pull/42';
       const sha = 'a'.repeat(40);
@@ -569,5 +576,59 @@ describe('TrackedIssueSchema', () => {
         expect(result.data.vettingResult).toBeUndefined();
       }
     });
+  });
+});
+
+describe('WorkClaimSchema / state.workClaims (#1856, #1852)', () => {
+  const claim = {
+    kind: 'implementation',
+    url: 'https://github.com/owner/repo/issues/1',
+    session: 'air/20261102T1200',
+    startedAt: '2026-11-02T12:00:00.000Z',
+    expiresAt: '2026-11-03T12:00:00.000Z',
+    status: 'running',
+    worktree: '/work/wt/a',
+  };
+
+  it('defaults workClaims to [] for a state written before the key existed (migration)', () => {
+    expect(AgentStateSchema.parse({ version: 4 }).workClaims).toEqual([]);
+    const legacy = AgentStateSchema.parse({ version: 4, config: { githubUsername: 'u' }, searchSeen: [] });
+    expect(legacy.workClaims).toEqual([]);
+    expect(legacy.config.maxConcurrentImplementations).toBe(2);
+  });
+
+  it('round-trips a claim with its optional fields', () => {
+    const full = {
+      ...claim,
+      branch: 'fix/x',
+      runId: 'r1',
+      host: 'air',
+      machineId: 'm1',
+      finishedAt: '2026-11-02T13:00:00.000Z',
+    };
+    const parsed = AgentStateSchema.parse({ version: 4, workClaims: [full] });
+    expect(parsed.workClaims).toEqual([full]);
+  });
+
+  it('accepts a kind or status this release does not know, and extra fields, instead of rejecting the state (#1831)', () => {
+    const parsed = AgentStateSchema.parse({
+      version: 4,
+      workClaims: [{ ...claim, kind: 'review', status: 'paused', collectedBy: 'newer-client' }],
+    });
+    expect(parsed.workClaims[0]).toMatchObject({ kind: 'review', status: 'paused', collectedBy: 'newer-client' });
+  });
+
+  it('drops a claim it cannot read and keeps the rest, instead of rejecting the whole state (#1856)', () => {
+    const raw = { version: 4, workClaims: [{ url: claim.url }, claim, 'garbage', null] };
+    const parsed = AgentStateSchema.parse(raw);
+    expect(parsed.workClaims).toEqual([claim]);
+    expect(malformedWorkClaimCount(raw, parsed)).toBe(3);
+    expect(malformedWorkClaimCount({ version: 4 }, parsed)).toBe(0);
+    expect(malformedWorkClaimCount(null, parsed)).toBe(0);
+  });
+
+  it('survives serializeState unchanged (not pruned on save)', () => {
+    const state = AgentStateSchema.parse({ version: 4, workClaims: [claim] });
+    expect(JSON.parse(serializeState(state as never)).workClaims).toEqual([claim]);
   });
 });

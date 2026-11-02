@@ -130,6 +130,17 @@ export function getGistIdPath(): string {
 }
 
 /**
+ * Returns the path to the local machine id file (`~/.oss-autopilot/machine-id`).
+ *
+ * Holds a random UUID written once per machine (#1856). It is local only:
+ * the Gist carries `state.json`, never this file, so two machines never
+ * share an id.
+ */
+export function getMachineIdPath(): string {
+  return path.join(getDataDir(), 'machine-id');
+}
+
+/**
  * Returns the path to the local state cache file (`~/.oss-autopilot/state-cache.json`).
  *
  * A write-through cache of the Gist-hosted state, used as a fallback when

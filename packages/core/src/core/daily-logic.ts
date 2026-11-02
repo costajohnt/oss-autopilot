@@ -577,6 +577,7 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
  * @param closedPRStatusCount - Closed-unmerged PRs whose linked issue still needs a status update (#1863); non-zero adds a closed_pr_status item
  * @param mergedPRNotesCount - Recently merged PRs carrying maintainer notes the user has not answered (#1861); non-zero adds a merged_pr_notes item
  * @param reviewedPRCount - PRs the user reviewed where the author pushed or replied since (#1857); non-zero adds a review_follow_ups item
+ * @param finishedImplementationCount - Background implementations whose branch is ready to collect (#1856); non-zero adds a collect_implementations item
  * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
@@ -588,6 +589,7 @@ export function computeActionMenu(
   closedPRStatusCount = 0,
   mergedPRNotesCount = 0,
   reviewedPRCount = 0,
+  finishedImplementationCount = 0,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
@@ -695,6 +697,17 @@ export function computeActionMenu(
       label: `Review follow-ups (${reviewedPRCount})`,
       description:
         'PRs you reviewed where the author pushed or replied since; re-review the changes and answer their questions',
+    });
+  }
+
+  // A background implementation (#1856) reported its branch ready; collecting
+  // it enters the draft-first workflow at the review step. Running ones are
+  // shown in the menu header from `workClaims`, not as an item.
+  if (finishedImplementationCount > 0) {
+    items.push({
+      key: 'collect_implementations',
+      label: `Collect finished implementations (${finishedImplementationCount})`,
+      description: 'Review a branch a background implementation prepared, then push and open its PR',
     });
   }
 

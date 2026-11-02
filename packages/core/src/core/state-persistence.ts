@@ -7,7 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
-import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-schema.js';
+import { AgentStateSchema, NEWER_WRITER_HINT, malformedWorkClaimCount, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
 import { errorMessage, ConcurrencyError } from './errors.js';
@@ -407,6 +407,18 @@ function preserveRejectedStateFile(statePath: string): string | null {
 }
 
 /**
+ * Report work claims the lenient parse dropped from `raw` (#1856). Every path
+ * that turns stored JSON into an `AgentState` (the state file, a Gist copy
+ * at bootstrap or refresh, the local cache in degraded mode) calls this, so
+ * a claim another machine wrote in a shape this release cannot read is never
+ * dropped silently. `source` names the copy in the warning.
+ */
+export function warnMalformedWorkClaims(raw: unknown, state: AgentState, source: string): void {
+  const malformed = malformedWorkClaimCount(raw, state);
+  if (malformed > 0) warn(MODULE, `${source} has ${malformed} unreadable work claim(s); they were dropped`);
+}
+
+/**
  * Load state from file, or create initial state if none exists.
  * If the main state file is corrupted, attempts to restore from the most recent backup.
  * Performs migration from legacy ./data/ location if needed.
@@ -485,6 +497,7 @@ export function loadState(): LoadStateResult {
       }
 
       const state = parsed.data;
+      warnMalformedWorkClaims(raw, state, 'State file');
 
       // `config.dismissedIssues` keys are issue AND PR URLs: `dismiss` accepts
       // a merged PR's URL for the merged-PR notes nudge (#1861). The former

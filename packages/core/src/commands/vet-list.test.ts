@@ -8,6 +8,10 @@ import type { VetOutput } from '../formatters/json.js';
 const mockVetIssue = vi.fn();
 const mockRecordPickSnapshots = vi.fn();
 const mockVerifyIssuesBatch = vi.hoisted(() => vi.fn());
+/** State the mocked manager serves; tests may add `workClaims` (#1856). */
+const mockState = vi.hoisted(() => ({
+  value: { config: { githubUsername: 'costajohnt' } } as Record<string, unknown>,
+}));
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -29,7 +33,7 @@ vi.mock('../core/index.js', async () => {
     verifyIssuesBatch: mockVerifyIssuesBatch,
     getStateManager: () => ({
       getRepoScore: () => {},
-      getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+      getState: () => mockState.value,
       recordPickSnapshots: mockRecordPickSnapshots,
       isGistMode: () => false,
       reloadIfChanged: () => false,
@@ -305,6 +309,12 @@ describe('extractSkipReason', () => {
   });
 });
 
+/** An ISO timestamp `offsetMs` from now (#1856 claim fixtures). */
+function isoFromNow(offsetMs: number): string {
+  const at = new Date(Date.now() + offsetMs);
+  return at.toISOString();
+}
+
 describe('runVetList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -415,6 +425,67 @@ describe('runVetList', () => {
     expect(mockRecordPickSnapshots.mock.calls[0][0]).toEqual([
       expect.objectContaining({ issueUrl: 'https://github.com/other/lib/issues/2', source: 'vet-list' }),
     ]);
+  });
+
+  it('files an issue under a live implementation claim as claimed without verifying or grading it (#1856)', async () => {
+    const claimedUrl = 'https://github.com/owner/repo/issues/1';
+    const freeUrl = 'https://github.com/other/lib/issues/2';
+    mockState.value = {
+      config: { githubUsername: 'costajohnt' },
+      workClaims: [
+        {
+          kind: 'implementation',
+          url: claimedUrl,
+          session: 'air/1200',
+          startedAt: isoFromNow(-5 * 60_000),
+          expiresAt: isoFromNow(3_600_000),
+          status: 'running',
+          worktree: '/work/wt/a',
+        },
+      ],
+    };
+    mockDetectIssueList.mockReturnValue({
+      path: '/work/issues.md',
+      source: 'configured',
+      availableCount: 2,
+      completedCount: 0,
+      blockedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        { repo: 'owner/repo', number: 1, title: 'Claimed one', tier: 'Pursue', url: claimedUrl },
+        { repo: 'other/lib', number: 2, title: 'Free one', tier: 'Maybe', url: freeUrl },
+      ],
+      completed: [],
+      blocked: [],
+      availableCount: 2,
+      completedCount: 0,
+      blockedCount: 0,
+    });
+    mockVetIssue.mockResolvedValue({
+      issue: { repo: 'other/lib', number: 2, title: 'Free one', url: freeUrl, labels: [] },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    try {
+      const result = await runVetList({ concurrency: 1 });
+
+      expect(result.results[0]).toMatchObject({
+        listStatus: 'claimed',
+        recommendation: 'skip',
+        reasonsToSkip: ['Already being implemented: implementation claimed in session air/1200 (5 min, running)'],
+        workClaim: { url: claimedUrl, session: 'air/1200' },
+      });
+      expect(result.results[1].listStatus).toBe('still_available');
+      expect(mockVetIssue).toHaveBeenCalledTimes(1);
+      expect(mockVetIssue).toHaveBeenCalledWith(freeUrl);
+    } finally {
+      mockState.value = { config: { githubUsername: 'costajohnt' } };
+    }
   });
 
   it('re-vets blocked items even when nothing is available (#1730)', async () => {
