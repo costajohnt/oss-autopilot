@@ -34,6 +34,10 @@
       "purpose": "Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs"
     },
     {
+      "file": "workflows/closed-pr-status-update.md",
+      "purpose": "Draft a status comment on the linked issue after an own PR closed unmerged (#1863)"
+    },
+    {
       "file": "workflows/plan-review.md",
       "purpose": "Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review)"
     },

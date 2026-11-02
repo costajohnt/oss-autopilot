@@ -109,6 +109,13 @@ export {
   printDigest,
 } from './daily-logic.js';
 export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
+export {
+  selectClosedPRStatusCandidates,
+  toClosedPRStatusUpdate,
+  type ClosedPRStatusUpdate,
+  type ClosedPRStatusCandidate,
+  type IssueLinkedPR,
+} from './closed-pr-status.js';
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export {
   classifyLinkedPR,

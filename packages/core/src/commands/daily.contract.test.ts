@@ -143,6 +143,39 @@ describe('daily --json contract', () => {
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.degraded.json');
   });
 
+  it('closedPRStatusUpdates passes through full and compact output and validates (#1863)', () => {
+    const updates = [
+      {
+        prUrl: 'https://github.com/octocat/spoon-knife/pull/41',
+        issueUrl: 'https://github.com/octocat/spoon-knife/issues/40',
+        closedAt: '2026-06-02T00:00:00Z',
+      },
+    ];
+    const result = toDailyOutput(makeFixture({ closedPRStatusUpdates: updates }));
+    expectSchemaValid(result);
+    expect(result.closedPRStatusUpdates).toEqual(updates);
+    const compact = toCompactDailyOutput(result);
+    expect(compact.closedPRStatusUpdates).toEqual(updates);
+    expect(CompactDailyOutputSchema.parse(compact).closedPRStatusUpdates).toEqual(updates);
+    // Runs with nothing to update carry no key at all, so goldens are unchanged.
+    expect('closedPRStatusUpdates' in toDailyOutput(makeFixture())).toBe(false);
+  });
+
+  it('recentlyClosedPRs keep their issueUrl through schema validation (#1863)', () => {
+    const closed = {
+      url: 'https://github.com/octocat/spoon-knife/pull/41',
+      repo: 'octocat/spoon-knife',
+      number: 41,
+      title: 'Closed attempt',
+      closedAt: '2026-06-02T00:00:00Z',
+      issueUrl: 'https://github.com/octocat/spoon-knife/issues/40',
+    };
+    const fixture = makeFixture();
+    fixture.digest.recentlyClosedPRs = [closed];
+    const parsed = DailyOutputSchema.parse(toDailyOutput(fixture));
+    expect(parsed.digest.recentlyClosedPRs[0].issueUrl).toBe(closed.issueUrl);
+  });
+
   it('merge-free output carries no listUpdates key (#1463 — pins golden stability)', () => {
     const result = toDailyOutput(makeFixture());
     expect('listUpdates' in result).toBe(false);

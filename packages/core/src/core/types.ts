@@ -223,6 +223,14 @@ export interface FetchedPR {
   repo: string; // "owner/repo"
   number: number;
   title: string;
+  /**
+   * Issue the PR closes, parsed from the first closing keyword in its body
+   * (same `closingIssueUrl` the merged/closed ledger uses, #1824). Lets the
+   * daily run tell a closed PR that was superseded by a still-open PR on the
+   * same issue from one whose work really ended (#1863). Undefined when the
+   * body has no closing keyword.
+   */
+  issueUrl?: string;
 
   /** Computed by `determineStatus()` based on the fields below. */
   status: FetchedPRStatus;

@@ -113,3 +113,15 @@ describe('assembleFetchedPR incomplete checklist', () => {
     expect(pr.displayDescription).toContain('(note: checklist 1/2)');
   });
 });
+
+describe('assembleFetchedPR issue link (#1863)', () => {
+  it('parses the closing keyword in the body into issueUrl', async () => {
+    const pr = await assembleFetchedPR(signals({ body: 'Fixes #12\n\nDetails.' }), CONFIG, undefined);
+    expect(pr.issueUrl).toBe('https://github.com/o/r/issues/12');
+  });
+
+  it('leaves issueUrl undefined when the body has no closing keyword', async () => {
+    const pr = await assembleFetchedPR(signals({ body: 'See #12 for context.' }), CONFIG, undefined);
+    expect(pr.issueUrl).toBeUndefined();
+  });
+});

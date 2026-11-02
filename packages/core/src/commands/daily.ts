@@ -28,6 +28,9 @@ import {
   formatSummary,
   summarizeAttentionBuckets,
   shouldSuggestClose,
+  selectClosedPRStatusCandidates,
+  toClosedPRStatusUpdate,
+  type ClosedPRStatusUpdate,
   type AttentionSummary,
   type DailyDigest,
   type FetchedPR,
@@ -181,6 +184,12 @@ export interface DailyCheckResult {
    * absent, so goldens and merge-free runs are unchanged.
    */
   pendingLearnings?: PendingLearnings;
+  /**
+   * Closed-unmerged PRs whose linked issue still needs a status update from
+   * the user (#1863). Set only when at least one exists; see
+   * {@link DailyOutput.closedPRStatusUpdates}.
+   */
+  closedPRStatusUpdates?: ClosedPRStatusUpdate[];
 }
 
 // ---------------------------------------------------------------------------
@@ -677,6 +686,7 @@ function generateDigestOutput(
   warnings: DailyWarning[],
   previousLastDigestAt?: string,
   unextractedMergeCount?: number,
+  closedPRStatusCount?: number,
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
@@ -745,6 +755,7 @@ function generateDigestOutput(
     filteredCommentedIssues,
     { ...attention, closeSuggested },
     unextractedMergeCount,
+    closedPRStatusCount,
   );
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -780,6 +791,73 @@ function generateDigestOutput(
     warnings,
     strategySummary,
   };
+}
+
+/**
+ * Phase 3.6: Closed-PR status updates (#1863).
+ *
+ * A PR of the user's that closed without merge usually leaves its write-up
+ * in the PR thread while the linked issue still shows their claim as the
+ * latest word. For each such PR whose issue link survives the supersede
+ * check (no open, recently merged, or ledger-merged PR of the user's on the
+ * same issue), release the local claim and, unless the user has already
+ * commented on the issue since the close, hand the pair to the action menu
+ * so the workflow can draft a status comment (never auto-posted).
+ *
+ * "Only once": there is no posted-stamp in state. The nudge disappears when
+ * the user's comment lands on the issue (checked here against the close
+ * time) and at the latest when the PR leaves the 7-day recently-closed
+ * window that `fetchRecentlyClosedPRs` applies.
+ *
+ * Non-fatal: failures land in `warnings[]` under `closed-pr-status`, except
+ * rate-limit/auth errors, which propagate like every other phase's.
+ */
+async function prepareClosedPRStatusUpdates(
+  token: string,
+  recentlyClosedPRs: ClosedPR[],
+  openPRs: FetchedPR[],
+  recentlyMergedPRs: MergedPR[],
+  warnings: DailyWarning[],
+): Promise<ClosedPRStatusUpdate[]> {
+  const stateManager = getStateManager();
+  const candidates = selectClosedPRStatusCandidates(recentlyClosedPRs, [
+    ...openPRs,
+    ...recentlyMergedPRs,
+    ...stateManager.getMergedPRs(),
+  ]);
+  if (candidates.length === 0) return [];
+
+  // Release claims before the comment check: the PR is closed per GitHub
+  // whether or not the issue has been told, so the issue must stop counting
+  // toward capacity either way. releaseIssue is a no-op when nothing is
+  // tracked, so re-seeing the PR on later runs is safe.
+  try {
+    batchOnFreshBaseline(stateManager, () => {
+      for (const pr of candidates) {
+        stateManager.releaseIssue(pr.issueUrl);
+      }
+    });
+  } catch (error) {
+    recordWarning(warnings, 'closed-pr-status', 'release issue claims', error);
+  }
+
+  const issueMonitor = new IssueConversationMonitor(token);
+  const updates = await Promise.all(
+    candidates.map(async (pr) => {
+      let hasCommented = false;
+      try {
+        hasCommented = await issueMonitor.hasUserCommentSince(pr.issueUrl, pr.closedAt);
+      } catch (error) {
+        if (isRateLimitOrAuthError(error)) throw error;
+        // Unknown whether the user already posted: keep the nudge (the
+        // workflow shows the issue thread before anything is drafted) and
+        // say why rather than silently dropping it.
+        recordWarning(warnings, 'closed-pr-status', `check comments on ${pr.issueUrl}`, error);
+      }
+      return hasCommented ? undefined : toClosedPRStatusUpdate(pr);
+    }),
+  );
+  return updates.filter((update) => update !== undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -842,6 +920,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     // no `listUpdates` key at all — serialized output and goldens unchanged.
     ...(result.listUpdates && { listUpdates: result.listUpdates }),
     ...(result.pendingLearnings && { pendingLearnings: result.pendingLearnings }),
+    ...(result.closedPRStatusUpdates && { closedPRStatusUpdates: result.closedPRStatusUpdates }),
   };
 }
 
@@ -1053,6 +1132,21 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // it persisted nothing. Cross-tool sharing happens through buildScoutState
   // reading AgentState, not through pushing events at scout.
 
+  // Phase 3.6: closed-PR status nudges + claim release (#1863).
+  let closedPRStatusUpdates: ClosedPRStatusUpdate[] = [];
+  try {
+    closedPRStatusUpdates = await prepareClosedPRStatusUpdates(
+      token,
+      recentlyClosedPRs,
+      prs,
+      recentlyMergedPRs,
+      warnings,
+    );
+  } catch (error) {
+    if (isRateLimitOrAuthError(error)) throw error;
+    recordWarning(warnings, 'closed-pr-status', 'prepare closed-PR status updates', error);
+  }
+
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).
   const previousLastDigestAt = getStateManager().getState().lastDigestAt;
@@ -1076,12 +1170,16 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     warnings,
     previousLastDigestAt,
     unextractedMergeCount,
+    closedPRStatusUpdates.length,
   );
   if (listUpdates) {
     result.listUpdates = listUpdates;
   }
   if (pendingLearnings) {
     result.pendingLearnings = pendingLearnings;
+  }
+  if (closedPRStatusUpdates.length > 0) {
+    result.closedPRStatusUpdates = closedPRStatusUpdates;
   }
 
   // Checkpoint: push state to Gist if in Gist mode.

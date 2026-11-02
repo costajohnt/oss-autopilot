@@ -137,6 +137,43 @@ describe('IssueConversationMonitor', () => {
     };
   });
 
+  describe('hasUserCommentSince (#1863)', () => {
+    const issueUrl = 'https://github.com/owner/repo/issues/5';
+    const since = '2026-06-02T00:00:00Z';
+
+    it('asks GitHub for comments since the close and matches the user case-insensitively', async () => {
+      mockOctokitInstance.issues.listComments.mockResolvedValue({
+        data: [makeComment('TestUser', 'Closing this out', '2026-06-03T00:00:00Z')],
+      });
+      const monitor = new IssueConversationMonitor('token');
+      await expect(monitor.hasUserCommentSince(issueUrl, since)).resolves.toBe(true);
+      expect(mockOctokitInstance.issues.listComments).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: 'owner', repo: 'repo', issue_number: 5, since }),
+      );
+    });
+
+    it('ignores comments by others and user comments edited after the close but created before it', async () => {
+      mockOctokitInstance.issues.listComments.mockResolvedValue({
+        data: [
+          makeComment('maintainer', 'Any update?', '2026-06-03T00:00:00Z'),
+          // GitHub's `since` keys on updated_at, so an older edited comment comes back.
+          makeComment('testuser', 'I will take this', '2026-05-01T00:00:00Z'),
+        ],
+      });
+      const monitor = new IssueConversationMonitor('token');
+      await expect(monitor.hasUserCommentSince(issueUrl, since)).resolves.toBe(false);
+    });
+
+    it('rejects a non-issue URL and a missing username', async () => {
+      const monitor = new IssueConversationMonitor('token');
+      await expect(monitor.hasUserCommentSince('https://example.com/not-github', since)).rejects.toThrow(
+        'Invalid issue URL',
+      );
+      mockState.config.githubUsername = '';
+      await expect(monitor.hasUserCommentSince(issueUrl, since)).rejects.toThrow('No GitHub username');
+    });
+  });
+
   it('should detect maintainer response after user comment', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {

@@ -29,6 +29,8 @@ const mockGenerateDigest = vi.fn();
 
 // IssueConversationMonitor method mocks
 const mockFetchCommentedIssues = vi.fn();
+const mockHasUserCommentSince = vi.fn<(issueUrl: string, since: string) => Promise<boolean>>();
+const mockReleaseIssue = vi.fn<(issueUrl: string) => boolean>(() => false);
 
 // StateManager method mocks
 const mockGetState = vi.fn();
@@ -71,6 +73,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
 
   class MockIssueConversationMonitor {
     fetchCommentedIssues = mockFetchCommentedIssues;
+    hasUserCommentSince = mockHasUserCommentSince;
   }
 
   return {
@@ -87,6 +90,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       addClosedPRs: mockAddClosedPRs,
       getMergedPRs: mockGetMergedPRs,
       getClosedPRs: vi.fn(() => []),
+      releaseIssue: mockReleaseIssue,
       renameRepo: mockRenameRepo,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
@@ -247,6 +251,8 @@ beforeEach(() => {
 
   // Default issue conversation response (no issues)
   mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
+  mockHasUserCommentSince.mockResolvedValue(false);
+  mockReleaseIssue.mockReturnValue(false);
 
   // Default state manager side-effect mocks
   mockIsPRShelved.mockReturnValue(false);
@@ -1465,5 +1471,95 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
 
     expect(result.listUpdates).toBeUndefined();
     expect(result.warnings).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeDailyCheck() — closed-PR status updates (#1863)
+// ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — closed-PR status updates (#1863)', () => {
+  const issueUrl = 'https://github.com/org/repo/issues/5';
+  const closedPR = {
+    url: 'https://github.com/org/repo/pull/8',
+    repo: 'org/repo',
+    number: 8,
+    title: 'Closed attempt',
+    closedAt: '2026-01-24T13:00:00Z',
+    issueUrl,
+  };
+
+  it('lists the PR, adds the menu item, and releases the claim when the issue has not heard back', async () => {
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+    mockHasUserCommentSince.mockResolvedValue(false);
+    mockReleaseIssue.mockReturnValue(true);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.closedPRStatusUpdates).toEqual([{ issueUrl, prUrl: closedPR.url, closedAt: closedPR.closedAt }]);
+    expect(mockHasUserCommentSince).toHaveBeenCalledWith(issueUrl, closedPR.closedAt);
+    expect(mockReleaseIssue).toHaveBeenCalledWith(issueUrl);
+    const item = result.actionMenu.items.find((i) => i.key === 'closed_pr_status');
+    expect(item?.label).toBe('Post status update on linked issue (1)');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('still releases the claim but asks only once: no item after the user commented on the issue', async () => {
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+    mockHasUserCommentSince.mockResolvedValue(true);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockReleaseIssue).toHaveBeenCalledWith(issueUrl);
+    expect(result.closedPRStatusUpdates).toBeUndefined();
+    expect(result.actionMenu.items.find((i) => i.key === 'closed_pr_status')).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('closedPRStatusUpdates');
+  });
+
+  it('skips a PR superseded by an open PR on the same issue without touching the claim', async () => {
+    const successor = makePR({ repo: 'org/repo', number: 9, status: 'waiting_on_maintainer', issueUrl });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [successor], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([successor]));
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockHasUserCommentSince).not.toHaveBeenCalled();
+    expect(mockReleaseIssue).not.toHaveBeenCalled();
+    expect(result.closedPRStatusUpdates).toBeUndefined();
+  });
+
+  it('skips a PR superseded by a merged-ledger PR on the same issue', async () => {
+    mockGetMergedPRs.mockReturnValue([
+      { url: 'https://github.com/org/repo/pull/7', title: 'Landed', mergedAt: '2026-01-01T00:00:00Z', issueUrl },
+    ]);
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockReleaseIssue).not.toHaveBeenCalled();
+    expect(result.closedPRStatusUpdates).toBeUndefined();
+  });
+
+  it('keeps the nudge and records a warning when the comment check fails', async () => {
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+    mockHasUserCommentSince.mockRejectedValue(new Error('boom'));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.closedPRStatusUpdates).toHaveLength(1);
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ phase: 'closed-pr-status', operation: `check comments on ${issueUrl}` }),
+    );
+  });
+
+  it('does nothing for closed PRs without a parsed issue link', async () => {
+    mockFetchRecentlyClosedPRs.mockResolvedValue([{ ...closedPR, issueUrl: undefined }]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockHasUserCommentSince).not.toHaveBeenCalled();
+    expect(mockReleaseIssue).not.toHaveBeenCalled();
+    expect(result.closedPRStatusUpdates).toBeUndefined();
   });
 });

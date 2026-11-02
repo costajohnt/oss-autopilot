@@ -1014,6 +1014,24 @@ export class StateManager {
     this.autoSave();
   }
 
+  /**
+   * Release a claim: drop the issue from `activeIssues` so it no longer
+   * counts toward capacity or reads as in progress (#1863). Called by the
+   * daily run when the user's PR for the issue closed without merge.
+   * @param issueUrl - URL of the issue to release
+   * @returns true if an entry was removed, false if the issue was not tracked
+   */
+  releaseIssue(issueUrl: string): boolean {
+    const index = this.state.activeIssues.findIndex((i) => i.url === issueUrl);
+    if (index === -1) {
+      return false;
+    }
+    const [released] = this.state.activeIssues.splice(index, 1);
+    debug(MODULE, `Released issue claim: ${released.repo}#${released.number}`);
+    this.autoSave();
+    return true;
+  }
+
   // === Trusted Projects ===
 
   /**

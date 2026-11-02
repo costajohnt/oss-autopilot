@@ -74,6 +74,49 @@ describe('StateManager', () => {
       const state = stateManager.getState();
       expect(state.activeIssues).toHaveLength(1);
     });
+
+    it('releaseIssue removes the claim and reports whether anything was removed (#1863)', () => {
+      const url = 'https://github.com/owner/repo/issues/2';
+      stateManager.addIssue({
+        url,
+        id: 2,
+        repo: 'owner/repo',
+        number: 2,
+        title: 'Claimed issue',
+        status: 'claimed',
+        labels: [],
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        vetted: false,
+      });
+      expect(stateManager.releaseIssue(url)).toBe(true);
+      expect(stateManager.getState().activeIssues).toHaveLength(0);
+      // Idempotent: re-seeing the closed PR on a later run is a no-op.
+      expect(stateManager.releaseIssue(url)).toBe(false);
+    });
+
+    it('releaseIssue leaves other claims untouched', () => {
+      const keep = 'https://github.com/owner/repo/issues/3';
+      for (const [id, url] of [
+        [3, keep],
+        [4, 'https://github.com/owner/repo/issues/4'],
+      ] as const) {
+        stateManager.addIssue({
+          id,
+          url,
+          repo: 'owner/repo',
+          number: id,
+          title: `Issue ${id}`,
+          status: 'claimed',
+          labels: [],
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          vetted: false,
+        });
+      }
+      expect(stateManager.releaseIssue('https://github.com/owner/repo/issues/4')).toBe(true);
+      expect(stateManager.getState().activeIssues.map((i) => i.url)).toEqual([keep]);
+    });
   });
 
   describe('Statistics', () => {
