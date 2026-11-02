@@ -701,7 +701,7 @@ export const WorkClaimSchema = z
     branch: z.string().optional(),
     /** Absolute path of the checkout the implementation runs in; two running implementations on one host never share one. */
     worktree: z.string().optional(),
-    /** Hostname the `worktree` path is on: the same path on two machines is two checkouts. */
+    /** Short hostname (`hostname -s`) the `worktree` path is on: the same path on two machines is two checkouts. */
     host: z.string().optional(),
     /** Remote worker run id, when the implementation runs off-machine. */
     runId: z.string().optional(),

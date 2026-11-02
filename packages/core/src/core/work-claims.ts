@@ -16,6 +16,7 @@
  * `expiresAt`.
  */
 
+import * as fs from 'node:fs';
 import path from 'node:path';
 import type { WorkClaim, WorkClaimKind } from './state-schema.js';
 import { issueRefKey } from './urls.js';
@@ -119,10 +120,42 @@ function isSameHost(a: string | undefined, b: string | undefined): boolean {
   return a === undefined || b === undefined || a === b;
 }
 
+/** The canonical path of a directory on this machine (symlinks resolved), or null when it does not exist here. */
+function localRealPath(normalized: string): string | null {
+  try {
+    return fs.realpathSync(normalized);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `claim`'s checkout is the directory `wanted` (already normalized;
+ * `wantedReal` is its canonical path when it exists on this machine). Two
+ * paths that both exist here are compared canonically whatever `host` says:
+ * a renamed machine (`air` to `air-2`) or a symlinked path must not let a
+ * second implementation into a checkout that is visibly in use. Otherwise
+ * the stored path is compared on the same host only.
+ */
+function isSameCheckout(
+  claim: Pick<WorkClaim, 'worktree' | 'host'>,
+  wanted: string,
+  wantedReal: string | null,
+  host: string | undefined,
+): boolean {
+  if (!claim.worktree) return false;
+  const theirs = normalizeWorktreePath(claim.worktree);
+  const theirsReal = wantedReal === null ? null : localRealPath(theirs);
+  if (theirsReal !== null) return theirsReal === wantedReal;
+  return isSameHost(claim.host, host) && theirs === wanted;
+}
+
 /**
  * Check whether an implementation claim may start (#1856): at most
  * `maxConcurrentImplementations` implementations run at once (0 = no cap),
- * and no two live implementations on the same host share a checkout. A claim
+ * and no two live implementations share a checkout (the same path on the
+ * same host, or the same directory on this machine; see
+ * {@link isSameCheckout}). A claim
  * already held on the same item is being renewed or taken over, so it never
  * blocks itself. Returns null when the claim may proceed.
  */
@@ -139,10 +172,8 @@ export function checkImplementationClaim(
 
   if (next.worktree !== undefined) {
     const wanted = normalizeWorktreePath(next.worktree);
-    const sharing = others.filter(
-      (claim) =>
-        claim.worktree && isSameHost(claim.host, next.host) && normalizeWorktreePath(claim.worktree) === wanted,
-    );
+    const wantedReal = localRealPath(wanted);
+    const sharing = others.filter((claim) => isSameCheckout(claim, wanted, wantedReal, next.host));
     if (sharing.length > 0) {
       const holder = sharing[0];
       return {

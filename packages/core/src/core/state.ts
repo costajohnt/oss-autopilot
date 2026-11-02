@@ -22,7 +22,7 @@ import {
   SearchRotation,
   WorkClaim,
 } from './types.js';
-import { AgentStateSchema, malformedWorkClaimCount } from './state-schema.js';
+import { AgentStateSchema } from './state-schema.js';
 import { activeWorkClaims, finishWorkClaim, workClaimKey } from './work-claims.js';
 import { serializeState } from './state-prune.js';
 import {
@@ -31,6 +31,7 @@ import {
   reloadStateIfChanged,
   createFreshState,
   atomicWriteFileSync,
+  warnMalformedWorkClaims,
   type LoadRecoveryInfo,
 } from './state-persistence.js';
 import * as repoScoring from './repo-score-manager.js';
@@ -720,7 +721,7 @@ export class StateManager {
         };
         return false;
       }
-      this.warnMalformedWorkClaims(rawState);
+      warnMalformedWorkClaims(rawState, this.state, 'Gist state');
       // Derived bookkeeping on the fresh copy, not a user change: it must
       // not count as un-pushed, so the flag is reset after it runs.
       this.tryReconcilePRCounts();
@@ -1385,12 +1386,6 @@ export class StateManager {
   /** The claims still live at `nowMs`, in stored order. */
   getActiveWorkClaims(nowMs = Date.now()): WorkClaim[] {
     return activeWorkClaims(this.getWorkClaims(), nowMs);
-  }
-
-  /** Report claims the lenient parse dropped from a refreshed Gist copy (#1856); the local loader does the same. */
-  private warnMalformedWorkClaims(rawState: unknown): void {
-    const malformed = malformedWorkClaimCount(rawState, this.state);
-    if (malformed > 0) warn(MODULE, `Gist state has ${malformed} unreadable work claim(s); they were dropped`);
   }
 
   /**

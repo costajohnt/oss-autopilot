@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { getStatePath, getStateManager, resetStateManager } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { runWorkClaim, runWorkFinish, runWorkList, runWorkRelease } from './work.js';
@@ -24,6 +25,8 @@ const ISSUE_C = 'https://github.com/owner/repo/issues/3';
 const PR_URL = 'https://github.com/owner/repo/pull/9';
 const SESSION = 'air/20261102T120000-1a2b';
 const OTHER_SESSION = 'mbp/20261102T120500-9f9f';
+/** What `work claim` stores as `host`: the short hostname, as `hostname -s` prints it. */
+const SHORT_HOST = os.hostname().split('.', 1)[0];
 
 function freshState(): void {
   resetStateManager();
@@ -87,7 +90,7 @@ describe('work claim / finish / release / list: lifecycle, expiry and the cap (r
       status: 'running',
       branch: 'fix/thing',
       worktree: '/work/wt/a',
-      host: os.hostname(),
+      host: SHORT_HOST,
       startedAt: '2026-11-02T12:00:00.000Z',
       expiresAt: '2026-11-03T12:00:00.000Z',
     });
@@ -267,7 +270,29 @@ describe('work claim / finish / release / list: hosts, sessions and foreign clai
     reload();
 
     await expect(claimImpl(ISSUE_B, '/work/wt/a')).resolves.toMatchObject({ outcome: 'claimed' });
-    expect(readDisk().workClaims?.map((c) => c.host)).toEqual(['other-machine', os.hostname()]);
+    expect(readDisk().workClaims?.map((c) => c.host)).toEqual(['other-machine', SHORT_HOST]);
+  });
+
+  it('stores the short hostname (`hostname -s`): a domain suffix changes with the network, the machine does not', async () => {
+    vi.spyOn(os, 'hostname').mockReturnValue('air.local');
+    const claimed = await claimImpl(ISSUE_A, '/work/wt/a');
+    expect(claimed.claim.host).toBe('air');
+    expect(readDisk().workClaims?.[0]?.host).toBe('air');
+  });
+
+  it('a renamed host (air to air-2) is still caught when the claimed checkout exists on this machine', async () => {
+    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-claim-'));
+    try {
+      await claimImpl(ISSUE_A, checkout);
+      const state = JSON.parse(fs.readFileSync(getStatePath(), 'utf8')) as { workClaims: DiskClaim[] };
+      state.workClaims[0].host = `${SHORT_HOST}-2`;
+      fs.writeFileSync(getStatePath(), JSON.stringify(state));
+      reload();
+
+      await expect(claimImpl(ISSUE_B, checkout)).rejects.toThrow(/already hosts an implementation/);
+    } finally {
+      fs.rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   it('re-claiming the same item renews it in place (outcome: renewed) and keeps the order of others', async () => {

@@ -156,12 +156,21 @@ interface ClaimInput {
   session: string;
   branch?: string;
   worktree?: string;
-  /** Hostname of this machine, set with `worktree` so the same path on another machine is not a conflict. */
+  /** Short hostname of this machine (`hostname -s`), set with `worktree` so the same path on another machine is not a conflict. */
   host?: string;
   runId?: string;
   /** Explicit `--ttl`; the default depends on the kind and on whether a finished claim is being renewed. */
   ttlHours?: number;
   takeover: boolean;
+}
+
+/**
+ * This machine's short hostname, as `hostname -s` prints it: `os.hostname()`
+ * may carry a domain (`air.local`, `air.example.com`) that differs between
+ * networks, and the workflow docs compare a claim's `host` to `hostname -s`.
+ */
+function shortHostname(): string {
+  return os.hostname().split('.', 1)[0];
 }
 
 function validateClaimInput(options: WorkClaimOptions): ClaimInput {
@@ -178,7 +187,7 @@ function validateClaimInput(options: WorkClaimOptions): ClaimInput {
       'An implementation claim needs --worktree (local checkout) or --run-id (remote worker run)',
     );
   }
-  const host = worktree === undefined ? undefined : os.hostname();
+  const host = worktree === undefined ? undefined : shortHostname();
   const ttlHours = validateTtl(options.ttlHours);
   const isTakeover = options.takeover === true;
   return { kind, session, branch, worktree, host, runId, ttlHours, url: options.url, takeover: isTakeover };

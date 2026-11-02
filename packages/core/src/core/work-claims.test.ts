@@ -3,7 +3,10 @@
  * cap, one implementation per checkout, and how a claim shows up in vetting.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished } from 'vitest';
+import * as fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { WorkClaim } from './state-schema.js';
 import {
   activeWorkClaims,
@@ -162,6 +165,24 @@ describe('checkImplementationClaim', () => {
     expect(checkImplementationClaim(onAir, { ...next, host: 'air' }, 5, NOW)?.reason).toBe('worktree');
     expect(checkImplementationClaim(onAir, next, 5, NOW)?.reason).toBe('worktree');
     expect(checkImplementationClaim([claim()], { ...next, host: 'mbp' }, 5, NOW)?.reason).toBe('worktree');
+  });
+
+  it('compares checkouts that exist on this machine by canonical path, whatever host either claim names', () => {
+    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-claims-'));
+    const link = `${real}-link`;
+    fs.symlinkSync(real, link);
+    onTestFinished(() => {
+      fs.rmSync(link, { force: true });
+      fs.rmSync(real, { recursive: true, force: true });
+    });
+
+    // A renamed machine (air -> air-2) or a symlinked path still points at the checkout in use.
+    const onAir = [claim({ host: 'air', worktree: real })];
+    const viaLink = { url: ISSUE_B, worktree: link, host: 'air-2' };
+    expect(checkImplementationClaim(onAir, viaLink, 5, NOW)?.reason).toBe('worktree');
+    // A different directory that also exists here is not the same checkout, even on the same host.
+    const sibling = { url: ISSUE_B, worktree: os.tmpdir(), host: 'air' };
+    expect(checkImplementationClaim(onAir, sibling, 5, NOW)).toBeNull();
   });
 });
 

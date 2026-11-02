@@ -387,13 +387,14 @@ When user selects "Done for now":
 
    Only `pr` claims: an implementation this session dispatched keeps its claim so another session (or the next run here) can collect it. If the command fails, say so and continue; the claims expire on their own (12 h).
 
-   **Stranded local runs (#1856).** Then run `work list --json` and, for each `implementation` claim with `status: "running"`, a `worktree` and this session's `sessionName`, check the worktree (the agent may have finished without running `work finish`, or died):
+   **Stranded local runs (#1856).** Then run `work list --json` and, for each `implementation` claim with `status: "running"`, a `worktree` and this session's `sessionName`, check the worktree (the agent may have finished without running `work finish`, died, or still be running: background agents end with this session):
 
    ```bash
    git -C "{claim.worktree}" log --oneline "{upstreamRemote}/{upstreamDefault}..HEAD"
    ```
 
-   - Commits listed → the branch is ready: run `work finish "{claim.url}" --session "{sessionName}" --json` so it is offered as "Collect finished implementations" next time.
+   - Commits listed and the agent's report said the branch is ready (its `work finish` did not record, e.g. it returned a `null` claim) → run `work finish "{claim.url}" --session "{sessionName}" --json` so it is offered as "Collect finished implementations" next time.
+   - Commits listed otherwise (the agent is still running, so this session's end stops it, or it stopped without reporting the branch ready) → the run is partial. Do not mark it finished (`finished` means the agent declared the branch ready). Leave the claim `running` and record it in the summary as `agent stopped, may be incomplete`; the next session's "Collecting a Finished Implementation" entry offers it as a `running` claim with commits from another session and says so when collecting. The claim keeps its running TTL (24 h by default), so say when it expires.
    - No commits (or the worktree is gone) → ask: "Release the claim (drop the run)" / "Leave it running" (keep the claim; note it in the summary so the user knows a run is still open). Never release a claim held by another session here.
 
    Finally, list every implementation still `running` or `finished` in the summary below so the user knows what is still in flight.
@@ -409,7 +410,7 @@ Today's session:
 - Rebased Y PRs
 - Capacity: [hasCapacity ? "Ready for new work" : "X critical issues remaining"]
 - [List any actions taken: "Rebased 4 PRs", "Posted response to repo#123"]
-- [Still in flight, if any: "1 implementation running: owner/repo#N (worktree /path); collect it with /oss"]
+- [Still in flight, if any: "1 implementation running: owner/repo#N (worktree /path); collect it with /oss", or "owner/repo#N: agent stopped, may be incomplete (3 commits in /path); offered for collection until {expiresAt}"]
 
 Your PRs are tracked. Run /oss anytime to check again.
 ```
