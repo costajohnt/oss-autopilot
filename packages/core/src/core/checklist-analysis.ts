@@ -69,6 +69,19 @@ const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
  */
 const TYPE_OF_CHANGE_RE = /type\s+of\s+change|kind\s+of\s+change|category/i;
 
+/**
+ * Matches headings whose first checkbox run is a pick-one semver choice
+ * (Patch / Minor / Major) even without a pick-one comment (#1853). Only that
+ * first run is exempt; later boxes in the section still count.
+ */
+const RELEASE_IMPACT_HEADING_RE = /\brelease\s+impact\b|\bsemver\b|\bversion\s+bump\b/i;
+
+/** A top-level box that opens with a semver option: "- [x] **Patch**: ...". */
+const SEMVER_OPTION_RE = /^- \[[ x]\]\s*(?:\*\*)?(?:patch|minor|major|none)\b/i;
+
+/** An indented line that wraps the checkbox line above it. */
+const CONTINUATION_RE = /^\s+\S/;
+
 interface CheckboxSection {
   // Heading text, or null for content that appears before the first heading.
   heading: string | null;
@@ -167,7 +180,7 @@ function runRuleFor(line: string): RunRule | undefined {
  * A pick-one run is the contiguous checkbox lines after the comment, past blanks;
  * a conditional run is the unindented boxes directly below the lead-in.
  */
-function collectRunExemptLineIndices(lines: string[]): ReadonlySet<number> {
+function collectRunExemptLineIndices(lines: string[]): Set<number> {
   const exempt = new Set<number>();
   let i = 0;
 
@@ -191,6 +204,25 @@ function collectRunExemptLineIndices(lines: string[]): ReadonlySet<number> {
   }
 
   return exempt;
+}
+
+/**
+ * Semver pick-one run under a release-impact heading (#1853): the semver option
+ * boxes that open the section's first checkbox run, past blank and indented
+ * wrap lines. Any other line ends the run, and a first box that is not a semver
+ * option exempts nothing, so ordinary required boxes under the heading count.
+ */
+function markFirstRunPickOneExempt(lines: string[], exempt: Set<number>): void {
+  const runStart = lines.findIndex((l) => ANY_CHECKBOX_RE.test(l));
+  if (runStart === -1 || !SEMVER_OPTION_RE.test(lines[runStart])) return;
+  let runEnd = runStart + 1;
+  for (let j = runEnd; j < lines.length; j++) {
+    const line = lines[j];
+    const isOption = SEMVER_OPTION_RE.test(line);
+    if (isOption) runEnd = j + 1;
+    if (!isOption && (ANY_CHECKBOX_RE.test(line) || (line.trim() !== '' && !CONTINUATION_RE.test(line)))) break;
+  }
+  markPickOneRunExempt(lines, runStart, runEnd, exempt);
 }
 
 interface SectionResult {
@@ -217,6 +249,10 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
 
   // Pick-one groups (#1760) and runs under a conditional lead-in line (#1796).
   const runExempt = collectRunExemptLineIndices(section.lines);
+
+  if (section.heading !== null && RELEASE_IMPACT_HEADING_RE.test(section.heading)) {
+    markFirstRunPickOneExempt(section.lines, runExempt);
+  }
 
   const nonConditionalUnchecked = section.lines.filter(
     (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !runExempt.has(idx),
