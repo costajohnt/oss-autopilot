@@ -69,6 +69,7 @@ const mockStateManager = {
   isGistMode: vi.fn().mockReturnValue(false),
   isGistDegraded: vi.fn().mockReturnValue(false),
   refreshFromGist: vi.fn().mockResolvedValue(false),
+  hasUnpushedChanges: vi.fn().mockReturnValue(false),
   runMutation: (fn: () => Promise<unknown>) => fn(),
   getStateStaleness: vi.fn().mockReturnValue(null),
   // Mirrors the real StateManager.getGistHealth (#1444), derived at call

@@ -129,9 +129,13 @@ export class GistSyncCoordinator {
   /** Push-before-pull (#1417): an un-pushed mutation would be silently
    * reverted by the next Gist pull. Retry the checkpoint first so a recovered
    * network turns the pending warning into a real push before any pull runs.
+   * Also pushes saves that never recorded a warning: fetchDashboardData
+   * writes the digest and merged/closed caches through save() with no
+   * checkpoint, and the pull right after it reverted them and raised the
+   * "un-pushed changes" stale banner on every refresh.
    * No-op when nothing is pending. */
   async flushPendingGistSync(): Promise<void> {
-    if (this.pendingGistSyncWarnings.length === 0) return;
+    if (this.pendingGistSyncWarnings.length === 0 && !this.manager.hasUnpushedChanges()) return;
     this.recordGistSyncOutcome(await maybeCheckpoint(this.manager, this.module));
   }
 
