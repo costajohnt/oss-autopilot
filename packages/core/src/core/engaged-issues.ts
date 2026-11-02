@@ -2,13 +2,17 @@
  * Engaged issues (#1862): the issues the user is working on, as opposed to
  * ones they commented on in passing.
  *
- * An issue is engaged when the user claimed it locally (`activeIssues`) or
- * one of their PRs links it: an open PR (closing keyword or any mention in
- * the title/body), a recently closed or merged PR, or a merged/closed ledger
- * entry with an issue link. `IssueConversationMonitor` scans engaged issues
- * under a wider reply rule (any substantive non-bot comment counts, not only
- * maintainer or @mention replies) and fetches the live ones directly when
- * the commenter search does not return them.
+ * An issue is engaged when the user claimed it locally (`activeIssues`,
+ * candidates excluded) or one of their PRs closes it through a closing
+ * keyword: an open PR, a recently closed or merged PR, or a merged/closed
+ * ledger entry no older than {@link LEDGER_LINK_MAX_AGE_DAYS}. Plain
+ * mentions in a PR body ("similar to #12", "see #4 for the upstream bug") are
+ * not engagement: they named unrelated issues, bumped the engagement time
+ * past earlier maintainer replies, and ate into the direct-fetch cap.
+ * `IssueConversationMonitor` scans engaged issues under a wider reply rule
+ * (any substantive non-bot comment counts, not only maintainer or @mention
+ * replies) and fetches the live ones directly when the commenter search does
+ * not return them.
  *
  * Pure: builds a keyed map from the lists the daily run already holds. URLs
  * are compared through `issueRefKey`, so `Org/Repo` and `org/repo`, trailing
@@ -20,6 +24,14 @@ import { issueRefKey, parseGitHubUrl } from './urls.js';
 
 const REASON_RANK: Record<EngagementReason, number> = { open_pr: 0, claim: 1, closed_pr: 2, merged_pr: 3 };
 
+/**
+ * Oldest ledger link that still counts as engagement. A PR merged or closed
+ * longer ago than this is finished work: a comment on its issue months later
+ * is a new conversation, and the passing-comment rule (maintainer, @mention
+ * or quote reply) is the right one for it.
+ */
+export const LEDGER_LINK_MAX_AGE_DAYS = 90;
+
 /** One engaged issue, keyed for lookup against search results. */
 export interface EngagedIssue extends IssueEngagement {
   /** `issueRefKey` of the issue. */
@@ -29,8 +41,8 @@ export interface EngagedIssue extends IssueEngagement {
   /**
    * Fetch the issue directly when the comment search misses it. True for
    * live engagements (claims, open PRs, the recent closed/merged lists);
-   * false for ledger links, which can be years old and count only when the
-   * search already found the issue active.
+   * false for ledger links, which count only when the search already found
+   * the issue active.
    */
   fetchWhenMissing: boolean;
 }
@@ -46,13 +58,19 @@ export interface EngagedPRLink {
 
 /** Everything the daily run knows about the user's claims and PRs. */
 export interface EngagedIssuesInput {
-  /** Local claims; `updatedAt` is the claim stamp (see `StateManager.addIssue`). */
-  claims: readonly Pick<TrackedIssue, 'url' | 'updatedAt'>[];
-  openPRs: readonly Pick<FetchedPR, 'url' | 'issueUrl' | 'mentionedIssueUrls' | 'createdAt'>[];
+  /** Local claims; `updatedAt` is the claim stamp (see `StateManager.addIssue`). `candidate` entries are not claims. */
+  claims: readonly Pick<TrackedIssue, 'url' | 'updatedAt' | 'status'>[];
+  /** Open PRs; only the closing link (`issueUrl`) is engagement, not body mentions. */
+  openPRs: readonly Pick<FetchedPR, 'url' | 'issueUrl' | 'createdAt'>[];
   recentlyClosedPRs: readonly (EngagedPRLink & { closedAt: string })[];
   recentlyMergedPRs: readonly (EngagedPRLink & { mergedAt: string })[];
   ledgerClosedPRs: readonly (EngagedPRLink & { closedAt: string })[];
   ledgerMergedPRs: readonly (EngagedPRLink & { mergedAt: string })[];
+}
+
+export interface CollectEngagedIssuesOptions {
+  /** Reference time for the ledger age bound; defaults to now. */
+  now?: Date;
 }
 
 interface Engagement extends IssueEngagement {
@@ -60,49 +78,98 @@ interface Engagement extends IssueEngagement {
   fetchWhenMissing: boolean;
 }
 
-function laterOf(a: string, b: string): string {
-  const aMs = Date.parse(a);
-  const bMs = Date.parse(b);
+/** The later of two optional ISO stamps; an unreadable or missing one loses. */
+function laterOf(a: string | undefined, b: string | undefined): string | undefined {
+  const aMs = a === undefined ? NaN : Date.parse(a);
+  const bMs = b === undefined ? NaN : Date.parse(b);
   if (Number.isNaN(bMs)) return a;
   if (Number.isNaN(aMs)) return b;
   return bMs > aMs ? b : a;
 }
 
-/** Issues an open PR closes or mentions; both are the same engagement. */
+/** Issues an open PR closes. */
 function* openPREngagements(prs: EngagedIssuesInput['openPRs']): Generator<Engagement> {
   for (const pr of prs) {
-    const mentions = pr.mentionedIssueUrls ?? [];
-    const links = pr.issueUrl ? [pr.issueUrl, ...mentions] : mentions;
-    for (const issueUrl of links) {
-      yield { issueUrl, reason: 'open_pr', prUrl: pr.url, since: pr.createdAt, fetchWhenMissing: true };
+    if (!pr.issueUrl) continue;
+    yield { issueUrl: pr.issueUrl, reason: 'open_pr', prUrl: pr.url, since: pr.createdAt, fetchWhenMissing: true };
+  }
+}
+
+/**
+ * Issues closed or merged PRs link, dated by the opening time. An entry
+ * without one (older ledger rows) carries no `since`: the close or merge time
+ * is not when the user engaged, and a baseline later than the real engagement
+ * would hide replies, so the monitor falls back to the user's last comment.
+ */
+function* linkedPREngagements(input: EngagedIssuesInput, nowMs: number): Generator<Engagement> {
+  const lists = [
+    { prs: input.recentlyClosedPRs, reason: 'closed_pr' as const, isRecent: true },
+    { prs: input.recentlyMergedPRs, reason: 'merged_pr' as const, isRecent: true },
+    { prs: input.ledgerClosedPRs, reason: 'closed_pr' as const, isRecent: false },
+    { prs: input.ledgerMergedPRs, reason: 'merged_pr' as const, isRecent: false },
+  ];
+  for (const { prs, reason, isRecent } of lists) {
+    for (const pr of prs) {
+      const engagement = linkedEngagement(pr, reason, isRecent, nowMs);
+      if (engagement) yield engagement;
     }
   }
 }
 
-/** Issues closed or merged PRs link, dated by the opening time when known. */
-function* linkedPREngagements(input: EngagedIssuesInput): Generator<Engagement> {
-  const lists = [
-    { prs: input.recentlyClosedPRs, reason: 'closed_pr' as const, recent: true },
-    { prs: input.recentlyMergedPRs, reason: 'merged_pr' as const, recent: true },
-    { prs: input.ledgerClosedPRs, reason: 'closed_pr' as const, recent: false },
-    { prs: input.ledgerMergedPRs, reason: 'merged_pr' as const, recent: false },
-  ];
-  for (const { prs, reason, recent } of lists) {
-    for (const pr of prs) {
-      if (!pr.issueUrl) continue;
-      const endedAt = 'closedAt' in pr ? pr.closedAt : pr.mergedAt;
-      yield { reason, issueUrl: pr.issueUrl, prUrl: pr.url, since: pr.openedAt ?? endedAt, fetchWhenMissing: recent };
-    }
-  }
+type EndedPR = EngagedPRLink & ({ closedAt: string } | { mergedAt: string });
+
+/**
+ * The engagement one finished PR carries, or undefined when it has no link or
+ * is too old a ledger row. `isRecent` marks the digest's recent lists, which
+ * are fetched directly when the search misses them; ledger rows are not.
+ */
+function linkedEngagement(
+  pr: EndedPR,
+  reason: 'closed_pr' | 'merged_pr',
+  isRecent: boolean,
+  nowMs: number,
+): Engagement | undefined {
+  if (!pr.issueUrl) return undefined;
+  if (!isRecent && !isWithinLedgerBound(pr, nowMs)) return undefined;
+  return { reason, issueUrl: pr.issueUrl, prUrl: pr.url, since: pr.openedAt, fetchWhenMissing: isRecent };
+}
+
+function isWithinLedgerBound(pr: EndedPR, nowMs: number): boolean {
+  const endedMs = Date.parse('closedAt' in pr ? pr.closedAt : pr.mergedAt);
+  return !Number.isNaN(endedMs) && nowMs - endedMs <= LEDGER_LINK_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 }
 
 /** Every engagement, strongest reason first. */
-function* engagements(input: EngagedIssuesInput): Generator<Engagement> {
+function* engagements(input: EngagedIssuesInput, nowMs: number): Generator<Engagement> {
   yield* openPREngagements(input.openPRs);
   for (const claim of input.claims) {
+    if (claim.status === 'candidate') continue;
     yield { issueUrl: claim.url, reason: 'claim', since: claim.updatedAt, fetchWhenMissing: true };
   }
-  yield* linkedPREngagements(input);
+  yield* linkedPREngagements(input, nowMs);
+}
+
+/**
+ * Keys of the user's own PRs. A closing keyword can name one of them
+ * ("closes #50" on a follow-up to PR #50); that is not an issue, and fetching
+ * it would spend one of the capped direct lookups to learn so.
+ */
+function ownPRKeys(input: EngagedIssuesInput): Set<string> {
+  const keys = new Set<string>();
+  const lists: readonly (readonly { url: string }[])[] = [
+    input.openPRs,
+    input.recentlyClosedPRs,
+    input.recentlyMergedPRs,
+    input.ledgerClosedPRs,
+    input.ledgerMergedPRs,
+  ];
+  for (const prs of lists) {
+    for (const pr of prs) {
+      const key = issueRefKey(pr.url);
+      if (key) keys.add(key);
+    }
+  }
+  return keys;
 }
 
 /** Fold one engagement into the map: strongest reason, latest since, fetch if any is live. */
@@ -116,17 +183,20 @@ function record(byKey: Map<string, EngagedIssue>, engagement: Engagement): void 
       key,
       url: `https://github.com/${parsed.owner}/${parsed.repo}/issues/${parsed.number}`,
       reason: engagement.reason,
-      prUrl: engagement.prUrl,
-      since: engagement.since,
+      ...(engagement.prUrl !== undefined && { prUrl: engagement.prUrl }),
+      ...(engagement.since !== undefined && { since: engagement.since }),
       fetchWhenMissing: engagement.fetchWhenMissing,
     });
     return;
   }
   if (REASON_RANK[engagement.reason] < REASON_RANK[current.reason]) {
     current.reason = engagement.reason;
-    current.prUrl = engagement.prUrl;
+    if (engagement.prUrl === undefined) delete current.prUrl;
+    else current.prUrl = engagement.prUrl;
   }
-  current.since = laterOf(current.since, engagement.since);
+  const since = laterOf(current.since, engagement.since);
+  if (since === undefined) delete current.since;
+  else current.since = since;
   current.fetchWhenMissing ||= engagement.fetchWhenMissing;
 }
 
@@ -134,18 +204,32 @@ function record(byKey: Map<string, EngagedIssue>, engagement: Engagement): void 
  * Collect the user's engaged issues, keyed by `issueRefKey`. When several
  * engagements name one issue, the entry keeps the strongest reason (and its
  * PR), the latest `since`, and fetches directly if any engagement is live.
- * Links that do not parse as GitHub URLs are skipped. Iteration order is
- * strongest-reason first (engagements are visited in that order, so an
- * issue is inserted at its strongest reason's position), so a caller that
- * caps direct fetches keeps the open-PR and claim issues.
+ * Links that do not parse as GitHub URLs, or that name one of the user's own
+ * PRs, are skipped. Iteration order is strongest-reason first (engagements
+ * are visited in that order, so an issue is inserted at its strongest
+ * reason's position), so a caller that caps direct fetches keeps the open-PR
+ * and claim issues.
  */
-export function collectEngagedIssues(input: EngagedIssuesInput): Map<string, EngagedIssue> {
+export function collectEngagedIssues(
+  input: EngagedIssuesInput,
+  options: CollectEngagedIssuesOptions = {},
+): Map<string, EngagedIssue> {
+  const nowMs = (options.now ?? new Date()).getTime();
+  const ownPRs = ownPRKeys(input);
   const byKey = new Map<string, EngagedIssue>();
-  for (const engagement of engagements(input)) record(byKey, engagement);
+  for (const engagement of engagements(input, nowMs)) {
+    const key = issueRefKey(engagement.issueUrl);
+    if (key !== null && ownPRs.has(key)) continue;
+    record(byKey, engagement);
+  }
   return byKey;
 }
 
 /** The `IssueEngagement` projection of an engaged issue, for the digest entry. */
 export function toIssueEngagement({ reason, prUrl, since }: EngagedIssue): IssueEngagement {
-  return prUrl === undefined ? { reason, since } : { reason, prUrl, since };
+  return {
+    reason,
+    ...(prUrl !== undefined && { prUrl }),
+    ...(since !== undefined && { since }),
+  };
 }

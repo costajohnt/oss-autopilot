@@ -25,7 +25,6 @@ import {
   collectActionableIssues,
   computeActionMenu,
   collectEngagedIssues,
-  isCoveredByDismiss,
   toShelvedPRRef,
   formatBriefSummary,
   formatSummary,
@@ -77,29 +76,9 @@ import {
   recordWarning,
 } from './daily-warnings.js';
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
+import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
 
 const MODULE = 'daily';
-
-/**
- * Run a batch against a baseline that is fresh as of right now.
- *
- * A daily run spends tens of seconds on the network between loading state and
- * each of its saves. If the dashboard, `move`, or another CLI call writes
- * state.json in that time, the compare-and-swap in `saveState` rejects the
- * save, and because the baseline never moved, every later batch in the run is
- * rejected too: repo scores, analytics, the merged/closed ledger and lastDigest
- * were all dropped, surfacing only as warnings. Reloading first picks up the
- * other writer's change and shrinks the window to the batch itself.
- *
- * Only safe where the callback reads state live through the manager, as the
- * batches in this file do. A callback that writes from a snapshot taken
- * earlier would overwrite the other writer's fields, which is why this is not
- * done inside `StateManager.batch` for every caller.
- */
-function batchOnFreshBaseline(stateManager: ReturnType<typeof getStateManager>, fn: () => void): void {
-  stateManager.reloadIfChanged();
-  stateManager.batch(fn);
-}
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
@@ -772,42 +751,7 @@ function generateDigestOutput(
   );
 
   // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity.
-  // Batch: undismissIssue calls trigger autoSave — batch produces a single disk write for all auto-undismisses.
-  let filteredCommentedIssues: typeof commentedIssues = [];
-  try {
-    batchOnFreshBaseline(stateManager, () => {
-      filteredCommentedIssues = remainingCommentedIssues.filter((issue) => {
-        const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
-        if (!dismissedAt) return true; // Not dismissed — include
-        if (issue.status === 'new_response') {
-          if (isNaN(Date.parse(issue.lastResponseAt)) || isNaN(Date.parse(dismissedAt))) {
-            // Invalid timestamp — fail open (include issue to be safe) without
-            // permanently removing dismiss record (may be a transient data issue)
-            warn(MODULE, `Invalid timestamp in dismiss check for ${issue.url}, including issue`);
-            return true;
-          }
-          // Same comparison the dashboard uses (#1862), so both surfaces agree.
-          if (!isCoveredByDismiss(dismissedAt, issue.lastResponseAt)) {
-            // New activity after dismiss — auto-undismiss and resurface
-            warn(
-              MODULE,
-              `Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
-            );
-            try {
-              stateManager.undismissIssue(issue.url);
-            } catch (error) {
-              recordWarning(warnings, 'dismiss-filter', `persist auto-undismiss for ${issue.url}`, error);
-            }
-            return true;
-          }
-        }
-        // Still dismissed (last response is at or before dismiss timestamp)
-        return false;
-      });
-    });
-  } catch (error) {
-    recordWarning(warnings, 'dismiss-filter', 'persist auto-undismiss state', error);
-  }
+  const filteredCommentedIssues = filterDismissedIssues(stateManager, remainingCommentedIssues, warnings);
 
   const issueResponses = filteredCommentedIssues.filter(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response',

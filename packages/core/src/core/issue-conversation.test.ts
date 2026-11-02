@@ -464,7 +464,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(0);
   });
 
-  it('no longer drops tracked issues: a claim is an engagement, not an exclusion (#1862)', async () => {
+  it('no longer drops issues in activeIssues: a maintainer reply on a claimed issue surfaces even without the engaged set (#1862)', async () => {
     mockState = {
       ...defaultState(),
       activeIssues: [{ repo: 'owner/repo', number: 42, status: 'claimed' }],

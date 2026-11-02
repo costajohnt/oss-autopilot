@@ -1174,6 +1174,106 @@ describe('fetchDashboardData', () => {
     );
   });
 
+  describe('engaged issues (#1862)', () => {
+    it('hands claims, open PRs, recent closed PRs and the ledger to the issue monitor as engaged issues', async () => {
+      mockGetState.mockReturnValue(
+        makeDefaultState({
+          activeIssues: [
+            {
+              id: 1,
+              url: 'https://github.com/o/r/issues/1',
+              repo: 'o/r',
+              number: 1,
+              title: 'claimed',
+              status: 'claimed',
+              labels: [],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-20T00:00:00Z',
+              vetted: false,
+            },
+            {
+              id: 2,
+              url: 'https://github.com/o/r/issues/9',
+              repo: 'o/r',
+              number: 9,
+              title: 'only a candidate',
+              status: 'candidate',
+              labels: [],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-20T00:00:00Z',
+              vetted: false,
+            },
+          ],
+        }),
+      );
+      mockFetchUserOpenPRs.mockResolvedValue({
+        prs: [
+          makeFetchedPR({
+            repo: 'o/r',
+            number: 10,
+            issueUrl: 'https://github.com/o/r/issues/2',
+            mentionedIssueUrls: ['https://github.com/o/r/issues/8'],
+            createdAt: '2026-01-21T00:00:00Z',
+          }),
+        ],
+        failures: [],
+      });
+      mockFetchRecentlyClosedPRs.mockResolvedValue([
+        {
+          url: 'https://github.com/o/r/pull/11',
+          repo: 'o/r',
+          number: 11,
+          title: 'closed attempt',
+          closedAt: '2026-01-22T00:00:00Z',
+          issueUrl: 'https://github.com/o/r/issues/3',
+        },
+      ]);
+      // Inside the ledger age bound; a months-old merge would not count.
+      const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+      mockGetMergedPRs.mockReturnValue([
+        {
+          url: 'https://github.com/o/r/pull/12',
+          title: 'recent merge',
+          mergedAt: tenDaysAgo.toISOString(),
+          issueUrl: 'https://github.com/o/r/issues/4',
+        },
+      ]);
+
+      await fetchDashboardData('test-token');
+
+      expect(mockFetchCommentedIssues).toHaveBeenCalledTimes(1);
+      const { engaged } = mockFetchCommentedIssues.mock.calls[0][0] as {
+        engaged: Map<string, { reason: string; fetchWhenMissing: boolean }>;
+      };
+      // Same set, same order as the daily run: open PR, claim, closed, merged.
+      // The candidate and the body mention are not engagement.
+      expect(Array.from(engaged, ([key]) => key)).toEqual(['o/r#2', 'o/r#1', 'o/r#3', 'o/r#4']);
+      expect(engaged.get('o/r#2')).toMatchObject({ reason: 'open_pr', fetchWhenMissing: true });
+      expect(engaged.get('o/r#4')).toMatchObject({ reason: 'merged_pr', fetchWhenMissing: false });
+    });
+
+    it('routes the issue monitor notices into the partial-data banner as one operation label', async () => {
+      mockFetchCommentedIssues.mockResolvedValue({
+        issues: [],
+        failures: [],
+        warnings: [
+          '3 engaged issues missing from the comment search were not fetched this run',
+          'https://github.com/o/r/issues/5: issue no longer reachable (HTTP 404: Not Found); dropped',
+        ],
+      });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(result.partialFailures).toEqual(['scan engaged issues']);
+    });
+
+    it('adds no banner entry when the issue monitor has nothing to report', async () => {
+      const result = await fetchDashboardData('test-token');
+
+      expect(result.partialFailures).toEqual([]);
+    });
+  });
+
   it('warns and continues when state batch fails', async () => {
     mockBatch.mockImplementation(() => {
       throw new Error('disk write failed');

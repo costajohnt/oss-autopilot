@@ -154,7 +154,7 @@ describe('bucketize', () => {
       ['issue_reply', 'https://github.com/o/r/issues/11'],
     ]);
     expect(judgment[2].reason).toBe('a maintainer replied on an issue you commented on');
-    expect(judgment[3].reason).toBe('c replied on an issue you are working on');
+    expect(judgment[3].reason).toBe('c replied on an issue you claimed');
   });
 });
 

@@ -296,6 +296,15 @@ export interface DashboardFetchResult {
 }
 
 /**
+ * The partial-data banner entry for the issue monitor's notices (#1862): the
+ * direct-fetch cap, a gone issue, a truncated thread. The monitor already
+ * logged each one; the banner lists operations, so they collapse to one label.
+ */
+function engagedScanLabels(issueMonitorWarnings: readonly string[]): string[] {
+  return issueMonitorWarnings.length > 0 ? ['scan engaged issues'] : [];
+}
+
+/**
  * Fetch fresh dashboard data from GitHub.
  * Returns the digest and commented issues, updating state as a side effect.
  * Throws if the fetch fails entirely (caller should fall back to cached data).
@@ -407,9 +416,8 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     };
   });
 
-  // The monitor already logged each of these; the banner just needs them.
   const { issues: commentedIssues, warnings: issueMonitorWarnings } = fetchedIssues;
-  partialFailures.push(...issueMonitorWarnings);
+  partialFailures.push(...engagedScanLabels(issueMonitorWarnings));
   if (fetchedIssues.failures.length > 0) {
     warn(MODULE, `${fetchedIssues.failures.length} issue conversation check(s) failed`);
   }

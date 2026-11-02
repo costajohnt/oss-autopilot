@@ -436,11 +436,12 @@ export interface IssueEngagement {
   prUrl?: string;
   /**
    * ISO time of the user's latest engagement step: the claim stamp, or when
-   * the PR was opened (its close/merge time when the opening time is not
-   * known). Comments at or before it were answered by the engagement itself,
-   * so only later ones can be replies to the user.
+   * the PR was opened. Comments at or before it were answered by the
+   * engagement itself, so only later ones can be replies to the user. Absent
+   * when the PR's opening time is not known (older ledger entries); the
+   * user's last comment is the baseline then.
    */
-  since: string;
+  since?: string;
 }
 
 /** Base fields shared by all issue conversation states. */

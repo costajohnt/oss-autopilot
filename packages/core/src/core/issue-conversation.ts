@@ -11,15 +11,24 @@
  *   COLLABORATOR), @mentions the user, or quotes the user's comment (#343).
  * - On an engaged issue (claimed, or linked from one of the user's PRs; see
  *   `collectEngagedIssues`), any substantive non-bot comment after the
- *   user's last word counts. Short thanks and "+1" / emoji-only reactions
- *   do not. Engaged issues the comment search does not return (the user
- *   never commented, or not within the window) are fetched directly, up to
+ *   user's last word counts, and so does anything directed at the user even
+ *   when short (a maintainer's "any update?"). Short thanks and "+1" /
+ *   emoji-only reactions do not, except that a bare status request on a
+ *   claimed issue is addressed to the claimant and counts. Engaged issues
+ *   the comment search does not return (the user never commented, or not
+ *   within the window) are fetched directly, up to
  *   {@link MAX_DIRECT_ENGAGED_FETCHES} per run.
  */
 
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
-import { isBotAuthor, isAcknowledgmentComment, isReactionOnlyComment, isQuoteReplyTo } from './comment-utils.js';
+import {
+  isBotAuthor,
+  isAcknowledgmentComment,
+  isReactionOnlyComment,
+  isQuoteReplyTo,
+  isStatusNudge,
+} from './comment-utils.js';
 import { paginateAll, paginateAllDetailed } from './pagination.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
@@ -80,7 +89,11 @@ export interface FetchCommentedIssuesOptions {
 export interface FetchCommentedIssuesResult {
   issues: CommentedIssue[];
   failures: Array<{ issueUrl: string; error: string }>;
-  /** Non-fatal notices for the run's warning channel: the direct-fetch cap, issues that are gone. */
+  /**
+   * Non-fatal notices for the run's warning channel: the direct-fetch cap,
+   * a claimed or open-PR issue that is gone, a comment thread too long to
+   * read to the end, an engagement time that does not parse.
+   */
   warnings: string[];
 }
 
@@ -111,6 +124,15 @@ function describeError(error: unknown): string {
 function isGoneError(error: unknown): boolean {
   const status = getHttpStatusCode(error);
   return status === 404 || status === 410;
+}
+
+/**
+ * Whether a gone engaged issue is worth a warning: a claim or an open PR
+ * still points at it and the user can release the claim or fix the PR's
+ * closing link. A finished PR's link is history; nothing to act on.
+ */
+function isActionableEngagement(engagement: IssueEngagement | undefined): boolean {
+  return engagement?.reason === 'claim' || engagement?.reason === 'open_pr';
 }
 
 export class IssueConversationMonitor {
@@ -223,9 +245,12 @@ export class IssueConversationMonitor {
       if (!parsed || !this.isRepoAllowed(`${parsed.owner}/${parsed.repo}`, config)) continue;
       missing.push(entry);
     }
-    if (missing.length > MAX_DIRECT_ENGAGED_FETCHES) {
+    // `engaged` iterates strongest reason first (open PR, claim, then closed
+    // and merged links), so the cap drops finished-PR links before claims.
+    const skipped = missing.slice(MAX_DIRECT_ENGAGED_FETCHES);
+    if (skipped.length > 0) {
       warnings.push(
-        `${missing.length} engaged issues were missing from the comment search; only the first ${MAX_DIRECT_ENGAGED_FETCHES} (open-PR and claimed issues first) were fetched, so replies on the rest may be missed this run.`,
+        `${skipped.length} engaged issue${skipped.length === 1 ? '' : 's'} missing from the comment search ${skipped.length === 1 ? 'was' : 'were'} not fetched this run (cap of ${MAX_DIRECT_ENGAGED_FETCHES} direct lookups; open-PR and claimed issues come first), so replies there may be missed: ${skipped.map((e) => e.url).join(', ')}`,
       );
     }
     for (const entry of missing.slice(0, MAX_DIRECT_ENGAGED_FETCHES)) {
@@ -256,6 +281,7 @@ export class IssueConversationMonitor {
             candidate.repoFullName,
             username,
             candidate.engagement,
+            warnings,
           );
           if (issue) {
             results.push(issue);
@@ -279,7 +305,11 @@ export class IssueConversationMonitor {
           if (candidate.item === undefined && isGoneError(error)) {
             // Only a direct fetch can see a 404/410: the issue was deleted,
             // transferred, or made private since the PR or claim linked it.
-            warnings.push(`${candidate.url}: issue no longer reachable (${describeError(error)}); dropped`);
+            // Worth telling the user only while something of theirs still
+            // points at it (a claim to release, an open PR's closing link).
+            const message = `${candidate.url}: issue no longer reachable (${describeError(error)}); dropped`;
+            if (isActionableEngagement(candidate.engagement)) warnings.push(message);
+            else debug(MODULE, message);
             return;
           }
           const msg = describeError(error);
@@ -331,7 +361,11 @@ export class IssueConversationMonitor {
    * Look up an engaged issue the comment search did not return (#1862).
    * Returns undefined, with a debug line, when the number is a pull request,
    * the issue is closed, the user authored it, or nothing on it changed
-   * inside the search window (the comments cannot hold a new reply then).
+   * since the later of the search window's start and the engagement step.
+   * The window keeps this path consistent with the commenter search (a
+   * reply older than `maxDays` is not surfaced either way); the engagement
+   * step tightens it because only comments after that step can be replies
+   * to the user, so an issue untouched since then has nothing to report.
    * ETag-cached like the comment pages. Errors propagate to the worker.
    */
   private async fetchEngagedIssue(
@@ -356,7 +390,8 @@ export class IssueConversationMonitor {
     if (issue.pull_request) return skip('the number is a pull request');
     if (issue.state !== 'open') return skip(`issue is ${issue.state}`);
     if (issue.user?.login?.toLowerCase() === username.toLowerCase()) return skip('authored by the user');
-    if (Date.parse(issue.updated_at) < cutoffDate.getTime()) return skip(`not updated since ${issue.updated_at}`);
+    const activitySinceMs = Math.max(cutoffDate.getTime(), parseMs(candidate.engagement?.since));
+    if (Date.parse(issue.updated_at) < activitySinceMs) return skip(`not updated since ${issue.updated_at}`);
     return { html_url: issue.html_url, number: issue.number, title: issue.title, labels: issue.labels };
   }
 
@@ -371,8 +406,17 @@ export class IssueConversationMonitor {
     repoFullName: string,
     username: string,
     engagement: IssueEngagement | undefined,
+    warnings: string[],
   ): Promise<CommentedIssue | null> {
-    const timeline = await this.fetchTimeline(item, repoFullName, username);
+    const { timeline, truncated } = await this.fetchTimeline(item, repoFullName, username);
+    if (truncated) {
+      // Comments arrive oldest-first, so hitting the pagination cap drops
+      // the NEWEST responses and the status below may be stale (#1456).
+      // Engaged issues are the long-lived threads most likely to hit this.
+      warnings.push(
+        `${item.html_url}: comment thread longer than the pagination cap; the newest comments were not read and its conversation status may be stale`,
+      );
+    }
 
     // Find the user's last comment
     let userLastComment: TimelineEntry | undefined;
@@ -390,7 +434,17 @@ export class IssueConversationMonitor {
     // of that and the engagement step (claim, PR opened) on engaged issues.
     const userLastWordMs = Math.max(parseMs(userLastComment?.createdAt), parseMs(engagement?.since));
     if (userLastWordMs === -Infinity) {
-      warn(MODULE, `Skipping ${item.html_url}: no user comment and an unreadable engagement time`);
+      // Engaged, no comment from the user, and nothing to anchor "after the
+      // user's last word" on. A missing `since` (ledger link without an
+      // opening time) is expected and cannot happen on a direct fetch; a
+      // stamp that does not parse is bad state worth a warning.
+      if (engagement?.since === undefined) {
+        debug(MODULE, `Skipping engaged issue ${item.html_url}: no user comment and no engagement time`);
+      } else {
+        warnings.push(
+          `${item.html_url}: skipped; the user never commented and the engagement time "${engagement.since}" does not parse`,
+        );
+      }
       return null;
     }
 
@@ -405,9 +459,16 @@ export class IssueConversationMonitor {
       MAINTAINER_ASSOCIATIONS.has(entry.authorAssociation) ||
       entry.body.toLowerCase().includes(userMention) ||
       (userLastCommentBody !== undefined && isQuoteReplyTo(entry.body, userLastCommentBody));
-    // On an engaged issue every non-reaction comment is relevant (#1862).
-    const isRelevant = (entry: TimelineEntry): boolean =>
-      engagement ? !isReactionOnlyComment(entry.body) : isDirectedAtUser(entry);
+    // On an engaged issue (#1862) a comment is relevant when it is directed
+    // at the user (a maintainer's "any update?" is short but still a reply),
+    // when it says more than a reaction, or, on a claimed issue, when it is a
+    // bare status request: "any update?" there asks the claimant.
+    const isRelevant = (entry: TimelineEntry): boolean => {
+      if (isDirectedAtUser(entry)) return true;
+      if (!engagement) return false;
+      if (engagement.reason === 'claim' && isStatusNudge(entry.body)) return true;
+      return !isReactionOnlyComment(entry.body);
+    };
 
     // A reply: by someone else after the user's last word, substantive and relevant.
     const isAfterUser = (entry: TimelineEntry): boolean =>
@@ -471,8 +532,15 @@ export class IssueConversationMonitor {
     return { ...base, status: isWaiting ? ('waiting' as const) : ('acknowledged' as const) };
   }
 
-  /** All comments on the issue, oldest first, with deleted-account comments dropped. */
-  private async fetchTimeline(item: IssueItem, repoFullName: string, username: string): Promise<TimelineEntry[]> {
+  /**
+   * All comments on the issue, oldest first, with deleted-account comments
+   * dropped. `truncated` is set when the pagination cap cut the thread short.
+   */
+  private async fetchTimeline(
+    item: IssueItem,
+    repoFullName: string,
+    username: string,
+  ): Promise<{ timeline: TimelineEntry[]; truncated: boolean }> {
     const { owner, repo } = splitRepo(repoFullName);
 
     const cache = getHttpCache();
@@ -498,16 +566,6 @@ export class IssueConversationMonitor {
           }>,
       ).then((data) => ({ data }));
     });
-    if (truncated) {
-      // Comments arrive oldest-first, so hitting the pagination cap drops
-      // the NEWEST responses — conversation status for this issue may be
-      // stale (#1456). Same log-only channel as the search truncation above.
-      warn(
-        MODULE,
-        `Comment pagination cap reached for ${repoFullName}#${item.number}; the newest comments were not fetched and conversation status may be stale.`,
-      );
-    }
-
     const timeline: TimelineEntry[] = [];
     for (const comment of allComments) {
       if (!comment.user?.login) continue; // Skip comments from deleted accounts
@@ -525,6 +583,6 @@ export class IssueConversationMonitor {
     }
 
     timeline.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return timeline;
+    return { timeline, truncated };
   }
 }

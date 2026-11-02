@@ -45,7 +45,13 @@ export {
   type FetchCommentedIssuesOptions,
   type FetchCommentedIssuesResult,
 } from './issue-conversation.js';
-export { isBotAuthor, isAcknowledgmentComment, isReactionOnlyComment, isQuoteReplyTo } from './comment-utils.js';
+export {
+  isBotAuthor,
+  isAcknowledgmentComment,
+  isReactionOnlyComment,
+  isQuoteReplyTo,
+  isStatusNudge,
+} from './comment-utils.js';
 export {
   wrapUntrustedContent,
   fenceFetchedPR,
@@ -118,6 +124,8 @@ export {
 export {
   collectEngagedIssues,
   toIssueEngagement,
+  LEDGER_LINK_MAX_AGE_DAYS,
+  type CollectEngagedIssuesOptions,
   type EngagedIssue,
   type EngagedIssuesInput,
   type EngagedPRLink,

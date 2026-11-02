@@ -1224,12 +1224,20 @@ describe('executeDailyCheck() — engaged issues (#1862)', () => {
         issueUrl: 'https://github.com/o/r/issues/3',
       },
     ]);
+    // Inside the ledger age bound; a months-old merge would not count.
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
     mockGetMergedPRs.mockReturnValue([
       {
         url: 'https://github.com/o/r/pull/12',
+        title: 'recent merge',
+        mergedAt: tenDaysAgo.toISOString(),
+        issueUrl: 'https://github.com/o/r/issues/4',
+      },
+      {
+        url: 'https://github.com/o/r/pull/13',
         title: 'old merge',
         mergedAt: '2025-01-01T00:00:00Z',
-        issueUrl: 'https://github.com/o/r/issues/4',
+        issueUrl: 'https://github.com/o/r/issues/5',
       },
     ]);
 
