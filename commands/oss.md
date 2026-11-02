@@ -44,7 +44,8 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │   Surface waiting-on-maintainer PRs past the 7/14/30-day cadence and draft
  │   │   a polite follow-up via the draft-review-post skill (user posts themselves)
  │   │
- │   └─ "Done for now" ──► Session End
+ │   └─ "Done for now" ──► Session End (one refresh first; new maintainer
+ │       comments return to the Action Menu once)
  │
  ├─ Pre-Commit Review (after any code changes) ──┐
  │   │                                             │
@@ -317,9 +318,9 @@ When the user selects any issue found through search and starts implementing, se
    - Re-run the daily check to refresh state
    - Return to **Action Menu** with updated action choices
 2. **If ONLY Tier 2 actions were taken** (comment responses, code fixes, missing file additions) with no Tier 1 actions in this round:
-   - Skip the daily re-run — the existing data is still valid
+   - Skip the daily re-run — the existing data is still valid, unless the last digest's `generatedAt` is more than 60 minutes before now (`date -u`): then re-run it so maintainer comments that landed mid-session surface (#1852)
    - Remove completed items from the current action list
-   - Inform the user: "Skipping full refresh — showing locally updated action list."
+   - When skipping, inform the user: "Skipping full refresh — showing locally updated action list."
    - Return to **Action Menu** with current action choices
    - **Exception:** If any completed action involved merge conflict resolution (issue type `merge_conflict` from the actionableIssues list), treat the entire batch as Tier 1 and re-run the daily check
 3. If `hasIssueList`, re-read the list file to get updated available/completed counts
@@ -345,6 +346,9 @@ This is a quality gate that catches issues before they reach the maintainer.
 ## Session End
 
 When user selects "Done for now":
+
+1. **Refresh once before closing (#1852).** Skip this step if it already ran this session (a second "Done for now" always closes), or if the last digest's `generatedAt` is less than 5 minutes before now (`date -u`). Otherwise re-run the daily check and list the PRs in `openPRs` whose `lastMaintainerComment.createdAt` is newer than the `generatedAt` of the previous digest shown to the user. (any non-bot commenter other than the user, so label them "new comments", not "maintainer comments"). If there are any, show them and return to the **Action Menu**; the user can handle them (via "Other: #N" when a PR has no menu item) or pick "Done for now" again to close.
+2. Print the summary:
 
 ```markdown
 ## Session Complete
