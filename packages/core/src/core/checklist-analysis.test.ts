@@ -36,6 +36,18 @@ describe('isConditionalChecklistItem', () => {
   });
 });
 
+/** Semver options as in the #1853 template, with `ticked` checked (or none). */
+function semverRun(ticked: 'patch' | 'minor' | null): string[] {
+  const box = (option: 'patch' | 'minor') => (ticked === option ? 'x' : ' ');
+  return [
+    `- [${box('patch')}] **Patch**: bug fix, no new surface`,
+    `- [${box('minor')}] **Minor**: additive (new flag/subcommand/MCP tool/config key,`,
+    '      new agent harness or provider)',
+    '- [ ] **Major (breaking)**: on-disk format, removed/renamed surface, or',
+    '      breaking MCP schema change',
+  ];
+}
+
 describe('analyzeChecklist', () => {
   it('should return no incomplete for empty body', () => {
     const result = analyzeChecklist('');
@@ -255,6 +267,68 @@ describe('analyzeChecklist', () => {
       ].join('\n');
       const result = analyzeChecklist(body);
       expect(result.hasIncompleteChecklist).toBe(false);
+    });
+  });
+
+  describe('release-impact heading without a pick-one comment (#1853)', () => {
+    it('does not flag the unchosen semver options when one is ticked', () => {
+      const body = [
+        '## Release impact',
+        '',
+        ...semverRun('patch'),
+        '',
+        '- [x] The base branch matches: `main` for a patch, the standing feature',
+        '      branch for minor or major work.',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+      expect(result.checklistStats).toEqual({ checked: 2, total: 2 });
+    });
+
+    it('flags the group when no semver option is ticked', () => {
+      const body = ['## Release impact', '', ...semverRun(null)].join('\n');
+      expect(analyzeChecklist(body).hasIncompleteChecklist).toBe(true);
+    });
+
+    it('still counts unticked boxes after the semver run', () => {
+      const body = ['## Release impact', '', ...semverRun('minor'), '', '- [ ] The base branch matches.'].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+      expect(result.checklistStats).toEqual({ checked: 1, total: 2 });
+    });
+
+    it('counts a required box placed directly after the options with no blank line', () => {
+      const body = ['## Release impact', ...semverRun('patch'), '- [ ] The base branch matches.'].join('\n');
+      expect(analyzeChecklist(body).checklistStats).toEqual({ checked: 1, total: 2 });
+    });
+
+    it('still exempts the options when Patch and the base-branch box are both ticked', () => {
+      const body = ['## Release impact', ...semverRun('patch'), '- [x] The base branch matches.'].join('\n');
+      expect(analyzeChecklist(body).hasIncompleteChecklist).toBe(false);
+    });
+
+    it('handles options separated by blank lines', () => {
+      const body = ['## Release impact', '', '- [ ] **Patch**', '', '- [x] **Minor**', '', '- [ ] **Major**'].join(
+        '\n',
+      );
+      expect(analyzeChecklist(body).hasIncompleteChecklist).toBe(false);
+    });
+
+    it('does not exempt ordinary boxes under a version-bump heading', () => {
+      const body = [
+        '## Version bump checklist',
+        '- [x] Bumped version in package.json',
+        '- [ ] Updated CHANGELOG',
+        '- [ ] Tagged the release',
+      ].join('\n');
+      expect(analyzeChecklist(body).checklistStats).toEqual({ checked: 1, total: 3 });
+    });
+
+    it('counts a nested sub-box under the chosen option', () => {
+      const body = ['## Release impact', '- [x] **Minor**: new flag', '  - [ ] Documented the new flag in README'].join(
+        '\n',
+      );
+      expect(analyzeChecklist(body).hasIncompleteChecklist).toBe(true);
     });
   });
 });
