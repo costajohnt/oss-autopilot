@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.11.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.10.1...mcp-v5.11.0) (2026-11-02)
+
+
+### Features
+
+* **work:** track in-flight implementations and PR work across sessions ([#1869](https://github.com/costajohnt/oss-autopilot/issues/1869)) ([acb56c8](https://github.com/costajohnt/oss-autopilot/commit/acb56c88b1ebbf2a6d036de8955f55b4f4535dd5))
+
 ## [5.10.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.10.0...mcp-v5.10.1) (2026-11-02)
 
 
