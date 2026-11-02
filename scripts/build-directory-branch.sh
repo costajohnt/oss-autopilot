@@ -36,14 +36,14 @@ cp scripts/build-cli-if-stale.sh scripts/build-dashboard-if-stale.sh "$OUT/scrip
 # Contributor notes, not an agent: the validator flags it for missing frontmatter.
 rm -f "$OUT/agents/README.md"
 
-# Prebuilt CLI and dashboard from the published tarball. npm can lag a fresh
-# publish, so retry before giving up.
+# Prebuilt CLI and dashboard from the published tarball. npm can take minutes
+# to serve a fresh publish, so retry for up to 10 minutes.
 PKG_DIR=$(mktemp -d)
-for attempt in 1 2 3 4 5; do
+for attempt in $(seq 1 20); do
   if (cd "$PKG_DIR" && npm pack --silent "@oss-autopilot/core@${VERSION}" >/dev/null); then
     break
   fi
-  if [ "$attempt" = 5 ]; then
+  if [ "$attempt" = 20 ]; then
     echo "build-directory-branch.sh: npm pack @oss-autopilot/core@${VERSION} failed" >&2
     exit 1
   fi
