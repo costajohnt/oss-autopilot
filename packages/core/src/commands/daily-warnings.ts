@@ -8,6 +8,9 @@ import { errorMessage, getHttpStatusCode } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import type { DailyWarning, DailyWarningPhase } from '../formatters/json.js';
 
+/** Defined in core/errors.ts so core modules can word their own warnings the same way. */
+export { describeError, httpStatusLabel } from '../core/errors.js';
+
 const MODULE = 'daily';
 
 /**
@@ -45,20 +48,8 @@ export function nonFatalCatchWithWarning<T>(opts: {
   };
 }
 
-/** `HTTP 404` when the error carries a status, else undefined. */
-export function httpStatusLabel(error: unknown): string | undefined {
-  const status = getHttpStatusCode(error);
-  return status === undefined ? undefined : `HTTP ${status}`;
-}
-
 /** 404/410: the issue or PR is gone (deleted, transferred, or now private). */
 export function isGoneError(error: unknown): boolean {
   const status = getHttpStatusCode(error);
   return status === 404 || status === 410;
-}
-
-/** Warning text with the HTTP status in front when there is one. */
-export function describeError(error: unknown): string {
-  const label = httpStatusLabel(error);
-  return label ? `${label}: ${errorMessage(error)}` : errorMessage(error);
 }

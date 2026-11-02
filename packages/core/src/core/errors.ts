@@ -197,6 +197,18 @@ export function getHttpStatusCode(error: unknown): number | undefined {
   return undefined;
 }
 
+/** `HTTP 404` when the error carries a status, else undefined. */
+export function httpStatusLabel(error: unknown): string | undefined {
+  const status = getHttpStatusCode(error);
+  return status === undefined ? undefined : `HTTP ${status}`;
+}
+
+/** Warning text with the HTTP status in front when there is one (`HTTP 502: Bad Gateway`). */
+export function describeError(error: unknown): string {
+  const label = httpStatusLabel(error);
+  return label ? `${label}: ${errorMessage(error)}` : errorMessage(error);
+}
+
 /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
 export function isRateLimitError(error: unknown): boolean {
   const status = getHttpStatusCode(error);

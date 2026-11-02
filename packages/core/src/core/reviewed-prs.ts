@@ -14,10 +14,15 @@
  *   inline threads, a quote of the user's own prose, or an @mention. These
  *   are the "questions for you".
  *
- * It also records the head SHA the review was of (`commit_id` on reviews
- * and inline comments; for a plain comment the last commit before it) so
- * the daily phase can ask GitHub for `<reviewedSha>...<headSha>` and flag a
- * rebase or force-push instead of showing a misleading range.
+ * "Pushed after the review" is decided by position, not by date, whenever
+ * the review names the head it was made against (`commit_id` on reviews
+ * and inline comments): Git dates say when a commit was written, not when
+ * it was pushed, so the commits after the reviewed one in the PR's commit
+ * list are the new ones. The reviewed SHA also lets the daily phase ask
+ * GitHub for `<reviewedSha>...<headSha>`, and the scan flags the cases where
+ * that range would mislead: the reviewed commit is gone from the list
+ * (`rebased`), upstream was merged in after it (`mergedUpstream`), or the
+ * user's last word was a plain comment that names no head (`baseUnknown`).
  *
  * Pure logic only. Fetching lives in reviewed-prs-fetch.ts behind
  * `PRMonitor.fetchReviewedOpenPRs`, `PRMonitor.fetchReviewedPRActivity`
@@ -25,7 +30,7 @@
  * dismiss check and the warnings live in commands/daily-reviewed-prs.ts.
  */
 
-import { isBotAuthor, isQuoteReplyTo, isReactionOnlyComment } from './comment-utils.js';
+import { isBotAuthor, isQuoteReplyTo, isReactionOnlyComment, proseWithoutCode } from './comment-utils.js';
 import { debug } from './logger.js';
 
 const MODULE = 'reviewed-prs';
@@ -77,28 +82,46 @@ export interface ReviewedPRFollowUp {
   /** When the user last reviewed or commented on the PR. */
   reviewedAt: string;
   /**
-   * Head SHA at the user's last review: `commit_id` of the review or inline
-   * comment, or for a plain comment the last commit pushed before it.
-   * Absent when the thread gives no way to tell (every commit postdates the
-   * comment, as after a rebase).
+   * Head SHA the user's last review or inline comment was made against
+   * (`commit_id`). Absent when their last word was a plain comment, which
+   * names no head; `baseUnknown` then says whether that matters.
    */
   reviewedSha?: string;
   headSha: string;
   /**
    * `<reviewedSha>...<headSha>`, set only when GitHub confirmed
-   * `reviewedSha` is an ancestor of the head, so the range shows exactly
+   * `reviewedSha` is an ancestor of the head and none of `rebased`,
+   * `mergedUpstream` or `baseUnknown` applies, so the range shows exactly
    * what changed since the review.
    */
   compareRange?: string;
   /** github.com compare page for `compareRange`. */
   compareUrl?: string;
   /**
-   * The reviewed commit is no longer an ancestor of the head (force-push or
-   * rebase), or GitHub no longer has it. There is no honest range; read
-   * `commits` instead.
+   * The reviewed commit is gone from the PR's commit list or is no longer
+   * an ancestor of the head (force-push or rebase). There is no honest
+   * range; read `commits`, which were then picked by date.
    */
   rebased: boolean;
-  /** Non-merge commits by someone other than the user after `reviewedAt`, oldest first; capped. */
+  /**
+   * A merge commit follows the reviewed one (upstream merged into the
+   * branch), so `<reviewedSha>...<headSha>` would include the upstream
+   * changes. No range; read the per-commit diffs of `commits`.
+   */
+  mergedUpstream: boolean;
+  /**
+   * The user's last word was a plain comment, which names no head, and
+   * commits were pushed since: `commits` were picked by date, which can
+   * miss a cherry-pick or rebased fix carrying an older date, and no range
+   * is offered. False when nothing was pushed or when `reviewedSha` is known.
+   */
+  baseUnknown: boolean;
+  /**
+   * Non-merge commits by someone other than the user or a bot after the
+   * review, oldest first; capped. The commits after `reviewedSha` in the
+   * PR's commit list when it is known and still there, else those dated
+   * after `reviewedAt`.
+   */
   commits: ReviewedPRCommit[];
   /** Commits dropped from `commits` by the cap. */
   moreCommits: number;
@@ -108,7 +131,11 @@ export interface ReviewedPRFollowUp {
   questions: ReviewedPRQuestion[];
   /** Questions dropped from `questions` by the cap. */
   moreQuestions: number;
-  /** Newest commit or comment that qualified the PR; the dismiss stamp is compared with this. */
+  /**
+   * Newest date among the commits and comments that qualified the PR; the
+   * dismiss stamp is compared with this. Can predate `reviewedAt` when the
+   * only new work is a commit carrying an old author date (cherry-pick).
+   */
   latestActivityAt: string;
 }
 
@@ -159,9 +186,12 @@ export interface ReviewedPRActivity {
       created_at: string;
       commit_id?: string | null;
       in_reply_to_id?: number;
+      /** The review the comment was submitted with; draft comments of the user's own PENDING review carry its id. */
+      pull_request_review_id?: number | null;
       html_url?: string;
     }
   >;
+  /** Oldest first, in branch order (GitHub's `listCommits`); the last entry is the head. */
   commits: Array<{
     sha: string;
     author?: { login?: string; type?: string | null } | null;
@@ -232,7 +262,17 @@ function toThreadEntry({ at, body, commitId, ...rest }: ThreadEntryInput): Threa
   return { ...rest, at, atMs, body: body ?? '', ...(commitId && { commitId }) };
 }
 
+/**
+ * The comment-shaped activity as one stream. GitHub returns the
+ * authenticated user's own PENDING review (unsubmitted, `submitted_at`
+ * null) and can return its draft comments (`pull_request_review_id` of that
+ * review); neither has been said yet, so both are left out rather than
+ * counted as the user's last word.
+ */
 function threadEntries(activity: ReviewedPRActivity): ThreadEntry[] {
+  const pendingReviewIds = new Set(
+    activity.reviews.filter((r) => r.state === 'PENDING' && r.id !== undefined).map((r) => r.id),
+  );
   const inputs: ThreadEntryInput[] = [
     ...activity.comments.map((c): ThreadEntryInput => ({
       actor: c,
@@ -241,23 +281,27 @@ function threadEntries(activity: ReviewedPRActivity): ThreadEntry[] {
       kind: 'comment',
       url: c.html_url,
     })),
-    ...activity.reviews.map((r): ThreadEntryInput => ({
-      actor: r,
-      body: r.body,
-      at: r.submitted_at,
-      kind: 'review',
-      url: r.html_url,
-      commitId: r.commit_id,
-    })),
-    ...activity.reviewComments.map((c): ThreadEntryInput => ({
-      actor: c,
-      body: c.body,
-      at: c.created_at,
-      kind: 'review_comment',
-      url: c.html_url,
-      threadId: c.in_reply_to_id ?? c.id,
-      commitId: c.commit_id,
-    })),
+    ...activity.reviews
+      .filter((r) => r.state !== 'PENDING')
+      .map((r): ThreadEntryInput => ({
+        actor: r,
+        body: r.body,
+        at: r.submitted_at,
+        kind: 'review',
+        url: r.html_url,
+        commitId: r.commit_id,
+      })),
+    ...activity.reviewComments
+      .filter((c) => c.pull_request_review_id == null || !pendingReviewIds.has(c.pull_request_review_id))
+      .map((c): ThreadEntryInput => ({
+        actor: c,
+        body: c.body,
+        at: c.created_at,
+        kind: 'review_comment',
+        url: c.html_url,
+        threadId: c.in_reply_to_id ?? c.id,
+        commitId: c.commit_id,
+      })),
   ];
   return inputs.map((input) => toThreadEntry(input)).filter((entry) => entry !== undefined);
 }
@@ -314,9 +358,16 @@ interface DatedCommit extends ReviewedPRCommit {
   isBot: boolean;
 }
 
+type CommitEntry = ReviewedPRActivity['commits'][number];
+
+/** More than one parent: an "Update branch" or upstream merge, which carries no new work of its own. */
+function isMergeCommit(entry: CommitEntry): boolean {
+  return (entry.parents?.length ?? 0) > 1;
+}
+
 /** A dated non-merge commit, or undefined for a merge commit or one without a usable date. */
-function toDatedCommit(entry: ReviewedPRActivity['commits'][number], usernameLower: string): DatedCommit | undefined {
-  if ((entry.parents?.length ?? 0) > 1) return undefined;
+function toDatedCommit(entry: CommitEntry, usernameLower: string): DatedCommit | undefined {
+  if (isMergeCommit(entry)) return undefined;
   const date = commitDateOf(entry);
   const atMs = parseMs(date);
   if (!date || atMs === undefined) return undefined;
@@ -332,41 +383,82 @@ function toDatedCommit(entry: ReviewedPRActivity['commits'][number], usernameLow
   };
 }
 
-/** Non-merge commits with a usable date, in list (topological) order. */
-function datedCommits(commits: ReviewedPRActivity['commits'], usernameLower: string): DatedCommit[] {
-  return commits.map((entry) => toDatedCommit(entry, usernameLower)).filter((commit) => commit !== undefined);
+/** Non-merge commits with a usable date, by non-bot accounts other than the user, in list order. */
+function othersCommits(commits: readonly CommitEntry[], usernameLower: string): DatedCommit[] {
+  return commits
+    .map((entry) => toDatedCommit(entry, usernameLower))
+    .filter((commit) => commit !== undefined)
+    .filter((commit) => !commit.isUser && !commit.isBot);
+}
+
+/** The commits pushed after the user's last word, and what that says about a compare range. */
+interface CommitsSince {
+  /** Non-merge commits by non-bot accounts other than the user, in list order. */
+  pushed: DatedCommit[];
+  /** `commit_id` of the user's last review or inline comment; absent for a plain comment. */
+  reviewedSha?: string;
+  /** `reviewedSha` is not in the PR's commit list: the branch was rebased or force-pushed since. */
+  rebased: boolean;
+  /** A merge commit follows `reviewedSha`: `<reviewedSha>...<headSha>` would include upstream. */
+  mergedUpstream: boolean;
+  /** Plain-comment last word with commits dated after it: the reviewed head is unknown. */
+  baseUnknown: boolean;
 }
 
 /**
- * Head SHA the user's last word was about. Reviews and inline comments carry
- * it (`commit_id`). A plain comment does not, so take the last commit in
- * branch order pushed before it; after a rebase every commit postdates the
- * comment and there is nothing to name.
+ * A review or inline comment names the head it was made against
+ * (`commit_id`), so the commits after it in the PR's commit list (oldest
+ * first, branch order) are the new ones whatever their dates say: Git dates
+ * record when a commit was written, not when it was pushed, so a
+ * cherry-pick or a rebased fix can carry a date older than the review.
+ * When the reviewed commit is gone from the list the branch was rebased or
+ * force-pushed; dates are all that is left, and `rebased` says so. A merge
+ * commit after the reviewed one means upstream was merged in, so a compare
+ * range would show upstream's changes too (`mergedUpstream`).
+ *
+ * A plain comment names no head: its commits are the ones dated after it,
+ * and `baseUnknown` is set when there are any, so the workflow knows the
+ * list is approximate and offers no range.
  */
-function reviewedShaOf(last: ThreadEntry, commits: readonly DatedCommit[]): string | undefined {
-  if (last.commitId) return last.commitId;
-  let sha: string | undefined;
-  for (const commit of commits) {
-    if (commit.atMs <= last.atMs) sha = commit.sha;
+function commitsSince(activity: ReviewedPRActivity, last: ThreadEntry, usernameLower: string): CommitsSince {
+  const datedAfterLast = (): DatedCommit[] =>
+    othersCommits(activity.commits, usernameLower).filter((commit) => commit.atMs > last.atMs);
+  const reviewedSha = last.commitId;
+  if (reviewedSha === undefined) {
+    const pushed = datedAfterLast();
+    return { pushed, rebased: false, mergedUpstream: false, baseUnknown: pushed.length > 0 };
   }
-  return sha;
+  const index = activity.commits.findIndex((commit) => commit.sha === reviewedSha);
+  if (index === -1) {
+    return { reviewedSha, pushed: datedAfterLast(), rebased: true, mergedUpstream: false, baseUnknown: false };
+  }
+  const after = activity.commits.slice(index + 1);
+  return {
+    reviewedSha,
+    pushed: othersCommits(after, usernameLower),
+    rebased: false,
+    mergedUpstream: after.some((commit) => isMergeCommit(commit)),
+    baseUnknown: false,
+  };
 }
 
-/** Why an entry is addressed to the user, or undefined when it is not. */
+/**
+ * Why an entry is addressed to the user, or undefined when it is not. An
+ * @mention counts only in the author's own prose: not inside a quoted line,
+ * a code fence or an inline code span (someone else's words, or a literal).
+ */
 function questionReason(entry: ThreadEntry, user: UserActivity, mention: RegExp): ReviewedPRQuestionReason | undefined {
   if (entry.threadId !== undefined) {
     const userLastMs = user.threadLastMs.get(entry.threadId);
     if (userLastMs !== undefined && entry.atMs > userLastMs) return 'reply';
   }
   if (user.bodies.some((body) => isQuoteReplyTo(entry.body, body))) return 'quote';
-  if (mention.test(entry.body)) return 'mention';
+  if (mention.test(proseWithoutCode(entry.body))) return 'mention';
   return undefined;
 }
 
 /** What others did after the user's last word. */
 interface ActivitySince {
-  /** Non-merge commits by non-bot accounts other than the user, in list order. */
-  pushed: DatedCommit[];
   authorComments: number;
   /** Oldest first. */
   questions: ReviewedPRQuestion[];
@@ -412,14 +504,14 @@ function classifyEntry(
   return { reason, isAuthorReply, text };
 }
 
+/** The comment activity after the user's last word, with `pushed` folded into `latestAt`. */
 function collectActivitySince(
   entries: readonly ThreadEntry[],
-  commits: readonly DatedCommit[],
+  pushed: readonly DatedCommit[],
   context: ScanContext,
 ): ActivitySince {
   const reviewedMs = context.user.last?.atMs ?? Infinity;
   const latest = latestTracker();
-  const pushed = commits.filter((commit) => commit.atMs > reviewedMs && !commit.isUser && !commit.isBot);
   for (const commit of pushed) latest.note(commit.date, commit.atMs);
   const questions: ReviewedPRQuestion[] = [];
   let authorComments = 0;
@@ -442,7 +534,7 @@ function collectActivitySince(
     }
   }
   questions.sort(byTime);
-  return { pushed, authorComments, questions, latestAt: latest.at() };
+  return { authorComments, questions, latestAt: latest.at() };
 }
 
 /** Reasons the scan skips a PR before looking at what happened since the review. */
@@ -453,10 +545,10 @@ function skipReason(activity: ReviewedPRActivity, author: string, username: stri
 }
 
 /** Why nothing is reported for a scanned PR, or null when the follow-up stands. */
-function quietReason(since: ActivitySince, user: UserActivity, username: string): string | null {
+function quietReason(since: ActivitySince, pushed: number, user: UserActivity, username: string): string | null {
   if (since.questions.length > 0) return null;
   if (!user.reviewed) return `${username} only reacted on it and nobody addressed them`;
-  if (since.pushed.length === 0 && since.authorComments === 0) return 'nothing since the review';
+  if (pushed === 0 && since.authorComments === 0) return 'nothing since the review';
   return null;
 }
 
@@ -474,8 +566,10 @@ function quietReason(since: ActivitySince, user: UserActivity, username: string)
  *   then pushes and author replies are not for them, and only a comment
  *   addressed to them counts.
  *
- * `rebased`, `compareRange` and `compareUrl` are left for the daily phase,
- * which asks GitHub whether `reviewedSha` is still an ancestor of the head.
+ * `rebased`, `mergedUpstream` and `baseUnknown` come from the commit list
+ * (see `commitsSince`); `compareRange` and `compareUrl` are left for the
+ * daily phase, which asks GitHub whether `reviewedSha` is still an ancestor
+ * of the head when none of the three applies.
  */
 export function scanReviewedPR(
   ref: ReviewedPRRef,
@@ -495,22 +589,28 @@ export function scanReviewedPR(
     debug(MODULE, `Skipping ${ref.url}: no comment or review by ${username}`);
     return null;
   }
-  const commits = datedCommits(activity.commits, usernameLower);
-  const since = collectActivitySince(entries, commits, {
+  const { pushed, reviewedSha, rebased, mergedUpstream, baseUnknown } = commitsSince(
+    activity,
+    user.last,
+    usernameLower,
+  );
+  const since = collectActivitySince(entries, pushed, {
     user,
     usernameLower,
     authorLower: author.toLowerCase(),
     mention: mentionPattern(username),
   });
-  const quiet = quietReason(since, user, username);
+  const quiet = quietReason(since, pushed.length, user, username);
   if (quiet !== null) {
     debug(MODULE, `Skipping ${ref.url}: ${quiet}`);
     return null;
   }
 
-  const reviewedSha = reviewedShaOf(user.last, commits);
   return {
     author,
+    rebased,
+    mergedUpstream,
+    baseUnknown,
     prUrl: ref.url,
     repo: ref.repo,
     number: ref.number,
@@ -518,14 +618,13 @@ export function scanReviewedPR(
     reviewedAt: user.last.at,
     ...(reviewedSha !== undefined && { reviewedSha }),
     headSha: activity.pr.headSha,
-    rebased: false,
-    commits: since.pushed.slice(0, REVIEWED_PR_MAX_COMMITS).map(({ sha, author: login, date, subject }) => ({
+    commits: pushed.slice(0, REVIEWED_PR_MAX_COMMITS).map(({ sha, author: login, date, subject }) => ({
       sha,
       date,
       subject,
       author: login,
     })),
-    moreCommits: Math.max(0, since.pushed.length - REVIEWED_PR_MAX_COMMITS),
+    moreCommits: Math.max(0, pushed.length - REVIEWED_PR_MAX_COMMITS),
     authorComments: since.authorComments,
     questions: since.questions.slice(0, REVIEWED_PR_MAX_QUESTIONS),
     moreQuestions: Math.max(0, since.questions.length - REVIEWED_PR_MAX_QUESTIONS),

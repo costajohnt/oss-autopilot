@@ -268,6 +268,8 @@ describe('daily --json contract: review follow-ups (#1857)', () => {
       compareRange: 'aaaaaaa...bbbbbbb',
       compareUrl: 'https://github.com/octocat/spoon-knife/compare/aaaaaaa...bbbbbbb',
       rebased: false,
+      mergedUpstream: false,
+      baseUnknown: false,
       commits: [{ sha: 'bbbbbbb', author: 'contributor', date: '2026-06-02T00:00:00Z', subject: 'Split the helper' }],
       moreCommits: 0,
       authorComments: 1,
@@ -309,7 +311,7 @@ describe('daily --json contract: review follow-ups (#1857)', () => {
     const compact = toCompactDailyOutput(result);
     expect(compact.reviewedPRs).toEqual(result.reviewedPRs);
     expect(CompactDailyOutputSchema.parse(compact).reviewedPRs).toEqual(result.reviewedPRs);
-    // A minimal entry (no reviewed SHA, no range, rebased) validates too.
+    // A minimal entry (no reviewed SHA, no range, plain-comment base) validates too.
     const rebased = toDailyOutput(
       makeFixture({
         reviewedPRs: [
@@ -318,7 +320,7 @@ describe('daily --json contract: review follow-ups (#1857)', () => {
             reviewedSha: undefined,
             compareRange: undefined,
             compareUrl: undefined,
-            rebased: true,
+            baseUnknown: true,
             questions: [],
           },
         ],

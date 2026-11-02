@@ -89,11 +89,19 @@ function commit(
 
 const REVIEW = userReview();
 
+/** The head the review was of (`commit_id`), as it appears in the PR's commit list. */
+const REVIEWED_COMMIT = commit(AUTHOR, BEFORE_1H, 'rev0000');
+
+/** The author's merge of the base branch into the PR ("Update branch"). */
+function mergeCommit(date: string, sha: string) {
+  return { ...commit(AUTHOR, date, sha), parents: [{ sha: 'a' }, { sha: 'b' }] };
+}
+
 describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
   it('lists a PR where the author pushed after the review, with the reviewed and head SHAs and the commits', () => {
     const entry = scan({
       reviews: [REVIEW],
-      commits: [commit(AUTHOR, BEFORE_1H, 'old1'), commit(AUTHOR, AFTER_1H, 'new1')],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H, 'new1')],
     });
     expect(entry).toEqual({
       prUrl: ref.url,
@@ -105,6 +113,8 @@ describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
       reviewedSha: 'rev0000',
       headSha: 'head000',
       rebased: false,
+      mergedUpstream: false,
+      baseUnknown: false,
       commits: [{ sha: 'new1', author: AUTHOR, date: AFTER_1H, subject: 'Work by author' }],
       moreCommits: 0,
       authorComments: 0,
@@ -117,7 +127,7 @@ describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
   it('returns null when nothing happened after the review', () => {
     const entry = scan({
       reviews: [REVIEW],
-      commits: [commit(AUTHOR, BEFORE_1H)],
+      commits: [commit(AUTHOR, BEFORE_2H, 'first'), REVIEWED_COMMIT],
       comments: [comment(AUTHOR, 'Ready for review', BEFORE_2H)],
     });
     expect(entry).toBeNull();
@@ -126,14 +136,14 @@ describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
   it("returns null when the user's own later comment is the last word", () => {
     const entry = scan({
       reviews: [REVIEW],
-      commits: [commit(AUTHOR, AFTER_1H)],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H)],
       comments: [comment(USER, 'Looks good now, thanks for splitting it.', AFTER_2H)],
     });
     expect(entry).toBeNull();
   });
 
   it('returns null for a PR the user authored, one that is no longer open, or one the user never reviewed', () => {
-    const pushed = activity({ reviews: [REVIEW], commits: [commit(AUTHOR, AFTER_1H)] });
+    const pushed = activity({ reviews: [REVIEW], commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H)] });
     const byUser = scanReviewedPR(ref, { ...pushed, pr: { ...openPR, author: USER } }, USER);
     const closed = scanReviewedPR(ref, { ...pushed, pr: { ...openPR, state: 'closed' } }, USER);
     const unreviewed = scan({ commits: [commit(AUTHOR, AFTER_1H)] });
@@ -153,7 +163,7 @@ describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
   it('does not treat a push or an author reply as a follow-up when the user only reacted ("+1"), but still lists a question for them', () => {
     const reacted = {
       comments: [comment(USER, '+1', REVIEWED_AT), comment(AUTHOR, 'Pushed the fix.', AFTER_1H)],
-      commits: [commit(AUTHOR, AFTER_1H)],
+      commits: [commit(AUTHOR, BEFORE_1H, 'first'), commit(AUTHOR, AFTER_1H)],
     };
     expect(scan(reacted)).toBeNull();
 
@@ -165,12 +175,12 @@ describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
     // An empty-body APPROVED review is a review, so a later push counts.
     const approved = scan({
       reviews: [userReview({ body: '', state: 'APPROVED' })],
-      commits: [commit(AUTHOR, AFTER_1H)],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H)],
     });
     expect(approved?.commits).toHaveLength(1);
   });
 
-  it('ignores bot comments and commits, and reaction-only replies from the author', () => {
+  it('ignores bot comments and commits, commits by the user, and reaction-only replies from the author', () => {
     const entry = scan({
       reviews: [REVIEW],
       comments: [
@@ -178,27 +188,106 @@ describe('scanReviewedPR: when a reviewed PR is listed (#1857)', () => {
         comment('Copilot', 'I pushed fixes', AFTER_1H, { user: { login: 'Copilot', type: 'Bot' } }),
         comment(AUTHOR, '👍', AFTER_1H),
       ],
-      commits: [commit('pre-commit-ci[bot]', AFTER_1H)],
+      commits: [REVIEWED_COMMIT, commit('pre-commit-ci[bot]', AFTER_1H), commit(USER, AFTER_2H, 'mine')],
     });
     expect(entry).toBeNull();
   });
 
-  it('ignores merge commits, commits by the user, and commits a maintainer rebased without new work', () => {
+  it("lists a co-maintainer's commit after the review, not only the author's", () => {
+    const entry = scan({ reviews: [REVIEW], commits: [REVIEWED_COMMIT, commit('maintainer', AFTER_1H, 'theirs')] });
+    expect(entry?.commits.map((c) => [c.sha, c.author])).toEqual([['theirs', 'maintainer']]);
+    expect(entry?.authorComments).toBe(0);
+  });
+
+  it("ignores the user's own pending review and its draft comments as their last word", () => {
+    const pending = userReview({ id: 101, submitted_at: null, state: 'PENDING', commit_id: 'head000', body: '' });
+    const draft = {
+      id: 900,
+      user: { login: USER },
+      body: 'Still a tight loop here (draft, not submitted).',
+      created_at: AFTER_3H,
+      commit_id: 'head000',
+      pull_request_review_id: 101,
+    };
+    const entry = scan({
+      reviews: [REVIEW, pending],
+      reviewComments: [draft],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H, 'new1')],
+    });
+    expect(entry?.reviewedAt).toBe(REVIEWED_AT);
+    expect(entry?.reviewedSha).toBe('rev0000');
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['new1']);
+  });
+});
+
+describe('scanReviewedPR: which commits are new (#1857)', () => {
+  it('takes the commits after the reviewed one in list order, so a commit written before the review but pushed after it counts', () => {
+    // Authored 09:30, review at 10:00 against its parent, pushed at 11:00: new, whatever the date says.
+    const entry = scan({
+      reviews: [REVIEW],
+      commits: [commit(AUTHOR, BEFORE_2H, 'rev0000'), commit(AUTHOR, BEFORE_1H, 'written-earlier')],
+    });
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['written-earlier']);
+    expect(entry?.rebased).toBe(false);
+    expect(entry?.baseUnknown).toBe(false);
+  });
+
+  it('lists a cherry-pick carrying an old author date when it follows the reviewed commit, and reports that date as the latest activity', () => {
+    const entry = scan({
+      reviews: [REVIEW],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, BEFORE_2H, 'cherry-pick', AUTHOR, BEFORE_2H)],
+    });
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['cherry-pick']);
+    expect(entry?.latestActivityAt).toBe(BEFORE_2H);
+  });
+
+  it('does not list commits before the reviewed one, even when they are dated after the review', () => {
+    const entry = scan({
+      reviews: [REVIEW],
+      commits: [commit(AUTHOR, AFTER_1H, 'odd-date-before'), REVIEWED_COMMIT],
+    });
+    expect(entry).toBeNull();
+  });
+
+  it('flags a merge of the base branch after the review as mergedUpstream and lists only the non-merge commits after it', () => {
+    const entry = scan({
+      reviews: [REVIEW],
+      commits: [REVIEWED_COMMIT, mergeCommit(AFTER_1H, 'merge-main'), commit(AUTHOR, AFTER_2H, 'fix')],
+    });
+    expect(entry?.mergedUpstream).toBe(true);
+    expect(entry?.rebased).toBe(false);
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['fix']);
+    // A merge before the reviewed commit is history the review already saw.
+    const earlier = scan({
+      reviews: [REVIEW],
+      commits: [mergeCommit(BEFORE_2H, 'merge-main'), REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H, 'fix')],
+    });
+    expect(earlier?.mergedUpstream).toBe(false);
+  });
+
+  it('falls back to dates and flags rebased when the reviewed commit is gone from the list (force-push)', () => {
     const entry = scan({
       reviews: [REVIEW],
       commits: [
-        { ...commit(AUTHOR, AFTER_1H, 'merge'), parents: [{ sha: 'a' }, { sha: 'b' }] },
-        commit(USER, AFTER_1H, 'mine'),
-        // Author date before the review, committer web-flow after: a maintainer's rebase.
+        commit(AUTHOR, BEFORE_2H, 'kept-old'),
+        // Author date before the review, committer web-flow after: a maintainer's rebase of old work.
         commit(AUTHOR, BEFORE_1H, 'rebased', 'web-flow', AFTER_1H),
+        // The author's own amend: the committer date is theirs, so the force-pushed fix counts.
+        commit(AUTHOR, BEFORE_1H, 'amended', AUTHOR, AFTER_1H),
+        commit(AUTHOR, AFTER_2H, 'new'),
       ],
     });
-    expect(entry).toBeNull();
+    expect(entry?.rebased).toBe(true);
+    expect(entry?.reviewedSha).toBe('rev0000');
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['amended', 'new']);
   });
 
-  it("dates the author's own amend by the committer date, so a force-pushed fix counts", () => {
-    const entry = scan({ reviews: [REVIEW], commits: [commit(AUTHOR, BEFORE_1H, 'amended', AUTHOR, AFTER_1H)] });
-    expect(entry?.commits.map((c) => c.sha)).toEqual(['amended']);
+  it("ignores merge commits and the user's commits in the date fallback too", () => {
+    const entry = scan({
+      reviews: [REVIEW],
+      commits: [mergeCommit(AFTER_1H, 'merge'), commit(USER, AFTER_1H, 'mine')],
+    });
+    expect(entry).toBeNull();
   });
 });
 
@@ -270,6 +359,22 @@ describe('scanReviewedPR: questions for you (#1857)', () => {
     expect(entry?.latestActivityAt).toBe(AFTER_2H);
   });
 
+  it('does not read an @mention inside a quoted line, a code fence or inline code as addressed to the user', () => {
+    const quoted = `> @${USER} said this earlier\n\nAnd I disagree with the premise.`;
+    const fenced = `Run this:\n\`\`\`\ngit log --author=@${USER}\n\`\`\`\nthen check the output.`;
+    const inline = `Use \`@${USER}\` as the handle placeholder in the template.`;
+    const entry = scan({
+      reviews: [REVIEW],
+      comments: [
+        comment('someone', quoted, AFTER_1H),
+        comment('someone', fenced, AFTER_2H),
+        comment('someone', inline, AFTER_3H),
+        comment('someone', `See \`retry.ts\`, @${USER}, is that what you meant?`, AFTER_4H),
+      ],
+    });
+    expect(entry?.questions.map((q) => [q.reason, q.createdAt])).toEqual([['mention', AFTER_4H]]);
+  });
+
   it('caps the question and commit lists and reports how many were dropped', () => {
     const comments = Array.from({ length: REVIEWED_PR_MAX_QUESTIONS + 2 }, (_, i) =>
       comment(AUTHOR, `@${USER} question ${i}`, iso((i + 1) * 1000)),
@@ -277,7 +382,7 @@ describe('scanReviewedPR: questions for you (#1857)', () => {
     const commits = Array.from({ length: REVIEWED_PR_MAX_COMMITS + 3 }, (_, i) =>
       commit(AUTHOR, iso((i + 1) * 1000), `c${i}`),
     );
-    const entry = scan({ reviews: [REVIEW], comments, commits });
+    const entry = scan({ comments, reviews: [REVIEW], commits: [REVIEWED_COMMIT, ...commits] });
     expect(entry?.questions).toHaveLength(REVIEWED_PR_MAX_QUESTIONS);
     expect(entry?.moreQuestions).toBe(2);
     expect(entry?.commits).toHaveLength(REVIEWED_PR_MAX_COMMITS);
@@ -303,12 +408,17 @@ describe('scanReviewedPR: the reviewed SHA (#1857)', () => {
       created_at: AFTER_1H,
       commit_id: 'rev1111',
     };
-    const entry = scan({ reviews: [REVIEW], reviewComments: [later], commits: [commit(AUTHOR, AFTER_2H)] });
+    const entry = scan({
+      reviews: [REVIEW],
+      reviewComments: [later],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, BEFORE_1H, 'rev1111'), commit(AUTHOR, AFTER_2H, 'new')],
+    });
     expect(entry?.reviewedAt).toBe(AFTER_1H);
     expect(entry?.reviewedSha).toBe('rev1111');
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['new']);
   });
 
-  it('for a plain comment, names the last commit pushed before it', () => {
+  it('for a plain comment, names no reviewed SHA, picks the commits dated after it and flags baseUnknown', () => {
     const entry = scan({
       comments: [plainComment],
       commits: [
@@ -317,24 +427,27 @@ describe('scanReviewedPR: the reviewed SHA (#1857)', () => {
         commit(AUTHOR, AFTER_1H, 'third'),
       ],
     });
-    expect(entry?.reviewedSha).toBe('second');
+    expect(entry?.reviewedSha).toBeUndefined();
+    expect(entry?.baseUnknown).toBe(true);
+    expect(entry?.rebased).toBe(false);
     expect(entry?.commits.map((c) => c.sha)).toEqual(['third']);
   });
 
-  it('leaves the reviewed SHA out when every commit postdates the comment (branch rebased since)', () => {
+  it('for a plain comment with no push since (author replied only), leaves baseUnknown false', () => {
     const entry = scan({
-      comments: [plainComment],
-      commits: [commit(AUTHOR, AFTER_1H, 'a'), commit(AUTHOR, AFTER_2H, 'b')],
+      comments: [plainComment, comment(AUTHOR, 'Fixed the lock, the cap is next.', AFTER_1H)],
+      commits: [commit(AUTHOR, BEFORE_1H, 'only')],
     });
+    expect(entry?.authorComments).toBe(1);
+    expect(entry?.baseUnknown).toBe(false);
     expect(entry?.reviewedSha).toBeUndefined();
-    expect(entry?.commits.map((c) => c.sha)).toEqual(['a', 'b']);
   });
 
   it('falls back to the search title and author when the PR payload has none', () => {
     const entry = scan({
       pr: { headSha: 'head000', state: 'open' },
       reviews: [REVIEW],
-      commits: [commit(AUTHOR, AFTER_1H)],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_1H)],
     });
     expect(entry?.title).toBe('Add retries');
     expect(entry?.author).toBe(AUTHOR);

@@ -692,6 +692,8 @@ const ReviewedPRFollowUpSchema = z.object({
   compareRange: z.string().optional(),
   compareUrl: z.string().optional(),
   rebased: z.boolean(),
+  mergedUpstream: z.boolean(),
+  baseUnknown: z.boolean(),
   commits: z.array(ReviewedPRCommitSchema),
   moreCommits: z.number().int().nonnegative(),
   authorComments: z.number().int().nonnegative(),

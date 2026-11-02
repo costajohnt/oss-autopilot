@@ -159,6 +159,18 @@ function ownProseLines(body: string): string[] {
 }
 
 /**
+ * The prose of `body` with code and quotes removed: `>` quote lines, fenced
+ * and indented code blocks (see {@link ownProseLines}) and inline `code`
+ * spans. An @mention inside any of those is someone else's words or a
+ * literal, not an address to the user (#1857).
+ */
+export function proseWithoutCode(body: string): string {
+  return ownProseLines(body)
+    .join('\n')
+    .replaceAll(/`[^`\n]*`/g, ' ');
+}
+
+/**
  * Whether `body` quotes `quoted` (#1862): a Markdown `>` block in `body`
  * contains a line (at least `MIN_QUOTE_LENGTH` characters once whitespace is
  * collapsed) that appears verbatim in the prose of `quoted`. GitHub's "Quote

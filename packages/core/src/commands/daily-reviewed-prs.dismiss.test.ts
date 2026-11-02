@@ -72,7 +72,7 @@ function authorCommit(date: string, sha: string) {
   };
 }
 
-/** The author pushed `commitDates` after the user's review. */
+/** The author pushed `commitDates` after the user's review (made against `rev0000`, the first commit). */
 function activityWith(...commitDates: string[]): ReviewedPRActivity & { truncatedLists: ReviewedPRActivityList[] } {
   return {
     pr: { headSha: 'head000', state: 'open', author: AUTHOR },
@@ -81,7 +81,7 @@ function activityWith(...commitDates: string[]): ReviewedPRActivity & { truncate
       { id: 1, user: { login: USER }, body: 'Please split this.', submitted_at: REVIEWED_AT, commit_id: 'rev0000' },
     ],
     reviewComments: [],
-    commits: commitDates.map((date, i) => authorCommit(date, `c${i}`)),
+    commits: [authorCommit(iso(-HOUR_MS), 'rev0000'), ...commitDates.map((date, i) => authorCommit(date, `c${i}`))],
     truncatedLists: [],
   };
 }
@@ -145,6 +145,30 @@ describe('review follow-ups: dismiss hides the PR until newer activity (real Sta
       await expect(runDismiss({ url: PR_URL })).resolves.toMatchObject({ dismissed: true });
       resetStateManager();
       expect(await runPhase(again, iso(3 * HOUR_MS))).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resurfaces a dismissed PR when a commit pushed after the dismiss carries an older date (cherry-pick), going by the search update', async () => {
+    vi.useFakeTimers();
+    try {
+      // Dismissed two hours after the review, with one commit pushed an hour after it.
+      vi.setSystemTime(new Date(iso(2 * HOUR_MS)));
+      const pushedOnce = activityWith(iso(HOUR_MS));
+      expect(await runPhase(pushedOnce)).toHaveLength(1);
+      await runDismiss({ url: PR_URL });
+      resetStateManager();
+
+      // The author then cherry-picks a commit written before the review; its date predates the dismiss,
+      // but it follows the reviewed commit in the list and the search's updated_at moved with the push.
+      vi.setSystemTime(new Date(iso(4 * HOUR_MS)));
+      const cherryPicked = activityWith(iso(HOUR_MS), iso(-2 * HOUR_MS));
+      const entries = await runPhase(cherryPicked, iso(3 * HOUR_MS));
+      expect(entries.map((e) => e.commits.map((c) => c.sha))).toEqual([['c0', 'c1']]);
+
+      // With no push since the dismiss (search update before the stamp), the same list stays hidden.
+      expect(await runPhase(cherryPicked, iso(HOUR_MS))).toEqual([]);
     } finally {
       vi.useRealTimers();
     }

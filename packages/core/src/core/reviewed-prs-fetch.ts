@@ -8,7 +8,13 @@
 
 import type { Octokit } from '@octokit/rest';
 import { rethrowRejections } from './concurrency.js';
-import { ConfigurationError, ValidationError, getHttpStatusCode } from './errors.js';
+import {
+  ConfigurationError,
+  ValidationError,
+  describeError,
+  getHttpStatusCode,
+  isRateLimitOrAuthError,
+} from './errors.js';
 import { debug, warn } from './logger.js';
 import { paginateAllDetailed } from './pagination.js';
 import type { ReviewedPRActivity, ReviewedPRActivityList, ReviewedPRRef } from './reviewed-prs.js';
@@ -27,9 +33,12 @@ const SEARCH_PER_PAGE = 100;
 
 /** Result of `PRMonitor.fetchReviewedOpenPRs`. */
 export interface ReviewedPRSearchResult {
-  /** Deduplicated across both searches, most recently updated first. */
+  /** Deduplicated across both searches and sorted most recently updated first. */
   prs: ReviewedPRRef[];
-  /** One entry per search whose results were cut by the page or 1000-result cap. */
+  /**
+   * Per search: one entry when its results were cut by the page cap or a
+   * failed page, plus one when GitHub flagged a page as incomplete.
+   */
   warnings: string[];
 }
 
@@ -110,42 +119,105 @@ class ReviewedPRFilter {
   }
 }
 
-/** One search's items across its pages, plus how many results it reported in total. */
-async function searchPages(
-  octokit: Octokit,
-  q: string,
-): Promise<{ items: SearchItem[]; fetched: number; totalCount: number }> {
-  const items: SearchItem[] = [];
-  let totalCount = 0;
+/** One search's items across the pages that were read. */
+interface SearchPages {
+  items: SearchItem[];
+  /** `total_count` from the last page read; 0 when none was. */
+  totalCount: number;
+  /** Pages read successfully. */
+  pagesRead: number;
+  /** GitHub flagged a page `incomplete_results` (the search timed out server-side and returned what it had). */
+  incomplete: boolean;
+  /** The page whose request failed, with the error; the pages before it were kept. */
+  failure?: { page: number; error: unknown };
+}
+
+/**
+ * Read one search page by page, most recently updated first, up to
+ * {@link REVIEWED_PR_SEARCH_MAX_PAGES}. A page that fails ends the search
+ * with what was read so far and the failure recorded; a rate-limit or auth
+ * error propagates instead.
+ */
+async function searchPages(octokit: Octokit, q: string): Promise<SearchPages> {
+  const result: SearchPages = { items: [], totalCount: 0, pagesRead: 0, incomplete: false };
   for (let page = 1; page <= REVIEWED_PR_SEARCH_MAX_PAGES; page++) {
-    const { data } = await octokit.search.issuesAndPullRequests({
-      q,
-      page,
-      sort: 'updated',
-      order: 'desc',
-      per_page: SEARCH_PER_PAGE,
-    });
-    totalCount = data.total_count;
-    items.push(...data.items);
-    if (data.items.length < SEARCH_PER_PAGE || items.length >= totalCount) break;
+    let data: Awaited<ReturnType<Octokit['search']['issuesAndPullRequests']>>['data'];
+    try {
+      ({ data } = await octokit.search.issuesAndPullRequests({
+        q,
+        page,
+        sort: 'updated',
+        order: 'desc',
+        per_page: SEARCH_PER_PAGE,
+      }));
+    } catch (error) {
+      if (isRateLimitOrAuthError(error)) throw error;
+      result.failure = { page, error };
+      return result;
+    }
+    result.pagesRead = page;
+    result.totalCount = data.total_count;
+    if (data.incomplete_results) result.incomplete = true;
+    result.items.push(...data.items);
+    if (data.items.length < SEARCH_PER_PAGE || result.items.length >= result.totalCount) break;
   }
-  return { items, totalCount, fetched: items.length };
+  return result;
+}
+
+/** Why a search did not cover every result: a failed page, else the page cap; undefined when it did. */
+function coverageWarning(subject: string, pages: SearchPages): string | undefined {
+  if (pages.failure) {
+    return (
+      `GitHub search for ${subject} failed on page ${pages.failure.page} (${describeError(pages.failure.error)}); ` +
+      `only the ${pages.items.length} result(s) from the ${pages.pagesRead} page(s) before it were read this run.`
+    );
+  }
+  if (pages.items.length < pages.totalCount) {
+    return (
+      `GitHub Search API reports ${pages.totalCount} ${subject}, but only the ${pages.items.length} most recently ` +
+      `updated were read (${pages.pagesRead} page(s) of ${SEARCH_PER_PAGE}). Older reviewed PRs are not checked this run.`
+    );
+  }
+  return undefined;
+}
+
+/** The warnings one search earned: incomplete coverage (failed page or page cap), and an incomplete page. */
+function searchWarnings(label: string, pages: SearchPages): string[] {
+  const subject = `open PRs you ${label} (not authored)`;
+  const messages: string[] = [];
+  const coverage = coverageWarning(subject, pages);
+  if (coverage !== undefined) messages.push(coverage);
+  if (pages.incomplete) {
+    messages.push(
+      `GitHub Search API returned incomplete results for ${subject} (the search timed out server-side); ` +
+        `some reviewed PRs may be missing this run.`,
+    );
+  }
+  return messages;
+}
+
+/** Most recently updated first; an unreadable `updatedAt` sorts last. */
+function byUpdatedDesc(a: ReviewedPRRef, b: ReviewedPRRef): number {
+  return (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0);
 }
 
 /**
  * Open PRs the configured user reviewed or commented on but did not author:
  * `is:pr is:open reviewed-by:<user> -author:<user>` plus the same with
- * `commenter:` (a review left as a plain comment), merged and deduplicated
- * by URL. Each search reads up to {@link REVIEWED_PR_SEARCH_MAX_PAGES}
- * pages, most recently updated first, and records one warning when more
- * results exist (the page cap or the Search API's 1000-result cap). Dropped
+ * `commenter:` (a review left as a plain comment), merged, deduplicated by
+ * URL and sorted most recently updated first across both searches, so a
+ * per-run cap downstream drops the quietest PRs whichever search found
+ * them. Each search reads up to {@link REVIEWED_PR_SEARCH_MAX_PAGES} pages
+ * and records one warning when more results exist beyond the pages read,
+ * one when a page failed (the pages before it are kept and the other search
+ * still runs), and one when GitHub flagged a page as incomplete. Dropped
  * without a warning, like every other PR list: PRs in the user's own repos,
  * in `untrackedOrgs`, in `excludeRepos` or `excludeOrgs`, and anything the
  * search returned that is not a pull request or that the user authored
  * after all.
  *
  * @throws {ConfigurationError} If no GitHub username is configured
- * @throws Octokit errors (rate limit, auth, 5xx) unchanged
+ * @throws Octokit rate-limit and auth errors unchanged
  */
 export async function fetchReviewedOpenPRs(
   octokit: Octokit,
@@ -161,23 +233,19 @@ export async function fetchReviewedOpenPRs(
   const warnings: string[] = [];
 
   for (const { qualifier, label } of REVIEWED_PR_SEARCHES) {
-    const q = `is:pr is:open is:public ${qualifier}:${username} -author:${username}`;
-    const { items, fetched, totalCount } = await searchPages(octokit, q);
-    for (const item of items) {
+    const pages = await searchPages(octokit, `is:pr is:open is:public ${qualifier}:${username} -author:${username}`);
+    for (const item of pages.items) {
       if (seen.has(item.html_url)) continue;
       seen.add(item.html_url);
       const ref = filter.toRef(item);
       if (ref) prs.push(ref);
     }
-    if (fetched < totalCount) {
-      const message =
-        `GitHub Search API reports ${totalCount} open PRs you ${label} (not authored), but only the ${fetched} ` +
-        `most recently updated were read (${REVIEWED_PR_SEARCH_MAX_PAGES} pages of ${SEARCH_PER_PAGE}; ` +
-        `the API caps results at 1000). Older reviewed PRs are not checked this run.`;
+    for (const message of searchWarnings(label, pages)) {
       warnings.push(message);
       warn(MODULE, message);
     }
   }
+  prs.sort(byUpdatedDesc);
   debug(MODULE, `Found ${prs.length} open PRs reviewed by @${username}`);
   return { prs, warnings };
 }

@@ -198,8 +198,13 @@ function pushedAndReplied(): ActivityResult {
         html_url: 'https://github.com/org/repo/pull/1#discussion_r501',
       },
     ],
-    commits: [authorCommit(iso(-HOUR_MS), 'old1'), authorCommit(iso(2 * HOUR_MS), 'new1')],
+    commits: [authorCommit(iso(-HOUR_MS), 'rev0000'), authorCommit(iso(2 * HOUR_MS), 'new1')],
   });
+}
+
+/** Resolves after `ms`, so one PR's fetch can finish after another's. */
+function after<T>(ms: number, value: T): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
 
 function makeDigest(): DailyDigest {
@@ -318,6 +323,8 @@ describe('executeDailyCheck() — review follow-ups (#1857)', () => {
         compareRange: 'rev0000...head000',
         compareUrl: 'https://github.com/org/repo/compare/rev0000...head000',
         rebased: false,
+        mergedUpstream: false,
+        baseUnknown: false,
         commits: [
           {
             sha: 'new1',
@@ -350,22 +357,82 @@ describe('executeDailyCheck() — review follow-ups (#1857)', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('flags a rebased branch (reviewed SHA no longer an ancestor, or gone) without a compare range', async () => {
-    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1), reviewedPR(2)], warnings: [] });
+  it('flags a rebased branch (reviewed SHA no longer an ancestor, behind, or gone) without a compare range', async () => {
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1), reviewedPR(2), reviewedPR(3)], warnings: [] });
     mockFetchReviewedPRActivity.mockResolvedValue(pushedAndReplied());
-    mockFetchCompareStatus.mockImplementation((prUrl) =>
-      Promise.resolve(prUrl.endsWith('/1') ? 'diverged' : 'missing'),
-    );
+    const statuses: Record<string, CompareStatus> = { '1': 'diverged', '2': 'missing', '3': 'behind' };
+    mockFetchCompareStatus.mockImplementation((prUrl) => Promise.resolve(statuses[prUrl.slice(-1)]));
 
     const result = await executeDailyCheck('test-token');
 
     expect(result.reviewedPRs?.map((e) => [e.number, e.rebased, e.compareRange, e.compareUrl])).toEqual([
       [1, true, undefined, undefined],
       [2, true, undefined, undefined],
+      [3, true, undefined, undefined],
     ]);
     expect(result.reviewedPRs?.[0].commits.map((c) => c.sha)).toEqual(['new1']);
     expect(JSON.stringify(result.reviewedPRs)).not.toContain('rev0000...head000');
     expect(phaseWarnings(result)).toEqual([]);
+  });
+
+  it('sets the compare range on identical as well as ahead', async () => {
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1)], warnings: [] });
+    mockFetchReviewedPRActivity.mockResolvedValue(pushedAndReplied());
+    mockFetchCompareStatus.mockResolvedValue('identical');
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.reviewedPRs?.map((e) => [e.rebased, e.compareRange])).toEqual([[false, 'rev0000...head000']]);
+  });
+
+  it('flags the reviewed commit gone from the commit list as rebased without a compare call, listing commits by date', async () => {
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1)], warnings: [] });
+    const forcePushed = pushedAndReplied();
+    forcePushed.commits = [authorCommit(iso(-HOUR_MS), 'rewritten'), authorCommit(iso(2 * HOUR_MS), 'new1')];
+    mockFetchReviewedPRActivity.mockResolvedValue(forcePushed);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockFetchCompareStatus).not.toHaveBeenCalled();
+    expect(
+      result.reviewedPRs?.map((e) => [e.rebased, e.reviewedSha, e.compareRange, e.commits.map((c) => c.sha)]),
+    ).toEqual([[true, 'rev0000', undefined, ['new1']]]);
+  });
+
+  it('flags a merge of the base branch after the review as mergedUpstream, with no compare call and no range', async () => {
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1)], warnings: [] });
+    const merged = pushedAndReplied();
+    merged.commits = [
+      authorCommit(iso(-HOUR_MS), 'rev0000'),
+      { ...authorCommit(iso(HOUR_MS), 'merge-main'), parents: [{ sha: 'a' }, { sha: 'b' }] },
+      authorCommit(iso(2 * HOUR_MS), 'new1'),
+    ];
+    mockFetchReviewedPRActivity.mockResolvedValue(merged);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockFetchCompareStatus).not.toHaveBeenCalled();
+    expect(
+      result.reviewedPRs?.map((e) => [e.mergedUpstream, e.rebased, e.compareRange, e.commits.map((c) => c.sha)]),
+    ).toEqual([[true, false, undefined, ['new1']]]);
+  });
+
+  it('offers no range and no compare call when the last word was a plain comment, flagging baseUnknown', async () => {
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1)], warnings: [] });
+    const plainCommentThenPush = activity({
+      comments: [
+        { id: 8, user: { login: USER }, body: 'Reviewed locally, the lock looks wrong.', created_at: REVIEWED_AT },
+      ],
+      commits: [authorCommit(iso(-HOUR_MS), 'base'), authorCommit(iso(2 * HOUR_MS), 'new1')],
+    });
+    mockFetchReviewedPRActivity.mockResolvedValue(plainCommentThenPush);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockFetchCompareStatus).not.toHaveBeenCalled();
+    expect(
+      result.reviewedPRs?.map((e) => [e.baseUnknown, e.reviewedSha, e.compareRange, e.commits.map((c) => c.sha)]),
+    ).toEqual([[true, undefined, undefined, ['new1']]]);
   });
 
   it('keeps the entry without a range or a rebase flag, with a warning, when the compare call fails', async () => {
@@ -388,15 +455,13 @@ describe('executeDailyCheck() — review follow-ups (#1857)', () => {
 
   it('makes no compare call when the head did not move (reply only) and lists the PR without a range', async () => {
     mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1)], warnings: [] });
-    mockFetchReviewedPRActivity.mockResolvedValue(
-      activity({
-        pr: { headSha: 'rev0000', state: 'open', author: AUTHOR },
-        reviews: [userReview()],
-        comments: [
-          { id: 9, user: { login: AUTHOR }, body: 'Done, the helper is split now.', created_at: iso(HOUR_MS) },
-        ],
-      }),
-    );
+    const repliedOnly = activity({
+      pr: { headSha: 'rev0000', state: 'open', author: AUTHOR },
+      reviews: [userReview()],
+      comments: [{ id: 9, user: { login: AUTHOR }, body: 'Done, the helper is split now.', created_at: iso(HOUR_MS) }],
+      commits: [authorCommit(iso(-HOUR_MS), 'rev0000')],
+    });
+    mockFetchReviewedPRActivity.mockResolvedValue(repliedOnly);
 
     const result = await executeDailyCheck('test-token');
 
@@ -406,9 +471,21 @@ describe('executeDailyCheck() — review follow-ups (#1857)', () => {
     ]);
   });
 
+  it("keeps the output in search order even when the first PR's fetch resolves last", async () => {
+    const prs = [reviewedPR(1), reviewedPR(2), reviewedPR(3)];
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs, warnings: [] });
+    mockFetchReviewedPRActivity.mockImplementation((prUrl) =>
+      prUrl.endsWith('/1') ? after(20, pushedAndReplied()) : Promise.resolve(pushedAndReplied()),
+    );
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.reviewedPRs?.map((e) => e.number)).toEqual([1, 2, 3]);
+  });
+
   it('lists nothing (no key, no menu item) when nothing happened after the review', async () => {
     mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [reviewedPR(1)], warnings: [] });
-    const quiet = activity({ reviews: [userReview()], commits: [authorCommit(iso(-HOUR_MS), 'old1')] });
+    const quiet = activity({ reviews: [userReview()], commits: [authorCommit(iso(-HOUR_MS), 'rev0000')] });
     mockFetchReviewedPRActivity.mockResolvedValue(quiet);
 
     const result = await executeDailyCheck('test-token');
@@ -432,7 +509,6 @@ describe('executeDailyCheck() — review follow-ups (#1857)', () => {
     expect(result.capacity.activePRCount).toBe(1);
     expect(result.capacity.criticalIssueCount).toBe(0);
     expect(result.capacity.hasCapacity).toBe(true);
-    expect(result.digest.needsAddressingPRs).toEqual([]);
     expect(result.digest.openPRs.map((pr) => pr.url)).toEqual([own.url]);
     expect(result.actionableIssues).toEqual([]);
     expect(result.attention.needsAttention).toBe(0);
@@ -457,22 +533,35 @@ describe('executeDailyCheck() — review follow-ups: dismissal and skips (#1857)
     expect(result.reviewedPRs).toBeUndefined();
   });
 
-  it('skips a PR dismissed at or after its newest qualifying activity, and lists one dismissed before it', async () => {
+  it('skips a comments-only follow-up dismissed at or after its newest reply even when updated_at moved since, and lists one dismissed before it', async () => {
     const pr = reviewedPR(1, { updatedAt: iso(3 * HOUR_MS) });
     mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [pr], warnings: [] });
-    mockFetchReviewedPRActivity.mockResolvedValue(pushedAndReplied());
+    const repliedOnly = pushedAndReplied();
+    repliedOnly.commits = [authorCommit(iso(-HOUR_MS), 'rev0000')];
+    repliedOnly.pr = { ...repliedOnly.pr, headSha: 'rev0000' };
+    mockFetchReviewedPRActivity.mockResolvedValue(repliedOnly);
 
-    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? iso(2 * HOUR_MS) : undefined));
+    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? iso(HOUR_MS) : undefined));
     const dismissedAfter = await executeDailyCheck('test-token');
     expect(dismissedAfter.reviewedPRs).toBeUndefined();
-    expect(mockFetchCompareStatus).not.toHaveBeenCalled();
 
-    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? iso(HOUR_MS + 1000) : undefined));
+    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? iso(HOUR_MS - 1000) : undefined));
     const dismissedBefore = await executeDailyCheck('test-token');
     expect(dismissedBefore.reviewedPRs).toHaveLength(1);
   });
 
-  it('enriches at most the per-run cap, most recently updated first, and warns how many were left', async () => {
+  it('lists a follow-up with commits dismissed after their dates once updated_at moved past the dismiss (push time is unknown)', async () => {
+    const pr = reviewedPR(1, { updatedAt: iso(3 * HOUR_MS) });
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs: [pr], warnings: [] });
+    mockFetchReviewedPRActivity.mockResolvedValue(pushedAndReplied());
+    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? iso(2 * HOUR_MS) : undefined));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.reviewedPRs?.map((e) => [e.latestActivityAt, e.commits.length])).toEqual([[iso(2 * HOUR_MS), 1]]);
+  });
+
+  it('enriches at most the per-run cap, in the order the search returned, and warns how many were left', async () => {
     const prs = Array.from({ length: REVIEWED_PR_MAX_PER_RUN + 2 }, (_, i) => reviewedPR(i + 1));
     mockFetchReviewedOpenPRs.mockResolvedValue({ prs, warnings: [] });
     mockFetchReviewedPRActivity.mockResolvedValue(pushedAndReplied());
@@ -489,6 +578,21 @@ describe('executeDailyCheck() — review follow-ups: dismissal and skips (#1857)
         message: `2 reviewed PR(s) beyond the per-run cap of ${REVIEWED_PR_MAX_PER_RUN} were not checked (the least recently updated); dismiss or re-review stale ones to make room`,
       },
     ]);
+  });
+
+  it('drops dismissed PRs before the cap, so they do not use up its slots or trigger the warning', async () => {
+    const prs = Array.from({ length: REVIEWED_PR_MAX_PER_RUN + 2 }, (_, i) => reviewedPR(i + 1));
+    mockFetchReviewedOpenPRs.mockResolvedValue({ prs, warnings: [] });
+    mockFetchReviewedPRActivity.mockResolvedValue(pushedAndReplied());
+    const dismissed = new Set([prs[0].url, prs[1].url]);
+    mockGetIssueDismissedAt.mockImplementation((url) => (dismissed.has(url) ? iso(3 * HOUR_MS) : undefined));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockFetchReviewedPRActivity).toHaveBeenCalledTimes(REVIEWED_PR_MAX_PER_RUN);
+    expect(mockFetchReviewedPRActivity).toHaveBeenCalledWith(prs[REVIEWED_PR_MAX_PER_RUN + 1].url);
+    expect(result.reviewedPRs?.map((e) => e.number)).toEqual(prs.slice(2).map((pr) => pr.number));
+    expect(phaseWarnings(result)).toEqual([]);
   });
 
   it('skips the phase with one warning when no GitHub username is configured', async () => {
@@ -591,11 +695,11 @@ describe('executeDailyCheck() — review follow-ups: failures (#1857)', () => {
 
     expect(result.reviewedPRs).toHaveLength(1);
     expect(phaseWarnings(result)).toEqual([
-      { phase: 'reviewed-prs', operation: 'search reviewed PRs (truncated)', message },
+      { phase: 'reviewed-prs', operation: 'search reviewed PRs (incomplete)', message },
     ]);
   });
 
-  it('skips the phase with one warning when the search itself fails, and the rest of the run completes', async () => {
+  it('skips the phase with one warning naming the HTTP status when the search itself fails, and the rest of the run completes', async () => {
     mockFetchReviewedOpenPRs.mockRejectedValue(httpError(503, 'Service Unavailable'));
 
     const result = await executeDailyCheck('test-token');
@@ -603,7 +707,7 @@ describe('executeDailyCheck() — review follow-ups: failures (#1857)', () => {
     expect(result.reviewedPRs).toBeUndefined();
     expect(result.digest).toBeDefined();
     expect(phaseWarnings(result)).toEqual([
-      { phase: 'reviewed-prs', operation: 'prepare review follow-ups', message: 'Service Unavailable' },
+      { phase: 'reviewed-prs', operation: 'prepare review follow-ups', message: 'HTTP 503: Service Unavailable' },
     ]);
   });
 

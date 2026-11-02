@@ -6,11 +6,11 @@
  * compare call that turns `reviewedSha` into a range or a rebase flag, the
  * dismiss check, the warnings, and the agent-facing fencing of excerpts.
  *
- * API cost per run: two searches (up to three pages each), then for every
- * reviewed PR not already dismissed at or after its last update, up to
- * {@link REVIEWED_PR_MAX_PER_RUN} of them, five calls (PR, comments,
- * reviews, inline comments, commits) and, when the PR turns out actionable
- * and the head moved, one compare.
+ * API cost per run: two searches (up to three pages each), then for the
+ * {@link REVIEWED_PR_MAX_PER_RUN} most recently updated reviewed PRs not
+ * already dismissed at or after their last update, five calls each (PR,
+ * comments, reviews, inline comments, commits) and, when the PR turns out
+ * actionable, the head moved and a range could be honest, one compare.
  */
 
 import {
@@ -35,7 +35,8 @@ const OPERATION = 'review follow-ups';
  * Reviewed PRs enriched per run, most recently updated first (#1857). Five
  * calls each, so this bounds the phase at roughly 250 calls plus compares;
  * a reviewer with more open reviewed PRs than this sees one warning naming
- * how many were left unchecked. The search orders by `updated_at`, so the
+ * how many were left unchecked. The search result is sorted by `updated_at`
+ * across both searches and dismissed PRs are dropped before the cap, so the
  * PRs left out are the ones nothing has happened on for longest.
  */
 export const REVIEWED_PR_MAX_PER_RUN = 50;
@@ -71,6 +72,27 @@ function isDismissed(prUrl: string, activityAt: string, dismissedAt: string | un
     return true;
   }
   return false;
+}
+
+/**
+ * The dismiss check after the scan. Comment dates are when the comment was
+ * posted, so `latestActivityAt` settles a comments-only follow-up. Commit
+ * dates say when a commit was written, not when it was pushed, so a commit
+ * the scan found after the reviewed one (cherry-pick, rebased fix) can
+ * carry a date before the dismiss and would hide a push that happened after
+ * it. When any listed commit is dated at or before the stamp, the search's
+ * `updated_at`, which does move on push, stands in for the activity time.
+ * Since every commit the user saw when dismissing is dated before the stamp
+ * too, a follow-up that includes commits is in effect hidden only by the
+ * pre-fetch `updated_at` check, and `updated_at` also moves on a
+ * bystander's comment: this errs toward showing the PR again rather than
+ * missing a push.
+ */
+function isEntryDismissed(pr: ReviewedPRRef, entry: ReviewedPRFollowUp, dismissedAt: string | undefined): boolean {
+  if (dismissedAt === undefined) return false;
+  const dismissedMs = Date.parse(dismissedAt);
+  const hasCommitDatedBeforeStamp = entry.commits.some((commit) => Date.parse(commit.date) <= dismissedMs);
+  return isDismissed(pr.url, hasCommitDatedBeforeStamp ? pr.updatedAt : entry.latestActivityAt, dismissedAt);
 }
 
 /**
@@ -113,11 +135,13 @@ async function fetchActivity(
 /**
  * Fill in `compareRange` / `compareUrl` or `rebased` from GitHub's compare
  * status. No call when the head is where the review left it (comments
- * only) or when the reviewed commit could not be named. On an error other
- * than 404 (which `fetchCompareStatus` maps to `missing`) the entry keeps
- * neither range nor flag, with a warning: an unverified range could be
- * wrong, and the commit list is still there. Rate-limit/auth errors
- * propagate.
+ * only), when the reviewed commit could not be named (plain comment), or
+ * when the scan already ruled a range out from the commit list (`rebased`:
+ * the reviewed commit is gone; `mergedUpstream`: upstream was merged in
+ * after it). On an error other than 404 (which `fetchCompareStatus` maps to
+ * `missing`) the entry keeps neither range nor flag, with a warning: an
+ * unverified range could be wrong, and the commit list is still there.
+ * Rate-limit/auth errors propagate.
  */
 async function resolveCompare(
   source: ReviewedPRSource,
@@ -125,6 +149,7 @@ async function resolveCompare(
   warnings: DailyWarning[],
 ): Promise<void> {
   if (entry.reviewedSha === undefined || entry.reviewedSha === entry.headSha) return;
+  if (entry.rebased || entry.mergedUpstream) return;
   let status: CompareStatus;
   try {
     status = await source.fetchCompareStatus(entry.prUrl, entry.reviewedSha, entry.headSha);
@@ -153,7 +178,8 @@ async function resolveCompare(
  * author, fetch each one's thread, and keep the PRs where the author has
  * moved things since the user's last review or comment (`scanReviewedPR`):
  * commits pushed, a reply from the author, or a comment addressed to the
- * user. For each kept PR, ask GitHub whether the reviewed commit is still
+ * user. For each kept PR whose head moved and whose commit list did not
+ * already rule a range out, ask GitHub whether the reviewed commit is still
  * an ancestor of the head: if so the entry carries the compare range, if
  * not it is flagged `rebased` and carries the commit list instead.
  *
@@ -162,7 +188,9 @@ async function resolveCompare(
  * when they dismiss the PR URL at or after the newest activity (the
  * workflow's "skip" runs the existing `dismiss`, which accepts PR URLs and
  * re-stamps on repeat), and when the PR closes or merges. A PR dismissed at
- * or after its search `updated_at` is skipped before any per-PR call.
+ * or after its search `updated_at` is skipped before any per-PR call, and
+ * the dismiss filter runs before the per-run cap so dismissed PRs do not
+ * use up its slots.
  *
  * Never counted toward capacity or `needsAddressingPRs`: these are other
  * people's PRs.
@@ -182,7 +210,7 @@ async function prepareReviewedPRs(source: ReviewedPRSource, warnings: DailyWarni
 
   const search = await source.fetchReviewedOpenPRs();
   for (const message of search.warnings) {
-    recordWarning(warnings, 'reviewed-prs', 'search reviewed PRs (truncated)', null, message);
+    recordWarning(warnings, 'reviewed-prs', 'search reviewed PRs (incomplete)', null, message);
   }
   const notDismissed = search.prs.filter(
     (pr) => !isDismissed(pr.url, pr.updatedAt, stateManager.getIssueDismissedAt(pr.url)),
@@ -220,7 +248,7 @@ async function prepareReviewedPRs(source: ReviewedPRSource, warnings: DailyWarni
         );
         return;
       }
-      if (!entry || isDismissed(pr.url, entry.latestActivityAt, stateManager.getIssueDismissedAt(pr.url))) return;
+      if (!entry || isEntryDismissed(pr, entry, stateManager.getIssueDismissedAt(pr.url))) return;
       await resolveCompare(source, entry, warnings);
       pending.set(pr, entry);
     },
@@ -249,7 +277,7 @@ export async function runReviewedPRsPhase(
     return await prepareReviewedPRs(source, warnings);
   } catch (error) {
     if (isRateLimitOrAuthError(error)) throw error;
-    recordWarning(warnings, 'reviewed-prs', `prepare ${OPERATION}`, error);
+    recordWarning(warnings, 'reviewed-prs', `prepare ${OPERATION}`, error, describeError(error));
     return [];
   }
 }

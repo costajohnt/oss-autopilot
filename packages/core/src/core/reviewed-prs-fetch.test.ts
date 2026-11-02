@@ -67,24 +67,39 @@ beforeEach(() => {
 });
 
 describe('fetchReviewedOpenPRs (#1857)', () => {
-  it('runs both searches, dedupes by URL, keeps the search order and maps each item', async () => {
+  it('runs both searches most recently updated first, dedupes by URL, maps each item and sorts across both searches', async () => {
     octokit.search.issuesAndPullRequests = searchResponses({
       'reviewed-by': [
         {
           total_count: 2,
-          items: [searchItem('https://github.com/a/b/pull/1'), searchItem('https://github.com/a/b/pull/2')],
+          items: [
+            searchItem('https://github.com/a/b/pull/1', 'someone', { updated_at: '2026-06-02T12:00:00Z' }),
+            searchItem('https://github.com/a/b/pull/2', 'someone', { updated_at: '2026-06-01T12:00:00Z' }),
+          ],
         },
       ],
       commenter: [
         {
           total_count: 2,
-          items: [searchItem('https://github.com/a/b/pull/2'), searchItem('https://github.com/c/d/pull/3', 'other')],
+          items: [
+            // A commenter-only PR updated after every reviewed-by PR sorts first.
+            searchItem('https://github.com/c/d/pull/3', 'other', { updated_at: '2026-06-03T12:00:00Z' }),
+            searchItem('https://github.com/a/b/pull/2', 'someone', { updated_at: '2026-06-01T12:00:00Z' }),
+          ],
         },
       ],
     });
     const result = await fetchReviewedOpenPRs(octokit as unknown as Octokit, config);
     expect(result.warnings).toEqual([]);
     expect(result.prs).toEqual([
+      {
+        url: 'https://github.com/c/d/pull/3',
+        repo: 'c/d',
+        number: 3,
+        title: 'PR at https://github.com/c/d/pull/3',
+        author: 'other',
+        updatedAt: '2026-06-03T12:00:00Z',
+      },
       {
         url: 'https://github.com/a/b/pull/1',
         repo: 'a/b',
@@ -99,21 +114,24 @@ describe('fetchReviewedOpenPRs (#1857)', () => {
         number: 2,
         title: 'PR at https://github.com/a/b/pull/2',
         author: 'someone',
-        updatedAt: '2026-06-02T12:00:00Z',
-      },
-      {
-        url: 'https://github.com/c/d/pull/3',
-        repo: 'c/d',
-        number: 3,
-        title: 'PR at https://github.com/c/d/pull/3',
-        author: 'other',
-        updatedAt: '2026-06-02T12:00:00Z',
+        updatedAt: '2026-06-01T12:00:00Z',
       },
     ]);
-    const queries = octokit.search.issuesAndPullRequests.mock.calls.map((call: [{ q: string }]) => call[0].q);
-    expect(queries).toEqual([
-      `is:pr is:open is:public reviewed-by:${USER} -author:${USER}`,
-      `is:pr is:open is:public commenter:${USER} -author:${USER}`,
+    expect(octokit.search.issuesAndPullRequests.mock.calls.map((call: [unknown]) => call[0])).toEqual([
+      {
+        q: `is:pr is:open is:public reviewed-by:${USER} -author:${USER}`,
+        page: 1,
+        sort: 'updated',
+        order: 'desc',
+        per_page: 100,
+      },
+      {
+        q: `is:pr is:open is:public commenter:${USER} -author:${USER}`,
+        page: 1,
+        sort: 'updated',
+        order: 'desc',
+        per_page: 100,
+      },
     ]);
   });
 
@@ -151,9 +169,64 @@ describe('fetchReviewedOpenPRs (#1857)', () => {
     const result = await fetchReviewedOpenPRs(octokit as unknown as Octokit, config);
     expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(REVIEWED_PR_SEARCH_MAX_PAGES + 1);
     expect(result.prs).toHaveLength(101);
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]).toContain('1500 open PRs you reviewed');
-    expect(result.warnings[0]).toContain(`only the ${REVIEWED_PR_SEARCH_MAX_PAGES * 100} most recently updated`);
+    expect(result.warnings).toEqual([
+      `GitHub Search API reports 1500 open PRs you reviewed (not authored), but only the ${REVIEWED_PR_SEARCH_MAX_PAGES * 100} most recently updated were read (${REVIEWED_PR_SEARCH_MAX_PAGES} page(s) of 100). Older reviewed PRs are not checked this run.`,
+    ]);
+  });
+
+  it('keeps the pages read before a failed page, warns naming the search and the page, and still runs the other search', async () => {
+    const fullPage = Array.from({ length: 100 }, (_, i) => searchItem(`https://github.com/a/b/pull/${i}`));
+    const badGateway = Object.assign(new Error('Bad Gateway'), { status: 502 });
+    const responses = searchResponses({
+      'reviewed-by': [{ total_count: 250, items: fullPage }],
+      commenter: [{ total_count: 1, items: [searchItem('https://github.com/c/d/pull/9')] }],
+    });
+    octokit.search.issuesAndPullRequests = vi.fn((params: { q: string; page: number }) =>
+      params.q.includes('reviewed-by:') && params.page === 2 ? Promise.reject(badGateway) : responses(params),
+    );
+    const result = await fetchReviewedOpenPRs(octokit as unknown as Octokit, config);
+    expect(result.prs).toHaveLength(101);
+    expect(result.prs.map((pr) => pr.url)).toContain('https://github.com/c/d/pull/9');
+    expect(result.warnings).toEqual([
+      'GitHub search for open PRs you reviewed (not authored) failed on page 2 (HTTP 502: Bad Gateway); only the 100 result(s) from the 1 page(s) before it were read this run.',
+    ]);
+  });
+
+  it('returns nothing for a search whose first page fails, without a page-cap warning on top', async () => {
+    const responses = searchResponses({
+      commenter: [{ total_count: 1, items: [searchItem('https://github.com/c/d/pull/9')] }],
+    });
+    octokit.search.issuesAndPullRequests = vi.fn((params: { q: string; page: number }) =>
+      params.q.includes('reviewed-by:') ? Promise.reject(new Error('socket hang up')) : responses(params),
+    );
+    const result = await fetchReviewedOpenPRs(octokit as unknown as Octokit, config);
+    expect(result.prs.map((pr) => pr.url)).toEqual(['https://github.com/c/d/pull/9']);
+    expect(result.warnings).toEqual([
+      'GitHub search for open PRs you reviewed (not authored) failed on page 1 (socket hang up); only the 0 result(s) from the 0 page(s) before it were read this run.',
+    ]);
+  });
+
+  it('lets a rate-limit error from a search page propagate', async () => {
+    const rateLimited = Object.assign(new Error('API rate limit exceeded'), { status: 429 });
+    octokit.search.issuesAndPullRequests = vi.fn().mockRejectedValue(rateLimited);
+    await expect(fetchReviewedOpenPRs(octokit as unknown as Octokit, config)).rejects.toBe(rateLimited);
+    expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns once per search when GitHub flags a page as incomplete, keeping its items', async () => {
+    octokit.search.issuesAndPullRequests = searchResponses({
+      'reviewed-by': [
+        { total_count: 1, items: [searchItem('https://github.com/a/b/pull/1')], incomplete_results: true } as {
+          total_count: number;
+          items: unknown[];
+        },
+      ],
+    });
+    const result = await fetchReviewedOpenPRs(octokit as unknown as Octokit, config);
+    expect(result.prs).toHaveLength(1);
+    expect(result.warnings).toEqual([
+      'GitHub Search API returned incomplete results for open PRs you reviewed (not authored) (the search timed out server-side); some reviewed PRs may be missing this run.',
+    ]);
   });
 
   it('throws a ConfigurationError without searching when no username is configured', async () => {
