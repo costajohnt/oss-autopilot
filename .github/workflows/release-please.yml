@@ -229,35 +229,41 @@ jobs:
 
   # The Claude plugin directory submission tracks the `directory` branch, a
   # plugin-only tree (no pnpm workspace config, which the directory's
-  # validator blocks). Append one commit per core release; never force-push.
+  # validator blocks). Append one commit per core or MCP release (an MCP-only
+  # release still re-pins .mcp.json); never force-push.
   publish-directory-branch:
     name: Update the plugin directory branch
-    needs: [release-please, publish-npm]
+    needs: [release-please, publish-npm, publish-mcp-npm]
     if: >-
       always()
-      && needs.publish-npm.result == 'success'
+      && !failure()
+      && !cancelled()
+      && (needs.publish-npm.result == 'success' || needs.publish-mcp-npm.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout tagged release
+      # The release merge commit carries both packages' bumped versions.
+      - name: Checkout release commit
         uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.release-please.outputs.core-tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 22
 
+      - name: Read the released core version
+        id: core
+        run: echo "version=$(node -p "require('./.release-please-manifest.json')['.']")" >> "$GITHUB_OUTPUT"
+
       - name: Assemble the plugin tree
         env:
-          TAG: ${{ needs.release-please.outputs.core-tag }}
-        run: scripts/build-directory-branch.sh "${TAG#core-v}" "$RUNNER_TEMP/directory"
+          VERSION: ${{ steps.core.outputs.version }}
+        run: scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/directory"
 
       - name: Commit and push to the directory branch
         env:
-          TAG: ${{ needs.release-please.outputs.core-tag }}
+          TAG: core-v${{ steps.core.outputs.version }} / ${{ github.sha }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

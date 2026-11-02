@@ -23,12 +23,15 @@ if [ -e "$OUT" ]; then
   exit 1
 fi
 
-mkdir -p "$OUT/.claude-plugin" "$OUT/scripts" "$OUT/docs" "$OUT/packages/core/dist"
+mkdir -p "$OUT/.claude-plugin" "$OUT/scripts" "$OUT/docs/diagrams" "$OUT/packages/core/dist"
 
 cp .claude-plugin/plugin.json "$OUT/.claude-plugin/"
 cp .mcp.json README.md LICENSE "$OUT/"
 cp -R agents commands skills workflows assets "$OUT/"
+# Docs the agents and README point at (rubrics, policy categories, diagrams).
 cp -R docs/images "$OUT/docs/"
+cp docs/repo-scores.md docs/anti-llm-policy.md "$OUT/docs/"
+cp docs/diagrams/*.svg "$OUT/docs/diagrams/"
 cp scripts/build-cli-if-stale.sh scripts/build-dashboard-if-stale.sh "$OUT/scripts/"
 # Contributor notes, not an agent: the validator flags it for missing frontmatter.
 rm -f "$OUT/agents/README.md"
