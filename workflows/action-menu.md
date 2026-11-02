@@ -1,0 +1,234 @@
+# Action Menu
+
+> **Session state:** Expects `data.daily` (including `actionMenu`, `actionableIssues`, `digest`, `commentedIssues`, `workClaims`), `sessionName`, `hasIssueList`, `availableCount`, `completedCount`, `blockedCount` from core router. `availableCount` already excludes blocked items (`## Queued ...` sections, `**... blocked ...**` / `**... wait ...**` sub-bullets); `blockedCount` counts them separately.
+> **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
+
+---
+
+The CLI pre-computes the action menu in `data.daily.actionMenu`. Use these items directly in AskUserQuestion instead of manually deriving options.
+
+**Fallback:** If `data.daily.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm run bundle`". Then derive options manually: always include "Done for now"; add "Work through all N issues (Recommended)" if `data.daily.actionableIssues.length > 0`; always add "Search for new issues".
+
+### If No Actionable Issues
+
+When `data.daily.actionMenu` is present and `data.daily.actionMenu.context.hasActionableIssues` is `false` (or when `data.daily.actionMenu` is absent and `data.daily.actionableIssues` is empty), display:
+```
+All PRs are on track — nothing needs your attention right now.
+```
+
+If `hasIssueList && availableCount === 0 && blockedCount === 0`:
+```
+Your curated issue list is depleted ({completedCount} done). Time to find new issues!
+```
+
+If `hasIssueList && availableCount === 0 && blockedCount > 0`:
+```
+Your curated issue list has {blockedCount} queued, all blocked. Time to find new issues!
+```
+
+### In-Flight Work Header (#1856, #1852)
+
+`data.daily.workClaims` lists the live work claims: implementations running or finished in the background (`kind: "implementation"`, on issue URLs) and PRs a session is doing Tier 2 work on (`kind: "pr"`). Each carries `session`, `startedAt`, `expiresAt`, `status` (`running` | `finished`) and, for implementations, `branch`, `worktree` (with `host`, the short hostname to show, and `machineId`, which says which machine the path is on) or `runId`. The field is absent when nothing is claimed. Every time the menu is shown after the first, refresh the list first; it is cheap (local state, or in Gist mode a refresh throttled to once per 30 s, so a claim another machine pushed since startup shows up):
+
+```bash
+WORK_OUT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work list --json)
+```
+
+Use the `claims` array of that output in place of `data.daily.workClaims` (same shape). If the command fails, keep the startup list and say so once. If the output carries `warnings` (the Gist refresh failed, so the list is this machine's copy and another machine's claims may be missing), append `(may be stale: {warnings[0].message})` to the header line below and do not treat an item as free just because no claim shows for it.
+
+Render one header line above the PR list whenever there is at least one implementation claim, counting `running` and `finished` separately and deriving the age from `startedAt` (`12 min`, `3 h`):
+
+```
+1 implementation running: owner/repo#N (12 min, session air/20261102T1207) | 1 finished, ready to collect: other/lib#M (2 h)
+```
+
+Claims held by **another** session (`claim.session !== sessionName`) are the cross-session signal: list them, never act on them silently.
+
+### Display All PRs First (Information Before Prompt)
+
+When there are actionable issues, display them **before asking the user anything**.
+
+Issues are listed in priority order based on issue `type`: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict`. (An incomplete PR-body checklist is informational only: it shows as a note in the PR's `displayDescription` and never makes a PR actionable by itself.) This matches the ordering from `collectActionableIssues()` in the CLI. All PRs shown here have `status: "needs_addressing"` — the issue `type` field provides the specific reason. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
+
+For each issue, look up the full PR from `digest.openPRs` using the issue's `prUrl`:
+
+```javascript
+// For each actionable issue, resolve the full PR object:
+const pr = data.daily.digest.openPRs.find(p => p.url === issue.prUrl);
+```
+
+Then show the enriched format using the resolved PR's fields:
+
+```
+{count} PRs Need Attention (in priority order):
+
+1. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
+   {pr.url}
+   └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
+   └─ Effort: {effort} — {action summary}
+
+2. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
+   {pr.url}
+   └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
+   └─ Effort: {effort} — {action summary}
+
+... (list ALL actionable issues, no limit)
+
+---
+```
+
+**Handled in another session (#1852):** when a `pr` claim in `workClaims` matches `issue.prUrl` and its `session` is not this session's `sessionName`, append a line under that PR and keep it in the list:
+
+```
+   └─ handled in session {claim.session} since {claim.startedAt as HH:MM UTC}
+```
+
+Such a PR is never re-dispatched by "Work through all issues" or a specific-PR selection without asking: offer "Leave it to session {claim.session}" (default) / "Take it over here" (re-claims it for this session with `work claim ... --takeover`; without the flag the CLI refuses a claim another session holds, and the other session sees the takeover on its next menu refresh). A claim by this session's own `sessionName` (a PR this session already started on) needs no line.
+
+**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. The label mapping for `pr.maintainerActionHints` lives at `packages/core/src/core/maintainer-hints.ts` (`MAINTAINER_HINT_LABELS` + `formatMaintainerHints`) — that file is the source of truth (#1264). Documented mappings: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
+
+**Effort estimate**: The truth table lives at `packages/core/src/core/issue-effort.ts` (`computeIssueEffort`) — that function is the source of truth (#1264). Reproduced here for the workflow's render template; edit the source first if the rules change.
+
+| Effort | Condition |
+|--------|-----------|
+| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist` |
+| **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
+| **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
+
+If an issue type doesn't match any row above, default to **Medium** (matches the function's fallback).
+
+**Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
+
+Use `pr.daysSinceActivity` from the resolved PR (already computed).
+
+### Recently Closed PRs (Informational)
+
+If `data.daily.digest.recentlyClosedPRs` has entries, display them **after** the actionable issues list (or after "All PRs are on track" if none) as a separate informational section. These are NOT counted in the "Need Attention" total and do NOT receive priority numbers:
+
+```
+Recently closed (informational):
+- {repo}#{number} — {title} (closed without merge on {closedAt date})
+  {url}
+```
+
+These do not require any action. They exist so the user knows what was closed. The Auto-Exclude prompt (in the work-through-issues workflow) may offer to exclude these repos from future searches.
+
+**Replies on engaged issues (#1862):** `data.daily.commentedIssues` covers two kinds of issue. On an issue the user only commented on, a `new_response` needs a reply directed at them: from a maintainer, an @mention, or a quote of their comment. On an engaged issue (the user claimed it, or one of their open, recently closed or recently merged PRs links it, or a ledger PR links it and the search still finds the issue active), any substantive non-bot comment after the user's last word (last comment, claim, or PR opening, whichever is later) counts; "+1", emoji-only and short thanks do not. Such entries carry `engagement` (`reason`: `open_pr` / `claim` / `closed_pr` / `merged_pr`, `prUrl` for the PR reasons, `since`); an engaged issue the user never commented on has an empty `userLastCommentBody` and `userLastCommentedAt` equal to `engagement.since`. Live engaged issues the comment search misses are looked up in batches; the ones still open and updated since the engagement have their comments read, at most 100 per run, most recently updated first. A `fetch` warning names an issue that is gone (deleted or now private; a transferred issue is followed to its new repo), the issues the cap left unread (with that many busy engaged issues, replies on the deferred ones stay unseen until fewer are busier), and, under `look up engaged issues`, how many engaged issues could not be looked up at all this run. A dismissed issue comes back when a reply newer than the dismiss arrives, on the CLI and the dashboard alike.
+
+**Linked-issue status updates (#1863):** when a closed PR carries an `issueUrl` (parsed from a `Fixes #N`-style keyword in its body), the user closed it themselves, and the user has not commented on that issue since the close, the CLI lists it in `data.daily.closedPRStatusUpdates` (`prUrl`, `issueUrl`, `closedAt`) and adds a `closed_pr_status` item to the action menu ("Post status update on linked issue (N)"). The local claim on each listed issue is released if it was tracked (see `warnings` under `closed-pr-status` for anything that did not go through); capacity is unaffected, since it counts open PRs only. Not listed: PRs a maintainer or bot closed, PRs superseded by another of the user's PRs (one that closes the same issue, or an open one that merely mentions the issue or the closed PR), issues the user dismissed after the close, and any PR whose successor this run's PR fetch could have missed (open-PR search truncated, recently-merged fetch failed, or a per-PR fetch in the same repo failed; one `closed-pr-status` warning names each withheld PR). Issues listed here are left out of `commentedIssues` for the run unless they carry a new maintainer reply, so a plain "waiting" entry is not raised under "Review issue replies" as well while a reply still is. Append one line per entry under the recently-closed section:
+
+```
+  └─ linked issue {issueUrl} has not heard the outcome yet
+```
+
+The item routes to `workflows/closed-pr-status-update.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there is nothing to update.
+
+**Merged PRs with maintainer notes (#1861):** when a recently merged PR (same 7-day window as `digest.recentlyMergedPRs`) carries a comment, review, or inline review comment from a non-bot maintainer (OWNER / MEMBER / COLLABORATOR when GitHub reports the association) posted after the user's last comment and last commit on the PR and no earlier than an hour before the merge, or a non-merge commit someone else pushed on top of the user's last commit, the CLI lists it in `data.daily.mergedPRNotes` (`prUrl`, `repo`, `number`, `title`, `mergedAt`, `notes[]` with `author` / `createdAt` / `kind` / fenced `excerpt`, `maintainerCommits`, `thanksOnly`, optional `ackCoveredBy`) and adds a `merged_pr_notes` item to the action menu ("Merged PRs with maintainer notes (N)", where N counts entries without `ackCoveredBy`: one action per group). Short thanks count here (the <100-character acknowledgment filter does not apply after merge); process comments resolved earlier than an hour before the merge do not. When several thanks-only entries share a repo, the older ones carry `ackCoveredBy` pointing at the most recently merged one, so one acknowledgment covers them; once the user has commented on that carrier, the covered PRs stop being listed. Not listed: PRs the user commented on after the notes, PRs whose URL was dismissed at or after the newest note, PRs that failed to fetch, and PRs whose activity hit the pagination cap (one `merged-pr-notes` warning each, with the HTTP status or the capped lists). Nothing is written to state. Display the entries after the recently-closed section:
+
+```
+Merged with maintainer notes:
+- {repo}#{number} — {title} (merged {mergedAt date})
+  {author} ({kind}): {excerpt}
+  {url}
+```
+
+The item routes to `workflows/merged-pr-notes.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there are no notes.
+
+**Review follow-ups (#1857):** when an open PR the user reviewed or commented on but did not author (`reviewed-by:` plus `commenter:` searches; own repos, `untrackedOrgs`, `excludeRepos` and `excludeOrgs` excluded) has, after the user's last review or comment, a non-merge commit by a non-bot account other than the user, a non-reaction comment by the PR author, or a comment addressed to the user (a reply in one of their inline threads, a quote of their prose, or an @mention), the CLI lists it in `data.daily.reviewedPRs` (`prUrl`, `repo`, `number`, `title`, `author`, `reviewedAt`, optional `reviewedSha`, `headSha`, optional `compareRange` / `compareUrl`, `rebased`, `mergedUpstream`, `baseUnknown`, `commits[]` with `sha` / `author` / `date` / fenced `subject`, `moreCommits`, `authorComments`, `questions[]` with `author` / `createdAt` / `kind` / `reason` / fenced `excerpt` / optional `url`, `moreQuestions`, `latestActivityAt`, optional `latestCommentAt`) and adds a `review_follow_ups` item to the action menu ("Review follow-ups (N)"). New commits are the ones after the reviewed head (`reviewedSha`, the `commit_id` of the user's review or inline comment) in the PR's commit list, not the ones with later dates. `compareRange` is `<reviewedSha>...<headSha>` and is set only when GitHub confirmed the reviewed commit is still an ancestor of the head and nothing rules the range out: `rebased: true` means the reviewed commit is gone or no longer an ancestor (force-push or rebase), `mergedUpstream: true` means the base branch was merged in after the review (a range would include upstream), and `baseUnknown: true` means the reviewed commit's place in the list is unknown, usually because the user's last word was a plain comment that records no head (commits picked by date). In all three, read `commits` instead of a range. Not listed: PRs with nothing new since the user's last word, PRs where the user only reacted ("+1") unless a comment is addressed to them, PRs whose URL was dismissed with the current head recorded (`dismiss --head`, the workflow's "Skip") and no qualifying comment after the dismiss, PRs dismissed without a recorded head at or after `latestActivityAt`, PRs that failed to fetch, PRs whose activity hit the pagination cap (one `reviewed-prs` warning each; a search cut by the page cap, a failed search page, or a page GitHub flagged as incomplete warns once per search), and PRs beyond the per-run cap of 50 most recently updated across both searches (one warning with the count). Nothing is written to state, and these PRs never count toward capacity or `needsAddressingPRs`. Display the entries after the merged-notes section:
+
+```
+Review follow-ups (PRs you reviewed):
+- {repo}#{number} — {title} by @{author} (you reviewed {reviewedAt date})
+  {commits.length} new commit(s), {authorComments} repl{y|ies}, {questions.length} question(s) for you
+  {compareUrl | "rebased since your review; see the commit list" | "base branch merged in since your review; see the commit list" | "last word was a plain comment, no recorded head; see the commit list" | "no range; see the commit list"}
+  {url}
+```
+
+The item routes to `workflows/review-follow-ups.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there is nothing to follow up on.
+
+### Auto-Marked List Entries (Informational)
+
+If `data.daily.listUpdates` is present (#1463), the CLI detected merged PRs and automatically marked the matching curated-list entries done (same transform as `list-mark-done`). Display them after the recently-closed section so the user knows their list was updated without being asked:
+
+```
+Issue list updated automatically (PR merged):
+- {issueUrl} marked done — PR {prUrl}
+```
+
+If an entry's `repoHeadingStruck` is `true`, append "(all issues for this repo are now done)". No action needed; the field is absent on runs where nothing was marked. Failures to update the list appear in `data.daily.warnings` under the `merge-loop` phase — surface those like any other warning.
+
+**Collect finished implementations (#1856):** when a live implementation claim has `status: "finished"`, the CLI adds a `collect_implementations` item ("Collect finished implementations (N)"). It routes to `workflows/draft-first-workflow.md`, entry "Collecting a Finished Implementation", which enters the review cycle at Step 3 rather than re-implementing. The claim is computed from state at `daily` time; a run that finished since then shows up through the `work list` refresh above, so when that refresh reports a `finished` implementation and the menu has no `collect_implementations` item, add one with the same label.
+
+The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet **and** `autoExtractLearnings` is `false` — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`. With the default `autoExtractLearnings: true` the item never appears: `data.daily.pendingLearnings` carries the repos instead and `commands/oss.md` extracts them in the background at startup (#1696).
+
+### Ask for Action (Using Pre-Computed Menu)
+
+Use `data.daily.actionMenu.items` directly as AskUserQuestion options. Each item has `key`, `label`, and `description` fields ready for display.
+
+**Issue list integration:** If the user has a curated issue list (detected from `data.issueList` in the startup output), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search` item:
+
+| Condition | Insert Item |
+|-----------|-------------|
+| `hasIssueList && availableCount >= 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} ready)"`, Description: `"You have {availableCount} vetted issues ready to work on — starting one would be higher ROI than searching for more"` |
+| `hasIssueList && availableCount > 0 && availableCount < 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
+| `hasIssueList && availableCount === 0 && blockedCount === 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
+| `hasIssueList && availableCount === 0 && blockedCount > 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"{blockedCount} queued, all blocked — search for fresh ones"`. Also **remove** the `search` item. Never offer `pick_from_list` or mark the list as recommended when nothing is ready. |
+
+When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
+
+**Capacity warning:** If any menu item has a `capacityWarning` field, display the warning prominently before presenting the options:
+> ⚠️ {capacityWarning}
+The option remains available (override), but the warning provides friction before starting new issues.
+
+**"Replenish your issue list"** routes to **Handle "Find New Issues"** (same as search), but agents should be told to suggest issues suitable for adding to the curated list.
+
+### Example AskUserQuestion
+
+```
+Question: "What would you like to do?"
+Header: "Action"
+
+Options (from data.daily.actionMenu.items):
+1. Label: "Work through all 7 issues (Recommended)"
+   Description: "Run maintenance in parallel, then address code changes one at a time"
+
+2. Label: "Search for new issues"
+   Description: "Look for new contribution opportunities"
+
+3. Label: "Done for now"
+   Description: "End session with summary"
+
+(Other is auto-added - user can type "#1", "fix ink#861", "just 3 and 5", etc.)
+```
+
+### Parsing "Other" Input
+
+When user provides custom input via "Other", parse for:
+
+| Input Format | Examples | Action |
+|--------------|----------|--------|
+| PR numbers | "1", "#1", "fix 1", "address #1" | Address that specific PR from the list |
+| Multiple PRs | "1 and 3", "1,3,5", "#1 #3 #5", "1-3" | Address those PRs in parallel |
+| Repo references | "ink#861", "shadcn-ui/ui#9263" | Find and address that PR |
+| URLs | "https://github.com/..." | Address that PR directly |
+| Keywords | "all", "none", "skip" | Map to corresponding action |
+
+**If input is unclear**, ask for clarification:
+> "I didn't understand '{input}'. Please enter PR numbers (e.g., '1 and 3'), a repo reference (e.g., 'ink#861'), or select an option above."
+
+### Handling Informational Questions
+
+When the user types a simple question via "Other" input (or at any point during the session), determine whether it's **informational** or **actionable**:
+
+| Type | Examples | Behavior |
+|------|----------|----------|
+| **Informational** | "show me a link to issue #1", "what's the URL for PR #123", "how many PRs do I have open?", "list my waiting PRs", "what did the maintainer say on ink#855?" | Respond with the requested information as **text only**. Do NOT follow up with AskUserQuestion. Let the user read the answer and send their next message. |
+| **Actionable** | "fix #1", "address all issues", "search for new issues", "rebase ink#855" | Execute the action, then prompt with AskUserQuestion as usual. |
+
+**Why:** In Claude Code, AskUserQuestion renders as an interactive picker that replaces preceding text output. If informational text is immediately followed by a prompt, the user sees the answer for a brief moment before it's hidden behind the picker.
+
+**Rule of thumb:** If the user's input is purely asking for information (starts with "what", "how many", "which", "where") or uses display verbs ("show", "list") without an accompanying action verb ("fix", "address", "rebase", "search"), treat it as informational. If the input contains both an informational request and an action (e.g., "show me the CI logs and fix #3"), treat it as actionable. This heuristic applies equally when the user sends a free-form message outside of an AskUserQuestion picker.
+
+**After an informational response:** When the user sends their next message, route it through the same informational-vs-actionable classification. If their follow-up is actionable or selects a menu item, return to normal Action Menu flow.
+
+**Return:** Core router (`commands/oss.md`) — **Execute** section with the user's selected action key.

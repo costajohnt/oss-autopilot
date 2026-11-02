@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="a1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="100%" stop-color="#e11d48"/>
+    </linearGradient>
+    <linearGradient id="a2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="a3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="a4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="a5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+    <linearGradient id="a6" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Upward-pointing crystal / gem arrow -->
+  <!-- Top facet - nose -->
+  <polygon points="256,60 300,175 256,155" fill="url(#a1)"/>
+  <polygon points="256,60 212,175 256,155" fill="url(#a3)"/>
+
+  <!-- Upper left facets -->
+  <polygon points="212,175 130,250 175,220" fill="url(#a4)"/>
+  <polygon points="212,175 175,220 240,200" fill="url(#a6)" opacity="0.8"/>
+
+  <!-- Upper right facets -->
+  <polygon points="300,175 382,250 337,220" fill="url(#a2)"/>
+  <polygon points="300,175 337,220 272,200" fill="url(#a5)" opacity="0.8"/>
+
+  <!-- Center diamond -->
+  <polygon points="256,155 240,200 256,250 272,200" fill="url(#a1)" opacity="0.6"/>
+
+  <!-- Mid left -->
+  <polygon points="130,250 150,340 195,280" fill="url(#a5)"/>
+  <polygon points="175,220 130,250 195,280" fill="url(#a3)" opacity="0.7"/>
+  <polygon points="195,280 240,200 256,250" fill="url(#a4)" opacity="0.5"/>
+
+  <!-- Mid right -->
+  <polygon points="382,250 362,340 317,280" fill="url(#a6)"/>
+  <polygon points="337,220 382,250 317,280" fill="url(#a2)" opacity="0.7"/>
+  <polygon points="317,280 272,200 256,250" fill="url(#a1)" opacity="0.5"/>
+
+  <!-- Lower body -->
+  <polygon points="195,280 150,340 210,380" fill="url(#a2)" opacity="0.8"/>
+  <polygon points="317,280 362,340 302,380" fill="url(#a4)" opacity="0.8"/>
+  <polygon points="195,280 256,250 256,340" fill="url(#a3)" opacity="0.6"/>
+  <polygon points="317,280 256,250 256,340" fill="url(#a5)" opacity="0.6"/>
+
+  <!-- Tail -->
+  <polygon points="210,380 256,340 256,440" fill="url(#a6)" opacity="0.7"/>
+  <polygon points="302,380 256,340 256,440" fill="url(#a1)" opacity="0.7"/>
+  <polygon points="150,340 210,380 190,410" fill="url(#a5)" opacity="0.5"/>
+  <polygon points="362,340 302,380 322,410" fill="url(#a3)" opacity="0.5"/>
+
+  <!-- White stained glass edges -->
+  <g fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.2">
+    <polygon points="256,60 300,175 256,155"/>
+    <polygon points="256,60 212,175 256,155"/>
+    <polygon points="212,175 130,250 175,220"/>
+    <polygon points="300,175 382,250 337,220"/>
+    <polygon points="256,155 240,200 256,250 272,200"/>
+    <polygon points="130,250 150,340 195,280"/>
+    <polygon points="382,250 362,340 317,280"/>
+    <polygon points="195,280 150,340 210,380"/>
+    <polygon points="317,280 362,340 302,380"/>
+    <polygon points="210,380 256,340 256,440"/>
+    <polygon points="302,380 256,340 256,440"/>
+    <polygon points="150,340 210,380 190,410"/>
+    <polygon points="362,340 302,380 322,410"/>
+  </g>
+</svg>
