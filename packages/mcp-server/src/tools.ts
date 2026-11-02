@@ -31,6 +31,10 @@ import {
   runStartup,
   runDismiss,
   runUndismiss,
+  runWorkClaim,
+  runWorkFinish,
+  runWorkRelease,
+  runWorkList,
   runMove,
   runGuidelinesList,
   runGuidelinesView,
@@ -811,6 +815,83 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool(runMove),
+  );
+
+  // 20a. work-claim — Record that this session is working an item (#1856, #1852)
+  server.registerTool(
+    'work-claim',
+    {
+      description:
+        'Claim an item so other sessions and machines see it is being worked on: an issue with kind "implementation" while a fix is built in the background (needs worktree or runId; refused past maxConcurrentImplementations or when another implementation uses the same worktree), or a PR with kind "pr" while this session does Tier 2 work on it. Re-claiming renews the expiry.',
+      inputSchema: {
+        url: githubIssueOrPrUrlSchema.describe('Issue URL for an implementation claim, PR URL for a pr claim'),
+        kind: z.enum(['implementation', 'pr']).describe('implementation (issue) or pr (PR)'),
+        session: z.string().min(1).max(500).describe('Name of the session taking the claim, e.g. air/20261102T1207'),
+        branch: z.string().min(1).max(500).optional().describe('Branch the implementation is on'),
+        worktree: z
+          .string()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe('Checkout the implementation runs in; one running implementation per checkout'),
+        runId: z
+          .string()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe('Remote worker run id when the implementation runs off-machine'),
+        ttlHours: z
+          .number()
+          .positive()
+          .max(168)
+          .optional()
+          .describe('Claim lifetime in hours (default 24 for implementation, 12 for pr)'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool(runWorkClaim),
+  );
+
+  // 20b. work-finish — Mark an implementation ready to collect
+  server.registerTool(
+    'work-finish',
+    {
+      description:
+        'Mark the implementation claim on an issue finished: its branch is ready to collect and review. The claim stays (and search keeps skipping the issue) until it is released or expires.',
+      inputSchema: {
+        url: githubIssueOrPrUrlSchema.describe('Issue URL of the implementation claim'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool(runWorkFinish),
+  );
+
+  // 20c. work-release — Drop claims
+  server.registerTool(
+    'work-release',
+    {
+      description:
+        'Drop the claim on a URL, or every claim a session holds (session, optionally only one kind). Session End releases its pr claims this way. Releasing an unclaimed item is not an error.',
+      inputSchema: {
+        url: githubIssueOrPrUrlSchema.optional().describe('Issue or PR URL whose claim to drop'),
+        session: z.string().min(1).max(500).optional().describe('Release every claim this session holds'),
+        kind: z.enum(['implementation', 'pr']).optional().describe('With session: only claims of this kind'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true },
+    },
+    wrapTool(runWorkRelease),
+  );
+
+  // 20d. work-list — Live claims
+  server.registerTool(
+    'work-list',
+    {
+      description:
+        'List live work claims across sessions and machines: implementations running or finished in the background, and PRs other sessions hold.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(runWorkList),
   );
 
   // 21. state-show — Show persistence mode

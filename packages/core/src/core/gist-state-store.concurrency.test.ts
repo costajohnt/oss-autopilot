@@ -294,6 +294,17 @@ describe('GistStateStore concurrency (#1191)', () => {
     expect(new Set(Object.keys(machineA.getState().config.dismissedIssues ?? {}))).toEqual(both);
   });
 
+  it("a work claim pushed from a stale baseline keeps the other machine's claim (#1856, #1852)", async () => {
+    const outcome = await runStaleBaselineClaimScenario(GIST_ID);
+    expect(outcome.warning).toBeNull();
+    expect(outcome.updateCount).toBe(2);
+    expect(outcome.remoteClaims).toEqual([
+      'machine-b:https://github.com/o/r/issues/1',
+      'machine-a:https://github.com/o/r/issues/2',
+    ]);
+    expect(outcome.localSessions).toEqual(['machine-b', 'machine-a']);
+  });
+
   it('N concurrent writers writing disjoint freeform files all converge', async () => {
     const N = 8;
     const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
@@ -502,3 +513,60 @@ describe('GistStateStore concurrency (#1191)', () => {
     expect(mock.readAllFiles()['guidelines--writer.md']).toBeUndefined();
   });
 });
+
+// ── Work claims across machines (#1856, #1852) ──────────────────────────────
+// Scenario kept out of the describe above, which sits at the per-function
+// line ceiling; the case is registered there (sharing the tmp-dir hooks) and
+// asserts on what this returns.
+
+async function runStaleBaselineClaimScenario(gistId: string): Promise<{
+  warning: string | null;
+  updateCount: number;
+  remoteClaims: string[];
+  localSessions: string[];
+}> {
+  const mock = makeStatefulGistMock(gistId, makeInitialStateJson());
+  const startedAt = new Date();
+  const expiresAt = new Date(startedAt.getTime() + 3_600_000);
+  const claimFor = (url: string, session: string) => ({
+    url,
+    session,
+    kind: 'implementation' as const,
+    startedAt: startedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    status: 'running' as const,
+    worktree: `/work/wt/${session}`,
+  });
+
+  // Machine A bootstrapped at R0.
+  const storeA = new GistStateStore(mock.octokit);
+  await storeA.bootstrap();
+  const machineA = new StateManager(true);
+  (machineA as unknown as { state: unknown }).state = AgentStateSchema.parse(
+    JSON.parse(storeA.cachedFiles.get(STATE_FILE_NAME)!),
+  );
+  (machineA as unknown as { gistStore: unknown }).gistStore = storeA;
+
+  // Machine B claims issue 1 and pushes R1 while A is idle.
+  const storeB = new GistStateStore(mock.octokit);
+  await storeB.bootstrap();
+  const stateB = JSON.parse(storeB.cachedFiles.get(STATE_FILE_NAME)!) as { workClaims?: unknown[] };
+  stateB.workClaims = [claimFor('https://github.com/o/r/issues/1', 'machine-b')];
+  storeB.setState(JSON.stringify(stateB));
+  expect(await storeB.push()).toBe(true);
+
+  // Machine A claims issue 2 against its stale R0 baseline (no claims). The
+  // conflicting push must be recovered by re-applying the upsert on B's
+  // state, so the Gist ends up with BOTH claims.
+  const claimA = claimFor('https://github.com/o/r/issues/2', 'machine-a');
+  machineA.upsertWorkClaim(claimA);
+  const warning = await maybeCheckpoint(machineA, 'test', () => machineA.upsertWorkClaim(claimA));
+
+  const remote = mock.readState() as { workClaims: Array<{ url: string; session: string }> };
+  return {
+    warning,
+    updateCount: mock.counts.update,
+    remoteClaims: remote.workClaims.map((c) => `${c.session}:${c.url}`),
+    localSessions: machineA.getActiveWorkClaims().map((c) => c.session),
+  };
+}

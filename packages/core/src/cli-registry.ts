@@ -69,7 +69,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    verify-issue, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
- *    pr-template, repo-cap, repo-vet, detect-formatters.
+ *    pr-template, repo-cap, repo-vet, detect-formatters, work (claim/finish/release/list).
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
@@ -1517,6 +1517,147 @@ export const commands: CLICommandDef[] = [
 
   // The `override`/`clear-override` command aliases were retired in #1466 —
   // they wrapped `move <pr-url> attention|waiting|auto`. Use `move` directly.
+
+  // ── Work claims (#1856, #1852) ───────────────────────────────────────
+  // State only: claims live in state.json (and the Gist); no GitHub access.
+  {
+    name: 'work',
+    localOnly: true,
+    register(program) {
+      const group = program
+        .command('work')
+        .description(
+          'Record which items are being worked on: background implementations and PRs under Tier 2 work (#1856, #1852)',
+        );
+
+      group
+        .command('claim <url>')
+        .description(
+          'Claim an issue (--kind implementation, while a fix is built) or a PR (--kind pr, while this session works it)',
+        )
+        .requiredOption('--kind <kind>', 'implementation (issue URL) or pr (PR URL)')
+        .requiredOption('--session <name>', 'Name of the session taking the claim')
+        .option('--branch <name>', 'Branch the implementation is on')
+        .option('--worktree <path>', 'Checkout the implementation runs in (one running implementation per checkout)')
+        .option('--run-id <id>', 'Remote worker run id, when the implementation runs off-machine')
+        .option('--ttl <hours>', 'Claim lifetime in hours (default: 24 for implementation, 12 for pr)', Number)
+        .option('--json', 'Output as JSON')
+        .action(
+          async (
+            url: string,
+            options: {
+              kind: string;
+              session: string;
+              branch?: string;
+              worktree?: string;
+              runId?: string;
+              ttl?: number;
+              json?: boolean;
+            },
+          ) => {
+            const { WorkClaimOutputSchema } = await import('./formatters/json.js');
+            const { runWorkClaim } = await import('./commands/work.js');
+            await executeAction(
+              options,
+              () =>
+                runWorkClaim({
+                  url,
+                  kind: options.kind as 'implementation' | 'pr',
+                  session: options.session,
+                  branch: options.branch,
+                  worktree: options.worktree,
+                  runId: options.runId,
+                  ttlHours: options.ttl,
+                }),
+              (data) => {
+                console.log(
+                  `${data.replaced ? 'Renewed' : 'Claimed'} ${data.claim.kind} on ${data.claim.url} for session ${data.claim.session} (expires ${data.claim.expiresAt})`,
+                );
+                if (data.gistSyncWarning) console.log(`Warning: ${data.gistSyncWarning}`);
+              },
+              WorkClaimOutputSchema,
+            );
+          },
+        );
+
+      group
+        .command('finish <url>')
+        .description('Mark the implementation claim on an issue finished: its branch is ready to collect and review')
+        .option('--json', 'Output as JSON')
+        .action(async (url: string, options: { json?: boolean }) => {
+          const { WorkFinishOutputSchema } = await import('./formatters/json.js');
+          const { runWorkFinish } = await import('./commands/work.js');
+          await executeAction(
+            options,
+            () => runWorkFinish({ url }),
+            (data) => {
+              console.log(data.claim ? `Finished: ${url} (session ${data.claim.session})` : `No live claim on ${url}.`);
+              if (data.gistSyncWarning) console.log(`Warning: ${data.gistSyncWarning}`);
+            },
+            WorkFinishOutputSchema,
+          );
+        });
+
+      group
+        .command('release [url]')
+        .description('Drop the claim on a URL, or every claim a session holds (--session, optionally --kind)')
+        .option('--session <name>', 'Release every claim this session holds')
+        .option('--kind <kind>', 'With --session: only claims of this kind (implementation or pr)')
+        .option('--json', 'Output as JSON')
+        .action(async (url: string | undefined, options: { session?: string; kind?: string; json?: boolean }) => {
+          const { WorkReleaseOutputSchema } = await import('./formatters/json.js');
+          const { runWorkRelease } = await import('./commands/work.js');
+          await executeAction(
+            options,
+            () =>
+              runWorkRelease({
+                url,
+                session: options.session,
+                kind: options.kind as 'implementation' | 'pr' | undefined,
+              }),
+            (data) => {
+              const lines = data.released.map((u) => '  ' + u).join('\n');
+              console.log(
+                data.released.length === 0
+                  ? 'No live claims matched; nothing released.'
+                  : `Released ${data.released.length} claim(s):\n${lines}`,
+              );
+              if (data.gistSyncWarning) console.log(`Warning: ${data.gistSyncWarning}`);
+            },
+            WorkReleaseOutputSchema,
+          );
+        });
+
+      group
+        .command('list')
+        .description('List live claims across sessions and machines')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { json?: boolean }) => {
+          const { WorkListOutputSchema } = await import('./formatters/json.js');
+          const { runWorkList } = await import('./commands/work.js');
+          await executeAction(
+            options,
+            () => runWorkList(),
+            (data) => {
+              if (data.claims.length === 0) {
+                console.log('No live work claims.');
+              } else {
+                console.log(`${data.claims.length} live work claim(s):`);
+                for (const claim of data.claims) {
+                  const where = claim.worktree ?? claim.runId ?? '';
+                  console.log(
+                    `  [${claim.kind}/${claim.status}] ${claim.url} — session ${claim.session} ${where}`.trimEnd(),
+                  );
+                }
+              }
+              if (data.expiredCount > 0)
+                console.log(`${data.expiredCount} expired claim(s) will be pruned on the next write.`);
+            },
+            WorkListOutputSchema,
+          );
+        });
+    },
+  },
 
   // ── PR Template ──────────────────────────────────────────────────────
   {

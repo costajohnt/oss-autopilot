@@ -18,7 +18,9 @@ import type {
   ActionableIssue,
   CompactActionableIssue,
   ActionMenu,
+  WorkClaim,
 } from '../core/types.js';
+import { WorkClaimSchema } from '../core/state-schema.js';
 import type { ContributionStats } from '../core/stats.js';
 import type { RepoCapStatus } from '../core/repo-cap.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
@@ -265,6 +267,15 @@ export interface DailyOutput {
    * goldens are unchanged. See {@link ReviewedPRFollowUp}.
    */
   reviewedPRs?: ReviewedPRFollowUp[];
+  /**
+   * Live work claims (#1856, #1852): implementations running or finished in
+   * the background and PRs another session holds. The action menu shows them
+   * in its header, offers `collect_implementations` when one is `finished`,
+   * and treats a `pr` claim from another session as "handled in session X".
+   * Present only when at least one live claim exists, so goldens are
+   * unchanged. See {@link WorkClaim}.
+   */
+  workClaims?: WorkClaim[];
 }
 
 /** Work order for the host's background learnings extraction (#1696). */
@@ -313,6 +324,8 @@ export interface CompactDailyOutput {
   mergedPRNotes?: MergedPRNotes[];
   /** Reviewed PRs with author activity since the review (#1857). See {@link DailyOutput.reviewedPRs}. */
   reviewedPRs?: ReviewedPRFollowUp[];
+  /** Live work claims (#1856, #1852). See {@link DailyOutput.workClaims}. */
+  workClaims?: WorkClaim[];
 }
 
 /**
@@ -337,6 +350,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     closedPRStatusUpdates: output.closedPRStatusUpdates,
     mergedPRNotes: output.mergedPRNotes,
     reviewedPRs: output.reviewedPRs,
+    workClaims: output.workClaims,
   };
 }
 
@@ -721,6 +735,7 @@ export const DailyOutputSchema = z.object({
   closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
   mergedPRNotes: z.array(MergedPRNotesSchema).optional(),
   reviewedPRs: z.array(ReviewedPRFollowUpSchema).optional(),
+  workClaims: z.array(WorkClaimSchema).optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -739,6 +754,7 @@ export const CompactDailyOutputSchema = z.object({
   closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
   mergedPRNotes: z.array(MergedPRNotesSchema).optional(),
   reviewedPRs: z.array(ReviewedPRFollowUpSchema).optional(),
+  workClaims: z.array(WorkClaimSchema).optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────
@@ -954,6 +970,31 @@ export const InitOutputSchema = z.object({
   message: z.string(),
   // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
   gistSyncWarning: z.string().optional(),
+});
+
+// ── #1856 / #1852: work claims ───────────────────────────────────────
+
+export const WorkClaimOutputSchema = z.object({
+  claim: WorkClaimSchema,
+  replaced: z.boolean(),
+  gistSyncWarning: z.string().optional(),
+});
+
+export const WorkFinishOutputSchema = z.object({
+  url: z.string(),
+  claim: WorkClaimSchema.nullable(),
+  gistSyncWarning: z.string().optional(),
+});
+
+export const WorkReleaseOutputSchema = z.object({
+  released: z.array(z.string()),
+  gistSyncWarning: z.string().optional(),
+});
+
+export const WorkListOutputSchema = z.object({
+  claims: z.array(WorkClaimSchema),
+  expiredCount: z.number().int().nonnegative(),
+  now: z.string(),
 });
 
 // ── #1190: plugin → CLI contract ─────────────────────────────────────
@@ -1658,6 +1699,12 @@ export interface VetOutput {
    * haven't been touched in 30+ days as revive opportunities.
    */
   linkedPR?: CandidateLinkedPR;
+  /**
+   * The live implementation claim on this issue (#1856), when a session is
+   * already building a fix for it. The recommendation is then `skip` and
+   * `reasonsToSkip` names the session; `vet-list` files the item as claimed.
+   */
+  workClaim?: WorkClaim;
   /**
    * Optional SLM pre-triage classification (#1122). Populated when the
    * user has set `slmTriageModel` and a local Ollama instance answered

@@ -58,6 +58,10 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │   range since the review (or the commit list after a rebase), re-review
  │   │   via review-panel, answer questions via draft-review-post (user posts)
  │   │
+ │   ├─ "Collect finished implementations" ──► workflows/draft-first-workflow.md
+ │   │   A background implementation reported its branch ready: enter the
+ │   │   review cycle at Step 3 in that worktree, then push + PR as usual
+ │   │
  │   └─ "Done for now" ──► Session End (one refresh first; new maintainer
  │       comments return to the Action Menu once)
  │
@@ -270,6 +274,14 @@ Then read `${CLAUDE_PLUGIN_ROOT}/workflows/action-menu.md` and follow the instru
 
 **After Tier 2 code changes, ALWAYS proceed to Pre-Commit Review before committing or pushing.**
 
+**Claim a PR before Tier 2 work on it (#1852).** When this session starts Tier 2 work on a PR (drafting a response, fixing CI, resolving a conflict, adding a missing file), record it first so a concurrent session on this or another machine sees "handled in session {sessionName}" instead of duplicating the work:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work claim "{prUrl}" --kind pr --session "{sessionName}" --json
+```
+
+`replaced: true` means another session held it (the Action Menu already asked before a takeover; otherwise it was this session renewing). Release it when the PR's action completes (`work release "{prUrl}" --json`); Session End releases whatever is left. A failed claim command is not a blocker: say so once and continue.
+
 ### Phase Routing Table
 
 When the user selects an action from the menu above, **read the relevant workflow file** using the Read tool:
@@ -285,6 +297,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | "Post status update on linked issue" (`closed_pr_status`) | `${CLAUDE_PLUGIN_ROOT}/workflows/closed-pr-status-update.md` | "Steps" |
 | "Merged PRs with maintainer notes" (`merged_pr_notes`) | `${CLAUDE_PLUGIN_ROOT}/workflows/merged-pr-notes.md` | "Steps" |
 | "Review follow-ups" (`review_follow_ups`) | `${CLAUDE_PLUGIN_ROOT}/workflows/review-follow-ups.md` | "Steps" |
+| "Collect finished implementations" (`collect_implementations`) | `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` | "Collecting a Finished Implementation" (enters at Step 3) |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Session End" |
 
@@ -331,6 +344,8 @@ When the user selects any issue found through search and starts implementing, se
 
 ### After Each Action
 
+**Dispatching an implementation is an action (#1856).** When `work-through-issues.md` Step 6 dispatches an implementation to a worktree or a remote worker, it records a `work claim` and returns here in the same turn; do not wait for the run. Treat it as a Tier 2 action with no refresh needed, and return to the **Action Menu**, whose header shows the run. A run that finishes while the session is elsewhere surfaces through the menu's `work list` refresh as "Collect finished implementations".
+
 1. **If ANY Tier 1 actions were taken** (rebases, force pushes), regardless of whether Tier 2 actions also occurred:
    - Re-run the daily check to refresh state
    - Return to **Action Menu** with updated action choices
@@ -364,6 +379,14 @@ This is a quality gate that catches issues before they reach the maintainer.
 
 When user selects "Done for now":
 
+0. **Release this session's PR claims (#1852).** Run:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work release --session "{sessionName}" --kind pr --json
+   ```
+
+   Only `pr` claims: an implementation this session dispatched keeps its claim so another session (or the next run here) can collect it. If the command fails, say so and continue; the claims expire on their own (12 h). Then, if the `work list` refresh shows implementations still `running` or `finished`, list them in the summary below so the user knows what is still in flight.
+
 1. **Refresh once before closing (#1852).** Skip this step if it already ran this session (a second "Done for now" always closes), or if the last digest's `generatedAt` is less than 5 minutes before now (`date -u`). Otherwise re-run the daily check and list the PRs in `openPRs` whose `lastMaintainerComment.createdAt` is newer than the `generatedAt` of the previous digest shown to the user. (any non-bot commenter other than the user, so label them "new comments", not "maintainer comments"). If there are any, show them and return to the **Action Menu**; the user can handle them (via "Other: #N" when a PR has no menu item) or pick "Done for now" again to close.
 2. Print the summary:
 
@@ -375,6 +398,7 @@ Today's session:
 - Rebased Y PRs
 - Capacity: [hasCapacity ? "Ready for new work" : "X critical issues remaining"]
 - [List any actions taken: "Rebased 4 PRs", "Posted response to repo#123"]
+- [Still in flight, if any: "1 implementation running: owner/repo#N (worktree /path); collect it with /oss"]
 
 Your PRs are tracked. Run /oss anytime to check again.
 ```

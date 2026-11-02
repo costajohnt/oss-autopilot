@@ -325,6 +325,13 @@ export const AgentConfigSchema = z
      */
     maxOpenPRsPerRepo: z.number().int().min(0).default(0),
     maxOpenPRsColdRepo: z.number().int().min(0).default(1),
+    /**
+     * Cap on implementations running at once across sessions and machines
+     * (#1856): `work claim --kind implementation` refuses once this many
+     * running implementation claims are active. 0 disables the cap; the
+     * one-implementation-per-worktree rule still applies.
+     */
+    maxConcurrentImplementations: z.number().int().min(0).default(2),
     dormantThresholdDays: z.number().default(30),
     approachingDormantDays: z.number().default(25),
     maxIssueAgeDays: z.number().default(90),
@@ -673,6 +680,34 @@ export const SearchRotationSchema = z
   .passthrough();
 
 /**
+ * A record that some session is working an item (#1856, #1852 gap 2): an
+ * `implementation` claim on an issue URL while a fix is being built (locally
+ * in a worktree or on a remote worker run), or a `pr` claim on a PR URL while
+ * a session does Tier 2 work on it. One list serves both so a second session,
+ * on this machine or another one via the Gist, sees "handled in session X"
+ * instead of starting the same work. Claims expire (`expiresAt`); expired
+ * ones are ignored on read and pruned on the next claim write. `finished`
+ * marks an implementation whose branch is ready to collect and review.
+ */
+export const WorkClaimSchema = z
+  .object({
+    kind: openEnum(['implementation', 'pr'] as const),
+    url: z.string(),
+    /** Name of the session that holds the claim, e.g. `air/20261102T1207`. */
+    session: z.string(),
+    startedAt: z.string(),
+    expiresAt: z.string(),
+    status: openEnum(['running', 'finished'] as const),
+    branch: z.string().optional(),
+    /** Absolute path of the checkout the implementation runs in; two running implementations never share one. */
+    worktree: z.string().optional(),
+    /** Remote worker run id, when the implementation runs off-machine. */
+    runId: z.string().optional(),
+    finishedAt: z.string().optional(),
+  })
+  .loose();
+
+/**
  * Forward compatibility (#1831). The state Gist is shared by clients on
  * different releases, and a strict parse let an older client drop a newer
  * release's fields on its next save. Schemas for data that is written once and
@@ -765,6 +800,14 @@ export const AgentStateSchema = z
      * here and fed into the next scout state. Absent until the first search.
      */
     searchRotation: SearchRotationSchema.optional(),
+
+    /**
+     * Items some session is working on (#1856, #1852): in-flight
+     * implementations and PRs under Tier 2 work. Shared across machines via
+     * the Gist; `work claim/finish/release` are the only writers. Expired
+     * entries are ignored on read and pruned on write.
+     */
+    workClaims: z.array(WorkClaimSchema).default([]),
   })
   .passthrough();
 
@@ -781,6 +824,9 @@ export type OvernightPrepared = KnownKeys<z.infer<typeof OvernightPreparedSchema
 export type OvernightRecord = KnownKeys<z.infer<typeof OvernightRecordSchema>>;
 export type OvernightImplementAttempt = KnownKeys<z.infer<typeof OvernightImplementAttemptSchema>>;
 export type SearchRotation = KnownKeys<z.infer<typeof SearchRotationSchema>>;
+export type WorkClaim = KnownKeys<z.infer<typeof WorkClaimSchema>>;
+export type WorkClaimKind = 'implementation' | 'pr';
+export type WorkClaimStatus = 'running' | 'finished';
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = KnownKeys<z.infer<typeof RepoScoreSchema>>;
 export type StoredMergedPR = KnownKeys<z.infer<typeof StoredMergedPRSchema>>;
@@ -806,7 +852,14 @@ export type DailyDigest = z.infer<typeof DailyDigestSchema>;
 type RawAgentState = z.infer<typeof AgentStateSchema>;
 export type AgentState = Omit<
   KnownKeys<RawAgentState>,
-  'config' | 'repoScores' | 'mergedPRs' | 'closedPRs' | 'pickSnapshots' | 'lastOvernight' | 'searchRotation'
+  | 'config'
+  | 'repoScores'
+  | 'mergedPRs'
+  | 'closedPRs'
+  | 'pickSnapshots'
+  | 'lastOvernight'
+  | 'searchRotation'
+  | 'workClaims'
 > & {
   config: AgentConfig;
   repoScores: Record<string, RepoScore>;
@@ -815,6 +868,7 @@ export type AgentState = Omit<
   pickSnapshots: PickSnapshot[];
   lastOvernight?: OvernightRecord;
   searchRotation?: SearchRotation;
+  workClaims: WorkClaim[];
 };
 
 /** Top-level state keys this release does not know, i.e. written by another (usually newer) release (#1831). */

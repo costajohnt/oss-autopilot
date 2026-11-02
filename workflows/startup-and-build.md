@@ -1,6 +1,14 @@
 # Startup and Build
 
-> **Session state:** No inputs required. Produces: `version`, `data.daily`, `dashboardUrl`, `issueList`, `overnight`, `setupComplete`, `autoDetected`, `authError`.
+> **Session state:** No inputs required. Produces: `version`, `data.daily`, `dashboardUrl`, `issueList`, `overnight`, `setupComplete`, `autoDetected`, `authError`, `sessionName`, `workClaims`.
+
+**Session name (#1852, #1856).** Before anything else, pick a name for this session and keep it for the whole run; work claims (`work claim --session`) carry it so another session, here or on another machine, can say "handled in session X":
+
+```bash
+sessionName="$(hostname -s)/$(date -u +%Y%m%dT%H%M)"
+```
+
+Store it as `sessionName`. Never reuse a name from a previous run.
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
@@ -90,6 +98,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 | `data.autoDetected` | Username was auto-detected (zero-config) | If `true`, show welcome message |
 | `data.authError` | Set when no GitHub token | If present, show auth instructions |
 | `data.daily` | DailyOutput (same shape as before) | Extract `briefSummary`, `actionableIssues`, `actionMenu`, etc. |
+| `data.daily.workClaims` | Live work claims (#1856, #1852): implementations running or finished in the background and PRs a session holds; absent when none | `workClaims`; rendered in the Action Menu header (see `workflows/action-menu.md`) |
 | `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | Show `Dashboard: <url>` so user can re-open it |
 | `data.dashboardBuildStatus` | `'fresh' \| 'rebuilt' \| 'failed' \| 'missing-pnpm'` (when set by the workflow) | If `'failed'` or `'missing-pnpm'`, render the warning below before the action menu |
 | `data.dashboardBuildErrorTail` | Last few lines of the dashboard build log when `dashboardBuildStatus` is a failure | Quote in the warning so the user sees what broke |

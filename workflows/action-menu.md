@@ -1,6 +1,6 @@
 # Action Menu
 
-> **Session state:** Expects `data.daily` (including `actionMenu`, `actionableIssues`, `digest`, `commentedIssues`), `hasIssueList`, `availableCount`, `completedCount`, `blockedCount` from core router. `availableCount` already excludes blocked items (`## Queued ...` sections, `**... blocked ...**` / `**... wait ...**` sub-bullets); `blockedCount` counts them separately.
+> **Session state:** Expects `data.daily` (including `actionMenu`, `actionableIssues`, `digest`, `commentedIssues`, `workClaims`), `sessionName`, `hasIssueList`, `availableCount`, `completedCount`, `blockedCount` from core router. `availableCount` already excludes blocked items (`## Queued ...` sections, `**... blocked ...**` / `**... wait ...**` sub-bullets); `blockedCount` counts them separately.
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
@@ -25,6 +25,24 @@ If `hasIssueList && availableCount === 0 && blockedCount > 0`:
 ```
 Your curated issue list has {blockedCount} queued, all blocked. Time to find new issues!
 ```
+
+### In-Flight Work Header (#1856, #1852)
+
+`data.daily.workClaims` lists the live work claims: implementations running or finished in the background (`kind: "implementation"`, on issue URLs) and PRs a session is doing Tier 2 work on (`kind: "pr"`). Each carries `session`, `startedAt`, `expiresAt`, `status` (`running` | `finished`) and, for implementations, `branch`, `worktree` or `runId`. The field is absent when nothing is claimed. Every time the menu is shown after the first, refresh the list first; it is cheap (local state, or in Gist mode a refresh throttled to once per 30 s, so a claim another machine pushed since startup shows up):
+
+```bash
+WORK_OUT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work list --json)
+```
+
+Use the `claims` array of that output in place of `data.daily.workClaims` (same shape). If the command fails, keep the startup list and say so once.
+
+Render one header line above the PR list whenever there is at least one implementation claim, counting `running` and `finished` separately and deriving the age from `startedAt` (`12 min`, `3 h`):
+
+```
+1 implementation running: owner/repo#N (12 min, session air/20261102T1207) | 1 finished, ready to collect: other/lib#M (2 h)
+```
+
+Claims held by **another** session (`claim.session !== sessionName`) are the cross-session signal: list them, never act on them silently.
 
 ### Display All PRs First (Information Before Prompt)
 
@@ -58,6 +76,14 @@ Then show the enriched format using the resolved PR's fields:
 
 ---
 ```
+
+**Handled in another session (#1852):** when a `pr` claim in `workClaims` matches `issue.prUrl` and its `session` is not this session's `sessionName`, append a line under that PR and keep it in the list:
+
+```
+   └─ handled in session {claim.session} since {claim.startedAt as HH:MM UTC}
+```
+
+Such a PR is never re-dispatched by "Work through all issues" or a specific-PR selection without asking: offer "Leave it to session {claim.session}" (default) / "Take it over here" (re-claims it for this session; the other session sees the takeover on its next menu refresh). A claim by this session's own `sessionName` (a PR this session already started on) needs no line.
 
 **Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. The label mapping for `pr.maintainerActionHints` lives at `packages/core/src/core/maintainer-hints.ts` (`MAINTAINER_HINT_LABELS` + `formatMaintainerHints`) — that file is the source of truth (#1264). Documented mappings: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
 
@@ -130,6 +156,8 @@ Issue list updated automatically (PR merged):
 ```
 
 If an entry's `repoHeadingStruck` is `true`, append "(all issues for this repo are now done)". No action needed; the field is absent on runs where nothing was marked. Failures to update the list appear in `data.daily.warnings` under the `merge-loop` phase — surface those like any other warning.
+
+**Collect finished implementations (#1856):** when a live implementation claim has `status: "finished"`, the CLI adds a `collect_implementations` item ("Collect finished implementations (N)"). It routes to `workflows/draft-first-workflow.md`, entry "Collecting a Finished Implementation", which enters the review cycle at Step 3 rather than re-implementing. The claim is computed from state at `daily` time; a run that finished since then shows up through the `work list` refresh above, so when that refresh reports a `finished` implementation and the menu has no `collect_implementations` item, add one with the same label.
 
 The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet **and** `autoExtractLearnings` is `false` — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`. With the default `autoExtractLearnings: true` the item never appears: `data.daily.pendingLearnings` carries the repos instead and `commands/oss.md` extracts them in the background at startup (#1696).
 

@@ -56,6 +56,8 @@ export { runMove } from './move.js';
 export { runDismiss } from './dismiss.js';
 /** Restore a dismissed issue to notifications. */
 export { runUndismiss } from './dismiss.js';
+/** Work claims (#1856, #1852): record, finish, release and list in-flight implementations and PR work. */
+export { runWorkClaim, runWorkFinish, runWorkRelease, runWorkList } from './work.js';
 // ── Issue & Comment Management ──────────────────────────────────────────────
 
 /** Fetch comments for tracked issues/PRs. */
@@ -175,6 +177,14 @@ export type {
   FetchCorpusOutput,
 } from './guidelines.js';
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
+export type {
+  WorkClaimOptions,
+  WorkClaimOutput,
+  WorkFinishOutput,
+  WorkReleaseOptions,
+  WorkReleaseOutput,
+  WorkListOutput,
+} from './work.js';
 export type { InitOutput } from './init.js';
 export type { ConfigSetOutput, ConfigCommandOutput } from './config.js';
 export type {

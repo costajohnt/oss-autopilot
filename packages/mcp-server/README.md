@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 31 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `track`, `compliance-score`, `repo-vet`, `strategy`, `eval`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Tools** | 35 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `track`, `compliance-score`, `repo-vet`, `strategy`, `eval`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `work-claim`, `work-finish`, `work-release`, `work-list`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
 | **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
 | **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
@@ -135,6 +135,10 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `startup` | Run startup checks (auth, state, config) | No |
 | `dismiss` | Dismiss an issue from notifications | No |
 | `undismiss` | Re-enable notifications for a dismissed issue | No |
+| `work-claim` | Claim an issue (`implementation`, while a fix is built in the background) or a PR (`pr`, while a session works it) so other sessions and machines see it (#1856, #1852) | No |
+| `work-finish` | Mark an implementation claim finished: its branch is ready to collect | No |
+| `work-release` | Drop the claim on a URL, or every claim a session holds | No |
+| `work-list` | List live work claims across sessions and machines | Yes |
 | `move` | Move a PR between states (attention, waiting, shelved, auto) | No |
 | `state-show` | Show current state persistence mode (local or Gist) and sync status | Yes |
 | `state-sync` | Force push current state to the backing Gist | No |

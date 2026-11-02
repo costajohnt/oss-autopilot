@@ -1,6 +1,6 @@
 # Draft-First Workflow (New Contributions)
 
-> **Session state:** Expects `isNewContribution === true`, `issueContext = { title, url, description }`.
+> **Session state:** Expects `isNewContribution === true`, `issueContext = { title, url, description }`, `sessionName`; for a collected background run also its `workClaim` (see "Collecting a Finished Implementation" before Step 3).
 > **Produces:** `prNumber`, `prUrl`, `baseBranch`, `roundNumber`.
 > **Returns to:** Core router (`commands/oss.md`) for "After Each Action" and "Session End".
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -214,6 +214,19 @@ Proceed to Step 2.
   - If pre-commit hook failed, show the hook output and offer to fix the issues
   - Do NOT proceed to Step 3
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
+
+---
+
+## Collecting a Finished Implementation (#1856)
+
+**Trigger:** the user picked "Collect finished implementations" from the Action Menu, or a background implementation's task notification arrived and the user wants it now. Steps 1 and 2 already ran inside the background run (the branch is committed locally in its worktree), so this entry replaces them:
+
+1. Refresh the claims (`work list --json`) and list the implementation claims with `status: "finished"` as `{repo}#{number} — branch {branch} in {worktree | "worker run " + runId}`. One finished claim: take it. Several: ask which one (AskUserQuestion, plus "Done for now").
+2. Set `isNewContribution = true`, `issueContext = { title, url }` from the claim's issue (fetch the title with `gh issue view`), `featureBranch = claim.branch`, and `workClaim = claim`. For a remote run, fetch the branch into a local worktree first per the worker's handoff; do not collect without a local checkout.
+3. `cd` into the worktree and verify it: `git branch --show-current` equals `featureBranch`, `git status --porcelain` is empty, and `git log {upstreamRemote}/{upstreamDefault}..HEAD --oneline` lists at least one commit. Anything else: report it and offer "Release the claim and drop it" / "Done for now"; never re-implement here.
+4. Show the agent's report if it is still in context (otherwise the commit list) and continue at **Step 3** below with `roundNumber = 1`. Every later step runs unchanged in that worktree; Step 8's push and PR creation are still per-item and user-approved, and Step 8 releases the claim once the PR exists.
+
+If the user picks "Done for now" here, the claim stays `finished` and the run is offered again next time.
 
 ---
 
@@ -685,6 +698,14 @@ If created as ready:
 
 If created as draft:
 > "Draft PR #{prNumber} created: {prUrl}. Run `/oss` later to mark it ready."
+
+**Release the implementation claim (#1856).** The issue now has a linked PR, which keeps search and vet away from it on its own:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work release "{issueContext.url}" --json
+```
+
+An empty `released` list is fine (the claim had expired or this was a foreground run without one). If the command fails, say so once; the claim expires by itself.
 
 > **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
 

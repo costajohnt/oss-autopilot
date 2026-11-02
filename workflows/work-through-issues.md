@@ -228,6 +228,7 @@ Options (ordered by priority, up to 3 PRs + Done — limited to 4 options for As
 > "Note: These findings are from {minutes} minutes ago. The PR status may have changed. Would you like to re-check this PR before proceeding?"
 
 The user selects a PR, and you:
+0. **Claim it (#1852).** If `workClaims` carries a `pr` claim on this PR from another live session, ask "Leave it to session {claim.session}" (default) / "Take it over here" before anything else (see "Handled in another session" in `workflows/action-menu.md`). Then record this session's claim per "Claim a PR before Tier 2 work on it" in `commands/oss.md`, and release it (`work release "{prUrl}" --json`) once the action below completes or fails for good.
 1. Use the findings from Phase A (do NOT re-investigate, unless staleness warning triggered and user opts to re-check)
 2. **Auto-verify the investigation** before implementing (no user prompt needed):
    - Re-read the specific code mentioned in the Phase A investigation — read actual function/method bodies, not just grep results
@@ -315,7 +316,7 @@ Use AskUserQuestion:
 ### Handle Specific PR Selection (from "Other" input)
 
 When user selects specific PRs (e.g., "1 and 3"), dispatch only those agents in parallel.
-Still group by repo if selected PRs share a repository.
+Still group by repo if selected PRs share a repository. A selected PR that another live session holds (`pr` claim in `workClaims`, different `session`) is not dispatched until the user picks "Take it over here" (#1852).
 
 ---
 
@@ -480,6 +481,31 @@ git checkout -b {branchPrefix}{branchSuffix} {remote}/{upstreamDefault}
 > Feature branch `{branchName}` created from `{remote}/{upstreamDefault}` (at {short hash}).
 
 Store in session context: `featureBranch`, `upstreamRemote`, `upstreamDefault`.
+
+#### Background Implementation Lane (#1856)
+
+Implementing is not a blocking step. Once the branch exists, decide where the implementation runs and hand it off, then return to the Action Menu in the same turn:
+
+1. **Pick a lane.** Local: a dedicated worktree for this issue (`git worktree add ../<repo>-<issue-number> {featureBranch}`), never the checkout another implementation is using. Remote: the user's worker, which returns a run id. One implementation per checkout; the CLI refuses a second claim on the same worktree path.
+2. **Claim it** before dispatching, so search and vet skip the issue and other sessions see it:
+
+   ```bash
+   CLAIM_OUT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work claim "{issueContext.url}" --kind implementation --session "{sessionName}" --branch "{featureBranch}" --worktree "{worktreePath}" --json)
+   CLAIM_RC=$?
+   ```
+
+   For a remote run pass `--run-id "{runId}"` instead of `--worktree`. On `$CLAIM_RC != 0`, show the error envelope and stop: a cap error ("Implementation cap reached: N of max running ...") means collect or release a run first, or raise `maxConcurrentImplementations` (`setup --set maxConcurrentImplementations=3`); a worktree error means pick another checkout. Never dispatch an unclaimed implementation.
+3. **Dispatch** one agent (Task tool, `subagent_type: "general-purpose"`, `run_in_background: true`) with the issue context, the feasibility assessment, the worktree path (or the worker handoff), and this contract: implement in that worktree only, run the repo's tests and linters, commit locally following the repo's conventions with no AI attribution, never push and never open a PR, then run
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" work finish "{issueContext.url}" --json
+   ```
+
+   and report the branch, the commit count, and anything left undone. If the agent cannot finish (blocked, tests red it cannot fix), it reports that instead and does not run `work finish`; release the claim yourself (`work release "{issueContext.url}" --json`) after telling the user.
+4. **Return to the Action Menu now** (core router, "After Each Action"): say "Implementation of {repo}#{number} running in the background ({worktreePath}); the menu header tracks it." The session keeps searching, vetting, and starting other implementations up to the cap. When the agent's result lands as a task notification, show one line and keep going; the menu offers "Collect finished implementations" on its next refresh.
+5. **Collect** through `draft-first-workflow.md`, entry "Collecting a Finished Implementation": it enters the review cycle at Step 3 in the run's worktree. Push and PR creation stay per-item and user-approved in Step 8, exactly as for a foreground implementation.
+
+When the user prefers to implement in the foreground (small fix, or they want to watch), skip the lane: still record the claim with the current checkout as `--worktree`, implement here, and proceed through the draft-first workflow from Step 1.
 
 After implementation, the flow proceeds through the **draft-first workflow** (`${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md`):
 1. Step 1 runs pre-flight checks (changes exist, branch base, CONTRIBUTING.md)
