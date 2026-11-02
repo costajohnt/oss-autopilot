@@ -664,6 +664,13 @@ export class StateManager {
     return this.unpushed;
   }
 
+  /** Gist mode: treat the current un-pushed saves as disposable, so the next
+   * refresh replaces them without raising the lost-changes staleness marker.
+   * Only for re-derivable data (the dashboard's GitHub fetch caches). */
+  forgetUnpushedChanges(): void {
+    this.unpushed = false;
+  }
+
   /**
    * Re-fetch state from the backing Gist (if in Gist mode).
    * Throttled to once per 30 seconds by GistStateStore unless `force` is set.

@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.10.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.10.0...mcp-v5.10.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **mcp:** stop HTTP tests leaking orphaned tsx server processes ([#1875](https://github.com/costajohnt/oss-autopilot/issues/1875)) ([6e87b86](https://github.com/costajohnt/oss-autopilot/commit/6e87b863896bdf6d45baf3eccc5910fbb6443a1f))
+
+## [5.10.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.9.1...mcp-v5.10.0) (2026-11-02)
+
+
+### Features
+
+* **daily:** surface maintainer notes left on recently merged PRs ([#1866](https://github.com/costajohnt/oss-autopilot/issues/1866)) ([06fc259](https://github.com/costajohnt/oss-autopilot/commit/06fc2590ec286330de0e2221b38a9b60760aaf39))
+* **daily:** track PRs you reviewed and surface author follow-ups ([#1868](https://github.com/costajohnt/oss-autopilot/issues/1868)) ([5986218](https://github.com/costajohnt/oss-autopilot/commit/5986218455ec74cc8f930df19e5a7abd3996ee86))
+
 ## [5.9.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.9.0...mcp-v5.9.1) (2026-10-31)
 
 

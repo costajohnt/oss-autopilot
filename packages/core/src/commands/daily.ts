@@ -47,6 +47,7 @@ import {
   type ClosedPR,
   type CommentedIssue,
   type CommentedIssueWithResponse,
+  type FetchCommentedIssuesResult,
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
@@ -253,6 +254,29 @@ interface PartitionedPRs {
  * Retrieves open PRs, merged/closed counts, recently closed/merged PRs, and
  * issue conversation data — all in parallel where possible.
  */
+/**
+ * Record the issue monitor's non-fatal notes under the fetch phase (#1862):
+ * its warnings (a gone issue, a truncated thread, issues past the
+ * comment-fetch cap) and, under their own operation, the engaged issues
+ * whose batched lookup failed and so were not checked at all this run. The
+ * per-issue detail is in `failures`; the rollup below counts them too.
+ */
+function recordIssueMonitorNotes(
+  warnings: DailyWarning[],
+  result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures'>,
+): void {
+  for (const message of result.warnings) {
+    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
+  }
+  if (result.lookupFailures > 0) {
+    warnings.push({
+      phase: 'fetch',
+      operation: 'look up engaged issues',
+      message: `${result.lookupFailures} engaged issue lookup(s) failed; those issues were not checked this run`,
+    });
+  }
+}
+
 async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyWarning[]): Promise<FetchedPRData> {
   // Fetch all open PRs fresh from GitHub
   const fetchResult = await prMonitor.fetchUserOpenPRs();
@@ -352,14 +376,13 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
     return {
       issues: [] as CommentedIssue[],
       failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      lookupFailures: 0,
       warnings: [] as string[],
     };
   });
 
-  const { issues: commentedIssues, warnings: issueMonitorWarnings } = issueConversationResult;
-  for (const message of issueMonitorWarnings) {
-    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
-  }
+  const { issues: commentedIssues } = issueConversationResult;
+  recordIssueMonitorNotes(warnings, issueConversationResult);
   if (issueConversationResult.failures.length > 0) {
     warnings.push({
       phase: 'fetch',

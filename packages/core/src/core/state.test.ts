@@ -1563,6 +1563,16 @@ describe('maybeCheckpoint Gist conflict recovery (audit 2026-10-30 H1)', () => {
     expect(manager.getIssueDismissedAt('https://github.com/o/r/issues/7')).toBe('2026-10-31T00:00:00.000Z');
   });
 
+  it('forgetUnpushedChanges marks the saves disposable so a refresh may replace them', async () => {
+    const { manager, store } = makeManager();
+    manager.dismissIssue('https://github.com/o/r/issues/7', '2026-10-31T00:00:00.000Z');
+    manager.forgetUnpushedChanges();
+    expect(manager.hasUnpushedChanges()).toBe(false);
+
+    await manager.refreshFromGist({ force: true });
+    expect(store.refreshFromGist).toHaveBeenCalled();
+  });
+
   it('non-conflict errors are not retried even with reapply', async () => {
     const checkpoint = vi.fn().mockRejectedValueOnce(new Error('socket hang up'));
     const refreshFromGist = vi.fn();

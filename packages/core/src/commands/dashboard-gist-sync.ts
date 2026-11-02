@@ -17,7 +17,7 @@ import {
   type GistHealth,
 } from '../core/index.js';
 import { errorMessage, ConfigurationError } from '../core/errors.js';
-import { warn } from '../core/logger.js';
+import { debug, warn } from '../core/logger.js';
 
 const GIST_DEGRADED_WARNING =
   'Gist persistence is configured but this dashboard process is running LOCAL-ONLY; ' +
@@ -129,14 +129,22 @@ export class GistSyncCoordinator {
   /** Push-before-pull (#1417): an un-pushed mutation would be silently
    * reverted by the next Gist pull. Retry the checkpoint first so a recovered
    * network turns the pending warning into a real push before any pull runs.
-   * Also pushes saves that never recorded a warning: fetchDashboardData
-   * writes the digest and merged/closed caches through save() with no
-   * checkpoint, and the pull right after it reverted them and raised the
-   * "un-pushed changes" stale banner on every refresh.
    * No-op when nothing is pending. */
   async flushPendingGistSync(): Promise<void> {
-    if (this.pendingGistSyncWarnings.length === 0 && !this.manager.hasUnpushedChanges()) return;
-    this.recordGistSyncOutcome(await maybeCheckpoint(this.manager, this.module));
+    if (this.pendingGistSyncWarnings.length > 0) {
+      this.recordGistSyncOutcome(await maybeCheckpoint(this.manager, this.module));
+      return;
+    }
+    if (!this.manager.hasUnpushedChanges()) return;
+    // No mutation warning is pending, so the un-pushed saves are
+    // fetchDashboardData's GitHub-derived digest and merged/closed caches,
+    // which every refresh rebuilds. Push them best-effort; on failure (e.g. a
+    // concurrent Gist write) let the pull revert them quietly instead of
+    // raising a loss banner for data nobody entered.
+    const failure = await maybeCheckpoint(this.manager, this.module);
+    if (failure === null) return;
+    debug(this.module, `Dropping un-pushed refresh data before the Gist pull: ${failure}`);
+    this.manager.forgetUnpushedChanges();
   }
 
   /** One health snapshot from the one source (#1444). Defensive: this is an
