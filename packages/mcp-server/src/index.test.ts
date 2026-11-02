@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterAll, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -8,6 +8,65 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const MCP_SERVER_CWD = new URL('..', import.meta.url).pathname;
+
+/**
+ * Run the server in-process under tsx's loader instead of via `npx tsx`.
+ * `npx tsx src/index.ts` is three processes deep (npx -> tsx CLI -> forked
+ * node); `proc.kill()` only reached npx, so the real server was reparented
+ * to PID 1 and kept its port open after every HTTP test (#1870). With
+ * `node --import tsx` the spawned PID *is* the server.
+ */
+const SERVER_COMMAND = process.execPath;
+const SERVER_ARGS = ['--import', 'tsx', 'src/index.ts'];
+
+/** Every server PID this file spawned, checked for liveness in afterAll. */
+const spawnedPids = new Set<number>();
+
+/** True when `pid` still exists (signal 0 probes without delivering). */
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // ESRCH: no such process. Anything else (EPERM: exists, owned by
+    // another user) means the PID is still live.
+    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/** How long a server gets to honour SIGTERM before teardown sends SIGKILL. */
+const SIGTERM_GRACE_MS = 3000;
+
+/**
+ * Wait for a child to exit, escalating to SIGKILL if it ignores SIGTERM for
+ * SIGTERM_GRACE_MS. Resolves once the process is gone (or immediately if it
+ * already exited), so callers can assert on liveness right after awaiting.
+ */
+function terminate(proc: ChildProcess): Promise<void> {
+  // pid is undefined when spawn itself failed: nothing to signal, and no
+  // 'exit' event will ever fire.
+  if (proc.pid === undefined || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    const killTimer = setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
+    }, SIGTERM_GRACE_MS);
+    proc.once('exit', () => {
+      clearTimeout(killTimer);
+      resolve();
+    });
+    proc.kill('SIGTERM');
+  });
+}
+
+// Throwing from afterAll fails the file, which is what we want: a leaked
+// server is a bug in the teardown above, not in any single test.
+afterAll(() => {
+  const leaked = [...spawnedPids].filter((pid) => isAlive(pid));
+  for (const pid of leaked) process.kill(pid, 'SIGKILL');
+  if (leaked.length > 0) {
+    throw new Error(`server processes left running after the suite (killed): ${leaked.join(', ')}`);
+  }
+});
 
 const INITIALIZE_BODY = JSON.stringify({
   jsonrpc: '2.0',
@@ -23,12 +82,13 @@ const INITIALIZE_BODY = JSON.stringify({
 /** Create a stdio client connected to a fresh MCP server process. */
 async function createStdioClient(): Promise<Client> {
   const transport = new StdioClientTransport({
-    command: 'npx',
-    args: ['tsx', 'src/index.ts'],
+    command: SERVER_COMMAND,
+    args: SERVER_ARGS,
     cwd: MCP_SERVER_CWD,
   });
   const client = new Client({ name: 'test-client', version: '1.0.0' });
   await client.connect(transport);
+  if (transport.pid !== null) spawnedPids.add(transport.pid);
   return client;
 }
 
@@ -43,7 +103,8 @@ function randomPort(): number {
 interface HttpServerHandle {
   port: number;
   proc: ChildProcess;
-  close: () => void;
+  /** Stop the server and resolve once it has actually exited. */
+  close: () => Promise<void>;
   token: string;
   tokenPath: string;
 }
@@ -55,14 +116,15 @@ function spawnHttpServer(args: string[], env: Record<string, string> = {}): Prom
     const tokenPath =
       env.OSS_AUTOPILOT_MCP_TOKEN_PATH ??
       path.join(os.tmpdir(), `oss-autopilot-mcp-test-${Date.now()}-${Math.random().toString(36).slice(2)}.token`);
-    const proc = spawn('npx', ['tsx', 'src/index.ts', ...args], {
+    const proc = spawn(SERVER_COMMAND, [...SERVER_ARGS, ...args], {
       cwd: MCP_SERVER_CWD,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath, ...env },
     });
+    if (proc.pid !== undefined) spawnedPids.add(proc.pid);
 
     const timeout = setTimeout(() => {
-      proc.kill('SIGTERM');
+      void terminate(proc);
       reject(new Error('HTTP server did not start within 10s'));
     }, 10_000);
 
@@ -86,15 +148,14 @@ function spawnHttpServer(args: string[], env: Record<string, string> = {}): Prom
         proc,
         token,
         tokenPath,
-        close: () => {
-          proc.kill('SIGTERM');
-        },
+        close: () => terminate(proc),
       });
     };
     proc.stderr!.on('data', onData);
 
     proc.on('error', (err) => {
       clearTimeout(timeout);
+      void terminate(proc);
       reject(err);
     });
 
@@ -210,10 +271,11 @@ describe('MCP server stdio transport', { timeout: 30_000 }, () => {
 describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   let serverHandle: HttpServerHandle | undefined;
 
-  afterEach(() => {
+  afterEach(async () => {
     if (serverHandle) {
-      serverHandle.close();
+      const handle = serverHandle;
       serverHandle = undefined;
+      await handle.close();
     }
   });
 
@@ -305,8 +367,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
       OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath,
     });
     const firstToken = first.token;
-    first.proc.kill('SIGTERM');
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await first.close();
 
     serverHandle = await spawnHttpServerOnFreePort({
       OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath,
@@ -346,10 +407,11 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
 
 describe('MCP server invalid port', { timeout: 10_000 }, () => {
   it('exits with error for invalid port', async () => {
-    const proc = spawn('npx', ['tsx', 'src/index.ts', '--http', '--port=0'], {
+    const proc = spawn(SERVER_COMMAND, [...SERVER_ARGS, '--http', '--port=0'], {
       cwd: MCP_SERVER_CWD,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    if (proc.pid !== undefined) spawnedPids.add(proc.pid);
 
     const exitCode = await new Promise<number | null>((resolve) => {
       proc.on('exit', (code) => resolve(code));
