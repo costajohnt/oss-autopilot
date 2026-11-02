@@ -89,7 +89,7 @@ Then add the server to your MCP client config:
 }
 ```
 
-The MCP server exposes 31 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@5.7.4`) if you would rather update on your own schedule.
+The MCP server exposes 35 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@5.7.4`) if you would rather update on your own schedule.
 
 </details>
 
@@ -230,6 +230,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `maxActivePRs` | 10 | Open-PR count at which the tool suggests finishing before starting more |
 | `maxOpenPRsColdRepo` | 1 | While none of your PRs in a repo have merged, search leaves the repo out once you have this many open PRs there, and the PR workflow warns before pushing another (0 = off) |
 | `maxOpenPRsPerRepo` | 0 (off) | Same cap for every repo, including ones where your PRs have merged |
+| `maxConcurrentImplementations` | 2 | How many implementations may run in the background at once, across sessions and machines (0 = off). Two never share a checkout |
 | `dormantDays` | 30 | Days without activity before a PR is marked dormant |
 | `minStars` | 50 | Minimum repo stars to count in stats and charts |
 | `languages` | (chosen at setup) | Languages for issue search |

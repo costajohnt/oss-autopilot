@@ -32,6 +32,7 @@ import {
   type BatchVerificationResult,
   type IssueAvailabilityVerdict,
   type IssueVerification,
+  workClaimVetFields,
 } from '../core/index.js';
 const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
@@ -342,6 +343,24 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     item: ParsedIssueItem,
     verification: BatchVerificationResult | undefined,
   ): Promise<VetListResult> {
+    // A fix for this issue is already being built in some session (#1856):
+    // file it as claimed without grading it, the way a linked PR rules an
+    // issue out. The row comes back once the claim is released or expires.
+    const claimed = workClaimVetFields(getStateManager().getState().workClaims ?? [], item.url);
+    if (claimed) {
+      return {
+        issue: { repo: item.repo, number: item.number, title: item.title, url: item.url, labels: [] },
+        recommendation: 'skip',
+        reasonsToApprove: [],
+        reasonsToSkip: claimed.reasonsToSkip,
+        projectHealth: {},
+        vettingResult: {},
+        grade: UNKNOWN_GRADE,
+        listStatus: 'claimed',
+        workClaim: claimed.workClaim,
+      };
+    }
+
     // No authoritative verdict for this row: either verify errored, or the URL
     // was never enrolled (parse-list also accepts PR URLs, which `verify-issue`
     // can't classify). Either way `listStatus` falls back to scout's heuristic,

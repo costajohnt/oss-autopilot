@@ -21,6 +21,7 @@ import {
   requireGitHubToken,
   errorMessage,
   warn,
+  workClaimVetFields,
   type PickSnapshot,
 } from '../core/index.js';
 
@@ -78,6 +79,12 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     grade,
     ...repoCapField(getStateManager().getState(), candidate.issue.repo),
   };
+  // A fix already being built somewhere (#1856) overrides the grade: the
+  // issue is skipped like one with a linked PR, and no pick is recorded.
+  const claimed = workClaimVetFields(getStateManager().getState().workClaims ?? [], options.issueUrl);
+  if (claimed) {
+    return { ...output, ...claimed, reasonsToSkip: [...output.reasonsToSkip, ...claimed.reasonsToSkip] };
+  }
 
   const pick = await pickFor(output);
   return { ...output, ...(await persistPickSnapshots(getStateManager(), pick ? [pick] : [])) };

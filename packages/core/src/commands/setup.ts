@@ -142,7 +142,8 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           }
           case 'maxActivePRs':
           case 'maxOpenPRsPerRepo':
-          case 'maxOpenPRsColdRepo': {
+          case 'maxOpenPRsColdRepo':
+          case 'maxConcurrentImplementations': {
             const limit = parseNonNegativeInt(value, key);
             stateManager.updateConfig({ [key]: limit });
             results[key] = String(limit);

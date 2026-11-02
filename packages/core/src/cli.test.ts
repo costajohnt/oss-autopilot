@@ -118,6 +118,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'manifest',
     'guidelines',
     'eval',
+    'work',
   ];
 
   const expectedTokenRequired = [
@@ -426,6 +427,7 @@ describe('Command registration', () => {
       'list-mark-done',
       'guidelines',
       'manifest',
+      'work',
     ];
 
     for (const name of expectedCommands) {
@@ -569,7 +571,7 @@ describe('CLI argument parsing', () => {
     // Parent command groups (e.g. `guidelines` → `view`/`store`/`reset`) don't
     // expose --json themselves; their subcommands do. Verify each subcommand
     // separately rather than expecting the parent to carry the flag.
-    const parentGroups = new Set<string>(['guidelines', 'overnight']);
+    const parentGroups = new Set<string>(['guidelines', 'overnight', 'work']);
 
     for (const name of commandNames) {
       const cmd = findCmd(name);

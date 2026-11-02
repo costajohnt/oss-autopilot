@@ -69,6 +69,10 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runStartup: vi.fn(),
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
+  runWorkClaim: vi.fn(),
+  runWorkFinish: vi.fn(),
+  runWorkRelease: vi.fn(),
+  runWorkList: vi.fn(),
   runMove: vi.fn(),
   // #1421 top-up: registration touches these (guidelines list + the
   // dynamically imported state commands) — without them a tool call in this

@@ -30,6 +30,10 @@ const EXPECTED_TOOLS = [
   'startup',
   'dismiss',
   'undismiss',
+  'work-claim',
+  'work-finish',
+  'work-release',
+  'work-list',
   'move',
   'state-show',
   'state-sync',
@@ -83,8 +87,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 31 tools', () => {
-    expect(tools).toHaveLength(31);
+  it('registers exactly 35 tools', () => {
+    expect(tools).toHaveLength(35);
   });
 
   it('registers all expected tool names', () => {

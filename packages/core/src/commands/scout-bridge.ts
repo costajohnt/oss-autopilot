@@ -5,7 +5,13 @@
 
 import { reposAtCap } from '../core/repo-cap.js';
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
-import { getStateManager, isLinkedPRStalled, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
+import {
+  activeWorkClaims,
+  getStateManager,
+  isLinkedPRStalled,
+  parseGitHubUrl,
+  requireGitHubToken,
+} from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
 import { SearchRotationSchema } from '../core/state-schema.js';
 import { computeStrategy } from '../core/strategy.js';
@@ -126,6 +132,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
   for (const [url, dismissedAt] of Object.entries(config.dismissedIssues ?? {})) {
     if (skippedUrls.has(url) || !ISSUE_URL_PATTERN.test(url)) continue;
     const parsed = parseGitHubUrl(url);
+    skippedUrls.add(url);
     skippedIssues.push({
       url,
       repo: parsed ? `${parsed.owner}/${parsed.repo}` : '',
@@ -134,6 +141,27 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       skippedAt: dismissedAt,
       reason: 'dismissed',
       // A dismissal is a manual decision: never let scout's TTL cull age it out.
+      permanent: true,
+    });
+  }
+
+  // Issues under a live implementation claim (#1856) are skipped the way
+  // issues with a linked PR are: a session is already building the fix, here
+  // or on another machine. Only live claims are forwarded, so the issue comes
+  // back once the claim is released or expires. `pr` claims sit on PR URLs,
+  // which scout cannot surface.
+  const liveClaims = activeWorkClaims(state.workClaims ?? []);
+  for (const claim of liveClaims) {
+    if (claim.kind !== 'implementation' || skippedUrls.has(claim.url) || !ISSUE_URL_PATTERN.test(claim.url)) continue;
+    const parsed = parseGitHubUrl(claim.url);
+    skippedUrls.add(claim.url);
+    skippedIssues.push({
+      url: claim.url,
+      repo: parsed ? `${parsed.owner}/${parsed.repo}` : '',
+      number: parsed?.number ?? 0,
+      title: '',
+      skippedAt: claim.startedAt,
+      reason: `implementation in progress (session ${claim.session})`,
       permanent: true,
     });
   }

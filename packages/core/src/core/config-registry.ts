@@ -61,6 +61,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'non-negative integer (0 = no limit)',
   },
   {
+    key: 'maxConcurrentImplementations',
+    description:
+      'How many implementations may run at once across sessions and machines (work claim --kind implementation refuses past it). Default 2; 0 disables the cap.',
+    settableVia: 'setup',
+    valueHint: 'non-negative integer (0 = no limit)',
+  },
+  {
     key: 'dormantDays',
     description: 'Alias for dormantThresholdDays: days of inactivity before a PR is considered dormant.',
     settableVia: 'setup',

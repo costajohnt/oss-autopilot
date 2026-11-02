@@ -331,3 +331,29 @@ describe('daily --json contract: review follow-ups (#1857)', () => {
     expect('reviewedPRs' in toDailyOutput(makeFixture())).toBe(false);
   });
 });
+
+describe('daily --json contract: work claims (#1856, #1852)', () => {
+  const claim = {
+    kind: 'implementation' as const,
+    url: 'https://github.com/owner/repo/issues/7',
+    session: 'air/20261102T1200',
+    startedAt: '2026-11-02T12:00:00.000Z',
+    expiresAt: '2026-11-03T12:00:00.000Z',
+    status: 'finished' as const,
+    branch: 'fix/thing',
+    worktree: '/work/wt/a',
+  };
+
+  it('workClaims passes through full and compact output and validates', () => {
+    const result = toDailyOutput(makeFixture({ workClaims: [claim] }));
+    expect(result.workClaims).toEqual([claim]);
+    expect(toCompactDailyOutput(result).workClaims).toEqual([claim]);
+    expectSchemaValid(result);
+  });
+
+  it('a run without live claims carries no workClaims key (pins golden stability)', () => {
+    const result = toDailyOutput(makeFixture());
+    expect('workClaims' in result).toBe(false);
+    expect(toCompactDailyOutput(result).workClaims).toBeUndefined();
+  });
+});

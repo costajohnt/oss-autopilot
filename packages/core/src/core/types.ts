@@ -52,6 +52,9 @@ export type {
   OvernightRecord,
   OvernightImplementAttempt,
   SearchRotation,
+  WorkClaim,
+  WorkClaimKind,
+  WorkClaimStatus,
 } from './state-schema.js';
 
 // ── Ephemeral types (never persisted, hand-written) ──────────────────

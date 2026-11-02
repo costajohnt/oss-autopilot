@@ -132,6 +132,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto (the `shelve`/`unshelve` and `override`/`clear-override` aliases were retired in #1466) |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications, or a PR's merged-notes / review follow-up nudge (auto-resurfaces on new activity) |
+| `work claim` / `finish` / `release` / `list` | `work.ts` | Record which items are being worked on across sessions and machines: background implementations (cap `maxConcurrentImplementations`, one per worktree) and PRs under Tier 2 work; rules in `core/work-claims.ts` (#1856, #1852) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
 | `parse-issue-list` | `parse-list.ts` | Parse a curated issue list file |
@@ -223,6 +224,7 @@ ETag-based caching for GitHub API responses:
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
 | `repo-score-manager.ts` | Repository score tracking with TTL-based staleness |
 | `gist-state-store.ts` | Gist-based persistence layer for cross-machine state sync |
+| `machine-id.ts` | `getMachineId` — the random UUID in `~/.oss-autopilot/machine-id` (local only) that tells work claims which machine a worktree path is on (#1856) |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
 | `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
@@ -292,6 +294,7 @@ interface AgentState {
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
   analyzedIssueConversations?: AnalyzedIssueConversation[];
   activeIssues: TrackedIssue[];     // Issues user has claimed
+  workClaims: WorkClaim[];          // In-flight implementations and PRs under Tier 2 work, across sessions/machines (#1856, #1852)
 }
 ```
 
@@ -313,9 +316,12 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 ├── backups/              # Auto-backups before each state write
 ├── cache/                # ETag-based HTTP response cache
 ├── gist-id               # Gist ID for cross-machine state sync (opt-in)
+├── machine-id            # Random UUID identifying this machine on work claims (local only, never synced)
 ├── state-cache.json      # Local cache of gist state for offline access
 └── dashboard-server.pid  # Running dashboard server PID + port
 ```
+
+If this directory is copied to another machine (Migration Assistant, a dotfiles sync) while the old machine stays in use, delete `~/.oss-autopilot/machine-id` on the new one so the two machines stop sharing an id and their work claims stay distinct.
 
 ## Security Model
 

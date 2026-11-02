@@ -41,7 +41,8 @@
     "undismiss",
     "verify-issue",
     "vet",
-    "vet-list"
+    "vet-list",
+    "work"
   ],
   "expectedWorkflowFiles": [
     "workflows/action-menu.md",

@@ -158,6 +158,22 @@ describe('GistStateStore', () => {
       expect(octokit.gists.create).not.toHaveBeenCalled();
     });
 
+    it('warns about work claims the lenient parse dropped from the Gist copy (#1856)', async () => {
+      const gistId = 'abc123claims';
+      const stateJson = makeStateJson({ workClaims: [{ url: 'https://github.com/owner/repo/issues/1' }, 'junk'] });
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.state.workClaims).toEqual([]);
+      const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+      expect(logged.some((line) => line.includes('Gist state has 2 unreadable work claim(s)'))).toBe(true);
+      errorSpy.mockRestore();
+    });
+
     it('should populate the in-memory file cache with all Gist files', async () => {
       const gistId = 'abc123cache';
       const stateJson = makeStateJson();
@@ -1071,6 +1087,24 @@ describe('GistStateStore', () => {
       expect(result.created).toBe(false);
       expect(result.state.version).toBe(4);
       expect(result.state.lastRunAt).toBe('2025-06-01T00:00:00.000Z');
+    });
+
+    it('warns about work claims dropped from the local cache in degraded mode (#1856)', async () => {
+      const cachedState = JSON.parse(makeStateJson({ workClaims: ['junk'] }));
+      fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), JSON.stringify(cachedState));
+      octokit.gists.get.mockRejectedValue(new Error('Network error'));
+      octokit.gists.list.mockRejectedValue(new Error('Network error'));
+      octokit.gists.create.mockRejectedValue(new Error('Network error'));
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+      expect(result.state.workClaims).toEqual([]);
+      const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+      expect(logged.some((line) => line.includes('Local state cache has 1 unreadable work claim(s)'))).toBe(true);
+      errorSpy.mockRestore();
     });
 
     it('returns fresh state when API fails AND no local cache exists', async () => {

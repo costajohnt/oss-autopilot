@@ -56,6 +56,7 @@ import {
   migrateV1ToV2,
   migrateV2ToV3,
   migrateV3ToV4,
+  warnMalformedWorkClaims,
 } from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './paths.js';
 import { debug, warn } from './logger.js';
@@ -311,6 +312,7 @@ export class GistStateStore {
           }
 
           const cachedState = AgentStateSchema.parse(obj);
+          warnMalformedWorkClaims(obj, cachedState, 'Local state cache');
           debug(MODULE, 'Loaded state from local cache in degraded mode');
           return { gistId: '', state: cachedState, created: false, degraded: true };
         }
@@ -410,6 +412,7 @@ export class GistStateStore {
           }
 
           const cachedState = AgentStateSchema.parse(obj);
+          warnMalformedWorkClaims(obj, cachedState, 'Local state cache');
           debug(MODULE, 'bootstrapWithMigration: loaded state from local cache in degraded mode');
           return { gistId: '', state: cachedState, created: false, degraded: true, migrated: false };
         }
@@ -882,7 +885,9 @@ export class GistStateStore {
 
       const newer = unknownStateKeys(obj);
       if (newer.length > 0) warn(MODULE, `Gist state (fields: ${newer.join(', ')}) ${NEWER_WRITER_HINT}`);
-      return AgentStateSchema.parse(obj);
+      const state = AgentStateSchema.parse(obj);
+      warnMalformedWorkClaims(obj, state, 'Gist state');
+      return state;
     } catch (err) {
       const rejectedPath = preserveRejectedGistContent(raw, this.gistId ?? 'unknown');
       warn(
