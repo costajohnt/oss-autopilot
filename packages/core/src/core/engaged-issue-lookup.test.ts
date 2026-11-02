@@ -155,18 +155,59 @@ describe('lookupEngagedIssues', () => {
     });
   });
 
-  it('fails every ref of a query that errored without partial data, and goes on to the next query', async () => {
+  it('retries a query that errored without partial data once, as two half-size queries', async () => {
+    const refs = Array.from({ length: ENGAGED_LOOKUP_BATCH_SIZE }, (_, i) => ref(i + 1));
+    const graphql = vi.fn().mockRejectedValueOnce(new Error('network blip'));
+    graphql.mockImplementation((_q: string, vars: Record<string, unknown>) => {
+      const data: Record<string, unknown> = {};
+      for (const [name, value] of Object.entries(vars)) {
+        if (name.startsWith('n')) data[`i${name.slice(1)}`] = { issueOrPullRequest: issueNode(value as number) };
+      }
+      return Promise.resolve(data);
+    });
+
+    const outcomes = await lookupEngagedIssues({ graphql } as any, refs);
+
+    const sizes = graphql.mock.calls.map((c) => Object.keys(c[1] as object).length / 3);
+    expect(sizes).toEqual([ENGAGED_LOOKUP_BATCH_SIZE, ENGAGED_LOOKUP_BATCH_SIZE / 2, ENGAGED_LOOKUP_BATCH_SIZE / 2]);
+    expect(outcomes.size).toBe(refs.length);
+    for (const r of refs) expect(outcomes.get(r.url)).toMatchObject({ kind: 'found', node: { number: r.number } });
+  });
+
+  it('fails every ref of a half that errors again, and goes on to the next query', async () => {
     const refs = Array.from({ length: ENGAGED_LOOKUP_BATCH_SIZE + 1 }, (_, i) => ref(i + 1));
+    const half = ENGAGED_LOOKUP_BATCH_SIZE / 2;
     const graphql = vi
       .fn()
       .mockRejectedValueOnce(new Error('network blip'))
+      // First half recovers on retry, second half fails again.
+      .mockImplementationOnce((_q: string, vars: Record<string, unknown>) => {
+        const data: Record<string, unknown> = {};
+        for (const [name, value] of Object.entries(vars)) {
+          if (name.startsWith('n')) data[`i${name.slice(1)}`] = { issueOrPullRequest: issueNode(value as number) };
+        }
+        return Promise.resolve(data);
+      })
+      .mockRejectedValueOnce(new Error('still down'))
       .mockResolvedValueOnce({ i0: { issueOrPullRequest: issueNode(ENGAGED_LOOKUP_BATCH_SIZE + 1) } });
 
     const outcomes = await lookupEngagedIssues({ graphql } as any, refs);
 
-    expect(outcomes.get(refs[0].url)).toEqual({ kind: 'failed', error: 'network blip' });
-    expect(outcomes.get(refs[ENGAGED_LOOKUP_BATCH_SIZE - 1].url)).toEqual({ kind: 'failed', error: 'network blip' });
+    expect(graphql).toHaveBeenCalledTimes(4);
+    expect(outcomes.get(refs[0].url)).toMatchObject({ kind: 'found', node: { number: 1 } });
+    expect(outcomes.get(refs[half - 1].url)).toMatchObject({ kind: 'found', node: { number: half } });
+    expect(outcomes.get(refs[half].url)).toEqual({ kind: 'failed', error: 'still down' });
+    expect(outcomes.get(refs[ENGAGED_LOOKUP_BATCH_SIZE - 1].url)).toEqual({ kind: 'failed', error: 'still down' });
     expect(outcomes.get(refs[ENGAGED_LOOKUP_BATCH_SIZE].url)).toMatchObject({ kind: 'found' });
+  });
+
+  it('does not retry a single-ref query: there is no smaller query to try', async () => {
+    const { octokit, graphql } = rejecting(new Error('network blip'));
+
+    const outcomes = await lookupEngagedIssues(octokit, [ref(1)]);
+
+    expect(graphql).toHaveBeenCalledTimes(1);
+    expect(outcomes.get(ref(1).url)).toEqual({ kind: 'failed', error: 'network blip' });
   });
 
   it.each([

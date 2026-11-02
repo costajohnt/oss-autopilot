@@ -942,7 +942,7 @@ describe('fetchDashboardData', () => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([]);
     mockFetchUserMergedPRCounts.mockResolvedValue(makePRCountsResult());
     mockFetchUserClosedPRCounts.mockResolvedValue(makePRCountsResult());
-    mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [], notices: [] });
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], lookupFailures: 0, warnings: [] });
     mockFetchMergedPRsSince.mockResolvedValue([]);
     mockFetchClosedPRsSince.mockResolvedValue([]);
 
@@ -1252,15 +1252,16 @@ describe('fetchDashboardData', () => {
       expect(engaged.get('o/r#4')).toMatchObject({ reason: 'merged_pr', fetchWhenMissing: false });
     });
 
-    it('routes the issue monitor notices into the partial-data banner as one operation label', async () => {
+    it('routes the issue monitor warnings into the partial-data banner as one operation label', async () => {
       mockFetchCommentedIssues.mockResolvedValue({
         issues: [],
         failures: [],
+        lookupFailures: 0,
         warnings: [
           'https://github.com/o/r/issues/5: issue no longer reachable (NOT_FOUND: gone); dropped',
           'https://github.com/o/r/issues/6: comment thread longer than the pagination cap',
+          '5 engaged issues with new activity were not scanned this run',
         ],
-        notices: [],
       });
 
       const result = await fetchDashboardData('test-token');
@@ -1268,17 +1269,20 @@ describe('fetchDashboardData', () => {
       expect(result.partialFailures).toEqual(['scan engaged issues']);
     });
 
-    it('keeps the comment-fetch cap notice out of the partial-data banner: nothing failed', async () => {
+    it('names failed engaged-issue lookups in the partial-data banner: those issues were not checked', async () => {
       mockFetchCommentedIssues.mockResolvedValue({
         issues: [],
-        failures: [],
+        failures: [
+          { issueUrl: 'https://github.com/o/r/issues/5', error: 'HTTP 502: Bad Gateway' },
+          { issueUrl: 'https://github.com/o/r/issues/6', error: 'HTTP 502: Bad Gateway' },
+        ],
+        lookupFailures: 2,
         warnings: [],
-        notices: ['5 engaged issues with new activity were not scanned this run'],
       });
 
       const result = await fetchDashboardData('test-token');
 
-      expect(result.partialFailures).toEqual([]);
+      expect(result.partialFailures).toEqual(['look up engaged issues']);
     });
 
     it('adds no banner entry when the issue monitor has nothing to report', async () => {

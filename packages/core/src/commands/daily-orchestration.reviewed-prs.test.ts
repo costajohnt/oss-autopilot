@@ -281,7 +281,7 @@ beforeEach(() => {
   mockFetchReviewedPRActivity.mockResolvedValue(activity());
   mockFetchCompareStatus.mockResolvedValue('ahead');
   mockGenerateDigest.mockReturnValue(makeDigest());
-  mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], warnings: [], notices: [] });
+  mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], lookupFailures: 0, warnings: [] });
   mockHasUserCommentSince.mockResolvedValue(false);
   mockFetchPRClosedBy.mockResolvedValue(USER);
   mockGetIssueDismissedAt.mockReturnValue(undefined);

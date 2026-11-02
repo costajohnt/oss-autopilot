@@ -179,28 +179,6 @@ describe('renderReport', () => {
     expect(md).toContain('- https://github.com/o/r/pull/9 could not be fetched (not bucketed): rate limited');
     expect(md).toContain('[repo-metadata] fetch: boom');
   });
-
-  it('does not open "Check problems" for an informational warning: deferred work is not a failure', () => {
-    const md = renderReport({
-      attention,
-      runAt: '2026-09-05T02:00:00.000Z',
-      prepare: [],
-      judgment: [],
-      implement: null,
-      failures: [],
-      warnings: [
-        {
-          phase: 'fetch',
-          operation: 'fetch commented issues',
-          message: '5 engaged issues with new activity were not scanned this run',
-          severity: 'info',
-        },
-      ],
-    });
-
-    expect(md).not.toContain('## Check problems');
-    expect(md).not.toContain('were not scanned this run');
-  });
 });
 
 describe('replacePreparedSection', () => {

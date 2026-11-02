@@ -247,21 +247,25 @@ interface PartitionedPRs {
  * issue conversation data — all in parallel where possible.
  */
 /**
- * Record the issue monitor's non-fatal notes under the fetch phase (#1862).
- * Its warnings (a gone issue, a truncated thread) are degradations; its
- * notices (issues the comment-fetch cap deferred to a later run) are not:
- * they stay in the envelope so the user can see what was left for next
- * time, marked `info` so consumers do not render the run as degraded.
+ * Record the issue monitor's non-fatal notes under the fetch phase (#1862):
+ * its warnings (a gone issue, a truncated thread, issues past the
+ * comment-fetch cap) and, under their own operation, the engaged issues
+ * whose batched lookup failed and so were not checked at all this run. The
+ * per-issue detail is in `failures`; the rollup below counts them too.
  */
 function recordIssueMonitorNotes(
   warnings: DailyWarning[],
-  result: Pick<FetchCommentedIssuesResult, 'warnings' | 'notices'>,
+  result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures'>,
 ): void {
   for (const message of result.warnings) {
     warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
   }
-  for (const message of result.notices) {
-    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', severity: 'info', message });
+  if (result.lookupFailures > 0) {
+    warnings.push({
+      phase: 'fetch',
+      operation: 'look up engaged issues',
+      message: `${result.lookupFailures} engaged issue lookup(s) failed; those issues were not checked this run`,
+    });
   }
 }
 
@@ -364,8 +368,8 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
     return {
       issues: [] as CommentedIssue[],
       failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      lookupFailures: 0,
       warnings: [] as string[],
-      notices: [] as string[],
     };
   });
 

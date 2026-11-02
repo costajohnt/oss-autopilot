@@ -307,14 +307,10 @@ export function renderReport(out: ReportBody, prepared: OvernightPrepared[] = []
   for (const i of out.judgment) lines.push(`- ${i.label} ${i.url} — ${i.reason}`);
   lines.push('');
 
-  // Informational entries (work the check deferred to a later run, such as
-  // engaged issues past the comment-fetch cap) are not problems; listing them
-  // every morning would bury the entries that are.
-  const problems = out.warnings.filter((w) => w.severity !== 'info');
-  if (out.failures.length > 0 || problems.length > 0) {
+  if (out.failures.length > 0 || out.warnings.length > 0) {
     lines.push('## Check problems', '');
     for (const f of out.failures) lines.push(`- ${f.prUrl} could not be fetched (not bucketed): ${f.error}`);
-    for (const w of problems) lines.push(`- [${w.phase}] ${w.operation}: ${w.message}`);
+    for (const w of out.warnings) lines.push(`- [${w.phase}] ${w.operation}: ${w.message}`);
     lines.push('');
   }
 

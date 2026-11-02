@@ -16,9 +16,11 @@
  * instead of warned about as gone.
  *
  * Outcomes per issue: `found` (an issue node), `pull_request`, `gone` (a null
- * node, or a NOT_FOUND error in a partial response: deleted, transferred, or
- * now private), or `failed` (any other per-alias error, or a whole query that
- * failed for a reason other than rate limiting or auth; those rethrow).
+ * node, or a NOT_FOUND error in a partial response: deleted or now private;
+ * GitHub follows a transferred issue to its new repo, so the node's `url`
+ * can differ from the ref's), or `failed` (any other per-alias error, or a
+ * whole query that failed for a reason other than rate limiting or auth;
+ * those rethrow).
  */
 
 import type { Octokit } from '@octokit/rest';
@@ -180,9 +182,22 @@ function outcomeFor(chunk: ResolvedChunk, alias: string): EngagedIssueLookup {
   return { kind: 'gone', reason: 'not returned by GitHub' };
 }
 
+/** Record one batch's result, an outcome per ref; aliases index from `i0` within each query. */
+function recordChunk(outcomes: Map<string, EngagedIssueLookup>, batch: EngagedIssueRef[], result: ChunkResult): void {
+  for (const [i, ref] of batch.entries()) {
+    outcomes.set(
+      ref.url,
+      'failure' in result ? { kind: 'failed', error: result.failure } : outcomeFor(result, `i${i}`),
+    );
+  }
+}
+
 /**
  * Look up every ref, one query per batch, sequentially (GitHub recommends
- * serial GraphQL requests). Returns an outcome per ref, keyed by URL.
+ * serial GraphQL requests). A batch that fails outright (a 502, a network
+ * blip, a server-side timeout on a large query) is retried once as two
+ * half-size queries, so one bad response does not fail fifty issues; a half
+ * that fails again fails its refs. Returns an outcome per ref, keyed by URL.
  *
  * @throws The GraphQL error when it is a rate-limit or auth failure.
  */
@@ -193,12 +208,13 @@ export async function lookupEngagedIssues(
   const outcomes = new Map<string, EngagedIssueLookup>();
   for (const batch of chunk(refs, ENGAGED_LOOKUP_BATCH_SIZE)) {
     const result = await runChunk(octokit, batch);
-    for (const [i, ref] of batch.entries()) {
-      if ('failure' in result) {
-        outcomes.set(ref.url, { kind: 'failed', error: result.failure });
-        continue;
-      }
-      outcomes.set(ref.url, outcomeFor(result, `i${i}`));
+    if (!('failure' in result) || batch.length === 1) {
+      recordChunk(outcomes, batch, result);
+      continue;
+    }
+    const half = Math.ceil(batch.length / 2);
+    for (const part of [batch.slice(0, half), batch.slice(half)]) {
+      recordChunk(outcomes, part, await runChunk(octokit, part));
     }
   }
   return outcomes;

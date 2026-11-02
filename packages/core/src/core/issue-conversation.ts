@@ -59,10 +59,11 @@ const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
  * open and updated since the engagement count; each costs its comment pages,
  * ETag-cached, so a quiet day is mostly 304s. The cap bounds a first run for
  * a user with many active claims. Most recently updated issues come first,
- * so an issue that gets a new comment moves to the front on the next run
- * and nothing with fresh activity is left behind for good.
+ * so an issue that gets a new comment moves to the front on the next run,
+ * but one that stays quiet behind a hundred busier ones is not read until
+ * the busier ones settle. That is why hitting the cap is a warning.
  */
-export const MAX_DIRECT_ENGAGED_FETCHES = 25;
+export const MAX_DIRECT_ENGAGED_FETCHES = 100;
 
 /** Associations that indicate someone with repo-level permissions. */
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -92,7 +93,6 @@ interface DirectCandidate {
 /** The result's non-fatal channels, filled in as the run goes. */
 interface RunReport {
   warnings: string[];
-  notices: string[];
   failures: Array<{ issueUrl: string; error: string }>;
 }
 
@@ -105,22 +105,26 @@ export interface FetchCommentedIssuesOptions {
 
 export interface FetchCommentedIssuesResult {
   issues: CommentedIssue[];
+  /**
+   * Per-issue failures: the batched lookup of an engaged issue the search
+   * missed (the first `lookupFailures` entries), then the comment fetches
+   * and analyses that threw.
+   */
   failures: Array<{ issueUrl: string; error: string }>;
+  /**
+   * How many of `failures` are engaged-issue lookups that failed (#1862),
+   * as opposed to comment fetches. A lookup failure means an engaged issue
+   * was not checked at all this run, so the dashboard names it separately.
+   */
+  lookupFailures: number;
   /**
    * Non-fatal problems for the run's warning channel: a claimed or open-PR
    * issue that is gone, a comment thread too long to read to the end, an
-   * engagement time that does not parse. Each means the result may be
-   * missing or misreporting something the user can act on.
+   * engagement time that does not parse, engaged issues with new activity
+   * left unread because the comment-fetch cap bit. Each means the result
+   * may be missing or misreporting something the user can act on.
    */
   warnings: string[];
-  /**
-   * Informational only: engaged issues with new activity whose comments were
-   * not read this run because the comment-fetch cap bit. Nothing failed, and
-   * an issue that is updated again moves to the front of the next run. Daily
-   * records these at `info` severity; the dashboard does not count them as
-   * partial data.
-   */
-  notices: string[];
 }
 
 interface TimelineEntry {
@@ -211,7 +215,7 @@ export class IssueConversationMonitor {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - maxDays);
     const since = cutoffDate.toISOString().split('T', 1)[0];
-    const report: RunReport = { warnings: [], notices: [], failures: [] };
+    const report: RunReport = { warnings: [], failures: [] };
     const { warnings, failures } = report;
 
     debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
@@ -326,8 +330,6 @@ export class IssueConversationMonitor {
       );
     }
     for (const message of warnings) warn(MODULE, message);
-    // Notices are informational: in the result for the daily envelope, not on stderr.
-    for (const message of report.notices) debug(MODULE, message);
 
     // Sort: new_response first, then waiting, then acknowledged
     const statusOrder: Record<IssueConversationStatus, number> = {
@@ -341,7 +343,7 @@ export class IssueConversationMonitor {
       MODULE,
       `Analyzed ${results.length} issue conversations (${results.filter((i) => i.status === 'new_response').length} with new responses)`,
     );
-    return { failures, warnings, issues: results, notices: report.notices };
+    return { failures, lookupFailures, warnings, issues: results };
   }
 
   /** Repo-level exclusions shared by the search results and the direct fetches. */
@@ -364,8 +366,9 @@ export class IssueConversationMonitor {
    * path consistent with the commenter search (a reply older than `maxDays`
    * is not surfaced either way); the engagement step tightens it because
    * only comments after that step can be replies to the user. The issues
-   * past the cap are named in a notice; the next run reorders by update
-   * time again, so one that is commented on moves to the front.
+   * past the cap are named in a warning: the next run reorders by update
+   * time again, so one that is commented on moves to the front, but with a
+   * hundred busier issues ahead of it a quiet one can wait a long time.
    *
    * @throws The lookup's rate-limit or auth error; other lookup failures are
    *   recorded per issue in `report.failures`.
@@ -396,8 +399,8 @@ export class IssueConversationMonitor {
     const deferred = active.slice(MAX_DIRECT_ENGAGED_FETCHES);
     if (deferred.length > 0) {
       const plural = deferred.length === 1 ? '' : 's';
-      report.notices.push(
-        `${deferred.length} engaged issue${plural} with new activity ${deferred.length === 1 ? 'was' : 'were'} not scanned this run (cap of ${MAX_DIRECT_ENGAGED_FETCHES} comment fetches per run, most recently updated first; an issue moves to the front as soon as it is updated again): ${deferred.map((d) => d.candidate.url).join(', ')}`,
+      report.warnings.push(
+        `${deferred.length} engaged issue${plural} with new activity ${deferred.length === 1 ? 'was' : 'were'} not scanned this run (cap of ${MAX_DIRECT_ENGAGED_FETCHES} comment fetches per run, most recently updated first; replies there stay unseen until fewer issues are busier): ${deferred.map((d) => d.candidate.url).join(', ')}`,
       );
     }
     return active.slice(0, MAX_DIRECT_ENGAGED_FETCHES).map((d) => d.candidate);
@@ -408,7 +411,9 @@ export class IssueConversationMonitor {
    * reason logged: a lookup failure (recorded), a gone issue (a warning only
    * while a claim or an open PR still points at it), a pull request number,
    * a closed issue, one the user authored, or one untouched since the
-   * engagement.
+   * engagement. The candidate's repo and number come from the node's URL,
+   * not the engagement's: GitHub follows a transferred issue to its new
+   * repo, and the comments live there.
    */
   private toDirectCandidate(
     entry: EngagedIssue,
@@ -444,8 +449,11 @@ export class IssueConversationMonitor {
     const activitySinceMs = Math.max(cutoffDate.getTime(), parseMs(entry.since));
     if (updatedMs < activitySinceMs) return skip(`not updated since ${node.updatedAt}`);
 
-    const parsed = parseGitHubUrl(entry.url);
-    if (!parsed) return undefined;
+    const parsed = extractOwnerRepo(node.url);
+    if (!parsed) {
+      report.warnings.push(`${entry.url}: skipped; GitHub returned it at an unparseable URL "${node.url}"`);
+      return undefined;
+    }
     const labelNodes = node.labels?.nodes ?? [];
     const item: IssueItem = {
       html_url: node.url,
@@ -455,7 +463,7 @@ export class IssueConversationMonitor {
     };
     const candidate: Candidate = {
       item,
-      url: entry.url,
+      url: node.url,
       repoFullName: `${parsed.owner}/${parsed.repo}`,
       engagement: entry,
     };

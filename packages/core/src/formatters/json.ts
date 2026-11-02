@@ -147,17 +147,11 @@ export type DailyWarningPhase =
  * #1193 so staleness warnings can carry `lastSuccessfulRefresh` /
  * `detectedAt` without bespoke schemas. Existing producers don't need to
  * supply them.
- *
- * `severity` separates an informational entry (nothing failed; the run
- * deferred work it will pick up later, such as engaged issues past the
- * comment-fetch cap) from a degradation. Absent means `warning`, so every
- * existing entry keeps its meaning.
  */
 export interface DailyWarning {
   phase: DailyWarningPhase;
   operation: string;
   message: string;
-  severity?: 'info' | 'warning';
   timestamp?: string;
   details?: Record<string, unknown>;
 }
@@ -418,7 +412,6 @@ const DailyWarningSchema = z.object({
   phase: DailyWarningPhaseSchema,
   operation: z.string(),
   message: z.string(),
-  severity: z.enum(['info', 'warning']).optional(),
   timestamp: z.string().optional(),
   details: z.record(z.string(), z.unknown()).optional(),
 });
