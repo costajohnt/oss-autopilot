@@ -1546,11 +1546,16 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): guards', () 
 
   it.each([
     [
-      'a per-PR fetch failure',
-      () => ({ prs: [], failures: [{ prUrl: 'https://github.com/x/y/pull/1', error: 'boom' }] }),
+      'a per-PR fetch failure in the same repo (any URL casing)',
+      () => ({ prs: [], failures: [{ prUrl: 'https://github.com/ORG/Repo/pull/3', error: 'boom' }] }),
+      'a PR fetch in org/repo failed',
     ],
-    ['a truncated open-PR search', () => ({ prs: [], failures: [], warnings: ['Search results truncated at 1000'] })],
-  ])('skips release and nudge with one warning when the PR fetch had %s', async (_label, fetchResult) => {
+    [
+      'a truncated open-PR search',
+      () => ({ prs: [], failures: [], warnings: ['Search results truncated at 1000'], searchTruncated: true as const }),
+      'the open-PR search was truncated',
+    ],
+  ])('withholds release and nudge, naming the PR, when the fetch had %s', async (_label, fetchResult, reason) => {
     mockFetchUserOpenPRs.mockResolvedValue(fetchResult());
     mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
 
@@ -1564,12 +1569,12 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): guards', () 
       {
         phase: 'closed-pr-status',
         operation: 'closed-PR status updates',
-        message: 'skipped: PR fetch incomplete, supersede check unreliable',
+        message: `withheld, supersede check unreliable on this run's partial PR fetch: ${closedPR.url} (${reason})`,
       },
     ]);
   });
 
-  it('skips release and nudge when the recently-merged fetch fell back to an empty list', async () => {
+  it('withholds release and nudge when the recently-merged fetch fell back to an empty list', async () => {
     mockFetchRecentlyMergedPRs.mockRejectedValue(new Error('search down'));
     mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
 
@@ -1578,7 +1583,76 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): guards', () 
     expect(mockReleaseIssue).not.toHaveBeenCalled();
     expect(result.closedPRStatusUpdates).toBeUndefined();
     expect(statusWarnings(result)).toHaveLength(1);
-    expect(statusWarnings(result)[0].message).toContain('PR fetch incomplete');
+    expect(statusWarnings(result)[0].message).toContain(`${closedPR.url} (the recently-merged fetch failed)`);
+  });
+
+  it.each([
+    [
+      'a per-PR fetch failure in another repo',
+      () => ({ prs: [], failures: [{ prUrl: 'https://github.com/x/y/pull/1', error: 'boom' }] }),
+    ],
+    [
+      'only a comment-pagination warning',
+      () => ({ prs: [], failures: [], warnings: ['Comment pagination cap reached for org/repo#9; ...'] }),
+    ],
+    [
+      'only a username auto-repair warning',
+      () => ({
+        prs: [],
+        failures: [],
+        warnings: ['Configured GitHub username "example-user" looks like a placeholder.'],
+      }),
+    ],
+  ])('still releases and nudges when the fetch had %s (cannot hide a successor)', async (_label, fetchResult) => {
+    mockFetchUserOpenPRs.mockResolvedValue(fetchResult());
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+    mockReleaseIssue.mockReturnValue('released');
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockReleaseIssue).toHaveBeenCalledWith(issueUrl, closedAt);
+    expect(result.closedPRStatusUpdates).toEqual([{ prUrl: closedPR.url, issueUrl, closedAt }]);
+    expect(statusWarnings(result)).toEqual([]);
+  });
+
+  it('scopes a per-PR failure to its repo: withholds the same-repo candidate, proceeds with the other', async () => {
+    const otherRepoPR = {
+      ...closedPR,
+      url: 'https://github.com/other/project/pull/2',
+      repo: 'other/project',
+      number: 2,
+      issueUrl: 'https://github.com/other/project/issues/1',
+    };
+    mockFetchUserOpenPRs.mockResolvedValue({
+      prs: [],
+      failures: [{ prUrl: 'https://github.com/org/repo/pull/3', error: 'boom' }],
+    });
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR, otherRepoPR]);
+    mockReleaseIssue.mockReturnValue('released');
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockReleaseIssue).toHaveBeenCalledTimes(1);
+    expect(mockReleaseIssue).toHaveBeenCalledWith(otherRepoPR.issueUrl, closedAt);
+    expect(result.closedPRStatusUpdates).toEqual([
+      { prUrl: otherRepoPR.url, issueUrl: otherRepoPR.issueUrl, closedAt },
+    ]);
+    expect(statusWarnings(result)).toHaveLength(1);
+    expect(statusWarnings(result)[0].message).toContain(closedPR.url);
+    expect(statusWarnings(result)[0].message).not.toContain(otherRepoPR.url);
+  });
+
+  it('records no incomplete-fetch warning when the only closed PR is already superseded', async () => {
+    const successor = makePR({ repo: 'org/repo', number: 9, status: 'waiting_on_maintainer', issueUrl });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [successor], failures: [], searchTruncated: true });
+    mockGenerateDigest.mockReturnValue(makeDigest([successor]));
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockReleaseIssue).not.toHaveBeenCalled();
+    expect(result.closedPRStatusUpdates).toBeUndefined();
+    expect(statusWarnings(result)).toEqual([]);
   });
 
   it('records no incomplete-fetch warning when no closed PR links an issue', async () => {
@@ -1793,7 +1867,28 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): supersede, n
     expect(result.closedPRStatusUpdates).toBeUndefined();
   });
 
-  it('leaves a listed issue out of the commented-issue list so it is nudged once, not twice', async () => {
+  it('leaves a listed issue with no new reply out of the commented-issue list so it is nudged once, not twice', async () => {
+    const waiting: CommentedIssue = {
+      repo: 'org/repo',
+      number: 5,
+      title: 'Linked issue',
+      url: 'https://github.com/Org/Repo/issues/5',
+      status: 'waiting',
+      userLastCommentedAt: '2026-01-10T00:00:00Z',
+      userLastCommentBody: '',
+      labels: [],
+      daysSinceUserComment: 5,
+    };
+    mockFetchCommentedIssues.mockResolvedValue({ issues: [waiting], failures: [] });
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.closedPRStatusUpdates).toHaveLength(1);
+    expect(result.commentedIssues).toEqual([]);
+  });
+
+  it('keeps a listed issue in the commented-issue list when a maintainer replied, so the reply is not hidden', async () => {
     const reply: CommentedIssue = {
       repo: 'org/repo',
       number: 5,
@@ -1815,8 +1910,11 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): supersede, n
     const result = await executeDailyCheck('test-token');
 
     expect(result.closedPRStatusUpdates).toHaveLength(1);
-    expect(result.commentedIssues).toEqual([]);
-    expect(result.actionMenu.items.map((i) => i.key)).not.toContain('issue_replies');
+    expect(result.commentedIssues).toHaveLength(1);
+    expect(result.commentedIssues[0].url).toBe(reply.url);
+    const keys = result.actionMenu.items.map((i) => i.key);
+    expect(keys).toContain('issue_replies');
+    expect(keys).toContain('closed_pr_status');
   });
 
   it('does nothing for closed PRs without a parsed issue link', async () => {

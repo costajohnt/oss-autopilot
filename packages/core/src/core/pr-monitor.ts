@@ -85,6 +85,14 @@ export interface FetchPRsResult {
    * Callers (daily, dashboard) surface these so users see the signal.
    */
   warnings?: string[];
+  /**
+   * Set when the open-PR search hit the Search API's 1000-result cap, so
+   * `prs` is missing some of the user's open PRs (#1863). Structured twin of
+   * the truncation warning above: the daily run's closed-PR status check
+   * reads this flag, not the warning text, to decide whether a successor PR
+   * could be missing from the list. Absent when the search was complete.
+   */
+  searchTruncated?: true;
 }
 
 /**
@@ -253,7 +261,8 @@ export class PRMonitor {
       }
     }
 
-    if (totalCount > SEARCH_API_RESULT_CAP) {
+    const searchTruncated = totalCount > SEARCH_API_RESULT_CAP;
+    if (searchTruncated) {
       warnings.push(
         `GitHub Search API returned ${totalCount} PRs for @${searchUsername}, ` +
           `but results are capped at ${SEARCH_API_RESULT_CAP}. ` +
@@ -362,7 +371,12 @@ export class PRMonitor {
       return a.status === 'needs_addressing' ? -1 : 1;
     });
 
-    return warnings.length > 0 ? { prs, failures, warnings } : { prs, failures };
+    return {
+      prs,
+      failures,
+      ...(warnings.length > 0 && { warnings }),
+      ...(searchTruncated && { searchTruncated: true as const }),
+    };
   }
 
   /**

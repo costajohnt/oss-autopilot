@@ -1006,13 +1006,26 @@ export class StateManager {
   // === Issue Management ===
 
   /**
-   * Track a new issue. No-op if the issue URL is already tracked.
+   * Track a new issue, or refresh the claim on one already tracked.
+   *
+   * Matching uses {@link issueRefKey} (same normalization as
+   * {@link releaseIssue}), so a re-claim through a differently cased or
+   * suffixed URL updates the existing entry instead of adding a duplicate.
+   * On a match only `status` and `updatedAt` are taken from `issue`:
+   * `updatedAt` is the claim stamp `releaseIssue` compares against the PR's
+   * close time (#1863), so a re-claim after the close must move it forward
+   * or the daily run would release the new claim as if it were the old one.
+   *
    * @param issue - The issue to track
    */
   addIssue(issue: TrackedIssue): void {
-    const existing = this.state.activeIssues.find((i) => i.url === issue.url);
+    const key = issueRefKey(issue.url);
+    const existing = this.state.activeIssues.find((i) => (key ? issueRefKey(i.url) === key : i.url === issue.url));
     if (existing) {
-      debug(MODULE, `Issue ${issue.url} already tracked`);
+      existing.status = issue.status;
+      existing.updatedAt = issue.updatedAt;
+      debug(MODULE, `Issue ${issue.url} already tracked; refreshed claim stamp to ${issue.updatedAt}`);
+      this.autoSave();
       return;
     }
 

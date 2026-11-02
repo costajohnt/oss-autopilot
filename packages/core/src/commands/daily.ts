@@ -213,14 +213,49 @@ interface FetchedPRData {
   recentlyClosedPRs: ClosedPR[];
   recentlyMergedPRs: MergedPR[];
   commentedIssues: CommentedIssue[];
+  /** Where this run's view of the user's PRs may have holes; see {@link SuccessorGaps}. */
+  successorGaps: SuccessorGaps;
+}
+
+/**
+ * Where this run's view of the user's PRs may be partial (#1863). Phase 3.6
+ * reads this: a successor PR missing from the fetched lists would make a
+ * closed PR look un-superseded, and the claim release that follows cannot be
+ * undone. Only conditions that can hide a successor count. Per-PR comment
+ * pagination caps and username auto-repair notes also land in
+ * `FetchPRsResult.warnings`, but neither drops a PR from the list, so they
+ * do not gate anything here.
+ */
+interface SuccessorGaps {
   /**
-   * True when this run's view of the user's PRs may be partial: a per-PR
-   * fetch failed, the open-PR search was truncated or otherwise warned, or
-   * the recently-merged fetch fell back to an empty list. Phase 3.6 reads
-   * this: a missing successor PR would make a closed PR look un-superseded,
-   * and the claim release that follows cannot be undone (#1863).
+   * Why every repo is affected, or empty when none is: the open-PR search hit
+   * the Search API's 1000-result cap, or the recently-merged fetch fell back
+   * to an empty list (a just-merged successor would be invisible).
    */
-  fetchIncomplete: boolean;
+  everywhere: string[];
+  /**
+   * Lowercased `owner/repo` of each PR whose per-PR enrichment failed. A
+   * successor closes the same issue, so it almost always lives in the same
+   * repo as the closed PR; a failure elsewhere says nothing about it.
+   */
+  failedRepos: Set<string>;
+}
+
+/** Lowercased `owner/repo` of a GitHub PR or issue URL, or undefined when it does not parse. */
+function repoKeyOf(url: string): string | undefined {
+  const parsed = parseGitHubUrl(url);
+  return parsed ? `${parsed.owner}/${parsed.repo}`.toLowerCase() : undefined;
+}
+
+/**
+ * Reasons a successor of `pr` could be missing from this run's lists, or an
+ * empty array when the supersede check can be trusted for it.
+ */
+function successorGapsFor(pr: Pick<ClosedPR, 'url' | 'repo'>, gaps: SuccessorGaps): string[] {
+  const reasons = [...gaps.everywhere];
+  const repoKey = repoKeyOf(pr.url) ?? pr.repo.toLowerCase();
+  if (gaps.failedRepos.has(repoKey)) reasons.push(`a PR fetch in ${repoKey} failed`);
+  return reasons;
 }
 
 interface PartitionedPRs {
@@ -349,9 +384,20 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
     monthlyOpenedCounts: openedFromClosed,
   } = closedResult;
 
+  // A failed PR URL comes from the Search API, so it parses; should one not,
+  // its repo is unknown and the conservative reading is "could be anywhere".
+  const successorGaps: SuccessorGaps = { everywhere: [], failedRepos: new Set() };
+  if (fetchResult.searchTruncated) successorGaps.everywhere.push('the open-PR search was truncated');
+  if (didRecentlyMergedFetchFail) successorGaps.everywhere.push('the recently-merged fetch failed');
+  for (const failure of failures) {
+    const repoKey = repoKeyOf(failure.prUrl);
+    if (repoKey) successorGaps.failedRepos.add(repoKey);
+    else successorGaps.everywhere.push(`a PR fetch failed for an unparseable URL (${failure.prUrl})`);
+  }
+
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
-    fetchIncomplete: failures.length > 0 || (fetchResult.warnings?.length ?? 0) > 0 || didRecentlyMergedFetchFail,
+    successorGaps,
     prs,
     failures,
     mergedCounts,
@@ -712,16 +758,18 @@ function generateDigestOutput(
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
   // One nudge per issue (#1863): an issue listed under closedPRStatusUpdates
-  // leaves the commented-issue list for this run. The claim Phase 3.6 just
-  // released (or never recorded) means the issue is, or will be from the next
-  // run, back in fetchCommentedIssues' results; a maintainer reply there
-  // would otherwise surface it under issue_replies as well, and the
-  // closed-PR workflow already shows the issue thread before drafting. Once
-  // the user posts the status update the nudge drops and the issue returns
-  // to the regular reply flow.
+  // leaves the commented-issue list for this run unless it carries a new
+  // maintainer reply. The claim Phase 3.6 just released (or never recorded)
+  // means the issue is, or will be from the next run, back in
+  // fetchCommentedIssues' results; without a reply it would only be listed
+  // as "waiting" there, which the status nudge already covers. A reply is a
+  // different ask (answer the maintainer) and must stay visible under
+  // issue_replies even though the closed-PR workflow also shows the thread.
+  // Once the user posts the status update the nudge drops and the issue
+  // returns to the regular reply flow.
   const statusUpdateIssueKeys = new Set(closedPRStatusUpdates.map((u) => issueRefKey(u.issueUrl) ?? u.issueUrl));
   const remainingCommentedIssues = commentedIssues.filter(
-    (issue) => !statusUpdateIssueKeys.has(issueRefKey(issue.url) ?? issue.url),
+    (issue) => issue.status === 'new_response' || !statusUpdateIssueKeys.has(issueRefKey(issue.url) ?? issue.url),
   );
 
   // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity.
@@ -854,9 +902,12 @@ const CLOSED_PR_STATUS_OPERATION = 'closed-PR status updates';
  *
  * The release is an irreversible state write, so every guard errs toward
  * doing nothing:
- * - The whole phase is skipped (one warning) when this run's PR fetch was
- *   incomplete: a successor PR that failed to fetch would make a closed PR
- *   look un-superseded.
+ * - A candidate is withheld (one warning naming each withheld PR) when this
+ *   run's PR fetch may have missed a successor for it: the open-PR search
+ *   was truncated, the recently-merged fetch failed, or a per-PR fetch in
+ *   the candidate's own repo failed (`SuccessorGaps`). Candidates in other
+ *   repos, and closed PRs the fetched lists already supersede, are
+ *   unaffected.
  * - Only PRs the configured user closed themselves count. A maintainer or
  *   bot close is neither released nor nudged (`PRMonitor.fetchPRClosedBy`).
  * - The supersede check (`selectClosedPRStatusCandidates`) treats any open
@@ -887,23 +938,12 @@ async function prepareClosedPRStatusUpdates(
     recentlyClosedPRs: ClosedPR[];
     openPRs: FetchedPR[];
     recentlyMergedPRs: MergedPR[];
-    fetchIncomplete: boolean;
+    successorGaps: SuccessorGaps;
   },
   warnings: DailyWarning[],
 ): Promise<ClosedPRStatusUpdate[]> {
-  const { recentlyClosedPRs, openPRs, recentlyMergedPRs, fetchIncomplete } = input;
+  const { recentlyClosedPRs, openPRs, recentlyMergedPRs, successorGaps } = input;
   if (recentlyClosedPRs.every((pr) => pr.issueUrl === undefined)) return [];
-
-  if (fetchIncomplete) {
-    recordWarning(
-      warnings,
-      'closed-pr-status',
-      CLOSED_PR_STATUS_OPERATION,
-      null,
-      'skipped: PR fetch incomplete, supersede check unreliable',
-    );
-    return [];
-  }
 
   const stateManager = getStateManager();
   const username = stateManager.getState().config.githubUsername;
@@ -922,7 +962,7 @@ async function prepareClosedPRStatusUpdates(
   // recentlyMergedPRs is also in the ledger by now (Phase 3 wrote it), but
   // that write is best-effort inside a try/catch, so the fresh list stays an
   // input of its own: a successor must never go unseen because a save failed.
-  const candidates = selectClosedPRStatusCandidates(recentlyClosedPRs, [
+  const notDismissed = selectClosedPRStatusCandidates(recentlyClosedPRs, [
     ...openPRs,
     ...recentlyMergedPRs,
     ...stateManager.getMergedPRs(),
@@ -941,6 +981,27 @@ async function prepareClosedPRStatusUpdates(
     }
     return true;
   });
+
+  // Gate after selection, per candidate: a closed PR the fetched lists
+  // already supersede needs no complete view, and a per-PR failure in
+  // another repo cannot hide this PR's successor. Withheld candidates are
+  // named so the user can tell which release did not happen.
+  const withheld: string[] = [];
+  const candidates = notDismissed.filter((pr) => {
+    const reasons = successorGapsFor(pr, successorGaps);
+    if (reasons.length === 0) return true;
+    withheld.push(`${pr.url} (${reasons.join('; ')})`);
+    return false;
+  });
+  if (withheld.length > 0) {
+    recordWarning(
+      warnings,
+      'closed-pr-status',
+      CLOSED_PR_STATUS_OPERATION,
+      null,
+      `withheld, supersede check unreliable on this run's partial PR fetch: ${withheld.join(', ')}`,
+    );
+  }
   if (candidates.length === 0) return [];
 
   const issueMonitor = new IssueConversationMonitor(token);
@@ -1190,7 +1251,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     recentlyClosedPRs,
     recentlyMergedPRs,
     commentedIssues,
-    fetchIncomplete,
+    successorGaps,
   } = await fetchPRData(prMonitor, token, warnings);
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
@@ -1314,7 +1375,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   const closedPRStatusUpdates = await runClosedPRStatusPhase(
     prMonitor,
     token,
-    { openPRs: prs, recentlyClosedPRs, recentlyMergedPRs, fetchIncomplete },
+    { openPRs: prs, recentlyClosedPRs, recentlyMergedPRs, successorGaps },
     warnings,
   );
 

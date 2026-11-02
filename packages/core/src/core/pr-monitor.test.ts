@@ -1733,6 +1733,8 @@ describe('fetchUserOpenPRs surfaces 1000-cap truncation (#1057 M25)', () => {
     expect(result.warnings![0]).toMatch(/1500/);
     expect(result.warnings![0]).toMatch(/1000/);
     expect(result.warnings![0]).toMatch(/heavyuser/);
+    // Structured twin of the warning for callers that gate on it (#1863).
+    expect(result.searchTruncated).toBe(true);
   });
 
   it('does NOT emit a warning when total_count <= 1000', async () => {
@@ -1755,6 +1757,7 @@ describe('fetchUserOpenPRs surfaces 1000-cap truncation (#1057 M25)', () => {
 
     // No warnings (absent field or empty array both acceptable).
     expect(result.warnings ?? []).toEqual([]);
+    expect(result.searchTruncated).toBeUndefined();
   });
 });
 

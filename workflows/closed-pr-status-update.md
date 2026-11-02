@@ -14,9 +14,9 @@ The user picked `closed_pr_status` ("Post status update on linked issue (N)") fr
 - (c) no other PR of the user's supersedes it: none open or merged that closes the same issue, and none open that mentions the issue or the closed PR anywhere in its title or body;
 - (d) the user has not commented on the issue since the PR closed;
 - (e) the user has not dismissed the issue URL at or after the close (see "Skip" below);
-- (f) this run fetched the user's PRs completely. On a partial fetch the CLI skips the whole check and records one warning under `closed-pr-status` ("skipped: PR fetch incomplete, supersede check unreliable") so a missing successor cannot be mistaken for an abandoned issue.
+- (f) this run's PR fetch could not have missed a successor for it: the open-PR search was not truncated at the API's 1000-result cap, the recently-merged fetch succeeded, and no per-PR fetch in the closed PR's own repo failed. Otherwise the CLI withholds that PR (release and nudge) and records one warning under `closed-pr-status` naming each withheld PR URL and why, so a missing successor cannot be mistaken for an abandoned issue.
 
-The local claim on each listed issue is released if it was tracked (`activeIssues`); see `warnings` entries under `closed-pr-status` for anything that did not go through. Releasing does not change capacity (capacity counts open PRs only): the issue simply stops reading as in progress and re-enters the commented-issue monitor from the next run. A claim recorded after the close is kept; the user re-claimed on purpose. Nothing in this workflow touches state except the optional dismiss in "Skip".
+The local claim on each listed issue is released if it was tracked (`activeIssues`); see `warnings` entries under `closed-pr-status` for anything that did not go through. Releasing does not change capacity (capacity counts open PRs only): the issue simply stops reading as in progress and re-enters the commented-issue monitor from the next run. A claim recorded after the close is kept; the user re-claimed on purpose (`claim` refreshes the claim stamp on an issue that is already tracked). Nothing in this workflow touches state except the optional dismiss in "Skip".
 
 ## Why
 
@@ -28,7 +28,7 @@ Handle entries one at a time, in `closedAt` order (oldest first).
 
 1. **Read the PR's closing context.** Run `gh pr view {prUrl} --comments` and read the last comment the user left on the PR (usually the closing write-up) plus the PR title. If the user left no closing comment, read the final maintainer comment instead so the draft can say why the PR closed.
 
-2. **Read the issue thread.** Run `gh issue view {issueUrl} --comments`. Confirm the thread does not already carry the outcome (the CLI checked for a comment by the user after `closedAt`, but a comment posted minutes before closing the PR would be missed). If the outcome is already there, tell the user and skip to the next entry. A maintainer reply on this issue is shown here rather than under "Review issue replies": the CLI leaves issues listed in `closedPRStatusUpdates` out of that list so the same issue is not raised twice in one session.
+2. **Read the issue thread.** Run `gh issue view {issueUrl} --comments`. Confirm the thread does not already carry the outcome (the CLI checked for a comment by the user after `closedAt`, but a comment posted minutes before closing the PR would be missed). If the outcome is already there, tell the user and skip to the next entry. The CLI leaves issues listed in `closedPRStatusUpdates` out of "Review issue replies" only while they carry no new maintainer reply; an issue with a new reply stays listed there as well, since answering the maintainer is a separate ask from posting the status update.
 
 3. **Ask what to do with this entry.** AskUserQuestion with three options:
    - **Draft the status comment** (default) — continue with step 4.
