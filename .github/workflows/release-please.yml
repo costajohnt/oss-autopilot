@@ -217,13 +217,26 @@ jobs:
       - name: Authenticate to the MCP Registry
         run: ./mcp-publisher login github-oidc
 
-      # The registry reads the package from npm, which can lag a fresh publish.
+      # The registry validates the version against npm, which can take
+      # minutes to serve a fresh publish (mcp-v5.11.0 was still a 404 to the
+      # registry 90s after publishing). Wait for npm, then retry the publish
+      # a few times in case the registry's own lookup lags behind ours.
+      - name: Wait for npm to serve the release
+        run: |
+          VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
+          for _ in $(seq 1 20); do
+            npm view "@oss-autopilot/mcp@${VERSION}" version >/dev/null 2>&1 && exit 0
+            sleep 30
+          done
+          echo "::error::@oss-autopilot/mcp@${VERSION} not on npm after 10 minutes"
+          exit 1
+
       - name: Publish server.json
         run: |
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5; do
             ./mcp-publisher publish packages/mcp-server/server.json && exit 0
-            echo "publish attempt $attempt failed; retrying in 30s"
-            sleep 30
+            echo "publish attempt $attempt failed; retrying in 60s"
+            sleep 60
           done
           exit 1
 
