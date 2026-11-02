@@ -108,6 +108,18 @@ Merged with maintainer notes:
 
 The item routes to `workflows/merged-pr-notes.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there are no notes.
 
+**Review follow-ups (#1857):** when an open PR the user reviewed or commented on but did not author (`reviewed-by:` plus `commenter:` searches; own repos, `untrackedOrgs`, `excludeRepos` and `excludeOrgs` excluded) has, after the user's last review or comment, a non-merge commit by a non-bot account other than the user, a non-reaction comment by the PR author, or a comment addressed to the user (a reply in one of their inline threads, a quote of their prose, or an @mention), the CLI lists it in `data.daily.reviewedPRs` (`prUrl`, `repo`, `number`, `title`, `author`, `reviewedAt`, optional `reviewedSha`, `headSha`, optional `compareRange` / `compareUrl`, `rebased`, `commits[]` with `sha` / `author` / `date` / fenced `subject`, `moreCommits`, `authorComments`, `questions[]` with `author` / `createdAt` / `kind` / `reason` / fenced `excerpt` / optional `url`, `moreQuestions`, `latestActivityAt`) and adds a `review_follow_ups` item to the action menu ("Review follow-ups (N)"). `compareRange` is `<reviewedSha>...<headSha>` and is set only when GitHub confirmed the reviewed commit is still an ancestor of the head; `rebased: true` means it is not (force-push or rebase, or the old commit is gone), so read `commits` instead of a range. Not listed: PRs with nothing new since the user's last word, PRs where the user only reacted ("+1") unless a comment is addressed to them, PRs whose URL was dismissed at or after `latestActivityAt`, PRs that failed to fetch, PRs whose activity hit the pagination cap (one `reviewed-prs` warning each; a search cut by the page or 1000-result cap warns once per search), and PRs beyond the per-run cap of 50 most recently updated (one warning with the count). Nothing is written to state, and these PRs never count toward capacity or `needsAddressingPRs`. Display the entries after the merged-notes section:
+
+```
+Review follow-ups (PRs you reviewed):
+- {repo}#{number} — {title} by @{author} (you reviewed {reviewedAt date})
+  {commits.length} new commit(s), {authorComments} repl{y|ies}, {questions.length} question(s) for you
+  {compareUrl | "rebased since your review; see the commit list" | "no range; see the commit list"}
+  {url}
+```
+
+The item routes to `workflows/review-follow-ups.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there is nothing to follow up on.
+
 ### Auto-Marked List Entries (Informational)
 
 If `data.daily.listUpdates` is present (#1463), the CLI detected merged PRs and automatically marked the matching curated-list entries done (same transform as `list-mark-done`). Display them after the recently-closed section so the user knows their list was updated without being asked:

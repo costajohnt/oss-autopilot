@@ -154,6 +154,26 @@ export {
   type MergedPRNotes,
   type MergedPRScan,
 } from './merged-pr-notes.js';
+export {
+  scanReviewedPR,
+  REVIEWED_PR_MAX_COMMITS,
+  REVIEWED_PR_MAX_QUESTIONS,
+  type ReviewedPRActivity,
+  type ReviewedPRActivityList,
+  type ReviewedPRActor,
+  type ReviewedPRCommit,
+  type ReviewedPRFollowUp,
+  type ReviewedPRQuestion,
+  type ReviewedPRQuestionKind,
+  type ReviewedPRQuestionReason,
+  type ReviewedPRRef,
+} from './reviewed-prs.js';
+export {
+  REVIEWED_PR_SEARCH_MAX_PAGES,
+  type CompareStatus,
+  type ReviewedPRSearchConfig,
+  type ReviewedPRSearchResult,
+} from './reviewed-prs-fetch.js';
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export {
   classifyLinkedPR,

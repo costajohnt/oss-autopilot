@@ -24,6 +24,7 @@ import type { RepoCapStatus } from '../core/repo-cap.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { ClosedPRStatusUpdate } from '../core/closed-pr-status.js';
 import type { MergedPRNotes } from '../core/merged-pr-notes.js';
+import type { ReviewedPRFollowUp } from '../core/reviewed-prs.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } from '../core/issue-verification.js';
 
@@ -133,7 +134,8 @@ export type DailyWarningPhase =
   | 'gist-staleness'
   | 'state-load'
   | 'closed-pr-status'
-  | 'merged-pr-notes';
+  | 'merged-pr-notes'
+  | 'reviewed-prs';
 
 /**
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
@@ -252,6 +254,17 @@ export interface DailyOutput {
    * {@link MergedPRNotes}.
    */
   mergedPRNotes?: MergedPRNotes[];
+  /**
+   * Open PRs the user reviewed (not authored) where the author pushed or
+   * replied since the user's last review or comment (#1857). Drives the
+   * `review_follow_ups` action-menu item; the workflow re-reviews the range
+   * (or the commit list when `rebased`) through review-panel and answers the
+   * questions through draft-review-post. Excerpts and commit subjects are
+   * fenced as untrusted GitHub content. Never counted in capacity or
+   * `needsAddressingPRs`. Present only when at least one entry exists, so
+   * goldens are unchanged. See {@link ReviewedPRFollowUp}.
+   */
+  reviewedPRs?: ReviewedPRFollowUp[];
 }
 
 /** Work order for the host's background learnings extraction (#1696). */
@@ -298,6 +311,8 @@ export interface CompactDailyOutput {
   closedPRStatusUpdates?: ClosedPRStatusUpdate[];
   /** Merged PRs with unanswered maintainer notes (#1861). See {@link DailyOutput.mergedPRNotes}. */
   mergedPRNotes?: MergedPRNotes[];
+  /** Reviewed PRs with author activity since the review (#1857). See {@link DailyOutput.reviewedPRs}. */
+  reviewedPRs?: ReviewedPRFollowUp[];
 }
 
 /**
@@ -321,6 +336,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     pendingLearnings: output.pendingLearnings,
     closedPRStatusUpdates: output.closedPRStatusUpdates,
     mergedPRNotes: output.mergedPRNotes,
+    reviewedPRs: output.reviewedPRs,
   };
 }
 
@@ -389,6 +405,7 @@ const DailyWarningPhaseSchema = z.enum([
   'state-load',
   'closed-pr-status',
   'merged-pr-notes',
+  'reviewed-prs',
 ]);
 
 const DailyWarningSchema = z.object({
@@ -644,6 +661,45 @@ const MergedPRNotesSchema = z.object({
   ackCoveredBy: z.string().optional(),
 });
 
+/** Mirrors {@link ReviewedPRQuestion} (#1857). */
+const ReviewedPRQuestionSchema = z.object({
+  author: z.string(),
+  createdAt: z.string(),
+  kind: z.enum(['comment', 'review', 'review_comment']),
+  reason: z.enum(['reply', 'quote', 'mention']),
+  excerpt: z.string(),
+  url: z.string().optional(),
+});
+
+/** Mirrors {@link ReviewedPRCommit} (#1857). */
+const ReviewedPRCommitSchema = z.object({
+  sha: z.string(),
+  author: z.string(),
+  date: z.string(),
+  subject: z.string(),
+});
+
+/** Mirrors {@link ReviewedPRFollowUp} (#1857). */
+const ReviewedPRFollowUpSchema = z.object({
+  prUrl: z.string(),
+  repo: z.string(),
+  number: z.number(),
+  title: z.string(),
+  author: z.string(),
+  reviewedAt: z.string(),
+  reviewedSha: z.string().optional(),
+  headSha: z.string(),
+  compareRange: z.string().optional(),
+  compareUrl: z.string().optional(),
+  rebased: z.boolean(),
+  commits: z.array(ReviewedPRCommitSchema),
+  moreCommits: z.number().int().nonnegative(),
+  authorComments: z.number().int().nonnegative(),
+  questions: z.array(ReviewedPRQuestionSchema),
+  moreQuestions: z.number().int().nonnegative(),
+  latestActivityAt: z.string(),
+});
+
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
   capacity: CapacityAssessmentSchema,
@@ -661,6 +717,7 @@ export const DailyOutputSchema = z.object({
   pendingLearnings: PendingLearningsSchema.optional(),
   closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
   mergedPRNotes: z.array(MergedPRNotesSchema).optional(),
+  reviewedPRs: z.array(ReviewedPRFollowUpSchema).optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -678,6 +735,7 @@ export const CompactDailyOutputSchema = z.object({
   pendingLearnings: PendingLearningsSchema.optional(),
   closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
   mergedPRNotes: z.array(MergedPRNotesSchema).optional(),
+  reviewedPRs: z.array(ReviewedPRFollowUpSchema).optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────

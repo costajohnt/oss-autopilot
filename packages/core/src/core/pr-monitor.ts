@@ -17,7 +17,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { parseGitHubUrl, extractOwnerRepo, isOwnRepo, isUntrackedOrg } from './urls.js';
-import { DEFAULT_CONCURRENCY, runWorkerPool } from './concurrency.js';
+import { DEFAULT_CONCURRENCY, rethrowRejections, runWorkerPool } from './concurrency.js';
 import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
 import {
   ConfigurationError,
@@ -34,6 +34,14 @@ import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getCIStatus } from './ci-analysis.js';
 import { type ActivityEvent, type ReviewComment } from './review-analysis.js';
 import type { MergedPRActivity, MergedPRActivityList } from './merged-pr-notes.js';
+import type { ReviewedPRActivity, ReviewedPRActivityList } from './reviewed-prs.js';
+import {
+  type CompareStatus,
+  type ReviewedPRSearchResult,
+  fetchCompareStatus as fetchCompareStatusImpl,
+  fetchReviewedOpenPRs as fetchReviewedOpenPRsImpl,
+  fetchReviewedPRActivity as fetchReviewedPRActivityImpl,
+} from './reviewed-prs-fetch.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import { batchFetchPRDetails, type PRRef, type NormalizedPRData, type BatchPRResult } from './pr-graphql.js';
 import {
@@ -750,11 +758,7 @@ export class PRMonitor {
         this.octokit.pulls.listCommits({ owner, repo, page, pull_number: number, per_page: 100 }),
       ),
     ]);
-    const rejections = settled.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-    if (rejections.length > 0) {
-      const fatal = rejections.find((result) => isRateLimitOrAuthError(result.reason));
-      throw (fatal ?? rejections[0]).reason;
-    }
+    rethrowRejections(settled);
     const comments = fulfilledValue(settled[0]);
     const reviews = fulfilledValue(settled[1]);
     const reviewComments = fulfilledValue(settled[2]);
@@ -771,6 +775,37 @@ export class PRMonitor {
       reviewComments: reviewComments.items,
       commits: commits.items,
     };
+  }
+
+  /**
+   * Open PRs the configured user reviewed or commented on but did not
+   * author (#1857); see `fetchReviewedOpenPRs` in reviewed-prs-fetch.ts for the searches,
+   * the exclusions and the cap warnings.
+   */
+  async fetchReviewedOpenPRs(): Promise<ReviewedPRSearchResult> {
+    return fetchReviewedOpenPRsImpl(this.octokit, this.stateManager.getState().config);
+  }
+
+  /**
+   * The PR, comments, reviews, inline comments and commits the review
+   * follow-up scan reads for one reviewed PR (#1857); five calls, a
+   * rate-limit or auth error rethrown ahead of any other. See
+   * `fetchReviewedPRActivity` in reviewed-prs-fetch.ts.
+   */
+  async fetchReviewedPRActivity(
+    prUrl: string,
+  ): Promise<ReviewedPRActivity & { truncatedLists: ReviewedPRActivityList[] }> {
+    return fetchReviewedPRActivityImpl(this.octokit, prUrl);
+  }
+
+  /**
+   * Whether `base` is still an ancestor of `head` in the PR's repository
+   * (#1857): `ahead` / `identical` yes, `behind` / `diverged` no (rebase or
+   * force-push), `missing` when GitHub no longer has `base`. See
+   * `fetchCompareStatus` in reviewed-prs-fetch.ts.
+   */
+  async fetchCompareStatus(prUrl: string, base: string, head: string): Promise<CompareStatus> {
+    return fetchCompareStatusImpl(this.octokit, prUrl, base, head);
   }
 
   /**

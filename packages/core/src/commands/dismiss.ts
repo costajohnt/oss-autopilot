@@ -3,9 +3,11 @@
  * Manages dismissing issue notifications without posting a comment.
  * Dismissed URLs resurface automatically when new responses arrive after the dismiss timestamp.
  *
- * PR URLs are accepted too (#1861): dismissing a merged PR's URL declines the
- * "merged PR with maintainer notes" nudge for the notes posted so far, with
- * the same stamp-based resurfacing when newer notes land.
+ * PR URLs are accepted too: dismissing a merged PR's URL declines the
+ * "merged PR with maintainer notes" nudge (#1861), and dismissing a PR the
+ * user reviewed declines its review follow-up (#1857), for the activity
+ * posted so far, with the same stamp-based resurfacing when newer activity
+ * lands.
  */
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
@@ -31,9 +33,9 @@ export interface UndismissOutput {
  * Dismiss an issue's reply notifications without posting a comment.
  * The dismissal auto-resurfaces when new responses arrive after the dismiss timestamp.
  *
- * A PR URL is always re-stamped: the merged-PR notes phase compares the stamp
- * with the newest note, so a second "skip" after a newer note has to move the
- * stamp forward or it would be a no-op. Issue dismissals keep their first
+ * A PR URL is always re-stamped: the merged-PR notes and review follow-up
+ * phases compare the stamp with the newest activity, so a second "skip" after
+ * newer activity has to move the stamp forward or it would be a no-op. Issue dismissals keep their first
  * stamp (the issue path auto-undismisses on new activity instead).
  *
  * @param options - Dismiss options

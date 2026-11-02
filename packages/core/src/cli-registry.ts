@@ -1461,7 +1461,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('dismiss <url>')
-        .description('Dismiss notifications for an issue or merged PR (resurfaces on new activity)')
+        .description('Dismiss notifications for an issue or PR (resurfaces on new activity)')
         .option('--json', 'Output as JSON')
         .action((url, options) =>
           executeAction(
@@ -1488,7 +1488,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('undismiss <url>')
-        .description('Undismiss an issue or merged PR (re-enable notifications)')
+        .description('Undismiss an issue or PR (re-enable notifications)')
         .option('--json', 'Output as JSON')
         .action((url, options) =>
           executeAction(

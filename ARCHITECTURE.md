@@ -53,6 +53,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
 | `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue via `draft-review-post`; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
 | `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify via comment-decision, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
+| `review-follow-ups.md` | A PR the user reviewed (not authored) where the author pushed or replied since | Show the compare range since the review (or the commit list after a rebase), re-review via `review-panel`, answer the questions addressed to the user via `draft-review-post`; "skip" dismisses the PR URL (#1857) |
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
 | `plan-review.md` | `/plan-ready` | Plan-phase review convergence loop — catches design problems before code exists (#1249) |
@@ -130,7 +131,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `list-mark-done` | `list-mark-done.ts` | Mark a curated-list issue line done with strikethrough + Done sub-bullet (#1299) |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto (the `shelve`/`unshelve` and `override`/`clear-override` aliases were retired in #1466) |
-| `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
+| `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications, or a PR's merged-notes / review follow-up nudge (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
 | `parse-issue-list` | `parse-list.ts` | Parse a curated issue list file |
@@ -214,6 +215,8 @@ ETag-based caching for GitHub API responses:
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
 | `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on or is engaged in for replies that need attention; fetches live engaged issues the comment search misses (#1862) |
 | `engaged-issues.ts` | `collectEngagedIssues` — the issues the user is working on (claims plus issues linked from open, recently closed/merged and ledger PRs), keyed and ranked for the monitor (#1862) |
+| `reviewed-prs.ts` | `scanReviewedPR` — for an open PR the user reviewed but did not author, what the author pushed or asked since the user's last review, and the head SHA that review was of (#1857) |
+| `reviewed-prs-fetch.ts` | The reviewed-PR searches (`reviewed-by:` + `commenter:`), per-PR activity fetch and compare-status call behind `PRMonitor`'s wrappers (#1857) |
 | `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
 | `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
@@ -294,7 +297,7 @@ interface AgentState {
 Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 - `config.shelvedPRUrls: string[]` — PR URLs manually shelved (excluded from capacity and actionable items, auto-unshelved when maintainers engage)
 - `config.statusOverrides: Record<string, StatusOverride>` — Manual PR status overrides set via `move` command. Auto-clears when the PR has new activity
-- `config.dismissedIssues: Record<string, string>` — Issue URLs (and, since #1861, merged-PR URLs) mapped to dismiss timestamps
+- `config.dismissedIssues: Record<string, string>` — Issue URLs (and, since #1861 / #1857, PR URLs for merged-PR notes and review follow-ups) mapped to dismiss timestamps
 
 ### What's NOT Stored (v2 Design)
 

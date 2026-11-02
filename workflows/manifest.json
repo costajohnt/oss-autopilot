@@ -42,6 +42,10 @@
       "purpose": "Acknowledge or reply to maintainer notes left on recently merged PRs, one per thanks-only repo group (#1861)"
     },
     {
+      "file": "workflows/review-follow-ups.md",
+      "purpose": "Re-review the changes and answer the questions on PRs the user reviewed after the author pushed or replied, via review-panel and draft-review-post (#1857)"
+    },
+    {
       "file": "workflows/plan-review.md",
       "purpose": "Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review)"
     },
