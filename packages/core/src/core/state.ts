@@ -1202,16 +1202,21 @@ export class StateManager {
   // === Dismiss / Undismiss Issues ===
 
   /**
-   * Dismiss an issue's notifications. Auto-resurfaces on new activity.
-   * @param url - The issue URL to dismiss
+   * Dismiss an issue's (or merged PR's, #1861) notifications. Auto-resurfaces
+   * on new activity.
+   * @param url - The issue or PR URL to dismiss
    * @param timestamp - ISO timestamp of dismissal
-   * @returns true if newly dismissed, false if already dismissed
+   * @param options.refresh - When set, an existing dismissal is re-stamped with
+   *   `timestamp` instead of being left alone, so a second "skip" after newer
+   *   activity moves the cutoff forward. Default keeps the original stamp.
+   * @returns true if newly dismissed (or re-stamped under `refresh`), false if
+   *   already dismissed
    */
-  dismissIssue(url: string, timestamp: string): boolean {
+  dismissIssue(url: string, timestamp: string, options: { refresh?: boolean } = {}): boolean {
     if (!this.state.config.dismissedIssues) {
       this.state.config.dismissedIssues = {};
     }
-    if (url in this.state.config.dismissedIssues) {
+    if (url in this.state.config.dismissedIssues && !options.refresh) {
       return false;
     }
     this.state.config.dismissedIssues[url] = timestamp;

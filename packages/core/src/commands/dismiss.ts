@@ -9,7 +9,7 @@
  */
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
-import { ISSUE_OR_PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+import { ISSUE_OR_PR_URL_PATTERN, PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 const MODULE = 'dismiss';
 
@@ -31,9 +31,15 @@ export interface UndismissOutput {
  * Dismiss an issue's reply notifications without posting a comment.
  * The dismissal auto-resurfaces when new responses arrive after the dismiss timestamp.
  *
+ * A PR URL is always re-stamped: the merged-PR notes phase compares the stamp
+ * with the newest note, so a second "skip" after a newer note has to move the
+ * stamp forward or it would be a no-op. Issue dismissals keep their first
+ * stamp (the issue path auto-undismisses on new activity instead).
+ *
  * @param options - Dismiss options
  * @param options.url - Full GitHub issue or PR URL
- * @returns Whether the issue was newly dismissed (false if already dismissed)
+ * @returns Whether the issue was newly dismissed (false if already dismissed);
+ *   always true for a PR URL
  * @throws {ValidationError} If the URL is not a valid GitHub issue or PR URL
  */
 export async function runDismiss(options: { url: string }): Promise<DismissOutput> {
@@ -42,9 +48,10 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
 
   const stateManager = getStateManager();
   const dismissedAt = new Date().toISOString();
-  const added = stateManager.dismissIssue(options.url, dismissedAt);
+  const dismissOptions = { refresh: PR_URL_PATTERN.test(options.url) };
+  const added = stateManager.dismissIssue(options.url, dismissedAt, dismissOptions);
   const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () =>
-    stateManager.dismissIssue(options.url, dismissedAt),
+    stateManager.dismissIssue(options.url, dismissedAt, dismissOptions),
   );
 
   return { dismissed: added, url: options.url, ...(gistSyncWarning && { gistSyncWarning }) };

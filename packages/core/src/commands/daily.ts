@@ -192,6 +192,8 @@ interface FetchedPRData {
   openedFromClosed: Record<string, number>;
   recentlyClosedPRs: ClosedPR[];
   recentlyMergedPRs: MergedPR[];
+  /** `recentlyMergedPRs` is the [] fallback of a failed fetch, not an empty result (Phases 3.6 and 3.7). */
+  recentlyMergedFetchFailed: boolean;
   commentedIssues: CommentedIssue[];
   /** Where this run's view of the user's PRs may have holes; see {@link SuccessorGaps}. */
   successorGaps: SuccessorGaps;
@@ -377,6 +379,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
 
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
+    recentlyMergedFetchFailed: didRecentlyMergedFetchFail,
     successorGaps,
     prs,
     failures,
@@ -814,7 +817,9 @@ function generateDigestOutput(
     { ...attention, closeSuggested },
     unextractedMergeCount,
     closedPRStatusUpdates.length,
-    mergedPRNotes.length,
+    // One action per entry the workflow handles on its own; covered
+    // thanks-only entries ride along with their carrier.
+    mergedPRNotes.filter((entry) => entry.ackCoveredBy === undefined).length,
   );
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -1215,6 +1220,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     openedFromClosed,
     recentlyClosedPRs,
     recentlyMergedPRs,
+    recentlyMergedFetchFailed,
     commentedIssues,
     successorGaps,
   } = await fetchPRData(prMonitor, token, warnings);
@@ -1345,7 +1351,11 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   );
 
   // Phase 3.7: maintainer notes on recently merged PRs (#1861). Read-only.
-  const mergedPRNotes = await runMergedPRNotesPhase(prMonitor, recentlyMergedPRs, warnings);
+  const mergedPRNotes = await runMergedPRNotesPhase(
+    prMonitor,
+    { recentlyMergedPRs, recentlyMergedFetchFailed },
+    warnings,
+  );
 
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).

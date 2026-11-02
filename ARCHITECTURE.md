@@ -293,7 +293,7 @@ interface AgentState {
 Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 - `config.shelvedPRUrls: string[]` — PR URLs manually shelved (excluded from capacity and actionable items, auto-unshelved when maintainers engage)
 - `config.statusOverrides: Record<string, StatusOverride>` — Manual PR status overrides set via `move` command. Auto-clears when the PR has new activity
-- `config.dismissedIssues: Record<string, string>` — Issue URLs mapped to dismiss timestamps
+- `config.dismissedIssues: Record<string, string>` — Issue URLs (and, since #1861, merged-PR URLs) mapped to dismiss timestamps
 
 ### What's NOT Stored (v2 Design)
 

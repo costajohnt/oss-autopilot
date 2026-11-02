@@ -33,15 +33,15 @@ describe('runDismiss', () => {
     mockDismissIssue.mockReturnValue(true);
     const result = await runDismiss({ url: TEST_ISSUE_URL });
 
-    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL, expect.any(String));
+    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL, expect.any(String), { refresh: false });
     expect(result).toEqual({ dismissed: true, url: TEST_ISSUE_URL });
   });
 
-  it('should dismiss a PR URL (merged-PR notes, #1861)', async () => {
+  it('should dismiss a PR URL with refresh so a re-dismiss moves the stamp forward (merged-PR notes, #1861)', async () => {
     mockDismissIssue.mockReturnValue(true);
     const result = await runDismiss({ url: TEST_PR_URL });
 
-    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_PR_URL, expect.any(String));
+    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_PR_URL, expect.any(String), { refresh: true });
     expect(result).toEqual({ dismissed: true, url: TEST_PR_URL });
   });
 

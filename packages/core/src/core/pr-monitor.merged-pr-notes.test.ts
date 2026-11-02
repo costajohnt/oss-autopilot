@@ -47,7 +47,7 @@ describe('PRMonitor fetchMergedPRActivity (#1861)', () => {
       reviews: [{ id: 2 }],
       reviewComments: [{ id: 3 }],
       commits: [{ sha: 'abc' }],
-      truncated: false,
+      truncatedLists: [],
     });
     const base = { owner: 'owner', repo: 'repo', per_page: 100, page: 1 };
     expect(mockOctokitInstance.issues.listComments).toHaveBeenCalledWith({ ...base, issue_number: 42 });
@@ -56,18 +56,19 @@ describe('PRMonitor fetchMergedPRActivity (#1861)', () => {
     expect(mockOctokitInstance.pulls.listCommits).toHaveBeenCalledWith({ ...base, pull_number: 42 });
   });
 
-  it('paginates each list and reports truncation when a list hits the page cap', async () => {
+  it('paginates each list and names the lists that hit the page cap', async () => {
     const fullPage = Array.from({ length: 100 }, (_, i) => ({ id: i }));
     mockOctokitInstance.issues.listComments = pages(fullPage, [{ id: 100 }]);
     // 10 full pages: the cap.
     const tenFullPages = Array.from({ length: 10 }, () => fullPage);
     mockOctokitInstance.pulls.listCommits = pages(...tenFullPages);
+    mockOctokitInstance.pulls.listReviewComments = pages(...tenFullPages);
     const monitor = new PRMonitor('fake-token');
     const activity = await monitor.fetchMergedPRActivity(PR_URL);
     expect(activity.comments).toHaveLength(101);
     expect(mockOctokitInstance.issues.listComments).toHaveBeenCalledTimes(2);
     expect(activity.commits).toHaveLength(1000);
-    expect(activity.truncated).toBe(true);
+    expect(activity.truncatedLists).toEqual(['review comments', 'commits']);
   });
 
   it('rejects non-PR URLs without calling the API and lets API errors through unchanged', async () => {
@@ -80,5 +81,28 @@ describe('PRMonitor fetchMergedPRActivity (#1861)', () => {
     const notFound = Object.assign(new Error('Not Found'), { status: 404 });
     mockOctokitInstance.pulls.listReviews = vi.fn().mockRejectedValue(notFound);
     await expect(monitor.fetchMergedPRActivity(PR_URL)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('waits for all four calls and rethrows a rate-limit error ahead of an earlier 404', async () => {
+    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+    const rateLimited = Object.assign(new Error('API rate limit exceeded'), { status: 403 });
+    // The 404 rejects first; the rate limit arrives from a later call.
+    mockOctokitInstance.issues.listComments = vi.fn().mockRejectedValue(notFound);
+    mockOctokitInstance.pulls.listCommits = vi.fn(
+      () => new Promise((_resolve, reject) => setTimeout(() => reject(rateLimited), 5)),
+    );
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchMergedPRActivity(PR_URL)).rejects.toBe(rateLimited);
+    expect(mockOctokitInstance.pulls.listReviews).toHaveBeenCalledTimes(1);
+    expect(mockOctokitInstance.pulls.listReviewComments).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows the first rejection when none is a rate-limit or auth error', async () => {
+    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+    const badGateway = Object.assign(new Error('Bad Gateway'), { status: 502 });
+    mockOctokitInstance.pulls.listReviews = vi.fn().mockRejectedValue(notFound);
+    mockOctokitInstance.pulls.listCommits = vi.fn().mockRejectedValue(badGateway);
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchMergedPRActivity(PR_URL)).rejects.toBe(notFound);
   });
 });

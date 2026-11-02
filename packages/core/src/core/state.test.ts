@@ -372,6 +372,16 @@ describe('dismissIssue / undismissIssue / getIssueDismissedAt', () => {
     expect(stateManager.getIssueDismissedAt(url)).toBe('2025-01-15T10:00:00.000Z');
   });
 
+  it('should move the stamp forward on re-dismiss when refresh is set (merged-PR notes skip, #1861)', () => {
+    const url = 'https://github.com/owner/repo/pull/42';
+    stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z');
+    expect(stateManager.dismissIssue(url, '2025-01-16T10:00:00.000Z', { refresh: true })).toBe(true);
+    expect(stateManager.getIssueDismissedAt(url)).toBe('2025-01-16T10:00:00.000Z');
+    // Without refresh the second call is still a no-op.
+    expect(stateManager.dismissIssue(url, '2025-01-17T10:00:00.000Z')).toBe(false);
+    expect(stateManager.getIssueDismissedAt(url)).toBe('2025-01-16T10:00:00.000Z');
+  });
+
   it('should undismiss a dismissed issue', () => {
     const url = 'https://github.com/owner/repo/issues/1';
     stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z');

@@ -8,16 +8,18 @@
 
 import {
   getStateManager,
-  collectMergedPRNotes,
   groupThanksOnlyAcknowledgments,
   latestNoteAt,
+  omitAcknowledgedViaCarrier,
+  scanMergedPR,
+  type CarrierReply,
   type PRMonitor,
   type MergedPR,
   type MergedPRNotes,
 } from '../core/index.js';
 import { isRateLimitOrAuthError } from '../core/errors.js';
 import { DEFAULT_CONCURRENCY, runWorkerPool } from '../core/concurrency.js';
-import { debug } from '../core/logger.js';
+import { debug, warn } from '../core/logger.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import type { DailyWarning } from '../formatters/json.js';
 import { describeError, httpStatusLabel, isGoneError, recordWarning } from './daily-warnings.js';
@@ -27,16 +29,31 @@ const OPERATION = 'merged-PR maintainer notes';
 
 type MergedPRActivityResult = Awaited<ReturnType<PRMonitor['fetchMergedPRActivity']>>;
 
+/** What Phase 1 learned about the recently merged list. */
+export interface MergedPRNotesInput {
+  recentlyMergedPRs: MergedPR[];
+  /** The list is the [] fallback of a failed fetch; the phase is skipped with a warning. */
+  recentlyMergedFetchFailed: boolean;
+}
+
 /**
  * Whether the user declined this PR's notes: its URL was dismissed at or
- * after the newest note (or with an unreadable stamp). A note newer than the
- * dismiss resurfaces the PR, same as issue replies.
+ * after the newest note. A note newer than the dismiss resurfaces the PR,
+ * same as issue replies. An unreadable stamp fails open (the PR is listed)
+ * with a log line, matching the issue path's dismiss filter.
  */
 function isDismissed(prUrl: string, notes: MergedPRNotes, dismissedAt: string | undefined): boolean {
   if (dismissedAt === undefined) return false;
   const dismissedMs = Date.parse(dismissedAt);
+  if (Number.isNaN(dismissedMs)) {
+    warn(
+      MODULE,
+      `merged-pr-notes: ${prUrl} has an unreadable dismiss timestamp ${JSON.stringify(dismissedAt)}; listing`,
+    );
+    return false;
+  }
   const newestNoteAt = latestNoteAt(notes);
-  if (Number.isNaN(dismissedMs) || dismissedMs >= Date.parse(newestNoteAt)) {
+  if (dismissedMs >= Date.parse(newestNoteAt)) {
     debug(MODULE, `merged-pr-notes: ${prUrl} dismissed at ${dismissedAt}, after newest note ${newestNoteAt}; skipping`);
     return true;
   }
@@ -46,7 +63,10 @@ function isDismissed(prUrl: string, notes: MergedPRNotes, dismissedAt: string | 
 /**
  * Fetch one PR's activity, turning a failure into a warning that names the
  * PR and its HTTP status. Returns undefined when the PR is dropped for this
- * run. Rate-limit/auth errors propagate.
+ * run: on a fetch error, or when any of the four lists hit the pagination
+ * cap (the cap cuts the newest items, which is where the user's own reply
+ * would be, so an incomplete thread would nag about an answered note).
+ * Rate-limit/auth errors propagate.
  */
 async function fetchActivity(
   prMonitor: PRMonitor,
@@ -65,14 +85,15 @@ async function fetchActivity(
     recordWarning(warnings, 'merged-pr-notes', operation, error, detail);
     return undefined;
   }
-  if (activity.truncated) {
+  if (activity.truncatedLists.length > 0) {
     recordWarning(
       warnings,
       'merged-pr-notes',
       operation,
       null,
-      'pagination cap reached; the newest notes may be missing',
+      `pagination cap reached on ${activity.truncatedLists.join(', ')}; the newest activity (including any reply of yours) may be missing; dropped`,
     );
+    return undefined;
   }
   return activity;
 }
@@ -81,27 +102,32 @@ async function fetchActivity(
  * For each PR in this run's recently merged list (already limited to repos
  * the user does not own and outside `untrackedOrgs` by the search), fetch its
  * comments, reviews, inline review comments and commits and keep the notes
- * `collectMergedPRNotes` says still wait for the user: maintainer comments
- * after the user's last word and no earlier than an hour before the merge,
- * plus commits someone else pushed on top. Thanks-only entries in one repo
- * collapse onto the most recent PR (`ackCoveredBy`).
+ * `scanMergedPR` says still wait for the user: maintainer comments after the
+ * user's last word (comment or commit) and no earlier than an hour before
+ * the merge, plus commits someone else pushed on top. Thanks-only entries in
+ * one repo collapse onto the most recent PR (`ackCoveredBy`), and once the
+ * user has commented on that carrier the covered entries stop coming back
+ * (`omitAcknowledgedViaCarrier`).
  *
  * "Only once": nothing is written to state. An entry disappears when the
- * user comments on the PR after the notes, when they dismiss the PR URL at
- * or after the newest note (the workflow's "skip" runs the existing
- * `dismiss`, which accepts PR URLs), and at the latest when the PR leaves
- * the recently-merged window. A merged fetch that fell back to [] simply
- * yields no entries (that fallback already carries its own fetch warning).
+ * user comments on the PR (or on its group's carrier) after the notes, when
+ * they dismiss the PR URL at or after the newest note (the workflow's "skip"
+ * runs the existing `dismiss`, which accepts PR URLs and re-stamps on
+ * repeat), and at the latest when the PR leaves the recently-merged window.
  *
- * Non-fatal: a per-PR failure drops that PR with a `merged-pr-notes`
- * warning naming it and the HTTP status (404/410 as "no longer reachable");
- * rate-limit/auth errors propagate like every other phase's.
+ * Non-fatal: a per-PR failure (fetch error, pagination cap, or an error
+ * while reading the thread) drops that PR with a `merged-pr-notes` warning
+ * naming it; rate-limit/auth errors propagate like every other phase's.
  */
 async function prepareMergedPRNotes(
   prMonitor: PRMonitor,
-  recentlyMergedPRs: MergedPR[],
+  { recentlyMergedPRs, recentlyMergedFetchFailed }: MergedPRNotesInput,
   warnings: DailyWarning[],
 ): Promise<MergedPRNotes[]> {
+  if (recentlyMergedFetchFailed) {
+    recordWarning(warnings, 'merged-pr-notes', OPERATION, null, 'skipped: recently-merged fetch failed');
+    return [];
+  }
   if (recentlyMergedPRs.length === 0) return [];
 
   const stateManager = getStateManager();
@@ -112,25 +138,43 @@ async function prepareMergedPRNotes(
   }
 
   // Keyed by PR so the output keeps the fetched order however the workers finish.
-  const found = new Map<MergedPR, MergedPRNotes>();
+  const pending = new Map<MergedPR, MergedPRNotes>();
+  const carriers: CarrierReply[] = [];
+  const recordScan = (pr: MergedPR, activity: MergedPRActivityResult): void => {
+    const scan = scanMergedPR(pr, activity, username);
+    if (scan.thanksOnlyThread) {
+      carriers.push({ prUrl: pr.url, repo: pr.repo, mergedAt: pr.mergedAt, lastUserCommentMs: scan.lastUserCommentMs });
+    }
+    if (!scan.pending || isDismissed(pr.url, scan.pending, stateManager.getIssueDismissedAt(pr.url))) return;
+    pending.set(pr, scan.pending);
+  };
   await runWorkerPool(
     recentlyMergedPRs,
     async (pr) => {
       const activity = await fetchActivity(prMonitor, pr, warnings);
       if (!activity) return;
-      const notes = collectMergedPRNotes(pr, activity, username);
-      if (!notes || isDismissed(pr.url, notes, stateManager.getIssueDismissedAt(pr.url))) return;
-      found.set(pr, notes);
+      try {
+        recordScan(pr, activity);
+      } catch (error) {
+        if (isRateLimitOrAuthError(error)) throw error;
+        recordWarning(
+          warnings,
+          'merged-pr-notes',
+          `read activity on ${pr.url}`,
+          error,
+          `${describeError(error)}; dropped`,
+        );
+      }
     },
     DEFAULT_CONCURRENCY,
   );
 
   const ordered: MergedPRNotes[] = [];
   for (const pr of recentlyMergedPRs) {
-    const notes = found.get(pr);
+    const notes = pending.get(pr);
     if (notes) ordered.push(notes);
   }
-  return groupThanksOnlyAcknowledgments(ordered);
+  return groupThanksOnlyAcknowledgments(omitAcknowledgedViaCarrier(ordered, carriers));
 }
 
 /**
@@ -140,11 +184,11 @@ async function prepareMergedPRNotes(
  */
 export async function runMergedPRNotesPhase(
   prMonitor: PRMonitor,
-  recentlyMergedPRs: MergedPR[],
+  input: MergedPRNotesInput,
   warnings: DailyWarning[],
 ): Promise<MergedPRNotes[]> {
   try {
-    return await prepareMergedPRNotes(prMonitor, recentlyMergedPRs, warnings);
+    return await prepareMergedPRNotes(prMonitor, input, warnings);
   } catch (error) {
     if (isRateLimitOrAuthError(error)) throw error;
     recordWarning(warnings, 'merged-pr-notes', 'prepare merged-PR maintainer notes', error);

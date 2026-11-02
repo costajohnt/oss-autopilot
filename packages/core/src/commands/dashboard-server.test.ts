@@ -1171,6 +1171,7 @@ describe('dashboard-server', () => {
       expect(mockStateManager.dismissIssue).toHaveBeenCalledWith(
         'https://github.com/owner/repo/issues/42',
         expect.any(String),
+        { refresh: false },
       );
     });
 

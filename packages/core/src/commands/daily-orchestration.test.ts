@@ -30,7 +30,7 @@ const mockFetchPRClosedBy = vi.fn<(prUrl: string) => Promise<string | undefined>
 // Phase 3.7 (#1861) reads every recently merged PR's activity; default to an
 // empty thread so the merged-PR fixtures elsewhere in this file stay silent.
 const mockFetchMergedPRActivity = vi.fn(() =>
-  Promise.resolve({ comments: [], reviews: [], reviewComments: [], commits: [], truncated: false }),
+  Promise.resolve({ comments: [], reviews: [], reviewComments: [], commits: [], truncatedLists: [] }),
 );
 const mockGenerateDigest = vi.fn();
 

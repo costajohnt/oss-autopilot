@@ -513,51 +513,41 @@ describe('legacy state cleanup on load', () => {
     expect(onDisk.config.snoozedPRs).toBeDefined();
   });
 
-  it('strips PR URLs from dismissedIssues on load', () => {
+  it('keeps PR URLs in dismissedIssues on load (merged-PR notes dismiss, #1861)', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     const stateData = makeCurrentState();
-    (stateData.config as Record<string, unknown>).dismissedIssues = {
+    const dismissed = {
       'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
       'https://github.com/owner/repo/pull/42': '2025-01-11T00:00:00Z',
       'https://github.com/other/project/issues/5': '2025-01-12T00:00:00Z',
       'https://github.com/other/project/pull/99': '2025-01-13T00:00:00Z',
     };
+    (stateData.config as Record<string, unknown>).dismissedIssues = dismissed;
     fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
 
     const sm = new StateManager(false);
     const state = sm.getState();
 
-    // PR URLs should be removed
-    expect(state.config.dismissedIssues['https://github.com/owner/repo/pull/42']).toBeUndefined();
-    expect(state.config.dismissedIssues['https://github.com/other/project/pull/99']).toBeUndefined();
-
-    // Issue URLs should remain
-    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/1']).toBe('2025-01-10T00:00:00Z');
-    expect(state.config.dismissedIssues['https://github.com/other/project/issues/5']).toBe('2025-01-12T00:00:00Z');
+    // Issue and PR URLs both survive, in memory and on disk (no cleanup rewrite).
+    expect(state.config.dismissedIssues).toEqual(dismissed);
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    expect(onDisk.config.dismissedIssues).toEqual(dismissed);
   });
 
-  it('preserves issue URLs in dismissedIssues', () => {
+  it('round-trips a dismissed PR URL through save and a fresh load (#1861)', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    const stateData = makeCurrentState();
-    (stateData.config as Record<string, unknown>).dismissedIssues = {
-      'https://github.com/owner/repo/issues/10': '2025-02-01T00:00:00Z',
-      'https://github.com/owner/repo/issues/20': '2025-02-02T00:00:00Z',
-      'https://github.com/owner/repo/pull/30': '2025-02-03T00:00:00Z',
-    };
-    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
+    const prUrl = 'https://github.com/owner/repo/pull/42';
+    const stamp = '2026-06-02T12:00:05.000Z';
 
-    const sm = new StateManager(false);
-    const state = sm.getState();
+    const first = new StateManager(false);
+    expect(first.dismissIssue(prUrl, stamp)).toBe(true);
+    expect(first.getIssueDismissedAt(prUrl)).toBe(stamp);
 
-    // Both issue URLs survive intact
-    expect(Object.keys(state.config.dismissedIssues)).toHaveLength(2);
-    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/10']).toBe('2025-02-01T00:00:00Z');
-    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/20']).toBe('2025-02-02T00:00:00Z');
-
-    // Verify on disk as well
-    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    expect(Object.keys(onDisk.config.dismissedIssues)).toHaveLength(2);
-    expect(onDisk.config.dismissedIssues['https://github.com/owner/repo/pull/30']).toBeUndefined();
+    // A new process: the stamp must come back from disk unchanged.
+    const second = new StateManager(false);
+    expect(second.getIssueDismissedAt(prUrl)).toBe(stamp);
+    expect(second.getState().config.dismissedIssues).toEqual({ [prUrl]: stamp });
   });
 
   it('does not write to disk if no cleanup needed', () => {

@@ -404,6 +404,24 @@ describe('buildScoutState', () => {
     ]);
   });
 
+  it('does not forward dismissed merged-PR URLs to the skip list (#1861)', () => {
+    const state = makeAgentState({
+      config: {
+        skippedIssuesPath: undefined,
+        dismissedIssues: {
+          'https://github.com/owner/repo/pull/7': '2026-05-01T09:00:00.000Z',
+          'https://github.com/owner/repo/issues/42': '2026-05-01T10:00:00.000Z',
+        },
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+
+    const result = buildScoutState();
+
+    expect(result.skippedIssues.map((s) => s.url)).toEqual(['https://github.com/owner/repo/issues/42']);
+  });
+
   it('lists a URL that is both in the skip file and dismissed exactly once', () => {
     const url = 'https://github.com/owner/repo/issues/42';
     const state = makeAgentState({

@@ -6,14 +6,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { DailyDigest, MergedPR } from '../core/types.js';
-import type { MergedPRActivity } from '../core/merged-pr-notes.js';
+import type { MergedPRActivity, MergedPRActivityList } from '../core/merged-pr-notes.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
 
 // ---------------------------------------------------------------------------
 // Module-level mocks — declared before any import of the mocked modules
 // ---------------------------------------------------------------------------
 
-type ActivityResult = MergedPRActivity & { truncated: boolean };
+type ActivityResult = MergedPRActivity & { truncatedLists: MergedPRActivityList[] };
 
 const mockFetchUserOpenPRs = vi.fn();
 const mockFetchUserMergedPRCounts = vi.fn();
@@ -140,8 +140,15 @@ function thanks(body = 'Thanks for the PR!', createdAt = NOTE_AT) {
   return { body, user: { login: 'maintainer' }, author_association: 'MEMBER', created_at: createdAt };
 }
 
-function activity(overrides: Partial<MergedPRActivity> = {}, isTruncated = false): ActivityResult {
-  return { comments: [], reviews: [], reviewComments: [], commits: [], truncated: isTruncated, ...overrides };
+function userReply(createdAt: string, body = 'Thank you!') {
+  return { body, user: { login: USER }, author_association: 'CONTRIBUTOR', created_at: createdAt };
+}
+
+function activity(
+  overrides: Partial<MergedPRActivity> = {},
+  truncatedLists: MergedPRActivityList[] = [],
+): ActivityResult {
+  return { comments: [], reviews: [], reviewComments: [], commits: [], truncatedLists, ...overrides };
 }
 
 function makeDigest(): DailyDigest {
@@ -256,13 +263,8 @@ describe('executeDailyCheck() — merged-PR maintainer notes (#1861)', () => {
 
   it('asks only once: nothing is listed after the user commented on the PR after the note', async () => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR(1)]);
-    const userReply = {
-      user: { login: USER },
-      author_association: 'CONTRIBUTOR',
-      body: 'Thank you!',
-      created_at: iso(2000),
-    };
-    mockFetchMergedPRActivity.mockResolvedValue(activity({ comments: [thanks(), userReply] }));
+    const reply = userReply(iso(2000));
+    mockFetchMergedPRActivity.mockResolvedValue(activity({ comments: [thanks(), reply] }));
 
     const result = await executeDailyCheck('test-token');
 
@@ -292,18 +294,25 @@ describe('executeDailyCheck() — merged-PR maintainer notes (#1861)', () => {
       wrapUntrustedContent('Cover two more cases', 'org/repo#1', { author: 'maintainer', source: 'pr-commit' }),
     );
   });
+});
 
-  it('collapses several thanks-only PRs in one repo onto the most recent one', async () => {
-    const older = mergedPR(1, { mergedAt: iso(-DAY_MS) });
-    const newer = mergedPR(2);
-    const elsewhere = mergedPR(3, { url: 'https://github.com/org/other/pull/3', repo: 'org/other' });
+describe('executeDailyCheck() — merged-PR notes: thanks-only grouping per repo (#1861)', () => {
+  const older = mergedPR(1, { mergedAt: iso(-DAY_MS) });
+  const newer = mergedPR(2);
+  const elsewhere = mergedPR(3, { url: 'https://github.com/org/other/pull/3', repo: 'org/other' });
+  const olderNoteAt = iso(1000, Date.parse(older.mergedAt));
+  /** The user's group acknowledgment, posted on the carrier after its thanks. */
+  const ackOnCarrier = activity({ comments: [thanks('Thanks!'), userReply(iso(5000), 'Glad these landed!')] });
+
+  beforeEach(() => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([older, newer, elsewhere]);
-    const olderNoteAt = iso(1000, Date.parse(older.mergedAt));
     mockFetchMergedPRActivity.mockImplementation((prUrl) => {
       const noteAt = prUrl === older.url ? olderNoteAt : NOTE_AT;
       return Promise.resolve(activity({ comments: [thanks('Thanks!', noteAt)] }));
     });
+  });
 
+  it('collapses several thanks-only PRs in one repo onto the most recent one and counts one action for the group', async () => {
     const result = await executeDailyCheck('test-token');
 
     expect(result.mergedPRNotes?.map((e) => [e.prUrl, e.ackCoveredBy])).toEqual([
@@ -311,14 +320,55 @@ describe('executeDailyCheck() — merged-PR maintainer notes (#1861)', () => {
       [newer.url, undefined],
       [elsewhere.url, undefined],
     ]);
-    expect(menuItem(result)?.label).toBe('Merged PRs with maintainer notes (3)');
+    // Two things to do: one ack for org/repo (covering both PRs), one for org/other.
+    expect(menuItem(result)?.label).toBe('Merged PRs with maintainer notes (2)');
+  });
+
+  it("stops listing the covered PR once the user's acknowledgment landed on the carrier (two runs)", async () => {
+    const firstRun = await executeDailyCheck('test-token');
+    expect(firstRun.mergedPRNotes?.map((e) => e.prUrl)).toEqual([older.url, newer.url, elsewhere.url]);
+
+    // The user posts the group ack on the carrier (the newer PR) only.
+    mockFetchMergedPRActivity.mockImplementation((prUrl) => {
+      if (prUrl === newer.url) return Promise.resolve(ackOnCarrier);
+      const noteAt = prUrl === older.url ? olderNoteAt : NOTE_AT;
+      return Promise.resolve(activity({ comments: [thanks('Thanks!', noteAt)] }));
+    });
+    const secondRun = await executeDailyCheck('test-token');
+
+    expect(secondRun.mergedPRNotes?.map((e) => e.prUrl)).toEqual([elsewhere.url]);
+    expect(menuItem(secondRun)?.label).toBe('Merged PR with maintainer notes (1)');
+    expect(mockDismissIssue).not.toHaveBeenCalled();
+  });
+
+  it('does not let a reply on the carrier cover a substantive note or a thanks posted after that reply', async () => {
+    const renamed = thanks('Thanks, I renamed the flag on the way in', olderNoteAt);
+    const lateThanks = thanks('Thanks!', iso(10_000));
+    mockFetchMergedPRActivity.mockImplementation((prUrl) => {
+      if (prUrl === newer.url) return Promise.resolve(ackOnCarrier);
+      // The older PR is not thanks-only: the maintainer changed something.
+      return Promise.resolve(activity({ comments: [prUrl === older.url ? renamed : lateThanks] }));
+    });
+    mockFetchRecentlyMergedPRs.mockResolvedValue([older, newer, mergedPR(4, { mergedAt: iso(-2 * DAY_MS) })]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.mergedPRNotes?.map((e) => [e.prUrl, e.thanksOnly, e.ackCoveredBy])).toEqual([
+      [older.url, false, undefined],
+      ['https://github.com/org/repo/pull/4', true, undefined],
+    ]);
+  });
+});
+
+describe('executeDailyCheck() — merged-PR notes: dismissal (#1861)', () => {
+  const pr = mergedPR(1);
+
+  beforeEach(() => {
+    mockFetchRecentlyMergedPRs.mockResolvedValue([pr]);
+    mockFetchMergedPRActivity.mockResolvedValue(activity({ comments: [thanks('Thanks!', NOTE_AT)] }));
   });
 
   it('skips a PR whose URL was dismissed at or after the newest note, and keeps one dismissed before it', async () => {
-    const pr = mergedPR(1);
-    mockFetchRecentlyMergedPRs.mockResolvedValue([pr]);
-    mockFetchMergedPRActivity.mockResolvedValue(activity({ comments: [thanks('Thanks!', NOTE_AT)] }));
-
     mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? NOTE_AT : undefined));
     const dismissedAfter = await executeDailyCheck('test-token');
     expect(dismissedAfter.mergedPRNotes).toBeUndefined();
@@ -330,6 +380,28 @@ describe('executeDailyCheck() — merged-PR maintainer notes (#1861)', () => {
     expect(mockDismissIssue).not.toHaveBeenCalled();
   });
 
+  it('lists a PR dismissed between two notes (a newer note resurfaces it, with both notes)', async () => {
+    const first = thanks('Thanks!', iso(1000));
+    const second = thanks('And the follow-up is in as well', iso(10_000));
+    mockFetchMergedPRActivity.mockResolvedValue(activity({ comments: [first, second] }));
+    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? iso(5000) : undefined));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.mergedPRNotes?.[0].notes.map((n) => n.createdAt)).toEqual([iso(1000), iso(10_000)]);
+  });
+
+  it('fails open on an unreadable dismiss timestamp: the PR is listed and the stamp is left alone', async () => {
+    mockGetIssueDismissedAt.mockImplementation((url) => (url === pr.url ? 'not-a-date' : undefined));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.mergedPRNotes?.map((e) => e.prUrl)).toEqual([pr.url]);
+    expect(notesWarnings(result)).toEqual([]);
+  });
+});
+
+describe('executeDailyCheck() — merged-PR notes: failures and skips (#1861)', () => {
   it('drops a PR that is gone (404) with a warning naming it and the status, keeping the others', async () => {
     const gone = mergedPR(1);
     const fine = mergedPR(2);
@@ -364,6 +436,32 @@ describe('executeDailyCheck() — merged-PR maintainer notes (#1861)', () => {
     ]);
   });
 
+  it('drops a PR whose thread could not be read, with a warning, and keeps the others', async () => {
+    const broken = mergedPR(1);
+    const fine = mergedPR(2);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([broken, fine]);
+    const poisoned = activity();
+    Object.defineProperty(poisoned, 'comments', {
+      get() {
+        throw new TypeError('comments is not iterable');
+      },
+    });
+    mockFetchMergedPRActivity.mockImplementation((prUrl) =>
+      Promise.resolve(prUrl === broken.url ? poisoned : activity({ comments: [thanks()] })),
+    );
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.mergedPRNotes?.map((e) => e.prUrl)).toEqual([fine.url]);
+    expect(notesWarnings(result)).toEqual([
+      {
+        phase: 'merged-pr-notes',
+        operation: `read activity on ${broken.url}`,
+        message: 'comments is not iterable; dropped',
+      },
+    ]);
+  });
+
   it('rejects the whole run on a rate-limit error', async () => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR(1)]);
     mockFetchMergedPRActivity.mockRejectedValue(httpError(429, 'API rate limit exceeded'));
@@ -371,31 +469,41 @@ describe('executeDailyCheck() — merged-PR maintainer notes (#1861)', () => {
     await expect(executeDailyCheck('test-token')).rejects.toMatchObject({ status: 429 });
   });
 
-  it('warns when the activity lists were truncated but still reports the notes it saw', async () => {
-    const pr = mergedPR(1);
-    mockFetchRecentlyMergedPRs.mockResolvedValue([pr]);
-    mockFetchMergedPRActivity.mockResolvedValue(activity({ comments: [thanks()] }, true));
+  it('drops a PR whose activity lists were truncated, naming the lists in the warning', async () => {
+    const capped = mergedPR(1);
+    const fine = mergedPR(2);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([capped, fine]);
+    mockFetchMergedPRActivity.mockImplementation((prUrl) =>
+      Promise.resolve(activity({ comments: [thanks()] }, prUrl === capped.url ? ['comments', 'review comments'] : [])),
+    );
 
     const result = await executeDailyCheck('test-token');
 
-    expect(result.mergedPRNotes).toHaveLength(1);
+    expect(result.mergedPRNotes?.map((e) => e.prUrl)).toEqual([fine.url]);
     expect(notesWarnings(result)).toEqual([
       {
         phase: 'merged-pr-notes',
-        operation: `fetch activity on ${pr.url}`,
-        message: 'pagination cap reached; the newest notes may be missing',
+        operation: `fetch activity on ${capped.url}`,
+        message:
+          'pagination cap reached on comments, review comments; the newest activity (including any reply of yours) may be missing; dropped',
       },
     ]);
   });
 
-  it('makes no activity calls when the recently-merged fetch fell back to an empty list', async () => {
+  it('skips the phase with one warning and no activity calls when the recently-merged fetch fell back', async () => {
     mockFetchRecentlyMergedPRs.mockRejectedValue(new Error('search down'));
 
     const result = await executeDailyCheck('test-token');
 
     expect(mockFetchMergedPRActivity).not.toHaveBeenCalled();
     expect(result.mergedPRNotes).toBeUndefined();
-    expect(notesWarnings(result)).toEqual([]);
+    expect(notesWarnings(result)).toEqual([
+      {
+        phase: 'merged-pr-notes',
+        operation: 'merged-PR maintainer notes',
+        message: 'skipped: recently-merged fetch failed',
+      },
+    ]);
   });
 
   it('skips the phase with one warning when no GitHub username is configured', async () => {
