@@ -16,6 +16,7 @@ import {
   buildStarFilter,
   firstMaintainerResponseFromDigest,
   lastReviewStateFromDigest,
+  type FetchCommentedIssuesResult,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -296,12 +297,18 @@ export interface DashboardFetchResult {
 }
 
 /**
- * The partial-data banner entry for the issue monitor's notices (#1862): the
- * direct-fetch cap, a gone issue, a truncated thread. The monitor already
- * logged each one; the banner lists operations, so they collapse to one label.
+ * The partial-data banner entries for the issue monitor's non-fatal notes
+ * (#1862). Its warnings (a gone issue, a truncated thread, an engagement
+ * time that does not parse, issues past the comment-fetch cap) collapse to
+ * one label: the monitor already logged each one, and the banner lists
+ * operations. Engaged issues whose batched lookup failed were not checked
+ * at all this run, so they get their own label.
  */
-function engagedScanLabels(issueMonitorWarnings: readonly string[]): string[] {
-  return issueMonitorWarnings.length > 0 ? ['scan engaged issues'] : [];
+function engagedScanLabels(result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures'>): string[] {
+  const labels: string[] = [];
+  if (result.lookupFailures > 0) labels.push('look up engaged issues');
+  if (result.warnings.length > 0) labels.push('scan engaged issues');
+  return labels;
 }
 
 /**
@@ -412,12 +419,13 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     return {
       issues: [] as CommentedIssue[],
       failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      lookupFailures: 0,
       warnings: [] as string[],
     };
   });
 
-  const { issues: commentedIssues, warnings: issueMonitorWarnings } = fetchedIssues;
-  partialFailures.push(...engagedScanLabels(issueMonitorWarnings));
+  const { issues: commentedIssues } = fetchedIssues;
+  partialFailures.push(...engagedScanLabels(fetchedIssues));
   if (fetchedIssues.failures.length > 0) {
     warn(MODULE, `${fetchedIssues.failures.length} issue conversation check(s) failed`);
   }

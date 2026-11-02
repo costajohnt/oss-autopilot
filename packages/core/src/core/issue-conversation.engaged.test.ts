@@ -96,19 +96,6 @@ function makeSearchItem() {
   };
 }
 
-function makeIssue(overrides: Record<string, any> = {}) {
-  return {
-    html_url: ISSUE_URL,
-    number: 42,
-    title: 'Fetched issue',
-    labels: ['enhancement'],
-    state: 'open',
-    user: { login: 'someone-else' },
-    updated_at: YESTERDAY,
-    ...overrides,
-  };
-}
-
 function makeComment(author: string, body: string, createdAt: string, authorAssociation = 'NONE') {
   return { body, user: { login: author }, created_at: createdAt, author_association: authorAssociation };
 }
@@ -149,26 +136,86 @@ function httpError(status: number, message: string) {
   return Object.assign(new Error(message), { status });
 }
 
-/** `count` claims on issues 100.., each fetchable. */
-function manyClaims(count: number) {
+function issueUrl(number: number): string {
+  return `https://github.com/owner/repo/issues/${number}`;
+}
+
+/** `count` claims on issues 100.., stamped `updatedAt`. */
+function manyClaims(count: number, updatedAt = PR_OPENED_AT) {
   return Array.from({ length: count }, (_, i) => ({
-    url: `https://github.com/owner/repo/issues/${100 + i}`,
-    updatedAt: PR_OPENED_AT,
+    updatedAt,
+    url: issueUrl(100 + i),
     status: 'claimed' as const,
   }));
 }
 
-/** Resolve every `issues.get` with an open issue of the requested number. */
-function fetchByNumber() {
-  mocks.octokit.issues.get.mockImplementation(({ issue_number }: { issue_number: number }) =>
-    Promise.resolve({
-      data: makeIssue({ number: issue_number, html_url: `https://github.com/owner/repo/issues/${issue_number}` }),
-    }),
+/** An issue node as the batched lookup returns it. */
+function makeNode(overrides: Record<string, any> = {}) {
+  return {
+    __typename: 'Issue',
+    url: ISSUE_URL,
+    number: 42,
+    title: 'Fetched issue',
+    state: 'OPEN',
+    updatedAt: YESTERDAY,
+    author: { login: 'someone-else' },
+    labels: { nodes: [{ name: 'enhancement' }] },
+    ...overrides,
+  };
+}
+
+/** An open node for issue `number`, updated at `updatedAt`. */
+function openNode(number: number, updatedAt = YESTERDAY) {
+  return makeNode({ number, updatedAt, url: issueUrl(number) });
+}
+
+/** The `[alias index, issue number]` pairs one lookup query asked about, from its variables. */
+function numbersIn(vars: Record<string, unknown>): Array<[string, number]> {
+  return Object.entries(vars)
+    .filter(([name]) => name.startsWith('n'))
+    .map(([name, value]) => [name.slice(1), value as number]);
+}
+
+/** The aliased response for one query: `nodeFor(number)` under `i<alias>`. */
+function lookupData(vars: Record<string, unknown>, nodeFor: (number: number) => unknown) {
+  const data: Record<string, unknown> = {};
+  for (const [alias, number] of numbersIn(vars)) data[`i${alias}`] = { issueOrPullRequest: nodeFor(number) };
+  return data;
+}
+
+/** Resolve every lookup query with `nodeFor(number)` per alias; by default an open issue of that number, updated yesterday. */
+function lookupReturns(nodeFor: (number: number) => unknown = (n) => openNode(n)) {
+  mocks.octokit.graphql.mockImplementation((_query: string, vars: Record<string, unknown>) =>
+    Promise.resolve(lookupData(vars, nodeFor)),
   );
 }
 
-function fetchedNumbers(): number[] {
-  return mocks.octokit.issues.get.mock.calls.map((c: any[]) => c[0].issue_number as number);
+/** Reject every lookup query the way octokit does on a partial response: the resolved aliases on `.data`, `errors` attached. */
+function lookupPartiallyFails(nodeFor: (number: number) => unknown, errors: unknown[]) {
+  mocks.octokit.graphql.mockImplementation((_query: string, vars: Record<string, unknown>) =>
+    Promise.reject(Object.assign(new Error('partial response'), { data: lookupData(vars, nodeFor), errors })),
+  );
+}
+
+/** Every issue number the lookup queries asked about, in query order. */
+function lookedUpNumbers(): number[] {
+  return mocks.octokit.graphql.mock.calls.flatMap((c: any[]) => numbersIn(c[1]).map(([, n]) => n));
+}
+
+/** The issues whose comments were read, in request order, without page repeats. */
+function commentFetchedNumbers(): number[] {
+  const numbers = mocks.octokit.issues.listComments.mock.calls.map((c: any[]) => c[0].issue_number as number);
+  return [...new Set<number>(numbers)];
+}
+
+/** One substantive community reply from yesterday on every issue whose comments are read. */
+function replyYesterday() {
+  commentsAre([makeComment('community-member', 'A long substantive reply about the design here.', YESTERDAY)]);
+}
+
+/** Update time for the cap-ordering tests: issue 7 is the stalest, claims get fresher with their number. */
+function stalenessOf(number: number): string {
+  return number === 7 ? daysAgo(9.5) : daysAgo(9 - (number - 100) * 0.05);
 }
 
 function resetMocks() {
@@ -176,11 +223,10 @@ function resetMocks() {
   mocks.cache = makeMemoryCache();
   mocks.octokit = {
     search: { issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { items: [], total_count: 0 } }) },
-    issues: {
-      listComments: vi.fn().mockResolvedValue({ data: [] }),
-      get: vi.fn().mockResolvedValue({ data: makeIssue() }),
-    },
+    issues: { listComments: vi.fn().mockResolvedValue({ data: [] }) },
+    graphql: vi.fn(),
   };
+  lookupReturns();
 }
 
 describe('IssueConversationMonitor — reply rule on engaged issues (#1862)', () => {
@@ -491,11 +537,12 @@ describe('IssueConversationMonitor — direct fetch of engaged issues missing fr
     ]);
 
     const monitor = new IssueConversationMonitor('token');
-    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: linkedFromClosedPR() });
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({
+      engaged: linkedFromClosedPR(),
+    });
 
-    expect(mocks.octokit.issues.get).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: 'owner', repo: 'repo', issue_number: 42 }),
-    );
+    expect(mocks.octokit.graphql).toHaveBeenCalledTimes(1);
+    expect(mocks.octokit.graphql.mock.calls[0][1]).toEqual({ o0: 'owner', r0: 'repo', n0: 42 });
     expect(failures).toEqual([]);
     expect(warnings).toEqual([]);
     expect(issues).toHaveLength(1);
@@ -528,7 +575,7 @@ describe('IssueConversationMonitor — direct fetch of engaged issues missing fr
     const monitor = new IssueConversationMonitor('token');
     await monitor.fetchCommentedIssues({ engaged: claimed() });
 
-    expect(mocks.octokit.issues.get).not.toHaveBeenCalled();
+    expect(mocks.octokit.graphql).not.toHaveBeenCalled();
   });
 
   it('does not fetch ledger-only links; they count only when the search finds the issue', async () => {
@@ -540,18 +587,112 @@ describe('IssueConversationMonitor — direct fetch of engaged issues missing fr
     const monitor = new IssueConversationMonitor('token');
     const { issues } = await monitor.fetchCommentedIssues({ engaged });
 
-    expect(mocks.octokit.issues.get).not.toHaveBeenCalled();
+    expect(mocks.octokit.graphql).not.toHaveBeenCalled();
     expect(issues).toEqual([]);
   });
 
+  it('reads a transferred issue where GitHub now has it, not where the engagement pointed', async () => {
+    // The claim names owner/repo#42; the lookup follows the transfer and
+    // returns the issue at its new home, with a new number.
+    const movedUrl = 'https://github.com/new-org/new-repo/issues/7';
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.graphql.mock.calls[0][1]).toEqual({ o0: 'owner', r0: 'repo', n0: 42 });
+    expect(mocks.octokit.issues.listComments).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: 'new-org', repo: 'new-repo', issue_number: 7 }),
+    );
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      url: movedUrl,
+      repo: 'new-org/new-repo',
+      number: 7,
+      status: 'new_response',
+      engagement: { reason: 'claim' },
+    });
+  });
+
+  it('lends the engagement to a transferred issue the search already returned, instead of a second candidate', async () => {
+    // The claim names owner/repo#42, now transferred to new-org/new-repo#7,
+    // where the user has commented since: the search returns it there under
+    // a key the claim does not carry. One candidate, read once, and the
+    // community reply counts under the engaged rule (the #343 filter would
+    // have dropped it on a passing comment).
+    const movedUrl = 'https://github.com/new-org/new-repo/issues/7';
+    searchReturns([{ ...makeSearchItem(), html_url: movedUrl, number: 7, title: 'Moved issue' }]);
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    commentsAre([
+      makeComment('testuser', 'On it.', '2026-02-02T10:00:00Z'),
+      makeComment('community-member', 'A long substantive reply about the design here.', YESTERDAY),
+    ]);
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.graphql.mock.calls[0][1]).toEqual({ o0: 'owner', r0: 'repo', n0: 42 });
+    expect(commentFetchedNumbers()).toEqual([7]);
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      url: movedUrl,
+      repo: 'new-org/new-repo',
+      number: 7,
+      title: 'Moved issue',
+      status: 'new_response',
+      lastResponseAuthor: 'community-member',
+      engagement: { reason: 'claim' },
+    });
+  });
+
+  it('skips a transferred issue the search returned but filtered out (the user authored it)', async () => {
+    const movedUrl = 'https://github.com/new-org/new-repo/issues/7';
+    searchReturns([{ ...makeSearchItem(), html_url: movedUrl, number: 7, user: { login: 'testuser' } }]);
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.issues.listComments).not.toHaveBeenCalled();
+    expect(issues).toEqual([]);
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
   it.each([
-    ['a pull request number', makeIssue({ pull_request: { url: 'x' } })],
-    ['a closed issue', makeIssue({ state: 'closed' })],
-    ['an issue the user authored', makeIssue({ user: { login: 'TestUser' } })],
-    ['an issue not updated inside the search window', makeIssue({ updated_at: '2020-01-01T00:00:00Z' })],
-  ])('skips %s without fetching its comments', async (_label, issue) => {
-    mocks.octokit.issues.get.mockResolvedValue({ data: issue });
-    commentsAre([makeComment('community-member', 'A long substantive reply about the design.', YESTERDAY)]);
+    ['an excluded repo', 'https://github.com/new-org/new-repo/issues/7', { excludeRepos: ['new-org/new-repo'] }],
+    ['an excluded org', 'https://github.com/new-org/new-repo/issues/7', { excludeOrgs: ['New-Org'] }],
+    ['a blocklisted repo', 'https://github.com/new-org/new-repo/issues/7', { aiPolicyBlocklist: ['New-Org/New-Repo'] }],
+    ["the user's own repo", 'https://github.com/TestUser/own-project/issues/7', {}],
+  ])('skips a claimed issue transferred into %s without reading its comments', async (_label, movedUrl, config) => {
+    Object.assign(mocks.state.config, config);
+    lookupReturns(() => makeNode({ url: movedUrl, number: 7 }));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
+
+    expect(mocks.octokit.graphql).toHaveBeenCalledTimes(1);
+    expect(mocks.octokit.issues.listComments).not.toHaveBeenCalled();
+    expect(issues).toEqual([]);
+    expect(failures).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it.each([
+    ['a pull request number', { __typename: 'PullRequest' }],
+    ['a closed issue', makeNode({ state: 'CLOSED' })],
+    ['an issue the user authored', makeNode({ author: { login: 'TestUser' } })],
+    ['an issue not updated inside the search window', makeNode({ updatedAt: '2020-01-01T00:00:00Z' })],
+  ])('skips %s without fetching its comments', async (_label, node) => {
+    lookupReturns(() => node);
+    replyYesterday();
 
     const monitor = new IssueConversationMonitor('token');
     const { issues, failures } = await monitor.fetchCommentedIssues({ engaged: linkedFromClosedPR() });
@@ -562,7 +703,7 @@ describe('IssueConversationMonitor — direct fetch of engaged issues missing fr
   });
 });
 
-describe('IssueConversationMonitor — direct fetch: exclusions, the cap and errors (#1862)', () => {
+describe('IssueConversationMonitor — direct fetch: exclusions, the batched lookup and the comment-fetch cap (#1862)', () => {
   beforeEach(resetMocks);
 
   it('applies the repo exclusions to direct fetches', async () => {
@@ -571,7 +712,7 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
     const monitor = new IssueConversationMonitor('token');
     await monitor.fetchCommentedIssues({ engaged: claimed() });
 
-    expect(mocks.octokit.issues.get).not.toHaveBeenCalled();
+    expect(mocks.octokit.graphql).not.toHaveBeenCalled();
   });
 
   it("does not fetch a claimed issue in the user's own repo", async () => {
@@ -583,7 +724,7 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
     const monitor = new IssueConversationMonitor('token');
     const { issues, warnings } = await monitor.fetchCommentedIssues({ engaged });
 
-    expect(mocks.octokit.issues.get).not.toHaveBeenCalled();
+    expect(mocks.octokit.graphql).not.toHaveBeenCalled();
     expect(issues).toEqual([]);
     expect(warnings).toEqual([]);
   });
@@ -591,7 +732,7 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
   it('skips an issue not touched since the claim, even inside the search window, without reading its comments', async () => {
     // Claimed two days ago; the issue last changed five days ago. Nothing on
     // it can be a reply to the claim, so the comment pages are not fetched.
-    mocks.octokit.issues.get.mockResolvedValue({ data: makeIssue({ updated_at: daysAgo(5) }) });
+    lookupReturns(() => makeNode({ updatedAt: daysAgo(5) }));
 
     const monitor = new IssueConversationMonitor('token');
     const { issues } = await monitor.fetchCommentedIssues({ engaged: claimed(daysAgo(2)) });
@@ -600,86 +741,139 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
     expect(issues).toEqual([]);
   });
 
-  it('caps direct fetches, keeps the strongest engagements, and warns with the exact count and URLs skipped', async () => {
-    const total = MAX_DIRECT_ENGAGED_FETCHES + 2;
+  it('looks up 60 missing engaged issues in two queries and reads comments only for the ones updated since the claim', async () => {
+    const claims = manyClaims(60, daysAgo(10));
+    const numbers = claims.map((_, i) => 100 + i);
+    // 20 of the 60 changed after the claim; the rest were last touched before it.
+    const updated = numbers.filter((n) => n % 3 === 0);
+    lookupReturns((n) => openNode(n, updated.includes(n) ? YESTERDAY : daysAgo(20)));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, warnings } = await monitor.fetchCommentedIssues({
+      engaged: collectEngagedIssues({ ...emptyInput, claims }),
+    });
+
+    expect(mocks.octokit.graphql).toHaveBeenCalledTimes(2);
+    const chunkSizes = mocks.octokit.graphql.mock.calls.map((c: any[]) => numbersIn(c[1]).length);
+    expect(chunkSizes).toEqual([50, 10]);
+    expect(lookedUpNumbers()).toEqual(numbers);
+    const read = commentFetchedNumbers();
+    read.sort((a, b) => a - b);
+    expect(read).toEqual(updated);
+    expect(issues).toHaveLength(updated.length);
+    expect(warnings).toEqual([]);
+  });
+
+  it('when more than the cap have new activity, reads the most recently updated and warns naming the rest, whatever their engagement rank', async () => {
+    // Issue 7 is the open-PR issue: strongest engagement, first in the map,
+    // and the stalest. Under the old insertion-order cap it was always read
+    // and the last claims never were.
     const engaged = collectEngagedIssues({
       ...emptyInput,
-      claims: manyClaims(total),
-      openPRs: [{ url: PR_URL, issueUrl: 'https://github.com/owner/repo/issues/7', createdAt: PR_OPENED_AT }],
+      claims: manyClaims(MAX_DIRECT_ENGAGED_FETCHES + 5, daysAgo(10)),
+      openPRs: [{ url: PR_URL, issueUrl: issueUrl(7), createdAt: daysAgo(10) }],
     });
-    fetchByNumber();
+    lookupReturns((n) => openNode(n, stalenessOf(n)));
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { warnings, failures, lookupFailures } = await monitor.fetchCommentedIssues({ engaged });
+
+    expect(lookedUpNumbers()).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES + 6);
+    const read = commentFetchedNumbers();
+    expect(read).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES);
+    const deferred = [7, 100, 101, 102, 103, 104];
+    for (const n of deferred) expect(read).not.toContain(n);
+    // A real warning, not a notice: this many busy engaged issues means the
+    // deferred ones can wait indefinitely, and the user should know which.
+    expect(failures).toEqual([]);
+    expect(lookupFailures).toBe(0);
+    expect(warnings).toEqual([expect.stringContaining('6 engaged issues with new activity were not scanned this run')]);
+    expect(warnings[0]).toContain(`cap of ${MAX_DIRECT_ENGAGED_FETCHES} comment fetches`);
+    for (const n of deferred) expect(warnings[0]).toContain(issueUrl(n));
+  });
+
+  it('reads exactly the cap without a warning when that many have new activity', async () => {
+    const engaged = collectEngagedIssues({
+      ...emptyInput,
+      claims: manyClaims(MAX_DIRECT_ENGAGED_FETCHES, daysAgo(10)),
+    });
+    replyYesterday();
 
     const monitor = new IssueConversationMonitor('token');
     const { warnings } = await monitor.fetchCommentedIssues({ engaged });
 
-    const fetched = fetchedNumbers();
-    expect(fetched).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES);
-    expect(fetched[0]).toBe(7); // the open-PR issue comes first
-    // 1 open-PR issue + `total` claims, minus the cap: the last three claims.
-    const skipped = [total - 3, total - 2, total - 1].map((i) => `https://github.com/owner/repo/issues/${100 + i}`);
-    expect(warnings).toEqual([
-      expect.stringContaining('3 engaged issues missing from the comment search were not fetched this run'),
-    ]);
-    expect(warnings[0]).toContain(`cap of ${MAX_DIRECT_ENGAGED_FETCHES}`);
-    for (const url of skipped) expect(warnings[0]).toContain(url);
+    expect(commentFetchedNumbers()).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES);
+    expect(warnings).toEqual([]);
   });
 
-  it('drops a closed-PR link before any claim when the cap bites', async () => {
-    const engaged = collectEngagedIssues({
-      ...emptyInput,
-      recentlyClosedPRs: [
-        {
-          url: PR_URL,
-          issueUrl: 'https://github.com/owner/repo/issues/7',
-          openedAt: PR_OPENED_AT,
-          closedAt: '2026-02-10T00:00:00Z',
-        },
-      ],
-      claims: manyClaims(MAX_DIRECT_ENGAGED_FETCHES),
-    });
-    fetchByNumber();
-
+  it('moves an issue the cap deferred to the front once it is updated again', async () => {
+    const claims = manyClaims(MAX_DIRECT_ENGAGED_FETCHES + 1, daysAgo(10));
+    const engaged = collectEngagedIssues({ ...emptyInput, claims });
+    // One more active issue than the cap, 100 the stalest: deferred on the first run.
+    const freshness = new Map<number, string>();
+    for (const [i] of claims.entries()) freshness.set(100 + i, daysAgo(9 - i * 0.05));
+    lookupReturns((n) => openNode(n, freshness.get(n)));
+    replyYesterday();
     const monitor = new IssueConversationMonitor('token');
-    const { warnings } = await monitor.fetchCommentedIssues({ engaged });
 
-    const fetched = fetchedNumbers();
-    expect(fetched).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES);
-    expect(fetched).not.toContain(7);
-    expect(warnings).toEqual([
-      expect.stringContaining('1 engaged issue missing from the comment search was not fetched this run'),
-    ]);
-    expect(warnings[0]).toContain('https://github.com/owner/repo/issues/7');
+    const first = await monitor.fetchCommentedIssues({ engaged });
+    expect(commentFetchedNumbers()).not.toContain(100);
+    expect(first.warnings).toEqual([expect.stringContaining(issueUrl(100))]);
+
+    // A new comment lands on 100: now the freshest of them all.
+    freshness.set(100, YESTERDAY);
+    mocks.octokit.issues.listComments.mockClear();
+    const second = await monitor.fetchCommentedIssues({ engaged });
+    expect(commentFetchedNumbers()).toContain(100);
+    expect(second.warnings).toHaveLength(1);
+    expect(second.warnings[0]).not.toContain(issueUrl(100));
   });
 
-  it('counts only the issues the search missed against the cap, so a search hit removes the warning', async () => {
+  it('looks up only the issues the search missed, so a search hit costs no lookup', async () => {
     const claims = manyClaims(MAX_DIRECT_ENGAGED_FETCHES + 1);
     const engaged = collectEngagedIssues({ ...emptyInput, claims });
     // The search returns the first claimed issue (the user commented there).
     searchReturns([{ ...makeSearchItem(), html_url: claims[0].url, number: 100 }]);
     commentsAre([makeComment('testuser', 'On it.', '2026-02-02T10:00:00Z')]);
-    fetchByNumber();
 
     const monitor = new IssueConversationMonitor('token');
     const { warnings } = await monitor.fetchCommentedIssues({ engaged });
 
-    expect(fetchedNumbers()).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES);
-    expect(fetchedNumbers()).not.toContain(100);
+    expect(lookedUpNumbers()).toHaveLength(MAX_DIRECT_ENGAGED_FETCHES);
+    expect(lookedUpNumbers()).not.toContain(100);
     expect(warnings).toEqual([]);
   });
+});
 
-  it('drops an issue that is gone (404/410) with a warning naming the status, not a failure', async () => {
-    mocks.octokit.issues.get.mockRejectedValue(httpError(404, 'Not Found'));
+describe('IssueConversationMonitor — direct fetch: gone issues and errors (#1862)', () => {
+  beforeEach(resetMocks);
+
+  it('drops a claimed issue the lookup reports NOT_FOUND with a warning naming the reason, not a failure', async () => {
+    lookupPartiallyFails(
+      () => null,
+      [
+        {
+          type: 'NOT_FOUND',
+          path: ['i0', 'issueOrPullRequest'],
+          message: 'Could not resolve to an issue or pull request with the number of 42.',
+        },
+      ],
+    );
 
     const monitor = new IssueConversationMonitor('token');
     const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed() });
 
     expect(issues).toEqual([]);
     expect(failures).toEqual([]);
-    expect(warnings).toEqual([`${ISSUE_URL}: issue no longer reachable (HTTP 404: Not Found); dropped`]);
+    expect(warnings).toEqual([
+      `${ISSUE_URL}: issue no longer reachable (NOT_FOUND: Could not resolve to an issue or pull request with the number of 42.); dropped`,
+    ]);
   });
 
   it("drops a gone issue linked only from a closed PR quietly: nothing of the user's still points at it", async () => {
-    mocks.octokit.issues.get.mockRejectedValue(httpError(410, 'Gone'));
+    lookupReturns(() => null);
 
     const monitor = new IssueConversationMonitor('token');
     const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: linkedFromClosedPR() });
@@ -690,7 +884,7 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
   });
 
   it('warns when the user never commented and the engagement time does not parse', async () => {
-    commentsAre([makeComment('community-member', 'A long substantive reply about the design.', YESTERDAY)]);
+    replyYesterday();
 
     const monitor = new IssueConversationMonitor('token');
     const { issues, failures, warnings } = await monitor.fetchCommentedIssues({ engaged: claimed('not a date') });
@@ -702,8 +896,8 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
     ]);
   });
 
-  it('records other per-issue errors with their HTTP status and continues', async () => {
-    const other = 'https://github.com/owner/repo/issues/43';
+  it('records a per-issue lookup error other than NOT_FOUND as a failure and goes on with the rest', async () => {
+    const other = issueUrl(43);
     const engaged = collectEngagedIssues({
       ...emptyInput,
       claims: [
@@ -711,12 +905,34 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
         { url: other, updatedAt: PR_OPENED_AT, status: 'claimed' },
       ],
     });
-    mocks.octokit.issues.get.mockImplementation(({ issue_number }: { issue_number: number }) =>
-      issue_number === 42
-        ? Promise.reject(httpError(500, 'Server Error'))
-        : Promise.resolve({ data: makeIssue({ number: 43, html_url: other }) }),
+    lookupPartiallyFails(
+      (n) => (n === 42 ? null : openNode(n)),
+      [{ type: 'FORBIDDEN', path: ['i0'], message: 'Resource protected by organization SAML enforcement.' }],
     );
-    commentsAre([makeComment('community-member', 'A substantive reply about the approach here.', YESTERDAY)]);
+    replyYesterday();
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures } = await monitor.fetchCommentedIssues({ engaged });
+
+    expect(failures).toEqual([
+      { issueUrl: ISSUE_URL, error: 'FORBIDDEN: Resource protected by organization SAML enforcement.' },
+    ]);
+    expect(issues.map((i) => i.url)).toEqual([other]);
+  });
+
+  it('records a comment fetch error on a looked-up issue with its HTTP status and continues', async () => {
+    const other = issueUrl(43);
+    const engaged = collectEngagedIssues({
+      ...emptyInput,
+      claims: [
+        { url: ISSUE_URL, updatedAt: PR_OPENED_AT, status: 'claimed' },
+        { url: other, updatedAt: PR_OPENED_AT, status: 'claimed' },
+      ],
+    });
+    const reply = makeComment('community-member', 'A substantive reply about the approach here.', YESTERDAY);
+    mocks.octokit.issues.listComments.mockImplementation(({ issue_number }: { issue_number: number }) =>
+      issue_number === 42 ? Promise.reject(httpError(500, 'Server Error')) : Promise.resolve({ data: [reply] }),
+    );
 
     const monitor = new IssueConversationMonitor('token');
     const { issues, failures } = await monitor.fetchCommentedIssues({ engaged });
@@ -725,8 +941,60 @@ describe('IssueConversationMonitor — direct fetch: exclusions, the cap and err
     expect(issues.map((i) => i.url)).toEqual([other]);
   });
 
-  it('rejects on a rate limit from a direct fetch instead of degrading to fewer results', async () => {
-    mocks.octokit.issues.get.mockRejectedValue(httpError(429, 'API rate limit exceeded'));
+  it('fails every issue of a lookup query that errored outright and on retry, counts them as lookup failures, and keeps the search results', async () => {
+    const engaged = collectEngagedIssues({
+      ...emptyInput,
+      claims: [
+        { url: issueUrl(43), updatedAt: PR_OPENED_AT, status: 'claimed' },
+        { url: issueUrl(44), updatedAt: PR_OPENED_AT, status: 'claimed' },
+      ],
+    });
+    searchReturns([makeSearchItem()]);
+    commentsAre([makeComment('testuser', 'On it.', '2026-02-02T10:00:00Z')]);
+    mocks.octokit.graphql.mockRejectedValue(httpError(502, 'Bad Gateway'));
+
+    const monitor = new IssueConversationMonitor('token');
+    const { issues, failures, lookupFailures } = await monitor.fetchCommentedIssues({ engaged });
+
+    // The pair, then each half once more.
+    expect(mocks.octokit.graphql).toHaveBeenCalledTimes(3);
+    expect(failures).toEqual([
+      { issueUrl: issueUrl(43), error: 'Bad Gateway' },
+      { issueUrl: issueUrl(44), error: 'Bad Gateway' },
+    ]);
+    expect(lookupFailures).toBe(2);
+    expect(issues.map((i) => i.url)).toEqual([ISSUE_URL]);
+  });
+
+  it('counts only the lookups among the failures, not a comment fetch that failed afterwards', async () => {
+    const engaged = collectEngagedIssues({
+      ...emptyInput,
+      claims: [
+        { url: ISSUE_URL, updatedAt: PR_OPENED_AT, status: 'claimed' },
+        { url: issueUrl(43), updatedAt: PR_OPENED_AT, status: 'claimed' },
+      ],
+    });
+    lookupPartiallyFails(
+      (n) => (n === 42 ? null : openNode(n)),
+      [{ type: 'FORBIDDEN', path: ['i0'], message: 'Resource protected by organization SAML enforcement.' }],
+    );
+    mocks.octokit.issues.listComments.mockRejectedValue(httpError(500, 'Server Error'));
+
+    const monitor = new IssueConversationMonitor('token');
+    const { failures, lookupFailures } = await monitor.fetchCommentedIssues({ engaged });
+
+    expect(failures.map((f) => f.issueUrl)).toEqual([ISSUE_URL, issueUrl(43)]);
+    expect(lookupFailures).toBe(1);
+  });
+
+  it.each([
+    ['an HTTP 429', httpError(429, 'API rate limit exceeded')],
+    [
+      'a GraphQL RATE_LIMITED error',
+      Object.assign(new Error('API rate limit exceeded'), { errors: [{ type: 'RATE_LIMITED' }] }),
+    ],
+  ])('rejects on %s from the lookup instead of degrading to fewer results', async (_label, error) => {
+    mocks.octokit.graphql.mockRejectedValue(error);
 
     const monitor = new IssueConversationMonitor('token');
     await expect(monitor.fetchCommentedIssues({ engaged: claimed() })).rejects.toThrow('rate limit');

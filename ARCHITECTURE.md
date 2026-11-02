@@ -213,8 +213,9 @@ ETag-based caching for GitHub API responses:
 | `pagination.ts` | GitHub API pagination helper |
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
-| `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on or is engaged in for replies that need attention; fetches live engaged issues the comment search misses (#1862) |
+| `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on or is engaged in for replies that need attention; reads the comments of live engaged issues the comment search misses, most recently updated first under a per-run cap (#1862) |
 | `engaged-issues.ts` | `collectEngagedIssues` — the issues the user is working on (claims plus issues linked from open, recently closed/merged and ledger PRs), keyed and ranked for the monitor (#1862) |
+| `engaged-issue-lookup.ts` | `lookupEngagedIssues` — one aliased GraphQL query per 50 engaged issues the comment search missed: still open, updated since the engagement, gone, or a pull request (#1862) |
 | `reviewed-prs.ts` | `scanReviewedPR` — for an open PR the user reviewed but did not author, what the author pushed or asked since the user's last review, and the head SHA that review was of (#1857) |
 | `reviewed-prs-fetch.ts` | The reviewed-PR searches (`reviewed-by:` + `commenter:`), per-PR activity fetch and compare-status call behind `PRMonitor`'s wrappers (#1857) |
 | `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |

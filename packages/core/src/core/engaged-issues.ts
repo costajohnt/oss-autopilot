@@ -8,7 +8,7 @@
  * ledger entry no older than {@link LEDGER_LINK_MAX_AGE_DAYS}. Plain
  * mentions in a PR body ("similar to #12", "see #4 for the upstream bug") are
  * not engagement: they named unrelated issues, bumped the engagement time
- * past earlier maintainer replies, and ate into the direct-fetch cap.
+ * past earlier maintainer replies, and ate into the comment-fetch cap.
  * `IssueConversationMonitor` scans engaged issues under a wider reply rule
  * (any substantive non-bot comment counts, not only maintainer or @mention
  * replies) and fetches the live ones directly when the commenter search does
@@ -157,8 +157,8 @@ function* engagements(input: EngagedIssuesInput, nowMs: number): Generator<Engag
 
 /**
  * Keys of the user's own PRs. A closing keyword can name one of them
- * ("closes #50" on a follow-up to PR #50); that is not an issue, and fetching
- * it would spend one of the capped direct lookups to learn so.
+ * ("closes #50" on a follow-up to PR #50); that is not an issue, and looking
+ * it up would only confirm so.
  */
 function ownPRKeys(input: EngagedIssuesInput): Set<string> {
   const keys = new Set<string>();
@@ -217,8 +217,8 @@ function record(byKey: Map<string, EngagedIssue>, engagement: Engagement): void 
  * Links that do not parse as GitHub URLs, or that name one of the user's own
  * PRs, are skipped. Iteration order is strongest-reason first (engagements
  * are visited in that order, so an issue is inserted at its strongest
- * reason's position), so a caller that caps direct fetches keeps the open-PR
- * and claim issues.
+ * reason's position). The monitor looks every live entry up regardless of
+ * order; its comment-fetch cap ranks by the issue's own update time.
  */
 export function collectEngagedIssues(
   input: EngagedIssuesInput,
