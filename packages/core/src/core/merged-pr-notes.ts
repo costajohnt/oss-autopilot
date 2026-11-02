@@ -89,6 +89,8 @@ export interface MergedPRActivity {
   reviewComments: Array<Actor & { body?: string | null; created_at: string }>;
   commits: Array<{
     author?: { login?: string; type?: string | null } | null;
+    /** GitHub account that last rewrote the commit (`web-flow` for merges and rebases done on github.com). */
+    committer?: { login?: string; type?: string | null } | null;
     commit: {
       message?: string | null;
       author?: { date?: string | null } | null;
@@ -239,30 +241,50 @@ function scanThread(activity: MergedPRActivity, username: string, earliestNoteMs
   return scan;
 }
 
+/**
+ * The date a commit is scanned under: the committer date when the user both
+ * authored and committed it (their own rebase moved it), the author date
+ * otherwise. Either falls back to the other when missing.
+ */
+function commitDateOf(entry: MergedPRActivity['commits'][number], isUserRebase: boolean): string | null | undefined {
+  const authorDate = entry.commit.author?.date;
+  const committerDate = entry.commit.committer?.date;
+  return isUserRebase ? (committerDate ?? authorDate) : (authorDate ?? committerDate);
+}
+
 interface CommitScan {
-  /** Non-merge commits by a non-bot account other than the user, in input order. */
+  /** Non-merge commits by a non-bot account other than the user, in input order, dated by author date. */
   commitNotes: RawNote[];
-  /** Commit date of the user's latest non-merge commit; -Infinity when none. */
+  /** Time of the user's latest non-merge commit (see {@link scanCommits} for which date); -Infinity when none. */
   lastUserCommitMs: number;
 }
 
 /**
- * Walk the PR's commits once, by GitHub author login. Timestamps use the
- * committer date (the author date survives rebases, so a fix the user
- * rebased onto the base branch would otherwise predate the review it
- * answers) and fall back to the author date when it is missing. Merge
- * commits (more than one parent, e.g. GitHub's "Update branch") carry no
- * new work and are skipped on both sides.
+ * Walk the PR's commits once, by GitHub author login.
+ *
+ * Which date a commit carries depends on who last rewrote it. A rebase
+ * resets the committer date on every commit it touches and stamps the
+ * rebaser as committer, while the author date survives. So the user's own
+ * commit uses the committer date only when the user is also the committer
+ * (a fix the user rebased onto the base branch answers the review it
+ * followed, not the one it predates); when a maintainer or `web-flow`
+ * rebased the branch, that committer date is the maintainer's time, and the
+ * author date is the user's last real activity. Maintainer commits always
+ * use the author date, so a maintainer's rebase does not push their own
+ * earlier commit onto the same instant as the user's. Either date falls
+ * back to the other when missing. Merge commits (more than one parent, e.g.
+ * GitHub's "Update branch") carry no new work and are skipped on both sides.
  */
 function scanCommits(commits: MergedPRActivity['commits'], usernameLower: string): CommitScan {
   const scan: CommitScan = { commitNotes: [], lastUserCommitMs: -Infinity };
   const consider = (entry: MergedPRActivity['commits'][number]): void => {
     if ((entry.parents?.length ?? 0) > 1) return;
-    const date = entry.commit.committer?.date ?? entry.commit.author?.date;
+    const login = entry.author?.login;
+    const isUser = login?.toLowerCase() === usernameLower;
+    const date = commitDateOf(entry, isUser && entry.committer?.login?.toLowerCase() === usernameLower);
     const atMs = parseMs(date);
     if (!date || atMs === undefined) return;
-    const login = entry.author?.login;
-    if (login?.toLowerCase() === usernameLower) {
+    if (isUser) {
       scan.lastUserCommitMs = Math.max(scan.lastUserCommitMs, atMs);
       return;
     }
@@ -312,10 +334,11 @@ export interface MergedPRScan {
  *   before `mergedAt`.
  *
  * A commit counts when it is not a merge commit, its GitHub author is a
- * non-bot account other than the user and its commit date is after both the
- * user's last commit and the user's last comment. Commits are not bound to
- * the merge time: a maintainer who pushed on top the day before merging
- * still changed what shipped.
+ * non-bot account other than the user and its author date is after both the
+ * user's last commit and the user's last comment (see {@link scanCommits}
+ * for why a maintainer's rebase does not move the user's commits). Commits
+ * are not bound to the merge time: a maintainer who pushed on top the day
+ * before merging still changed what shipped.
  */
 export function scanMergedPR(pr: MergedPR, activity: MergedPRActivity, username: string): MergedPRScan {
   const mergedMs = parseMs(pr.mergedAt);

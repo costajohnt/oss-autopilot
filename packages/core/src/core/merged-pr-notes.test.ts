@@ -66,9 +66,15 @@ function review(login: string, body: string, submittedAt: string, extra: Partial
 function commit(login: string | undefined, date: string, message = 'Handle two more cases'): Commit {
   return {
     author: login === undefined ? null : { login },
+    committer: login === undefined ? null : { login },
     commit: { message, author: { date }, committer: { date } },
     parents: [{ sha: 'p1' }],
   };
+}
+
+/** `commit` after someone else rebased the branch: committer identity and date rewritten, author date kept. */
+function rebasedBy(base: Commit, committer: string, rebasedAt: string): Commit {
+  return { ...base, committer: { login: committer }, commit: { ...base.commit, committer: { date: rebasedAt } } };
 }
 
 /** GitHub's "Update branch" / merge-from-base commit: two parents, no new work. */
@@ -296,14 +302,10 @@ describe('collectMergedPRNotes: commits', () => {
     expect(collectMergedPRNotes(PR, withThanks, USER)?.notes.map((n) => n.excerpt)).toEqual(['Thanks!']);
   });
 
-  it('dates commits by committer date, falling back to the author date', () => {
+  it("dates the user's own rebase by committer date, falling back to the author date", () => {
     const reviewAt = iso(-45 * MINUTE_MS);
-    const rebasedFix: Commit = {
-      author: { login: USER },
-      // Authored before the review, rebased (committed) after it.
-      commit: { message: 'Fix', author: { date: iso(-2 * DAY_MS) }, committer: { date: iso(-30 * MINUTE_MS) } },
-      parents: [{ sha: 'p' }],
-    };
+    // Authored before the review, rebased (committed) by the user after it.
+    const rebasedFix = rebasedBy(commit(USER, iso(-2 * DAY_MS), 'Fix'), USER, iso(-30 * MINUTE_MS));
     const act = activity({
       reviews: [review('maintainer', 'Please handle the empty case too', reviewAt, { state: 'CHANGES_REQUESTED' })],
       commits: [rebasedFix],
@@ -312,12 +314,52 @@ describe('collectMergedPRNotes: commits', () => {
 
     const authorDateOnly: Commit = {
       author: { login: 'maintainer' },
+      committer: { login: 'maintainer' },
       commit: { message: 'Cover one more case', author: { date: iso(-DAY_MS) }, committer: null },
     };
     const fallback = activity({ commits: [commit(USER, iso(-2 * DAY_MS)), authorDateOnly] });
     expect(collectMergedPRNotes(PR, fallback, USER)?.notes).toEqual([
       { author: 'maintainer', createdAt: iso(-DAY_MS), kind: 'commit', excerpt: 'Cover one more case' },
     ]);
+    const committerDateOnly: Commit = {
+      author: { login: USER },
+      committer: { login: 'maintainer' },
+      commit: { message: 'Fix', author: null, committer: { date: iso(-2 * DAY_MS) } },
+    };
+    const userFallback = activity({ commits: [committerDateOnly, commit('maintainer', iso(-DAY_MS))] });
+    expect(collectMergedPRNotes(PR, userFallback, USER)?.maintainerCommits).toBe(1);
+  });
+
+  describe("a maintainer's rebase rewrites every committer date, so the user's commits keep their author date", () => {
+    const userFixAt = iso(-3 * DAY_MS);
+    const maintainerPushAt = iso(-2 * DAY_MS);
+    const noteBeforeRebaseAt = iso(-50 * MINUTE_MS);
+    const rebasedAt = iso(-20 * MINUTE_MS);
+    const expectedNotes = [
+      { author: 'maintainer', createdAt: maintainerPushAt, kind: 'commit', excerpt: 'Handle two more cases' },
+      { author: 'maintainer', createdAt: noteBeforeRebaseAt, kind: 'comment', excerpt: 'I also tightened the regex' },
+      { author: 'maintainer', createdAt: AT_MERGE, kind: 'comment', excerpt: 'Thanks!' },
+    ];
+
+    it.each([
+      ['a local rebase and force push', 'maintainer'],
+      ['"Update branch" with rebase on github.com', 'web-flow'],
+    ])('after %s (committer %s)', (_how, committer) => {
+      const act = activity({
+        comments: [
+          comment('maintainer', 'I also tightened the regex', noteBeforeRebaseAt),
+          comment('maintainer', 'Thanks!', AT_MERGE),
+        ],
+        commits: [
+          rebasedBy(commit(USER, userFixAt, 'Fix'), committer, rebasedAt),
+          rebasedBy(commit('maintainer', maintainerPushAt), committer, rebasedAt),
+        ],
+      });
+      const result = collectMergedPRNotes(PR, act, USER);
+      expect(result?.notes).toEqual(expectedNotes);
+      expect(result?.maintainerCommits).toBe(1);
+      expect(result?.thanksOnly).toBe(false);
+    });
   });
 });
 
