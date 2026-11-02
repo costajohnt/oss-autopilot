@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.39.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.39.0...core-v3.39.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **dashboard:** drop refresh-data push failures instead of raising a loss banner ([#1871](https://github.com/costajohnt/oss-autopilot/issues/1871)) ([f115746](https://github.com/costajohnt/oss-autopilot/commit/f1157460d469b405f7afeee7f471b809969d1a95))
+
 ## [3.39.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.38.0...core-v3.39.0) (2026-11-02)
 
 
