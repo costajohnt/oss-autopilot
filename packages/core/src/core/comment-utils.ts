@@ -37,7 +37,9 @@ export function isBotAuthor(author: string, userType?: string | null): boolean {
 }
 
 /**
- * Detect acknowledgment comments that don't require a response.
+ * Detect short acknowledgment comments that don't need code or a status change.
+ * Such a comment does not mark the PR as needing attention, so a thanks-only
+ * comment never reaches pr-responder's `appreciation` rule (#1852 follow-up).
  * Returns true only when: no question mark, matches an acknowledgment keyword, and under 100 chars.
  * Conservative -- missing a real acknowledgment (false negative) is safer than suppressing a substantive response (false positive).
  */

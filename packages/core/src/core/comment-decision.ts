@@ -23,7 +23,12 @@ export type FeedbackCategory =
   | 'style_request'
   | 'design_discussion'
   | 'approval_with_nit'
-  | 'formatting_complaint';
+  | 'formatting_complaint'
+  /**
+   * A maintainer comment whose main content is thanks or praise (not a polite
+   * opener on a request); always gets a short acknowledgment (#1852).
+   */
+  | 'appreciation';
 
 export interface FeedbackClassification {
   category: FeedbackCategory;
@@ -66,14 +71,16 @@ export interface CommentDecisionResult {
  *  - Skip the comment entirely when ALL of these are true:
  *    1. Every piece of maintainer feedback that requested code changes
  *       has a corresponding code change.
- *    2. No question was asked.
+ *    2. No question was asked and no maintainer thanks or praise is
+ *       waiting for an acknowledgment.
  *    3. Nothing was intentionally left unchanged (a "yes the maintainer
  *       asked but I did not change it" item always needs explanation).
  *    4. The diff makes the fix self-evident — modeled here as the
  *       `allRequestedChangesAddressed` flag the caller passes in.
  *
  *  - Draft a comment if ANY of these are true:
- *    1. The maintainer asked a question.
+ *    1. The maintainer asked a question, or thanked or praised the
+ *       contributor (#1852).
  *    2. The feedback is conceptual or design-level (the diff alone
  *       cannot answer "why").
  *    3. Something was intentionally left unchanged (`needsComment: true`
@@ -87,14 +94,20 @@ export function shouldDraftResponse(input: CommentDecisionInput): CommentDecisio
   }
 
   // Categories that always demand a written reply, regardless of the
-  // diff. The diff cannot answer a question or carry a design decision.
-  const alwaysDraftCategories = new Set<FeedbackCategory>(['question', 'explanation_request', 'design_discussion']);
+  // diff. The diff cannot answer a question, carry a design decision, or
+  // acknowledge a maintainer's thanks.
+  const alwaysDraftCategories = new Set<FeedbackCategory>([
+    'question',
+    'explanation_request',
+    'design_discussion',
+    'appreciation',
+  ]);
 
   for (const item of input.feedback) {
     if (alwaysDraftCategories.has(item.category)) {
       return {
         shouldDraft: true,
-        reason: `${item.category.replaceAll('_', ' ')} — diff alone cannot address this`,
+        reason: `${item.category.replaceAll('_', ' ')} needs a written reply the diff cannot give`,
       };
     }
   }

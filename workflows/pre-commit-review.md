@@ -346,9 +346,11 @@ Before drafting, decide whether a comment is actually needed. When the fix is se
 - Every piece of maintainer feedback addressed in this push maps to a concrete code change (e.g. "avoid `T.untyped` here", "add a nil check", "rename this variable")
 - The code change was made and the diff makes the fix self-evident
 - No question was asked, no ambiguity was raised, and nothing was intentionally left unchanged that the maintainer might wonder about
+- No maintainer comment is mainly thanks or praise
 
 **Draft a comment if ANY of these are true:**
 - The maintainer asked a question ("why did you choose X over Y?", "what happens when Z?")
+- A maintainer comment is mainly thanks or praise: always draft a one-line acknowledgment, even when the diff covers everything else, never a formulaic "Thanks for the review!" opener (#1852)
 - The feedback is conceptual or design-level and the implementation choice needs brief explanation
 - Something was intentionally left unchanged and the maintainer might wonder about it
 - Only some of multiple requested changes were addressed — say which, and why, for the ones you did not

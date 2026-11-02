@@ -39,6 +39,25 @@ describe('shouldDraftResponse', () => {
     expect(r.shouldDraft).toBe(true);
   });
 
+  it('always drafts an acknowledgment when a maintainer says thanks (#1852)', () => {
+    const r = shouldDraftResponse({
+      feedback: [
+        { category: 'code_request', needsComment: false, reason: '' },
+        { category: 'appreciation', needsComment: false, reason: '' },
+      ],
+      allRequestedChangesAddressed: true,
+    });
+    expect(r.shouldDraft).toBe(true);
+  });
+
+  it('drafts on appreciation alone', () => {
+    const r = shouldDraftResponse({
+      feedback: [{ category: 'appreciation', needsComment: false, reason: '' }],
+      allRequestedChangesAddressed: true,
+    });
+    expect(r.shouldDraft).toBe(true);
+  });
+
   it('drafts when an item is intentionally left unchanged', () => {
     const r = shouldDraftResponse({
       feedback: [{ category: 'code_request', needsComment: true, reason: 'left tests as-is intentionally' }],
