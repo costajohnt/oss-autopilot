@@ -700,6 +700,7 @@ const ReviewedPRFollowUpSchema = z.object({
   questions: z.array(ReviewedPRQuestionSchema),
   moreQuestions: z.number().int().nonnegative(),
   latestActivityAt: z.string(),
+  latestCommentAt: z.string().optional(),
 });
 
 export const DailyOutputSchema = z.object({

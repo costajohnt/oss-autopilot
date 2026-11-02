@@ -385,6 +385,16 @@ export const AgentConfigSchema = z
 
     dismissedIssues: z.record(z.string(), z.string()).default({}),
 
+    /**
+     * PR URL -> head SHA the PR had when its review follow-up was dismissed
+     * (#1857). Set by `dismiss <pr-url> --head <sha>`; the follow-up stays
+     * hidden while the head is unchanged and no comment newer than the
+     * dismiss stamp in `dismissedIssues` qualifies, and a different head
+     * resurfaces it. Cleared by `undismiss` and by a dismiss without `--head`
+     * (that one goes back to the stamp-only rule). Older states lack the key.
+     */
+    dismissedPRHeads: z.record(z.string(), z.string()).default({}),
+
     statusOverrides: z.record(z.string(), StatusOverrideSchema).optional(),
 
     issueListPath: z.string().optional(),

@@ -550,6 +550,35 @@ describe('legacy state cleanup on load', () => {
     expect(second.getState().config.dismissedIssues).toEqual({ [prUrl]: stamp });
   });
 
+  it('loads a state written before dismissedPRHeads existed with the key defaulted, and round-trips a recorded head (#1857)', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const prUrl = 'https://github.com/owner/repo/pull/42';
+    const stamp = '2026-06-02T12:00:05.000Z';
+    const head = 'c'.repeat(40);
+    const stateData = makeCurrentState();
+    (stateData.config as Record<string, unknown>).dismissedIssues = { [prUrl]: stamp };
+    delete (stateData.config as Record<string, unknown>).dismissedPRHeads;
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    // Legacy dismiss: stamp present, no head; the key is defaulted on load.
+    const first = new StateManager(false);
+    expect(first.getIssueDismissedAt(prUrl)).toBe(stamp);
+    expect(first.getDismissedPRHead(prUrl)).toBeUndefined();
+    expect(first.getState().config.dismissedPRHeads).toEqual({});
+
+    // A skip with the head recorded survives save and a fresh load.
+    expect(first.dismissIssue(prUrl, stamp, { refresh: true, headSha: head })).toBe(true);
+    const second = new StateManager(false);
+    expect(second.getDismissedPRHead(prUrl)).toBe(head);
+    expect(second.getState().config.dismissedPRHeads).toEqual({ [prUrl]: head });
+
+    // Undismiss clears it on disk too.
+    expect(second.undismissIssue(prUrl)).toBe(true);
+    const third = new StateManager(false);
+    expect(third.getDismissedPRHead(prUrl)).toBeUndefined();
+    expect(third.getIssueDismissedAt(prUrl)).toBeUndefined();
+  });
+
   it('does not write to disk if no cleanup needed', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Write a clean v2 state — no snoozedPRs, no PR URLs in dismissedIssues

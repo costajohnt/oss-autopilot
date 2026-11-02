@@ -31,6 +31,14 @@ export const REVIEWED_PR_SEARCH_MAX_PAGES = 3;
 
 const SEARCH_PER_PAGE = 100;
 
+/**
+ * GitHub lists at most this many commits for a pull request, however many
+ * pages are asked for; past it the last page comes back short, so
+ * `paginateAllDetailed` cannot tell on its own. The commit list is cut when
+ * it reaches this count or does not end at the PR's head.
+ */
+export const PR_COMMITS_LIST_MAX = 250;
+
 /** Result of `PRMonitor.fetchReviewedOpenPRs`. */
 export interface ReviewedPRSearchResult {
   /** Deduplicated across both searches and sorted most recently updated first. */
@@ -255,7 +263,10 @@ export async function fetchReviewedOpenPRs(
  * (head SHA, state, author), issue comments, reviews, inline review
  * comments and commits, the lists paginated. Five calls per PR (more past
  * 100 items). `truncatedLists` names the lists that hit the pagination cap;
- * they arrive oldest-first, so the newest activity would be missing.
+ * they arrive oldest-first, so the newest activity would be missing. The
+ * commit list is also reported cut when it reaches GitHub's own
+ * {@link PR_COMMITS_LIST_MAX} or its last entry is not the PR's head: past
+ * 250 commits GitHub returns a short final page, which looks complete.
  *
  * The five calls run together; when more than one fails, a rate-limit or
  * auth error is rethrown ahead of the others.
@@ -289,7 +300,8 @@ export async function fetchReviewedPRActivity(
   if (comments.truncated) truncatedLists.push('comments');
   if (reviews.truncated) truncatedLists.push('reviews');
   if (reviewComments.truncated) truncatedLists.push('review comments');
-  if (commits.truncated) truncatedLists.push('commits');
+  const isCommitListCut = commits.items.length >= PR_COMMITS_LIST_MAX || commits.items.at(-1)?.sha !== pr.head.sha;
+  if (isCommitListCut || commits.truncated) truncatedLists.push('commits');
   return {
     truncatedLists,
     pr: { headSha: pr.head.sha, state: pr.state, author: pr.user?.login, title: pr.title },

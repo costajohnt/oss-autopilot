@@ -372,6 +372,36 @@ describe('dismissIssue / undismissIssue / getIssueDismissedAt', () => {
     expect(stateManager.getIssueDismissedAt(url)).toBe('2025-01-15T10:00:00.000Z');
   });
 
+  it('records the dismiss head for a PR, replaces it on re-dismiss, and drops it on a dismiss without one (#1857)', () => {
+    const url = 'https://github.com/owner/repo/pull/42';
+    const head1 = '1'.repeat(40);
+    const head2 = '2'.repeat(40);
+    expect(stateManager.getDismissedPRHead(url)).toBeUndefined();
+    expect(stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z', { refresh: true, headSha: head1 })).toBe(true);
+    expect(stateManager.getDismissedPRHead(url)).toBe(head1);
+    expect(stateManager.dismissIssue(url, '2025-01-16T10:00:00.000Z', { refresh: true, headSha: head2 })).toBe(true);
+    expect(stateManager.getDismissedPRHead(url)).toBe(head2);
+    // A re-dismiss that names no head goes back to the stamp-only rule.
+    expect(stateManager.dismissIssue(url, '2025-01-17T10:00:00.000Z', { refresh: true })).toBe(true);
+    expect(stateManager.getDismissedPRHead(url)).toBeUndefined();
+    expect(stateManager.getIssueDismissedAt(url)).toBe('2025-01-17T10:00:00.000Z');
+  });
+
+  it('does not record a head when the dismiss is a no-op (already dismissed, no refresh)', () => {
+    const url = 'https://github.com/owner/repo/issues/1';
+    stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z');
+    expect(stateManager.dismissIssue(url, '2025-01-16T10:00:00.000Z', { headSha: 'f'.repeat(40) })).toBe(false);
+    expect(stateManager.getDismissedPRHead(url)).toBeUndefined();
+  });
+
+  it('clears the recorded head on undismiss (#1857)', () => {
+    const url = 'https://github.com/owner/repo/pull/42';
+    stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z', { refresh: true, headSha: 'a'.repeat(40) });
+    expect(stateManager.undismissIssue(url)).toBe(true);
+    expect(stateManager.getDismissedPRHead(url)).toBeUndefined();
+    expect(stateManager.getState().config.dismissedPRHeads).toEqual({});
+  });
+
   it('should move the stamp forward on re-dismiss when refresh is set (merged-PR notes skip, #1861)', () => {
     const url = 'https://github.com/owner/repo/pull/42';
     stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z');

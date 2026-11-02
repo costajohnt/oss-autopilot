@@ -75,21 +75,49 @@ function isDismissed(prUrl: string, activityAt: string, dismissedAt: string | un
 }
 
 /**
- * The dismiss check after the scan. Comment dates are when the comment was
- * posted, so `latestActivityAt` settles a comments-only follow-up. Commit
- * dates say when a commit was written, not when it was pushed, so a commit
- * the scan found after the reviewed one (cherry-pick, rebased fix) can
- * carry a date before the dismiss and would hide a push that happened after
- * it. When any listed commit is dated at or before the stamp, the search's
- * `updated_at`, which does move on push, stands in for the activity time.
- * Since every commit the user saw when dismissing is dated before the stamp
- * too, a follow-up that includes commits is in effect hidden only by the
- * pre-fetch `updated_at` check, and `updated_at` also moves on a
- * bystander's comment: this errs toward showing the PR again rather than
- * missing a push.
+ * The dismiss check after the scan, in two modes.
+ *
+ * With a recorded head (`dismiss <pr-url> --head <sha>`, what the workflow's
+ * "skip" passes): the head is the push signal. A different head means the
+ * author pushed since the dismiss, so the PR is listed; the same head means
+ * the commit list is what the user saw when dismissing, so only a qualifying
+ * comment posted after the stamp (`latestCommentAt`) brings it back. Bot,
+ * label and bystander updates move the search's `updated_at` but neither of
+ * these, so they no longer resurface a skipped PR.
+ *
+ * Without one (a dismiss made before heads were recorded, or by hand): the
+ * stamp is all there is. Comment dates are when the comment was posted, so
+ * `latestActivityAt` settles a comments-only follow-up. Commit dates say when
+ * a commit was written, not when it was pushed, so a commit the scan found
+ * after the reviewed one (cherry-pick, rebased fix) can carry a date before
+ * the dismiss and would hide a push that happened after it. When any listed
+ * commit is dated at or before the stamp, the search's `updated_at`, which
+ * does move on push, stands in for the activity time; since every commit the
+ * user saw when dismissing is dated before the stamp too, a follow-up with
+ * commits is then hidden only by the pre-fetch `updated_at` check, which errs
+ * toward showing the PR again rather than missing a push.
  */
-function isEntryDismissed(pr: ReviewedPRRef, entry: ReviewedPRFollowUp, dismissedAt: string | undefined): boolean {
+function isEntryDismissed(
+  pr: ReviewedPRRef,
+  entry: ReviewedPRFollowUp,
+  dismissedAt: string | undefined,
+  dismissedHead: string | undefined,
+): boolean {
   if (dismissedAt === undefined) return false;
+  if (dismissedHead !== undefined) {
+    if (entry.headSha !== dismissedHead) {
+      debug(MODULE, `reviewed-prs: ${pr.url} head moved since the dismiss (${dismissedHead.slice(0, 7)}); listing`);
+      return false;
+    }
+    if (entry.latestCommentAt === undefined) {
+      debug(
+        MODULE,
+        `reviewed-prs: ${pr.url} dismissed at head ${dismissedHead.slice(0, 7)}, no comment since; skipping`,
+      );
+      return true;
+    }
+    return isDismissed(pr.url, entry.latestCommentAt, dismissedAt);
+  }
   const dismissedMs = Date.parse(dismissedAt);
   const hasCommitDatedBeforeStamp = entry.commits.some((commit) => Date.parse(commit.date) <= dismissedMs);
   return isDismissed(pr.url, hasCommitDatedBeforeStamp ? pr.updatedAt : entry.latestActivityAt, dismissedAt);
@@ -138,7 +166,8 @@ async function fetchActivity(
  * only), when the reviewed commit could not be named (plain comment), or
  * when the scan already ruled a range out from the commit list (`rebased`:
  * the reviewed commit is gone; `mergedUpstream`: upstream was merged in
- * after it). On an error other than 404 (which `fetchCompareStatus` maps to
+ * after it; `baseUnknown`: the reviewed commit's place in the list is
+ * unknown). On an error other than 404 (which `fetchCompareStatus` maps to
  * `missing`) the entry keeps neither range nor flag, with a warning: an
  * unverified range could be wrong, and the commit list is still there.
  * Rate-limit/auth errors propagate.
@@ -149,7 +178,7 @@ async function resolveCompare(
   warnings: DailyWarning[],
 ): Promise<void> {
   if (entry.reviewedSha === undefined || entry.reviewedSha === entry.headSha) return;
-  if (entry.rebased || entry.mergedUpstream) return;
+  if (entry.rebased || entry.mergedUpstream || entry.baseUnknown) return;
   let status: CompareStatus;
   try {
     status = await source.fetchCompareStatus(entry.prUrl, entry.reviewedSha, entry.headSha);
@@ -185,12 +214,12 @@ async function resolveCompare(
  *
  * "Only once": nothing is written to state. An entry disappears when the
  * user comments or reviews again (their last word moves past the activity),
- * when they dismiss the PR URL at or after the newest activity (the
- * workflow's "skip" runs the existing `dismiss`, which accepts PR URLs and
- * re-stamps on repeat), and when the PR closes or merges. A PR dismissed at
- * or after its search `updated_at` is skipped before any per-PR call, and
- * the dismiss filter runs before the per-run cap so dismissed PRs do not
- * use up its slots.
+ * when they dismiss the PR URL (the workflow's "skip" runs the existing
+ * `dismiss` with the entry's `headSha`, so the PR stays hidden until a new
+ * push or a comment after the dismiss; see `isEntryDismissed`), and when
+ * the PR closes or merges. A PR dismissed at or after its search
+ * `updated_at` is skipped before any per-PR call, and the dismiss filter
+ * runs before the per-run cap so dismissed PRs do not use up its slots.
  *
  * Never counted toward capacity or `needsAddressingPRs`: these are other
  * people's PRs.
@@ -248,7 +277,11 @@ async function prepareReviewedPRs(source: ReviewedPRSource, warnings: DailyWarni
         );
         return;
       }
-      if (!entry || isEntryDismissed(pr, entry, stateManager.getIssueDismissedAt(pr.url))) return;
+      if (!entry) return;
+      if (
+        isEntryDismissed(pr, entry, stateManager.getIssueDismissedAt(pr.url), stateManager.getDismissedPRHead(pr.url))
+      )
+        return;
       await resolveCompare(source, entry, warnings);
       pending.set(pr, entry);
     },

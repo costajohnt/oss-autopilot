@@ -1209,10 +1209,14 @@ export class StateManager {
    * @param options.refresh - When set, an existing dismissal is re-stamped with
    *   `timestamp` instead of being left alone, so a second "skip" after newer
    *   activity moves the cutoff forward. Default keeps the original stamp.
+   * @param options.headSha - For a reviewed PR (#1857): the head SHA the PR
+   *   had when it was dismissed, recorded in `config.dismissedPRHeads` so the
+   *   follow-up stays hidden until the head moves. Any head recorded earlier
+   *   is replaced, or dropped when this dismiss names none.
    * @returns true if newly dismissed (or re-stamped under `refresh`), false if
    *   already dismissed
    */
-  dismissIssue(url: string, timestamp: string, options: { refresh?: boolean } = {}): boolean {
+  dismissIssue(url: string, timestamp: string, options: { refresh?: boolean; headSha?: string } = {}): boolean {
     if (!this.state.config.dismissedIssues) {
       this.state.config.dismissedIssues = {};
     }
@@ -1220,12 +1224,14 @@ export class StateManager {
       return false;
     }
     this.state.config.dismissedIssues[url] = timestamp;
+    this.setDismissedPRHead(url, options.headSha);
     this.autoSave();
     return true;
   }
 
   /**
-   * Restore a dismissed issue to notifications.
+   * Restore a dismissed issue to notifications. A recorded dismiss head
+   * (#1857) goes with it.
    * @param url - The issue URL to undismiss
    * @returns true if undismissed, false if not currently dismissed
    */
@@ -1234,6 +1240,7 @@ export class StateManager {
       return false;
     }
     delete this.state.config.dismissedIssues[url];
+    this.setDismissedPRHead(url, undefined);
     this.autoSave();
     return true;
   }
@@ -1244,6 +1251,28 @@ export class StateManager {
    */
   getIssueDismissedAt(url: string): string | undefined {
     return this.state.config.dismissedIssues?.[url];
+  }
+
+  /**
+   * The head SHA recorded when a reviewed PR's follow-up was dismissed
+   * (#1857), or undefined when the PR is not dismissed or was dismissed
+   * without one.
+   * @param url - The PR URL to check
+   */
+  getDismissedPRHead(url: string): string | undefined {
+    return this.state.config.dismissedPRHeads?.[url];
+  }
+
+  /** Record or (with `undefined`) drop the dismiss head for `url`; no save. */
+  private setDismissedPRHead(url: string, headSha: string | undefined): void {
+    if (!this.state.config.dismissedPRHeads) {
+      this.state.config.dismissedPRHeads = {};
+    }
+    if (headSha === undefined) {
+      delete this.state.config.dismissedPRHeads[url];
+    } else {
+      this.state.config.dismissedPRHeads[url] = headSha;
+    }
   }
 
   // === Status Overrides ===

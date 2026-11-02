@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Octokit } from '@octokit/rest';
 import {
+  PR_COMMITS_LIST_MAX,
   REVIEWED_PR_SEARCH_MAX_PAGES,
   fetchCompareStatus,
   fetchReviewedOpenPRs,
@@ -246,7 +247,7 @@ describe('fetchReviewedPRActivity (#1857)', () => {
     octokit.issues.listComments = pages([{ id: 1 }]);
     octokit.pulls.listReviews = pages([{ id: 2 }]);
     octokit.pulls.listReviewComments = pages([{ id: 3 }]);
-    octokit.pulls.listCommits = pages([{ sha: 'abc' }]);
+    octokit.pulls.listCommits = pages([{ sha: 'abc' }, { sha: 'headsha' }]);
   });
 
   it('fetches the PR plus the four paginated lists', async () => {
@@ -256,7 +257,7 @@ describe('fetchReviewedPRActivity (#1857)', () => {
       comments: [{ id: 1 }],
       reviews: [{ id: 2 }],
       reviewComments: [{ id: 3 }],
-      commits: [{ sha: 'abc' }],
+      commits: [{ sha: 'abc' }, { sha: 'headsha' }],
       truncatedLists: [],
     });
     expect(octokit.pulls.get).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', pull_number: 42 });
@@ -272,6 +273,27 @@ describe('fetchReviewedPRActivity (#1857)', () => {
     octokit.pulls.listReviews = pages(...Array.from({ length: 10 }, () => fullPage));
     const activity = await fetchReviewedPRActivity(octokit as unknown as Octokit, PR_URL);
     expect(activity.truncatedLists).toEqual(['reviews']);
+  });
+
+  it("reports the commit list cut at GitHub's 250-commit cap although the last page came back short", async () => {
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({ sha: `c${i}` }));
+    const lastPage = [...Array.from({ length: 49 }, (_, i) => ({ sha: `d${i}` })), { sha: 'headsha' }];
+    octokit.pulls.listCommits = pages(fullPage, fullPage, lastPage);
+    const activity = await fetchReviewedPRActivity(octokit as unknown as Octokit, PR_URL);
+    expect(activity.commits).toHaveLength(PR_COMMITS_LIST_MAX);
+    expect(activity.truncatedLists).toEqual(['commits']);
+  });
+
+  it('reports the commit list cut when it does not end at the PR head', async () => {
+    octokit.pulls.listCommits = pages([{ sha: 'abc' }]);
+    const activity = await fetchReviewedPRActivity(octokit as unknown as Octokit, PR_URL);
+    expect(activity.truncatedLists).toEqual(['commits']);
+  });
+
+  it('reports an empty commit list as cut (an open PR always has its head commit)', async () => {
+    octokit.pulls.listCommits = pages([]);
+    const activity = await fetchReviewedPRActivity(octokit as unknown as Octokit, PR_URL);
+    expect(activity.truncatedLists).toEqual(['commits']);
   });
 
   it('rejects non-PR URLs without calling the API and lets a 404 through unchanged', async () => {

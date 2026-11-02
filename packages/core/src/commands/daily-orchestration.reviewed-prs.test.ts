@@ -85,6 +85,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       unshelvePR: vi.fn(() => true),
       getStats: vi.fn(),
       getIssueDismissedAt: mockGetIssueDismissedAt,
+      getDismissedPRHead: vi.fn(),
       dismissIssue: vi.fn(),
       undismissIssue: vi.fn(),
       getStatusOverride: mockGetStatusOverride,
@@ -351,6 +352,7 @@ describe('executeDailyCheck() — review follow-ups (#1857)', () => {
         ],
         moreQuestions: 0,
         latestActivityAt: iso(2 * HOUR_MS),
+        latestCommentAt: iso(HOUR_MS),
       },
     ]);
     expect(menuItem(result)?.label).toBe('Review follow-ups (1)');

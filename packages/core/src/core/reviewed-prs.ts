@@ -110,10 +110,13 @@ export interface ReviewedPRFollowUp {
    */
   mergedUpstream: boolean;
   /**
-   * The user's last word was a plain comment, which names no head, and
-   * commits were pushed since: `commits` were picked by date, which can
-   * miss a cherry-pick or rebased fix carrying an older date, and no range
-   * is offered. False when nothing was pushed or when `reviewedSha` is known.
+   * The reviewed commit's place in the PR's commit list is unknown and
+   * commits were pushed since: the user's last word was a plain comment,
+   * which names no head, or (rarely) `reviewedSha` is known but the commit
+   * list was cut at GitHub's cap before reaching it. `commits` were then
+   * picked by date, which can miss a cherry-pick or rebased fix carrying an
+   * older date, and no range is offered. False when nothing was pushed or
+   * when `reviewedSha` was found in the list.
    */
   baseUnknown: boolean;
   /**
@@ -137,6 +140,13 @@ export interface ReviewedPRFollowUp {
    * only new work is a commit carrying an old author date (cherry-pick).
    */
   latestActivityAt: string;
+  /**
+   * Newest comment, review or inline comment that qualified the PR (an
+   * author reply or a question for the user); absent when only commits did.
+   * A dismiss that recorded the PR's head is compared with this: with the
+   * head unchanged, only a comment after the dismiss brings the PR back.
+   */
+  latestCommentAt?: string;
 }
 
 /** What the search returned for one reviewed PR. */
@@ -205,6 +215,12 @@ export interface ReviewedPRActivity {
     /** More than one parent marks a merge commit ("Update branch"), which carries no new work. */
     parents?: Array<{ sha?: string }>;
   }>;
+  /**
+   * Lists cut short by a pagination cap, as `PRMonitor.fetchReviewedPRActivity`
+   * reports them. The daily phase drops such PRs before the scan; the scan
+   * still reads it so a `commits` cut is never mistaken for a rebase.
+   */
+  truncatedLists?: ReviewedPRActivityList[];
 }
 
 /** The lists `PRMonitor.fetchReviewedPRActivity` fetches, as named in truncation warnings. */
@@ -397,11 +413,11 @@ interface CommitsSince {
   pushed: DatedCommit[];
   /** `commit_id` of the user's last review or inline comment; absent for a plain comment. */
   reviewedSha?: string;
-  /** `reviewedSha` is not in the PR's commit list: the branch was rebased or force-pushed since. */
+  /** `reviewedSha` is not in the PR's complete commit list: the branch was rebased or force-pushed since. */
   rebased: boolean;
   /** A merge commit follows `reviewedSha`: `<reviewedSha>...<headSha>` would include upstream. */
   mergedUpstream: boolean;
-  /** Plain-comment last word with commits dated after it: the reviewed head is unknown. */
+  /** Commits dated after the last word whose place relative to it is unknown (plain comment, or a cut list). */
   baseUnknown: boolean;
 }
 
@@ -418,7 +434,11 @@ interface CommitsSince {
  *
  * A plain comment names no head: its commits are the ones dated after it,
  * and `baseUnknown` is set when there are any, so the workflow knows the
- * list is approximate and offers no range.
+ * list is approximate and offers no range. The same applies when the
+ * reviewed commit is missing from a list that was cut by a pagination cap
+ * (`activity.truncatedLists` names `commits`): the newest commits are the
+ * ones missing, so the reviewed one may simply be past the cut, and that is
+ * not a rebase.
  */
 function commitsSince(activity: ReviewedPRActivity, last: ThreadEntry, usernameLower: string): CommitsSince {
   const datedAfterLast = (): DatedCommit[] =>
@@ -430,7 +450,11 @@ function commitsSince(activity: ReviewedPRActivity, last: ThreadEntry, usernameL
   }
   const index = activity.commits.findIndex((commit) => commit.sha === reviewedSha);
   if (index === -1) {
-    return { reviewedSha, pushed: datedAfterLast(), rebased: true, mergedUpstream: false, baseUnknown: false };
+    const pushed = datedAfterLast();
+    if (activity.truncatedLists?.includes('commits')) {
+      return { reviewedSha, pushed, rebased: false, mergedUpstream: false, baseUnknown: pushed.length > 0 };
+    }
+    return { reviewedSha, pushed, rebased: true, mergedUpstream: false, baseUnknown: false };
   }
   const after = activity.commits.slice(index + 1);
   return {
@@ -464,6 +488,8 @@ interface ActivitySince {
   questions: ReviewedPRQuestion[];
   /** Newest qualifying commit or comment; empty when nothing qualified. */
   latestAt: string;
+  /** Newest qualifying comment, review or inline comment; empty when only commits qualified. */
+  latestCommentAt: string;
 }
 
 /** Newest-timestamp tracker over the activity that qualifies the PR. */
@@ -512,6 +538,7 @@ function collectActivitySince(
 ): ActivitySince {
   const reviewedMs = context.user.last?.atMs ?? Infinity;
   const latest = latestTracker();
+  const latestComment = latestTracker();
   for (const commit of pushed) latest.note(commit.date, commit.atMs);
   const questions: ReviewedPRQuestion[] = [];
   let authorComments = 0;
@@ -520,6 +547,7 @@ function collectActivitySince(
     if (!verdict) continue;
     if (verdict.isAuthorReply) authorComments++;
     latest.note(entry.at, entry.atMs);
+    latestComment.note(entry.at, entry.atMs);
     if (verdict.reason) {
       const { kind, at: createdAt, url } = entry;
       const login = entry.actor.user?.login ?? 'unknown';
@@ -534,7 +562,7 @@ function collectActivitySince(
     }
   }
   questions.sort(byTime);
-  return { authorComments, questions, latestAt: latest.at() };
+  return { authorComments, questions, latestAt: latest.at(), latestCommentAt: latestComment.at() };
 }
 
 /** Reasons the scan skips a PR before looking at what happened since the review. */
@@ -629,5 +657,6 @@ export function scanReviewedPR(
     questions: since.questions.slice(0, REVIEWED_PR_MAX_QUESTIONS),
     moreQuestions: Math.max(0, since.questions.length - REVIEWED_PR_MAX_QUESTIONS),
     latestActivityAt: since.latestAt,
+    ...(since.latestCommentAt !== '' && { latestCommentAt: since.latestCommentAt }),
   };
 }

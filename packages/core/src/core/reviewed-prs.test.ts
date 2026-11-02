@@ -92,6 +92,9 @@ const REVIEW = userReview();
 /** The head the review was of (`commit_id`), as it appears in the PR's commit list. */
 const REVIEWED_COMMIT = commit(AUTHOR, BEFORE_1H, 'rev0000');
 
+/** A non-reaction reply by the author two hours after the review. */
+const AUTHOR_REPLY = comment(AUTHOR, 'Split it into two helpers, PTAL.', AFTER_2H);
+
 /** The author's merge of the base branch into the PR ("Update branch"). */
 function mergeCommit(date: string, sha: string) {
   return { ...commit(AUTHOR, date, sha), parents: [{ sha: 'a' }, { sha: 'b' }] };
@@ -280,6 +283,40 @@ describe('scanReviewedPR: which commits are new (#1857)', () => {
     expect(entry?.rebased).toBe(true);
     expect(entry?.reviewedSha).toBe('rev0000');
     expect(entry?.commits.map((c) => c.sha)).toEqual(['amended', 'new']);
+  });
+
+  it('does not call a reviewed commit missing from a cut commit list a rebase: commits by date, baseUnknown, no range', () => {
+    // The newest commits are the ones a cap drops, so the reviewed one may simply be past the cut.
+    const commits = [commit(AUTHOR, BEFORE_2H, 'old'), commit(AUTHOR, AFTER_1H, 'new')];
+    const entry = scan({ commits, reviews: [REVIEW], truncatedLists: ['commits'] });
+    expect(entry).toMatchObject({ reviewedSha: 'rev0000', rebased: false, mergedUpstream: false, baseUnknown: true });
+    expect(entry?.commits.map((c) => c.sha)).toEqual(['new']);
+    // A cut elsewhere says nothing about the commit list: still a rebase.
+    const other = scan({ commits, reviews: [REVIEW], truncatedLists: ['comments'] });
+    expect(other).toMatchObject({ rebased: true, baseUnknown: false });
+    // Nothing dated after the review in the cut list: not a rebase, and no commits to flag as approximate.
+    const quiet = scan({
+      reviews: [REVIEW],
+      commits: [commits[0]],
+      truncatedLists: ['commits'],
+      comments: [AUTHOR_REPLY],
+    });
+    expect(quiet).toMatchObject({ rebased: false, baseUnknown: false, commits: [] });
+  });
+
+  it('carries the newest qualifying comment as latestCommentAt, and leaves it out when only commits qualified', () => {
+    const commitsOnly = scan({ reviews: [REVIEW], commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_3H, 'new')] });
+    expect(commitsOnly?.latestActivityAt).toBe(AFTER_3H);
+    expect(commitsOnly).not.toHaveProperty('latestCommentAt');
+
+    const withReply = scan({
+      reviews: [REVIEW],
+      commits: [REVIEWED_COMMIT, commit(AUTHOR, AFTER_3H, 'new')],
+      // The bystander's remark does not qualify; the author's reply does, and it is older than the push.
+      comments: [comment('bystander', 'Nice change.', AFTER_4H), AUTHOR_REPLY],
+    });
+    expect(withReply?.latestActivityAt).toBe(AFTER_3H);
+    expect(withReply?.latestCommentAt).toBe(AFTER_2H);
   });
 
   it("ignores merge commits and the user's commits in the date fallback too", () => {
