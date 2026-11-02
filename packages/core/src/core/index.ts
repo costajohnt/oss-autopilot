@@ -39,8 +39,19 @@ export {
   classifyFailingChecks,
 } from './pr-monitor.js';
 // Search/vetting now delegated to @oss-scout/core via commands/scout-bridge.ts
-export { IssueConversationMonitor } from './issue-conversation.js';
-export { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+export {
+  IssueConversationMonitor,
+  MAX_DIRECT_ENGAGED_FETCHES,
+  type FetchCommentedIssuesOptions,
+  type FetchCommentedIssuesResult,
+} from './issue-conversation.js';
+export {
+  isBotAuthor,
+  isAcknowledgmentComment,
+  isReactionOnlyComment,
+  isQuoteReplyTo,
+  isStatusNudge,
+} from './comment-utils.js';
 export {
   wrapUntrustedContent,
   fenceFetchedPR,
@@ -100,6 +111,7 @@ export {
   assessCapacity,
   collectActionableIssues,
   computeActionMenu,
+  isCoveredByDismiss,
   toShelvedPRRef,
   buildStarFilter,
   firstMaintainerResponseFromDigest,
@@ -109,6 +121,15 @@ export {
   formatSummary,
   printDigest,
 } from './daily-logic.js';
+export {
+  collectEngagedIssues,
+  toIssueEngagement,
+  LEDGER_LINK_MAX_AGE_DAYS,
+  type CollectEngagedIssuesOptions,
+  type EngagedIssue,
+  type EngagedIssuesInput,
+  type EngagedPRLink,
+} from './engaged-issues.js';
 export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
 export {
   selectClosedPRStatusCandidates,

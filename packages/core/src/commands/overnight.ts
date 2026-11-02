@@ -29,6 +29,8 @@ import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
 import type {
   ActionableIssueType,
+  EngagementReason,
+  IssueEngagement,
   OvernightImplementAttempt,
   OvernightPrepared,
   OvernightRecord,
@@ -189,6 +191,25 @@ function loadListItems(): { items: ReturnType<typeof parseIssueList>['available'
   }
 }
 
+/** How the user is tied to the issue, by engagement reason (#1862). */
+const ENGAGEMENT_LABEL: Record<EngagementReason, string> = {
+  claim: 'claimed',
+  open_pr: 'have an open PR for',
+  closed_pr: 'had a PR on',
+  merged_pr: 'had a PR on',
+};
+
+/** Who replied, and whether the user is working on the issue (#1862) or only commented. */
+function issueReplyReason(issue: {
+  isFromMaintainer: boolean;
+  lastResponseAuthor: string;
+  engagement?: IssueEngagement;
+}): string {
+  const who = issue.isFromMaintainer ? 'a maintainer' : issue.lastResponseAuthor;
+  const where = issue.engagement ? ENGAGEMENT_LABEL[issue.engagement.reason] : 'commented on';
+  return `${who} replied on an issue you ${where}`;
+}
+
 /** Pure: split the daily check into prepare vs judgment items. */
 export function bucketize(
   daily: Pick<DailyOutput, 'actionableIssues' | 'commentedIssues'>,
@@ -220,7 +241,7 @@ export function bucketize(
       url: c.url,
       type: 'issue_reply',
       label: `[Issue reply] ${c.repo}#${c.number}`,
-      reason: `${c.isFromMaintainer ? 'a maintainer' : c.lastResponseAuthor} replied on an issue you commented on`,
+      reason: issueReplyReason(c),
     });
   }
 

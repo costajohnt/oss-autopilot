@@ -9,7 +9,7 @@
  */
 
 import * as fs from 'node:fs';
-import { getStateManager, applyStatusOverrides, classifyAttentionBucket } from '../core/index.js';
+import { getStateManager, applyStatusOverrides, classifyAttentionBucket, isCoveredByDismiss } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import {
@@ -122,10 +122,14 @@ export function buildDashboardJson(
   const filteredMergedPRs = mergedPRs.filter(isAboveMinStars);
   const filteredClosedPRs = closedPRs.filter(isAboveMinStars);
   const stats = buildDashboardStats(overriddenDigest, state, filteredMergedPRs.length, filteredClosedPRs.length);
+  // Same rule as the daily run's dismiss filter (#1862): a dismiss hides the
+  // reply it was stamped against; a newer reply resurfaces the issue.
   const dismissedIssues = state.config.dismissedIssues || {};
-  const issueResponses = commentedIssues.filter(
-    (i): i is CommentedIssueWithResponse => i.status === 'new_response' && !(i.url in dismissedIssues),
-  );
+  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => {
+    if (i.status !== 'new_response') return false;
+    const dismissedAt = dismissedIssues[i.url];
+    return !dismissedAt || !isCoveredByDismiss(dismissedAt, i.lastResponseAt);
+  });
 
   // Build repo metadata map from repoScores — omit repos without stars or language to avoid empty entries
   const repoMetadata: Record<string, RepoMetadataEntry> = {};

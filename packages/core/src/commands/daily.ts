@@ -24,6 +24,7 @@ import {
   assessCapacity,
   collectActionableIssues,
   computeActionMenu,
+  collectEngagedIssues,
   toShelvedPRRef,
   formatBriefSummary,
   formatSummary,
@@ -75,29 +76,9 @@ import {
   recordWarning,
 } from './daily-warnings.js';
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
+import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
 
 const MODULE = 'daily';
-
-/**
- * Run a batch against a baseline that is fresh as of right now.
- *
- * A daily run spends tens of seconds on the network between loading state and
- * each of its saves. If the dashboard, `move`, or another CLI call writes
- * state.json in that time, the compare-and-swap in `saveState` rejects the
- * save, and because the baseline never moved, every later batch in the run is
- * rejected too: repo scores, analytics, the merged/closed ledger and lastDigest
- * were all dropped, surfacing only as warnings. Reloading first picks up the
- * other writer's change and shrinks the window to the batch itself.
- *
- * Only safe where the callback reads state live through the manager, as the
- * batches in this file do. A callback that writes from a snapshot taken
- * earlier would overwrite the other writer's fields, which is why this is not
- * done inside `StateManager.batch` for every caller.
- */
-function batchOnFreshBaseline(stateManager: ReturnType<typeof getStateManager>, fn: () => void): void {
-  stateManager.reloadIfChanged();
-  stateManager.batch(fn);
-}
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
@@ -295,61 +276,74 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
   let didRecentlyMergedFetchFail = false;
-  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
-    [
-      prMonitor.fetchUserMergedPRCounts(starFilter).catch(
-        nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch merged PR counts',
-          fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
-        }),
-      ),
-      prMonitor.fetchUserClosedPRCounts(starFilter).catch(
-        nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch closed PR counts',
-          fallback: emptyPRCountsResult<number>(),
-        }),
-      ),
-      prMonitor.fetchRecentlyClosedPRs().catch(
-        nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch recently closed PRs',
-          fallback: [] as ClosedPR[],
-        }),
-      ),
-      prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
-        // Phase 3.6 treats a fallback here as an incomplete view of the
-        // user's PRs (a just-merged successor would be invisible).
-        didRecentlyMergedFetchFail = true;
-        return nonFatalCatchWithWarning({
-          warnings,
-          phase: 'fetch',
-          operation: 'fetch recently merged PRs',
-          fallback: [] as MergedPR[],
-        })(error);
+  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs] = await Promise.all([
+    prMonitor.fetchUserMergedPRCounts(starFilter).catch(
+      nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch merged PR counts',
+        fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
       }),
-      // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
-      issueMonitor.fetchCommentedIssues().catch((error) => {
-        if (isRateLimitOrAuthError(error)) throw error;
-        const msg = errorMessage(error);
-        const needsSetup = msg.includes('No GitHub username configured');
-        const humanMessage = needsSetup
-          ? `Issue conversation tracking requires setup: ${msg}`
-          : `Issue conversation fetch failed: ${msg}`;
-        recordWarning(warnings, 'fetch', 'fetch commented issues', error, humanMessage);
-        return {
-          issues: [] as CommentedIssue[],
-          failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
-        };
+    ),
+    prMonitor.fetchUserClosedPRCounts(starFilter).catch(
+      nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch closed PR counts',
+        fallback: emptyPRCountsResult<number>(),
       }),
-    ],
-  );
+    ),
+    prMonitor.fetchRecentlyClosedPRs().catch(
+      nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch recently closed PRs',
+        fallback: [] as ClosedPR[],
+      }),
+    ),
+    prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
+      // Phase 3.6 treats a fallback here as an incomplete view of the
+      // user's PRs (a just-merged successor would be invisible).
+      didRecentlyMergedFetchFail = true;
+      return nonFatalCatchWithWarning({
+        warnings,
+        phase: 'fetch',
+        operation: 'fetch recently merged PRs',
+        fallback: [] as MergedPR[],
+      })(error);
+    }),
+  ]);
 
-  const commentedIssues = issueConversationResult.issues;
+  // Issue conversations run after the PR lists: the engaged set (#1862)
+  // needs the open, recently closed and recently merged PRs. The fetch has
+  // custom messaging based on the error content, so it keeps its bespoke catch.
+  const engaged = collectEngagedIssues({
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    claims: state.activeIssues,
+    openPRs: prs,
+    ledgerClosedPRs: getStateManager().getClosedPRs(),
+    ledgerMergedPRs: getStateManager().getMergedPRs(),
+  });
+  const issueConversationResult = await issueMonitor.fetchCommentedIssues({ engaged }).catch((error) => {
+    if (isRateLimitOrAuthError(error)) throw error;
+    const msg = errorMessage(error);
+    const needsSetup = msg.includes('No GitHub username configured');
+    const humanMessage = needsSetup
+      ? `Issue conversation tracking requires setup: ${msg}`
+      : `Issue conversation fetch failed: ${msg}`;
+    recordWarning(warnings, 'fetch', 'fetch commented issues', error, humanMessage);
+    return {
+      issues: [] as CommentedIssue[],
+      failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      warnings: [] as string[],
+    };
+  });
+
+  const { issues: commentedIssues, warnings: issueMonitorWarnings } = issueConversationResult;
+  for (const message of issueMonitorWarnings) {
+    warnings.push({ phase: 'fetch', operation: 'fetch commented issues', message });
+  }
   if (issueConversationResult.failures.length > 0) {
     warnings.push({
       phase: 'fetch',
@@ -757,43 +751,7 @@ function generateDigestOutput(
   );
 
   // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity.
-  // Batch: undismissIssue calls trigger autoSave — batch produces a single disk write for all auto-undismisses.
-  let filteredCommentedIssues: typeof commentedIssues = [];
-  try {
-    batchOnFreshBaseline(stateManager, () => {
-      filteredCommentedIssues = remainingCommentedIssues.filter((issue) => {
-        const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
-        if (!dismissedAt) return true; // Not dismissed — include
-        if (issue.status === 'new_response') {
-          const responseTime = new Date(issue.lastResponseAt).getTime();
-          const dismissTime = new Date(dismissedAt).getTime();
-          if (isNaN(responseTime) || isNaN(dismissTime)) {
-            // Invalid timestamp — fail open (include issue to be safe) without
-            // permanently removing dismiss record (may be a transient data issue)
-            warn(MODULE, `Invalid timestamp in dismiss check for ${issue.url}, including issue`);
-            return true;
-          }
-          if (responseTime > dismissTime) {
-            // New activity after dismiss — auto-undismiss and resurface
-            warn(
-              MODULE,
-              `Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
-            );
-            try {
-              stateManager.undismissIssue(issue.url);
-            } catch (error) {
-              recordWarning(warnings, 'dismiss-filter', `persist auto-undismiss for ${issue.url}`, error);
-            }
-            return true;
-          }
-        }
-        // Still dismissed (last response is at or before dismiss timestamp)
-        return false;
-      });
-    });
-  } catch (error) {
-    recordWarning(warnings, 'dismiss-filter', 'persist auto-undismiss state', error);
-  }
+  const filteredCommentedIssues = filterDismissedIssues(stateManager, remainingCommentedIssues, warnings);
 
   const issueResponses = filteredCommentedIssues.filter(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response',

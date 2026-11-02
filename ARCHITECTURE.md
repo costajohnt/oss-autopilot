@@ -46,7 +46,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `startup-and-build.md` | `/oss` start | CLI build check, auth, startup call, session state setup |
 | `action-menu.md` | After startup | Present action menu from pre-computed items |
 | `work-through-issues.md` | "Work through all issues" action | Parallel investigation → consolidated display → sequential execution |
-| `review-issue-replies.md` | "Review issue replies" action | Review and respond to maintainer replies on claimed issues |
+| `review-issue-replies.md` | "Review issue replies" action | Review and respond to replies on issues the user commented on or is working on: any substantive non-bot reply on an engaged issue (claimed or linked from one of the user's PRs), maintainer / @mention / quote replies elsewhere (#1862) |
 | `pre-commit-review.md` | Before any commit/push | Multi-agent code review gate (existing PR updates) |
 | `draft-first-workflow.md` | New contributions | Create draft PR → iterative review → squash → mark ready |
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
@@ -212,7 +212,8 @@ ETag-based caching for GitHub API responses:
 | `pagination.ts` | GitHub API pagination helper |
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
-| `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on for new maintainer responses |
+| `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on or is engaged in for replies that need attention; fetches live engaged issues the comment search misses (#1862) |
+| `engaged-issues.ts` | `collectEngagedIssues` — the issues the user is working on (claims plus issues linked from open, recently closed/merged and ledger PRs), keyed and ranked for the monitor (#1862) |
 | `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
 | `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |

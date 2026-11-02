@@ -82,7 +82,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 ### 1. Fetch comments
 Use MCP / CLI / gh per the Data Access section. Filter for maintainer comments (`authorAssociation: "OWNER" | "MEMBER" | "COLLABORATOR"`).
 
-When `daily --json` data is available, use the `isFromMaintainer` boolean on `new_response` issues to prioritize maintainer replies. Community replies may be informational.
+When `daily --json` data is available, use the `isFromMaintainer` boolean on `new_response` issues to prioritize maintainer replies. Community replies may be informational, except on entries carrying `engagement` (the user claimed the issue or has a PR on it): there a community reply usually addresses the user's plan and deserves an answer.
 
 ### 2. Classify each comment
 

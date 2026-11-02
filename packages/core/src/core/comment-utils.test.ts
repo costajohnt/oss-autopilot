@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+import {
+  isBotAuthor,
+  isAcknowledgmentComment,
+  isReactionOnlyComment,
+  isQuoteReplyTo,
+  isStatusNudge,
+} from './comment-utils.js';
 
 describe('isBotAuthor', () => {
   it('should detect authors with [bot] suffix', () => {
@@ -115,5 +121,106 @@ describe('isAcknowledgmentComment', () => {
     expect(isAcknowledgmentComment('This needs a rebase')).toBe(false);
     expect(isAcknowledgmentComment('Can you add tests')).toBe(false);
     expect(isAcknowledgmentComment('I disagree with this approach')).toBe(false);
+  });
+});
+
+describe('isReactionOnlyComment (#1862)', () => {
+  it('treats "+1", "same here" and "any update" style comments as reactions', () => {
+    expect(isReactionOnlyComment('+1')).toBe(true);
+    expect(isReactionOnlyComment('+1!')).toBe(true);
+    expect(isReactionOnlyComment('Same here.')).toBe(true);
+    expect(isReactionOnlyComment('me too')).toBe(true);
+    expect(isReactionOnlyComment('Any update?')).toBe(true);
+    expect(isReactionOnlyComment('bump')).toBe(true);
+  });
+
+  it('treats emoji-only, shortcode-only and empty comments as reactions', () => {
+    expect(isReactionOnlyComment('👍')).toBe(true);
+    expect(isReactionOnlyComment('🎉 🎉')).toBe(true);
+    expect(isReactionOnlyComment(':+1: :tada:')).toBe(true);
+    expect(isReactionOnlyComment('')).toBe(true);
+    expect(isReactionOnlyComment('   \n ')).toBe(true);
+    expect(isReactionOnlyComment('+1 👍')).toBe(true);
+  });
+
+  it('keeps anything that says more', () => {
+    expect(isReactionOnlyComment('Same here on Windows 11 with 3.2.0, the probe below reproduces it')).toBe(false);
+    expect(isReactionOnlyComment('Thanks for wanting to work on this! I would rather see a flag.')).toBe(false);
+    expect(isReactionOnlyComment('+1, and the fix should also cover the CLI path')).toBe(false);
+    expect(isReactionOnlyComment('Any update on the review? Happy to rebase.')).toBe(false);
+  });
+});
+
+describe('isStatusNudge (#1862)', () => {
+  it('recognises bare status requests', () => {
+    expect(isStatusNudge('Any update?')).toBe(true);
+    expect(isStatusNudge('any updates on this?')).toBe(false);
+    expect(isStatusNudge('Any news? 🙏')).toBe(true);
+    expect(isStatusNudge('ping')).toBe(true);
+  });
+
+  it('does not treat reactions addressed to nobody as nudges', () => {
+    expect(isStatusNudge('+1')).toBe(false);
+    expect(isStatusNudge('same here')).toBe(false);
+    expect(isStatusNudge('bump')).toBe(false);
+    expect(isStatusNudge('👍')).toBe(false);
+    expect(isStatusNudge('Any update? I would like to help if you are stuck.')).toBe(false);
+  });
+});
+
+describe('isQuoteReplyTo (#1862)', () => {
+  const userComment = 'I can take this one.\nPlan: add a `--dry-run` flag and keep the default behaviour unchanged.';
+
+  it('matches a GitHub "Quote reply" of the comment', () => {
+    const reply =
+      '> Plan: add a `--dry-run` flag and keep the default behaviour unchanged.\n\nPlease do not; a flag is the wrong shape here.';
+    expect(isQuoteReplyTo(reply, userComment)).toBe(true);
+  });
+
+  it('matches a nested or whitespace-reflowed quote', () => {
+    expect(isQuoteReplyTo('>> I can take   this one.\n\nGreat', userComment)).toBe(true);
+    expect(isQuoteReplyTo('  >  i CAN take this one.', userComment)).toBe(true);
+  });
+
+  it('ignores quotes of someone else and quotes too short to identify a comment', () => {
+    expect(isQuoteReplyTo('> We should close this as wontfix.\n\nAgreed', userComment)).toBe(false);
+    expect(isQuoteReplyTo('> I can\n\nyes', userComment)).toBe(false);
+    expect(isQuoteReplyTo('I can take this one.', userComment)).toBe(false);
+  });
+
+  it('needs at least 20 quoted characters: "> LGTM" style quotes identify nobody', () => {
+    const source = 'LGTM, ship it.\nThe locale segment is missing from the cache key here.';
+    expect(isQuoteReplyTo('> LGTM, ship it.\n\nthanks', source)).toBe(false);
+    expect(isQuoteReplyTo('> locale segment is\n\nyes', source)).toBe(false);
+    expect(isQuoteReplyTo('> The locale segment is missing from the cache key here.\n\nConfirmed', source)).toBe(true);
+  });
+
+  it('does not match a quote of text the user had themselves quoted (quote of a quote)', () => {
+    const maintainerLine = 'We should migrate the cache key format before 4.0 ships.';
+    const userComment = `> ${maintainerLine}\n\nHappy to take the migration if nobody has started.`;
+    const thirdParty = `> ${maintainerLine}\n\nIs that still the plan for 4.0?`;
+    expect(isQuoteReplyTo(thirdParty, userComment)).toBe(false);
+    // A quote of the user's own prose in the same comment still matches.
+    expect(isQuoteReplyTo('> Happy to take the migration if nobody has started.\n\nGo ahead', userComment)).toBe(true);
+  });
+
+  it('does not match a pasted error line the user had in a code block', () => {
+    const errorLine = 'TypeError: Cannot read properties of undefined (reading "locale")';
+    const fenced = `Seeing this on 3.2.0:\n\n\`\`\`\n${errorLine}\n    at render (app.js:12)\n\`\`\`\n\nThe cache key is missing the locale segment.`;
+    const indented = `Seeing this on 3.2.0:\n\n    ${errorLine}\n    at render (app.js:12)\n\nThe cache key is missing the locale segment.`;
+    const tildeFenced = `Seeing this on 3.2.0:\n\n~~~text\n${errorLine}\n~~~\n\nThe cache key is missing the locale segment.`;
+    for (const source of [fenced, indented, tildeFenced]) {
+      expect(isQuoteReplyTo(`> ${errorLine}\n\nSame trace here on Windows`, source)).toBe(false);
+      expect(isQuoteReplyTo('> The cache key is missing the locale segment.\n\nConfirmed', source)).toBe(true);
+    }
+  });
+
+  it('never matches a short or empty source comment', () => {
+    expect(isQuoteReplyTo('> +1\n\nsame', '+1')).toBe(false);
+    expect(isQuoteReplyTo('> anything here at all', '')).toBe(false);
+    // Prose that is only a quote leaves nothing of the user's own to match.
+    expect(
+      isQuoteReplyTo('> We should migrate the cache key format.\n\nok', '> We should migrate the cache key format.'),
+    ).toBe(false);
   });
 });

@@ -610,7 +610,7 @@ export function computeActionMenu(
     items.push({
       key: 'issue_replies',
       label: `Review ${issueResponses.length} issue repl${issueResponses.length === 1 ? 'y' : 'ies'}`,
-      description: 'Maintainers responded to your comments on issues',
+      description: 'Replies on issues you commented on or are working on',
     });
   }
 
@@ -715,6 +715,21 @@ export function computeActionMenu(
       issueResponseCount: issueResponses.length,
     },
   };
+}
+
+/**
+ * Whether a dismiss stamped at `dismissedAt` still covers the reply posted
+ * at `lastResponseAt`: both parse and the dismiss is not older than the
+ * reply. A reply newer than the dismiss resurfaces the issue, so the daily
+ * run and the dashboard must agree on this one comparison (#1862). An
+ * unreadable stamp fails open (not covered), matching the daily run's
+ * dismiss filter.
+ */
+export function isCoveredByDismiss(dismissedAt: string, lastResponseAt: string): boolean {
+  const dismissedMs = Date.parse(dismissedAt);
+  const responseMs = Date.parse(lastResponseAt);
+  if (Number.isNaN(dismissedMs) || Number.isNaN(responseMs)) return false;
+  return dismissedMs >= responseMs;
 }
 
 // ---------------------------------------------------------------------------
