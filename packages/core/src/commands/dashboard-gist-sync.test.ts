@@ -35,6 +35,7 @@ interface FakeManager {
   isGistDegraded: ReturnType<typeof vi.fn>;
   refreshFromGist: ReturnType<typeof vi.fn>;
   hasUnpushedChanges: ReturnType<typeof vi.fn>;
+  forgetUnpushedChanges: ReturnType<typeof vi.fn>;
   getGistHealth: () => unknown;
 }
 
@@ -45,6 +46,7 @@ function makeManager(overrides: Partial<Record<keyof FakeManager, unknown>> = {}
     isGistDegraded: vi.fn(() => false),
     refreshFromGist: vi.fn(async () => false),
     hasUnpushedChanges: vi.fn(() => false),
+    forgetUnpushedChanges: vi.fn(),
     // Derived like the real StateManager.getGistHealth (#1444): one
     // isGistMode() consumption per probe, then EITHER getState (local arm)
     // or isGistDegraded (gist arm) — keeps mockReturnValueOnce sequences in
@@ -151,6 +153,17 @@ describe('GistSyncCoordinator', () => {
 
       await sync.flushPendingGistSync();
       expect(mockMaybeCheckpoint).toHaveBeenCalledWith(currentManager, 'dashboard-server');
+      expect(sync.withPendingGistWarnings(undefined)).toBeUndefined();
+      expect(currentManager.forgetUnpushedChanges).not.toHaveBeenCalled();
+    });
+
+    it('a failed push of refresh-derived saves is dropped quietly, not turned into a loss notice', async () => {
+      currentManager.hasUnpushedChanges.mockReturnValue(true);
+      mockMaybeCheckpoint.mockResolvedValueOnce('push failed: conflict');
+      const sync = makeCoordinator();
+
+      await sync.flushPendingGistSync();
+      expect(currentManager.forgetUnpushedChanges).toHaveBeenCalledOnce();
       expect(sync.withPendingGistWarnings(undefined)).toBeUndefined();
     });
   });
