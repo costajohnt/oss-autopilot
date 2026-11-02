@@ -19,19 +19,19 @@ const MCP_SERVER_CWD = new URL('..', import.meta.url).pathname;
 const SERVER_COMMAND = process.execPath;
 const SERVER_ARGS = ['--import', 'tsx', 'src/index.ts'];
 
-/** Every server PID this file spawned, checked for liveness in afterAll. */
-const spawnedPids = new Set<number>();
+/**
+ * Every server child this file spawned directly, checked in afterAll. We
+ * hold the ChildProcess rather than a raw PID: Node keeps the pid reserved
+ * until it has reaped the child and fired 'exit', so `kill()` on a handle
+ * that is still running can never hit a recycled, unrelated process.
+ * (Stdio clients are not tracked: StdioClientTransport owns its child and
+ * `close()` already escalates stdin-end -> SIGTERM -> SIGKILL.)
+ */
+const spawned = new Set<ChildProcess>();
 
-/** True when `pid` still exists (signal 0 probes without delivering). */
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // ESRCH: no such process. Anything else (EPERM: exists, owned by
-    // another user) means the PID is still live.
-    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
-  }
+/** True until the child's 'exit' event has fired (or spawn itself failed). */
+function isRunning(proc: ChildProcess): boolean {
+  return proc.pid !== undefined && proc.exitCode === null && proc.signalCode === null;
 }
 
 /** How long a server gets to honour SIGTERM before teardown sends SIGKILL. */
@@ -43,12 +43,10 @@ const SIGTERM_GRACE_MS = 3000;
  * already exited), so callers can assert on liveness right after awaiting.
  */
 function terminate(proc: ChildProcess): Promise<void> {
-  // pid is undefined when spawn itself failed: nothing to signal, and no
-  // 'exit' event will ever fire.
-  if (proc.pid === undefined || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
+  if (!isRunning(proc)) return Promise.resolve();
   return new Promise((resolve) => {
     const killTimer = setTimeout(() => {
-      if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
+      if (isRunning(proc)) proc.kill('SIGKILL');
     }, SIGTERM_GRACE_MS);
     proc.once('exit', () => {
       clearTimeout(killTimer);
@@ -61,10 +59,19 @@ function terminate(proc: ChildProcess): Promise<void> {
 // Throwing from afterAll fails the file, which is what we want: a leaked
 // server is a bug in the teardown above, not in any single test.
 afterAll(() => {
-  const leaked = [...spawnedPids].filter((pid) => isAlive(pid));
-  for (const pid of leaked) process.kill(pid, 'SIGKILL');
+  const leaked = [...spawned].filter((proc) => isRunning(proc));
+  for (const proc of leaked) proc.kill('SIGKILL');
   if (leaked.length > 0) {
-    throw new Error(`server processes left running after the suite (killed): ${leaked.join(', ')}`);
+    const pids = leaked.map((proc) => proc.pid).join(', ');
+    throw new Error(`server processes left running after the suite (killed): ${pids}`);
+  }
+});
+
+// Last resort when the worker exits before afterAll gets to run (a crash or
+// bail mid-file). 'exit' handlers must be synchronous, and SIGKILL is.
+process.once('exit', () => {
+  for (const proc of spawned) {
+    if (isRunning(proc)) proc.kill('SIGKILL');
   }
 });
 
@@ -88,7 +95,6 @@ async function createStdioClient(): Promise<Client> {
   });
   const client = new Client({ name: 'test-client', version: '1.0.0' });
   await client.connect(transport);
-  if (transport.pid !== null) spawnedPids.add(transport.pid);
   return client;
 }
 
@@ -121,7 +127,7 @@ function spawnHttpServer(args: string[], env: Record<string, string> = {}): Prom
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath, ...env },
     });
-    if (proc.pid !== undefined) spawnedPids.add(proc.pid);
+    spawned.add(proc);
 
     const timeout = setTimeout(() => {
       void terminate(proc);
@@ -395,9 +401,14 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
     serverHandle = await spawnHttpServerOnFreePort();
 
     // Lie about Content-Length — server should reject before reading the body.
+    // Because the server answers without draining the (never-arriving) body,
+    // a keep-alive socket would sit mid-request and `httpServer.close()`
+    // would wait on it, holding teardown for the whole SIGTERM grace period.
+    // `Connection: close` makes the server drop the socket with the response.
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
       ...authHeader(),
       'Content-Length': String(1_048_577),
+      Connection: 'close',
     });
 
     expect(res.status).toBe(413);
@@ -411,7 +422,7 @@ describe('MCP server invalid port', { timeout: 10_000 }, () => {
       cwd: MCP_SERVER_CWD,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    if (proc.pid !== undefined) spawnedPids.add(proc.pid);
+    spawned.add(proc);
 
     const exitCode = await new Promise<number | null>((resolve) => {
       proc.on('exit', (code) => resolve(code));
