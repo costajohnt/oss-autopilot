@@ -33,6 +33,7 @@ import { getHttpCache, cachedRequest } from './http-cache.js';
 
 import { getCIStatus } from './ci-analysis.js';
 import { type ActivityEvent, type ReviewComment } from './review-analysis.js';
+import type { MergedPRActivity } from './merged-pr-notes.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import { batchFetchPRDetails, type PRRef, type NormalizedPRData, type BatchPRResult } from './pr-graphql.js';
 import {
@@ -706,6 +707,45 @@ export class PRMonitor {
   async fetchRecentlyMergedPRs(days: number = 7): Promise<MergedPR[]> {
     const config = this.stateManager.getState().config;
     return fetchRecentlyMergedPRsImpl(this.octokit, config, days);
+  }
+
+  /**
+   * Everything the merged-PR notes selection reads for one PR (#1861): issue
+   * comments, reviews, inline review comments and commits, each paginated.
+   * Four calls per PR (more past 100 items). `truncated` is set when any of
+   * the lists hit the pagination cap; the lists arrive oldest-first, so it
+   * is the newest activity that would be missing.
+   *
+   * @throws {ValidationError} If `prUrl` is not a GitHub PR URL
+   * @throws Octokit errors (404 when the PR is gone, rate limit, auth) unchanged
+   */
+  async fetchMergedPRActivity(prUrl: string): Promise<MergedPRActivity & { truncated: boolean }> {
+    const parsed = parseGitHubUrl(prUrl);
+    if (!parsed || parsed.type !== 'pull') {
+      throw new ValidationError(`Invalid PR URL format: ${prUrl}`);
+    }
+    const { owner, repo, number } = parsed;
+    const [comments, reviews, reviewComments, commits] = await Promise.all([
+      paginateAllDetailed((page) =>
+        this.octokit.issues.listComments({ owner, repo, page, issue_number: number, per_page: 100 }),
+      ),
+      paginateAllDetailed((page) =>
+        this.octokit.pulls.listReviews({ owner, repo, page, pull_number: number, per_page: 100 }),
+      ),
+      paginateAllDetailed((page) =>
+        this.octokit.pulls.listReviewComments({ owner, repo, page, pull_number: number, per_page: 100 }),
+      ),
+      paginateAllDetailed((page) =>
+        this.octokit.pulls.listCommits({ owner, repo, page, pull_number: number, per_page: 100 }),
+      ),
+    ]);
+    return {
+      comments: comments.items,
+      reviews: reviews.items,
+      reviewComments: reviewComments.items,
+      commits: commits.items,
+      truncated: comments.truncated || reviews.truncated || reviewComments.truncated || commits.truncated,
+    };
   }
 
   /**

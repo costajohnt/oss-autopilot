@@ -575,6 +575,7 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
  * @param attention - Attention bucket counts; non-zero stuck-CI / dormant-followup buckets add a follow_up item
  * @param unextractedMergeCount - Recently merged PRs whose learnings have not been extracted yet (#1463); non-zero adds an extract_learnings item
  * @param closedPRStatusCount - Closed-unmerged PRs whose linked issue still needs a status update (#1863); non-zero adds a closed_pr_status item
+ * @param mergedPRNotesCount - Recently merged PRs carrying maintainer notes the user has not answered (#1861); non-zero adds a merged_pr_notes item
  * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
@@ -584,6 +585,7 @@ export function computeActionMenu(
   attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'> & { closeSuggested?: number },
   unextractedMergeCount?: number,
   closedPRStatusCount = 0,
+  mergedPRNotesCount = 0,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
@@ -661,6 +663,20 @@ export function computeActionMenu(
       key: 'closed_pr_status',
       label: `Post status update on linked issue${closedPRStatusCount === 1 ? '' : 's'} (${closedPRStatusCount})`,
       description: 'Your PR closed without merge; tell the issue what you found and whether you are stepping away',
+    });
+  }
+
+  // Merged-PR notes (#1861) — a maintainer thanked the user or explained a
+  // change at merge time and nobody answered. Routes to
+  // workflows/merged-pr-notes.md, which classifies each note and drafts the
+  // reply through draft-review-post; nothing posts automatically. Self-clears
+  // once the user comments on the PR, dismisses its URL, or the PR leaves
+  // the recently-merged window.
+  if (mergedPRNotesCount > 0) {
+    items.push({
+      key: 'merged_pr_notes',
+      label: `Merged PR${mergedPRNotesCount === 1 ? '' : 's'} with maintainer notes (${mergedPRNotesCount})`,
+      description: 'Maintainers left thanks or a follow-up note at merge; draft a short acknowledgment or reply',
     });
   }
 

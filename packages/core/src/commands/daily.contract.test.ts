@@ -26,6 +26,7 @@ import {
   type DailyOutput,
 } from '../formatters/json.js';
 import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment, schemaIssues } from '../core/test-utils.js';
+import { wrapUntrustedContent } from '../core/untrusted-content.js';
 
 /**
  * Goldens pin the serialized shape; this pins the goldens to the exported
@@ -159,6 +160,46 @@ describe('daily --json contract', () => {
     expect(CompactDailyOutputSchema.parse(compact).closedPRStatusUpdates).toEqual(updates);
     // Runs with nothing to update carry no key at all, so goldens are unchanged.
     expect('closedPRStatusUpdates' in toDailyOutput(makeFixture())).toBe(false);
+  });
+
+  it('mergedPRNotes passes through full and compact output with fenced excerpts and validates (#1861)', () => {
+    const entry = {
+      prUrl: 'https://github.com/octocat/spoon-knife/pull/44',
+      repo: 'octocat/spoon-knife',
+      number: 44,
+      title: 'Merged fix',
+      mergedAt: '2026-06-02T00:00:00Z',
+      notes: [
+        { author: 'maintainer', createdAt: '2026-06-02T00:01:00Z', kind: 'comment' as const, excerpt: 'Thanks!' },
+        {
+          author: 'maintainer',
+          createdAt: '2026-06-01T00:00:00Z',
+          kind: 'commit' as const,
+          excerpt: 'Cover edge case',
+        },
+      ],
+      maintainerCommits: 1,
+      thanksOnly: false,
+      ackCoveredBy: 'https://github.com/octocat/spoon-knife/pull/45',
+    };
+    const result = toDailyOutput(makeFixture({ mergedPRNotes: [entry] }));
+    expectSchemaValid(result);
+    // Excerpts are GitHub-controlled text and arrive fenced; everything else is verbatim.
+    expect(result.mergedPRNotes).toHaveLength(1);
+    const fenced = result.mergedPRNotes![0];
+    expect({ ...fenced, notes: undefined }).toEqual({ ...entry, notes: undefined });
+    expect(fenced.notes.map((n) => n.excerpt)).toEqual([
+      wrapUntrustedContent('Thanks!', 'octocat/spoon-knife#44', { author: 'maintainer', source: 'pr-comment' }),
+      wrapUntrustedContent('Cover edge case', 'octocat/spoon-knife#44', { author: 'maintainer', source: 'pr-commit' }),
+    ]);
+    expect(fenced.notes.map((n) => [n.author, n.createdAt, n.kind])).toEqual(
+      entry.notes.map((n) => [n.author, n.createdAt, n.kind]),
+    );
+    const compact = toCompactDailyOutput(result);
+    expect(compact.mergedPRNotes).toEqual(result.mergedPRNotes);
+    expect(CompactDailyOutputSchema.parse(compact).mergedPRNotes).toEqual(result.mergedPRNotes);
+    // Runs with no notes carry no key at all, so goldens are unchanged.
+    expect('mergedPRNotes' in toDailyOutput(makeFixture())).toBe(false);
   });
 
   it('recentlyClosedPRs keep their issueUrl through schema validation (#1863)', () => {

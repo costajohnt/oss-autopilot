@@ -95,6 +95,17 @@ These do not require any action. They exist so the user knows what was closed. T
 
 The item routes to `workflows/closed-pr-status-update.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there is nothing to update.
 
+**Merged PRs with maintainer notes (#1861):** when a recently merged PR (same 7-day window as `digest.recentlyMergedPRs`) carries a comment, review, or inline review comment from a non-bot maintainer posted after the user's last comment on the PR and no earlier than an hour before the merge, or a commit someone else pushed on top of the user's last commit, the CLI lists it in `data.daily.mergedPRNotes` (`prUrl`, `repo`, `number`, `title`, `mergedAt`, `notes[]` with `author` / `createdAt` / `kind` / fenced `excerpt`, `maintainerCommits`, `thanksOnly`, optional `ackCoveredBy`) and adds a `merged_pr_notes` item to the action menu ("Merged PRs with maintainer notes (N)"). Short thanks count here (the <100-character acknowledgment filter does not apply after merge); process comments resolved earlier than an hour before the merge do not. When several thanks-only entries share a repo, the older ones carry `ackCoveredBy` pointing at the most recently merged one, so one acknowledgment covers them. Not listed: PRs the user commented on after the notes, PRs whose URL was dismissed at or after the newest note, and PRs that failed to fetch (one `merged-pr-notes` warning each, with the HTTP status). Nothing is written to state. Display the entries after the recently-closed section:
+
+```
+Merged with maintainer notes:
+- {repo}#{number} — {title} (merged {mergedAt date})
+  {author} ({kind}): {excerpt}
+  {url}
+```
+
+The item routes to `workflows/merged-pr-notes.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there are no notes.
+
 ### Auto-Marked List Entries (Informational)
 
 If `data.daily.listUpdates` is present (#1463), the CLI detected merged PRs and automatically marked the matching curated-list entries done (same transform as `list-mark-done`). Display them after the recently-closed section so the user knows their list was updated without being asked:
