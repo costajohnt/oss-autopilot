@@ -74,6 +74,150 @@ describe('StateManager', () => {
       const state = stateManager.getState();
       expect(state.activeIssues).toHaveLength(1);
     });
+
+    it('releaseIssue removes the claim and reports whether anything was removed (#1863)', () => {
+      const url = 'https://github.com/owner/repo/issues/2';
+      stateManager.addIssue({
+        url,
+        id: 2,
+        repo: 'owner/repo',
+        number: 2,
+        title: 'Claimed issue',
+        status: 'claimed',
+        labels: [],
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        vetted: false,
+      });
+      expect(stateManager.releaseIssue(url)).toBe('released');
+      expect(stateManager.getState().activeIssues).toHaveLength(0);
+      // Idempotent: re-seeing the closed PR on a later run is a no-op.
+      expect(stateManager.releaseIssue(url)).toBe('not_tracked');
+    });
+
+    it('releaseIssue matches the tracked URL case-insensitively and ignores trailing slash and fragment (#1863)', () => {
+      stateManager.addIssue({
+        url: 'https://github.com/Owner/Repo/issues/2',
+        id: 2,
+        repo: 'Owner/Repo',
+        number: 2,
+        title: 'Claimed issue',
+        status: 'claimed',
+        labels: [],
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        vetted: false,
+      });
+      expect(stateManager.releaseIssue('https://github.com/owner/repo/issues/2/#issuecomment-5')).toBe('released');
+      expect(stateManager.getState().activeIssues).toHaveLength(0);
+    });
+
+    it('releaseIssue keeps a claim recorded at or after the close so a re-claim survives (#1863)', () => {
+      const url = 'https://github.com/owner/repo/issues/2';
+      const closedAt = '2024-02-01T00:00:00Z';
+      const claim = {
+        url,
+        id: 2,
+        repo: 'owner/repo',
+        number: 2,
+        title: 'Claimed issue',
+        status: 'claimed' as const,
+        labels: [],
+        // createdAt is the issue's GitHub creation date in the claim path;
+        // updatedAt is the claim stamp. Only the latter decides.
+        createdAt: '2023-01-01T00:00:00Z',
+        updatedAt: '2024-02-01T00:00:00Z',
+        vetted: false,
+      };
+      stateManager.addIssue(claim);
+      expect(stateManager.releaseIssue(url, closedAt)).toBe('newer_claim');
+      expect(stateManager.getState().activeIssues).toHaveLength(1);
+
+      stateManager.getState().activeIssues[0].updatedAt = 'not-a-date';
+      expect(stateManager.releaseIssue(url, closedAt)).toBe('newer_claim');
+      expect(stateManager.getState().activeIssues).toHaveLength(1);
+
+      stateManager.getState().activeIssues[0].updatedAt = '2024-01-31T23:59:59Z';
+      expect(stateManager.releaseIssue(url, closedAt)).toBe('released');
+      expect(stateManager.getState().activeIssues).toHaveLength(0);
+    });
+
+    it('addIssue refreshes the claim stamp of a tracked issue so a re-claim after the close survives releaseIssue (#1863)', () => {
+      const url = 'https://github.com/owner/repo/issues/2';
+      const closedAt = '2024-02-01T00:00:00Z';
+      const base = {
+        url,
+        id: 2,
+        repo: 'owner/repo',
+        number: 2,
+        title: 'Claimed issue',
+        labels: [],
+        createdAt: '2023-01-01T00:00:00Z',
+        vetted: false,
+      };
+      // Original claim, then the PR closes, then the user claims again.
+      stateManager.addIssue({ ...base, status: 'candidate', updatedAt: '2024-01-15T00:00:00Z' });
+      stateManager.addIssue({ ...base, status: 'claimed', updatedAt: '2024-02-02T00:00:00Z' });
+
+      const { activeIssues } = stateManager.getState();
+      expect(activeIssues).toHaveLength(1);
+      expect(activeIssues[0].updatedAt).toBe('2024-02-02T00:00:00Z');
+      expect(activeIssues[0].status).toBe('claimed');
+      expect(stateManager.releaseIssue(url, closedAt)).toBe('newer_claim');
+      expect(stateManager.getState().activeIssues).toHaveLength(1);
+    });
+
+    it('addIssue matches a tracked issue by issueRefKey, so a re-claim through another URL spelling adds no duplicate (#1863)', () => {
+      const base = {
+        id: 2,
+        repo: 'owner/repo',
+        number: 2,
+        title: 'Claimed issue',
+        status: 'claimed' as const,
+        labels: [],
+        createdAt: '2023-01-01T00:00:00Z',
+        vetted: false,
+      };
+      stateManager.addIssue({
+        ...base,
+        url: 'https://github.com/Owner/Repo/issues/2',
+        updatedAt: '2024-01-15T00:00:00Z',
+      });
+      stateManager.addIssue({
+        ...base,
+        url: 'https://github.com/owner/repo/issues/2/',
+        updatedAt: '2024-02-02T00:00:00Z',
+      });
+
+      const { activeIssues } = stateManager.getState();
+      expect(activeIssues).toHaveLength(1);
+      // The first spelling stays; only the claim fields move.
+      expect(activeIssues[0].url).toBe('https://github.com/Owner/Repo/issues/2');
+      expect(activeIssues[0].updatedAt).toBe('2024-02-02T00:00:00Z');
+    });
+
+    it('releaseIssue leaves other claims untouched', () => {
+      const keep = 'https://github.com/owner/repo/issues/3';
+      for (const [id, url] of [
+        [3, keep],
+        [4, 'https://github.com/owner/repo/issues/4'],
+      ] as const) {
+        stateManager.addIssue({
+          id,
+          url,
+          repo: 'owner/repo',
+          number: id,
+          title: `Issue ${id}`,
+          status: 'claimed',
+          labels: [],
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          vetted: false,
+        });
+      }
+      expect(stateManager.releaseIssue('https://github.com/owner/repo/issues/4')).toBe('released');
+      expect(stateManager.getState().activeIssues.map((i) => i.url)).toEqual([keep]);
+    });
   });
 
   describe('Statistics', () => {

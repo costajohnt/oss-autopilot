@@ -13,6 +13,7 @@ export {
   maybeCheckpoint,
   resetStateManager,
   type Stats,
+  type ReleaseIssueResult,
 } from './state.js';
 export {
   renderGistWarning,
@@ -53,7 +54,7 @@ export {
   type UntrustedContentMeta,
 } from './untrusted-content.js';
 export { getOctokit, checkRateLimit, type RateLimitInfo } from './github.js';
-export { parseGitHubUrl, splitRepo, isOwnRepo } from './urls.js';
+export { parseGitHubUrl, issueRefKey, splitRepo, isOwnRepo } from './urls.js';
 export { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';
 export {
   getCLIVersion,
@@ -109,6 +110,14 @@ export {
   printDigest,
 } from './daily-logic.js';
 export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
+export {
+  selectClosedPRStatusCandidates,
+  toClosedPRStatusUpdate,
+  CLOSED_PR_STATUS_WINDOW_DAYS,
+  type ClosedPRStatusUpdate,
+  type ClosedPRStatusCandidate,
+  type IssueLinkedPR,
+} from './closed-pr-status.js';
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export {
   classifyLinkedPR,

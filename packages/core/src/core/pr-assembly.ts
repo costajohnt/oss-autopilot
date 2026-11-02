@@ -23,6 +23,7 @@ import {
   type ActivityEvent,
 } from './review-analysis.js';
 import { analyzeChecklist } from './checklist-analysis.js';
+import { closingIssueUrl, mentionedIssueUrls } from './github-stats.js';
 import { extractMaintainerActionHints } from './maintainer-analysis.js';
 import { categorizeCIStatus, classifyFailingChecks } from './ci-analysis.js';
 import { computeDisplayLabel } from './display-utils.js';
@@ -199,6 +200,8 @@ export async function assembleFetchedPR(
     repo: `${signals.owner}/${signals.repo}`,
     number: signals.number,
     title: signals.title,
+    issueUrl: closingIssueUrl(signals.body, signals.prUrl),
+    mentionedIssueUrls: mentionedIssueUrls(signals.title, signals.body, signals.prUrl),
     status,
     actionReason,
     waitReason,

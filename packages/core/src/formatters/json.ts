@@ -22,6 +22,7 @@ import type {
 import type { ContributionStats } from '../core/stats.js';
 import type { RepoCapStatus } from '../core/repo-cap.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
+import type { ClosedPRStatusUpdate } from '../core/closed-pr-status.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } from '../core/issue-verification.js';
 
@@ -129,7 +130,8 @@ export type DailyWarningPhase =
   | 'gist-init'
   | 'gist-checkpoint'
   | 'gist-staleness'
-  | 'state-load';
+  | 'state-load'
+  | 'closed-pr-status';
 
 /**
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
@@ -230,6 +232,14 @@ export interface DailyOutput {
    * at least one unextracted merge; see {@link PendingLearnings}.
    */
   pendingLearnings?: PendingLearnings;
+  /**
+   * Closed-unmerged PRs whose linked issue has not heard from the user since
+   * the close (#1863). Drives the `closed_pr_status` action-menu item; the
+   * workflow drafts a status comment per entry through draft-review-post.
+   * Present only when at least one entry exists, so merge-free runs and
+   * goldens are unchanged. See {@link ClosedPRStatusUpdate}.
+   */
+  closedPRStatusUpdates?: ClosedPRStatusUpdate[];
 }
 
 /** Work order for the host's background learnings extraction (#1696). */
@@ -272,6 +282,8 @@ export interface CompactDailyOutput {
   listUpdates?: MergedPRListUpdate[];
   /** Background extraction work order (#1696). See {@link DailyOutput.pendingLearnings}. */
   pendingLearnings?: PendingLearnings;
+  /** Closed-PR status nudges (#1863). See {@link DailyOutput.closedPRStatusUpdates}. */
+  closedPRStatusUpdates?: ClosedPRStatusUpdate[];
 }
 
 /**
@@ -293,6 +305,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     strategySummary: output.strategySummary,
     listUpdates: output.listUpdates,
     pendingLearnings: output.pendingLearnings,
+    closedPRStatusUpdates: output.closedPRStatusUpdates,
   };
 }
 
@@ -359,6 +372,7 @@ const DailyWarningPhaseSchema = z.enum([
   'gist-checkpoint',
   'gist-staleness',
   'state-load',
+  'closed-pr-status',
 ]);
 
 const DailyWarningSchema = z.object({
@@ -412,6 +426,8 @@ const RecentClosedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   closedAt: z.string(),
+  /** Issue the PR closes, parsed from its body (#1824); joins to `closedPRStatusUpdates` (#1863). */
+  issueUrl: z.string().optional(),
 });
 
 const RecentMergedPRSchema = z.object({
@@ -584,6 +600,13 @@ const MergedPRListUpdateSchema = z.object({
   repoHeadingStruck: z.boolean(),
 });
 
+/** Mirrors {@link ClosedPRStatusUpdate} (#1863). */
+const ClosedPRStatusUpdateSchema = z.object({
+  prUrl: z.string(),
+  issueUrl: z.string(),
+  closedAt: z.string(),
+});
+
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
   capacity: CapacityAssessmentSchema,
@@ -599,6 +622,7 @@ export const DailyOutputSchema = z.object({
   strategySummary: StrategyResultSchema.nullable().optional(),
   listUpdates: z.array(MergedPRListUpdateSchema).optional(),
   pendingLearnings: PendingLearningsSchema.optional(),
+  closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -614,6 +638,7 @@ export const CompactDailyOutputSchema = z.object({
   strategySummary: StrategyResultSchema.nullable().optional(),
   listUpdates: z.array(MergedPRListUpdateSchema).optional(),
   pendingLearnings: PendingLearningsSchema.optional(),
+  closedPRStatusUpdates: z.array(ClosedPRStatusUpdateSchema).optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────

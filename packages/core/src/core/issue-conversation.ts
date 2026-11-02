@@ -9,14 +9,14 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
-import { paginateAllDetailed } from './pagination.js';
+import { paginateAll, paginateAllDetailed } from './pagination.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './dates.js';
-import { splitRepo, extractOwnerRepo, isOwnRepo } from './urls.js';
+import { splitRepo, extractOwnerRepo, isOwnRepo, parseGitHubUrl } from './urls.js';
 import { runWorkerPool, DEFAULT_CONCURRENCY } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
-import { ConfigurationError, errorMessage, isRateLimitOrAuthError } from './errors.js';
+import { ConfigurationError, ValidationError, errorMessage, isRateLimitOrAuthError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'issue-conversation';
@@ -33,6 +33,34 @@ export class IssueConversationMonitor {
   constructor(githubToken: string) {
     this.octokit = getOctokit(githubToken);
     this.stateManager = getStateManager();
+  }
+
+  /**
+   * Whether the configured user commented on `issueUrl` at or after `since`
+   * (#1863). Backs the closed-PR status nudge: once the user has told the
+   * linked issue what happened, the nudge drops out. GitHub's `since` filter
+   * keys on `updated_at`, so an old comment edited after the close would
+   * come back too; `created_at` is re-checked to count only new comments.
+   *
+   * @throws {ConfigurationError} If no GitHub username is configured
+   * @throws {ValidationError} If `issueUrl` is not a GitHub issue URL
+   */
+  async hasUserCommentSince(issueUrl: string, since: string): Promise<boolean> {
+    const username = this.stateManager.getState().config.githubUsername;
+    if (!username) {
+      throw new ConfigurationError('No GitHub username configured. Run setup first.');
+    }
+    const parsed = parseGitHubUrl(issueUrl);
+    if (!parsed) {
+      throw new ValidationError(`Invalid issue URL format: ${issueUrl}`);
+    }
+    const { owner, repo, number } = parsed;
+    const comments = await paginateAll((page) =>
+      this.octokit.issues.listComments({ owner, repo, since, page, issue_number: number, per_page: 100 }),
+    );
+    const user = username.toLowerCase();
+    const sinceMs = Date.parse(since);
+    return comments.some((c) => c.user?.login?.toLowerCase() === user && Date.parse(c.created_at) >= sinceMs);
   }
 
   /**

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseGitHubUrl, extractOwnerRepo, splitRepo } from './urls.js';
+import { parseGitHubUrl, extractOwnerRepo, splitRepo, issueRefKey } from './urls.js';
 import { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';
 import {
   getGitHubToken,
@@ -621,4 +621,24 @@ describe('detectGitHubUsername', () => {
     const username = await detectGitHubUsername();
     expect(username).toBeNull();
   });
+});
+
+describe('issueRefKey (#1863)', () => {
+  it.each([
+    ['https://github.com/Org/Repo/issues/5', 'org/repo#5'],
+    ['https://github.com/org/repo/issues/5/', 'org/repo#5'],
+    ['https://github.com/org/repo/issues/5#issuecomment-99', 'org/repo#5'],
+    ['https://github.com/org/repo/issues/5?foo=bar', 'org/repo#5'],
+    // Issues and PRs share one number space, so both URL kinds map to one key.
+    ['https://github.com/ORG/repo/pull/5', 'org/repo#5'],
+  ])('normalizes %s to %s', (url, expected) => {
+    expect(issueRefKey(url)).toBe(expected);
+  });
+
+  it.each([['https://example.com/org/repo/issues/5'], ['https://github.com/org/repo'], ['not a url'], ['']])(
+    'returns null for %j',
+    (url) => {
+      expect(issueRefKey(url)).toBeNull();
+    },
+  );
 });

@@ -81,6 +81,23 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 }
 
 /**
+ * Case-insensitive identity of a GitHub issue or PR URL: `owner/repo#number`,
+ * lowercased. Trailing slashes, `#fragment`s and `?query`s fall away because
+ * only the path segments are read, and `/issues/N` and `/pull/N` map to the
+ * same key: a repo has one number space, so a bare `#N` mention names the
+ * same object whichever kind it is. Returns null when the URL does not
+ * parse (see {@link parseGitHubUrl}).
+ *
+ * @example
+ * issueRefKey('https://github.com/Org/Repo/issues/5/')
+ * // "org/repo#5"
+ */
+export function issueRefKey(url: string): string | null {
+  const parsed = parseGitHubUrl(url);
+  return parsed ? `${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}` : null;
+}
+
+/**
  * Extracts the owner and repo from a GitHub web URL
  * (e.g. `https://github.com/owner/repo/pull/42`, `https://github.com/owner/repo/`).
  *

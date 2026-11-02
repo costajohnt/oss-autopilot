@@ -10,6 +10,7 @@
 import {
   getStateManager,
   parseGitHubUrl,
+  issueRefKey,
   PRMonitor,
   IssueConversationMonitor,
   requireGitHubToken,
@@ -28,6 +29,10 @@ import {
   formatSummary,
   summarizeAttentionBuckets,
   shouldSuggestClose,
+  selectClosedPRStatusCandidates,
+  toClosedPRStatusUpdate,
+  type ClosedPRStatusCandidate,
+  type ClosedPRStatusUpdate,
   type AttentionSummary,
   type DailyDigest,
   type FetchedPR,
@@ -39,10 +44,11 @@ import {
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
-import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { errorMessage, getHttpStatusCode, isRateLimitOrAuthError } from '../core/errors.js';
+import { DEFAULT_CONCURRENCY, runWorkerPool } from '../core/concurrency.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
-import { warn } from '../core/logger.js';
+import { debug, warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import { findRepoTransfers } from '../core/repo-score-manager.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
@@ -181,6 +187,12 @@ export interface DailyCheckResult {
    * absent, so goldens and merge-free runs are unchanged.
    */
   pendingLearnings?: PendingLearnings;
+  /**
+   * Closed-unmerged PRs whose linked issue still needs a status update from
+   * the user (#1863). Set only when at least one exists; see
+   * {@link DailyOutput.closedPRStatusUpdates}.
+   */
+  closedPRStatusUpdates?: ClosedPRStatusUpdate[];
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +213,49 @@ interface FetchedPRData {
   recentlyClosedPRs: ClosedPR[];
   recentlyMergedPRs: MergedPR[];
   commentedIssues: CommentedIssue[];
+  /** Where this run's view of the user's PRs may have holes; see {@link SuccessorGaps}. */
+  successorGaps: SuccessorGaps;
+}
+
+/**
+ * Where this run's view of the user's PRs may be partial (#1863). Phase 3.6
+ * reads this: a successor PR missing from the fetched lists would make a
+ * closed PR look un-superseded, and the claim release that follows cannot be
+ * undone. Only conditions that can hide a successor count. Per-PR comment
+ * pagination caps and username auto-repair notes also land in
+ * `FetchPRsResult.warnings`, but neither drops a PR from the list, so they
+ * do not gate anything here.
+ */
+interface SuccessorGaps {
+  /**
+   * Why every repo is affected, or empty when none is: the open-PR search hit
+   * the Search API's 1000-result cap, or the recently-merged fetch fell back
+   * to an empty list (a just-merged successor would be invisible).
+   */
+  everywhere: string[];
+  /**
+   * Lowercased `owner/repo` of each PR whose per-PR enrichment failed. A
+   * successor closes the same issue, so it almost always lives in the same
+   * repo as the closed PR; a failure elsewhere says nothing about it.
+   */
+  failedRepos: Set<string>;
+}
+
+/** Lowercased `owner/repo` of a GitHub PR or issue URL, or undefined when it does not parse. */
+function repoKeyOf(url: string): string | undefined {
+  const parsed = parseGitHubUrl(url);
+  return parsed ? `${parsed.owner}/${parsed.repo}`.toLowerCase() : undefined;
+}
+
+/**
+ * Reasons a successor of `pr` could be missing from this run's lists, or an
+ * empty array when the supersede check can be trusted for it.
+ */
+function successorGapsFor(pr: Pick<ClosedPR, 'url' | 'repo'>, gaps: SuccessorGaps): string[] {
+  const reasons = [...gaps.everywhere];
+  const repoKey = repoKeyOf(pr.url) ?? pr.repo.toLowerCase();
+  if (gaps.failedRepos.has(repoKey)) reasons.push(`a PR fetch in ${repoKey} failed`);
+  return reasons;
 }
 
 interface PartitionedPRs {
@@ -257,6 +312,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
   // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
+  let didRecentlyMergedFetchFail = false;
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
       prMonitor.fetchUserMergedPRCounts(starFilter).catch(
@@ -283,14 +339,17 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
           fallback: [] as ClosedPR[],
         }),
       ),
-      prMonitor.fetchRecentlyMergedPRs().catch(
-        nonFatalCatchWithWarning({
+      prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
+        // Phase 3.6 treats a fallback here as an incomplete view of the
+        // user's PRs (a just-merged successor would be invisible).
+        didRecentlyMergedFetchFail = true;
+        return nonFatalCatchWithWarning({
           warnings,
           phase: 'fetch',
           operation: 'fetch recently merged PRs',
           fallback: [] as MergedPR[],
-        }),
-      ),
+        })(error);
+      }),
       // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
       issueMonitor.fetchCommentedIssues().catch((error) => {
         if (isRateLimitOrAuthError(error)) throw error;
@@ -325,8 +384,20 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
     monthlyOpenedCounts: openedFromClosed,
   } = closedResult;
 
+  // A failed PR URL comes from the Search API, so it parses; should one not,
+  // its repo is unknown and the conservative reading is "could be anywhere".
+  const successorGaps: SuccessorGaps = { everywhere: [], failedRepos: new Set() };
+  if (fetchResult.searchTruncated) successorGaps.everywhere.push('the open-PR search was truncated');
+  if (didRecentlyMergedFetchFail) successorGaps.everywhere.push('the recently-merged fetch failed');
+  for (const failure of failures) {
+    const repoKey = repoKeyOf(failure.prUrl);
+    if (repoKey) successorGaps.failedRepos.add(repoKey);
+    else successorGaps.everywhere.push(`a PR fetch failed for an unparseable URL (${failure.prUrl})`);
+  }
+
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
+    successorGaps,
     prs,
     failures,
     mergedCounts,
@@ -677,6 +748,7 @@ function generateDigestOutput(
   warnings: DailyWarning[],
   previousLastDigestAt?: string,
   unextractedMergeCount?: number,
+  closedPRStatusUpdates: ClosedPRStatusUpdate[] = [],
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
@@ -685,12 +757,27 @@ function generateDigestOutput(
   stateManager.reloadIfChanged();
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
+  // One nudge per issue (#1863): an issue listed under closedPRStatusUpdates
+  // leaves the commented-issue list for this run unless it carries a new
+  // maintainer reply. The claim Phase 3.6 just released (or never recorded)
+  // means the issue is, or will be from the next run, back in
+  // fetchCommentedIssues' results; without a reply it would only be listed
+  // as "waiting" there, which the status nudge already covers. A reply is a
+  // different ask (answer the maintainer) and must stay visible under
+  // issue_replies even though the closed-PR workflow also shows the thread.
+  // Once the user posts the status update the nudge drops and the issue
+  // returns to the regular reply flow.
+  const statusUpdateIssueKeys = new Set(closedPRStatusUpdates.map((u) => issueRefKey(u.issueUrl) ?? u.issueUrl));
+  const remainingCommentedIssues = commentedIssues.filter(
+    (issue) => issue.status === 'new_response' || !statusUpdateIssueKeys.has(issueRefKey(issue.url) ?? issue.url),
+  );
+
   // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity.
   // Batch: undismissIssue calls trigger autoSave — batch produces a single disk write for all auto-undismisses.
   let filteredCommentedIssues: typeof commentedIssues = [];
   try {
     batchOnFreshBaseline(stateManager, () => {
-      filteredCommentedIssues = commentedIssues.filter((issue) => {
+      filteredCommentedIssues = remainingCommentedIssues.filter((issue) => {
         const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
         if (!dismissedAt) return true; // Not dismissed — include
         if (issue.status === 'new_response') {
@@ -745,6 +832,7 @@ function generateDigestOutput(
     filteredCommentedIssues,
     { ...attention, closeSuggested },
     unextractedMergeCount,
+    closedPRStatusUpdates.length,
   );
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -780,6 +868,234 @@ function generateDigestOutput(
     warnings,
     strategySummary,
   };
+}
+
+/** `HTTP 404` when the error carries a status, else undefined. */
+function httpStatusLabel(error: unknown): string | undefined {
+  const status = getHttpStatusCode(error);
+  return status === undefined ? undefined : `HTTP ${status}`;
+}
+
+/** 404/410: the issue or PR is gone (deleted, transferred, or now private). */
+function isGoneError(error: unknown): boolean {
+  const status = getHttpStatusCode(error);
+  return status === 404 || status === 410;
+}
+
+/** Warning text with the HTTP status in front when there is one. */
+function describeError(error: unknown): string {
+  const label = httpStatusLabel(error);
+  return label ? `${label}: ${errorMessage(error)}` : errorMessage(error);
+}
+
+const CLOSED_PR_STATUS_OPERATION = 'closed-PR status updates';
+
+/**
+ * Phase 3.6: Closed-PR status updates (#1863).
+ *
+ * A PR of the user's that closed without merge usually leaves its write-up
+ * in the PR thread while the linked issue still shows their claim as the
+ * latest word. For each such PR, release the local claim and, unless the
+ * user has already commented on the issue since the close, hand the pair to
+ * the action menu so the workflow can draft a status comment (never
+ * auto-posted).
+ *
+ * The release is an irreversible state write, so every guard errs toward
+ * doing nothing:
+ * - A candidate is withheld (one warning naming each withheld PR) when this
+ *   run's PR fetch may have missed a successor for it: the open-PR search
+ *   was truncated, the recently-merged fetch failed, or a per-PR fetch in
+ *   the candidate's own repo failed (`SuccessorGaps`). Candidates in other
+ *   repos, and closed PRs the fetched lists already supersede, are
+ *   unaffected.
+ * - Only PRs the configured user closed themselves count. A maintainer or
+ *   bot close is neither released nor nudged (`PRMonitor.fetchPRClosedBy`).
+ * - The supersede check (`selectClosedPRStatusCandidates`) treats any open
+ *   PR that mentions the issue or the closed PR as a successor, closing
+ *   keyword or not, and drops PRs outside the 7-day window.
+ * - An issue the user dismissed at or after the close (the workflow's
+ *   "skip" choice runs the existing `dismiss` command) is skipped entirely.
+ * - `releaseIssue(issueUrl, closedAt)` keeps a claim recorded after the
+ *   close: a re-claim inside the window is deliberate.
+ * - A 404/410 from either lookup drops the candidate with a warning instead
+ *   of nudging every day about something that is gone.
+ *
+ * Releasing does not change capacity (`assessCapacity` counts open PRs
+ * only); it takes the issue out of `activeIssues`, so it stops reading as in
+ * progress and re-enters the commented-issue monitor from the next run.
+ *
+ * "Only once": there is no posted-stamp in state. The nudge disappears when
+ * the user's comment lands on the issue, when they dismiss the issue URL,
+ * and at the latest when the PR leaves the 7-day window.
+ *
+ * Non-fatal: failures land in `warnings[]` under `closed-pr-status`, except
+ * rate-limit/auth errors, which propagate like every other phase's.
+ */
+async function prepareClosedPRStatusUpdates(
+  prMonitor: PRMonitor,
+  token: string,
+  input: {
+    recentlyClosedPRs: ClosedPR[];
+    openPRs: FetchedPR[];
+    recentlyMergedPRs: MergedPR[];
+    successorGaps: SuccessorGaps;
+  },
+  warnings: DailyWarning[],
+): Promise<ClosedPRStatusUpdate[]> {
+  const { recentlyClosedPRs, openPRs, recentlyMergedPRs, successorGaps } = input;
+  if (recentlyClosedPRs.every((pr) => pr.issueUrl === undefined)) return [];
+
+  const stateManager = getStateManager();
+  const username = stateManager.getState().config.githubUsername;
+  if (!username) {
+    recordWarning(
+      warnings,
+      'closed-pr-status',
+      CLOSED_PR_STATUS_OPERATION,
+      null,
+      'skipped: no GitHub username configured',
+    );
+    return [];
+  }
+  const user = username.toLowerCase();
+
+  // recentlyMergedPRs is also in the ledger by now (Phase 3 wrote it), but
+  // that write is best-effort inside a try/catch, so the fresh list stays an
+  // input of its own: a successor must never go unseen because a save failed.
+  const notDismissed = selectClosedPRStatusCandidates(recentlyClosedPRs, [
+    ...openPRs,
+    ...recentlyMergedPRs,
+    ...stateManager.getMergedPRs(),
+  ]).filter((pr) => {
+    const dismissedAt = stateManager.getIssueDismissedAt(pr.issueUrl);
+    if (dismissedAt === undefined) return true;
+    // Dismissed at/after the close (or with an unreadable stamp): the user
+    // declined this nudge. Dismissed before the close: unrelated, proceed.
+    const dismissedMs = Date.parse(dismissedAt);
+    if (Number.isNaN(dismissedMs) || dismissedMs >= Date.parse(pr.closedAt)) {
+      debug(
+        MODULE,
+        `closed-pr-status: ${pr.issueUrl} dismissed at ${dismissedAt}, after close ${pr.closedAt}; skipping`,
+      );
+      return false;
+    }
+    return true;
+  });
+
+  // Gate after selection, per candidate: a closed PR the fetched lists
+  // already supersede needs no complete view, and a per-PR failure in
+  // another repo cannot hide this PR's successor. Withheld candidates are
+  // named so the user can tell which release did not happen.
+  const withheld: string[] = [];
+  const candidates = notDismissed.filter((pr) => {
+    const reasons = successorGapsFor(pr, successorGaps);
+    if (reasons.length === 0) return true;
+    withheld.push(`${pr.url} (${reasons.join('; ')})`);
+    return false;
+  });
+  if (withheld.length > 0) {
+    recordWarning(
+      warnings,
+      'closed-pr-status',
+      CLOSED_PR_STATUS_OPERATION,
+      null,
+      `withheld, supersede check unreliable on this run's partial PR fetch: ${withheld.join(', ')}`,
+    );
+  }
+  if (candidates.length === 0) return [];
+
+  const issueMonitor = new IssueConversationMonitor(token);
+  // Outcome per candidate that passed both lookups, keyed by candidate so
+  // the output keeps `candidates` order however the workers finish.
+  const verified = new Map<ClosedPRStatusCandidate, { hasCommented: boolean }>();
+  await runWorkerPool(
+    candidates,
+    async (pr) => {
+      let closedBy: string | undefined;
+      try {
+        closedBy = await prMonitor.fetchPRClosedBy(pr.url);
+      } catch (error) {
+        if (isRateLimitOrAuthError(error)) throw error;
+        const detail = isGoneError(error)
+          ? `PR no longer reachable (${httpStatusLabel(error)}); dropped`
+          : `${describeError(error)}; cannot verify who closed it, dropped`;
+        recordWarning(warnings, 'closed-pr-status', `check who closed ${pr.url}`, error, detail);
+        return;
+      }
+      if (closedBy?.toLowerCase() !== user) {
+        debug(MODULE, `closed-pr-status: ${pr.url} closed by ${closedBy ?? 'unknown'}, not ${username}; skipping`);
+        return;
+      }
+
+      let hasCommented = false;
+      try {
+        hasCommented = await issueMonitor.hasUserCommentSince(pr.issueUrl, pr.closedAt);
+      } catch (error) {
+        if (isRateLimitOrAuthError(error)) throw error;
+        if (isGoneError(error)) {
+          recordWarning(
+            warnings,
+            'closed-pr-status',
+            `check comments on ${pr.issueUrl}`,
+            error,
+            `issue no longer reachable (${httpStatusLabel(error)}); dropped`,
+          );
+          return;
+        }
+        // Unknown whether the user already posted: keep the nudge (the
+        // workflow shows the issue thread before anything is drafted) and
+        // say why rather than silently dropping it.
+        recordWarning(
+          warnings,
+          'closed-pr-status',
+          `check comments on ${pr.issueUrl}`,
+          error,
+          `${describeError(error)}; keeping the nudge`,
+        );
+      }
+      verified.set(pr, { hasCommented });
+    },
+    DEFAULT_CONCURRENCY,
+  );
+
+  // Release after the lookups: only PRs the user closed themselves reach
+  // this point. The user may have told the issue already (no nudge) and the
+  // claim still goes: the PR is closed per GitHub either way.
+  const toRelease = candidates.filter((pr) => verified.has(pr));
+  if (toRelease.length > 0) {
+    try {
+      batchOnFreshBaseline(stateManager, () => {
+        for (const pr of toRelease) {
+          stateManager.releaseIssue(pr.issueUrl, pr.closedAt);
+        }
+      });
+    } catch (error) {
+      recordWarning(warnings, 'closed-pr-status', 'release issue claims', error);
+    }
+  }
+
+  return toRelease.filter((pr) => verified.get(pr)?.hasCommented === false).map((pr) => toClosedPRStatusUpdate(pr));
+}
+
+/**
+ * Phase 3.6 entry point: runs {@link prepareClosedPRStatusUpdates} and turns
+ * any non-fatal failure into a `closed-pr-status` warning plus an empty list.
+ * Rate-limit/auth errors from the per-candidate GitHub calls end the run
+ * like every other phase's.
+ */
+async function runClosedPRStatusPhase(
+  prMonitor: PRMonitor,
+  token: string,
+  input: Parameters<typeof prepareClosedPRStatusUpdates>[2],
+  warnings: DailyWarning[],
+): Promise<ClosedPRStatusUpdate[]> {
+  try {
+    return await prepareClosedPRStatusUpdates(prMonitor, token, input, warnings);
+  } catch (error) {
+    if (isRateLimitOrAuthError(error)) throw error;
+    recordWarning(warnings, 'closed-pr-status', 'prepare closed-PR status updates', error);
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -842,6 +1158,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     // no `listUpdates` key at all — serialized output and goldens unchanged.
     ...(result.listUpdates && { listUpdates: result.listUpdates }),
     ...(result.pendingLearnings && { pendingLearnings: result.pendingLearnings }),
+    ...(result.closedPRStatusUpdates && { closedPRStatusUpdates: result.closedPRStatusUpdates }),
   };
 }
 
@@ -934,6 +1251,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     recentlyClosedPRs,
     recentlyMergedPRs,
     commentedIssues,
+    successorGaps,
   } = await fetchPRData(prMonitor, token, warnings);
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
@@ -1053,6 +1371,14 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // it persisted nothing. Cross-tool sharing happens through buildScoutState
   // reading AgentState, not through pushing events at scout.
 
+  // Phase 3.6: closed-PR status nudges + claim release (#1863).
+  const closedPRStatusUpdates = await runClosedPRStatusPhase(
+    prMonitor,
+    token,
+    { openPRs: prs, recentlyClosedPRs, recentlyMergedPRs, successorGaps },
+    warnings,
+  );
+
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).
   const previousLastDigestAt = getStateManager().getState().lastDigestAt;
@@ -1076,12 +1402,16 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     warnings,
     previousLastDigestAt,
     unextractedMergeCount,
+    closedPRStatusUpdates,
   );
   if (listUpdates) {
     result.listUpdates = listUpdates;
   }
   if (pendingLearnings) {
     result.pendingLearnings = pendingLearnings;
+  }
+  if (closedPRStatusUpdates.length > 0) {
+    result.closedPRStatusUpdates = closedPRStatusUpdates;
   }
 
   // Checkpoint: push state to Gist if in Gist mode.

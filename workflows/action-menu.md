@@ -87,6 +87,14 @@ Recently closed (informational):
 
 These do not require any action. They exist so the user knows what was closed. The Auto-Exclude prompt (in the work-through-issues workflow) may offer to exclude these repos from future searches.
 
+**Linked-issue status updates (#1863):** when a closed PR carries an `issueUrl` (parsed from a `Fixes #N`-style keyword in its body), the user closed it themselves, and the user has not commented on that issue since the close, the CLI lists it in `data.daily.closedPRStatusUpdates` (`prUrl`, `issueUrl`, `closedAt`) and adds a `closed_pr_status` item to the action menu ("Post status update on linked issue (N)"). The local claim on each listed issue is released if it was tracked (see `warnings` under `closed-pr-status` for anything that did not go through); capacity is unaffected, since it counts open PRs only. Not listed: PRs a maintainer or bot closed, PRs superseded by another of the user's PRs (one that closes the same issue, or an open one that merely mentions the issue or the closed PR), issues the user dismissed after the close, and any PR whose successor this run's PR fetch could have missed (open-PR search truncated, recently-merged fetch failed, or a per-PR fetch in the same repo failed; one `closed-pr-status` warning names each withheld PR). Issues listed here are left out of `commentedIssues` for the run unless they carry a new maintainer reply, so a plain "waiting" entry is not raised under "Review issue replies" as well while a reply still is. Append one line per entry under the recently-closed section:
+
+```
+  └─ linked issue {issueUrl} has not heard the outcome yet
+```
+
+The item routes to `workflows/closed-pr-status-update.md` via the Phase Routing Table in `commands/oss.md`; the field is absent when there is nothing to update.
+
 ### Auto-Marked List Entries (Informational)
 
 If `data.daily.listUpdates` is present (#1463), the CLI detected merged PRs and automatically marked the matching curated-list entries done (same transform as `list-mark-done`). Display them after the recently-closed section so the user knows their list was updated without being asked:

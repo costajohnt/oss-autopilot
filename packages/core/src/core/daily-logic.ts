@@ -574,6 +574,7 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
  * @param commentedIssues - Issues with comment activity
  * @param attention - Attention bucket counts; non-zero stuck-CI / dormant-followup buckets add a follow_up item
  * @param unextractedMergeCount - Recently merged PRs whose learnings have not been extracted yet (#1463); non-zero adds an extract_learnings item
+ * @param closedPRStatusCount - Closed-unmerged PRs whose linked issue still needs a status update (#1863); non-zero adds a closed_pr_status item
  * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
@@ -582,6 +583,7 @@ export function computeActionMenu(
   commentedIssues: CommentedIssue[] = [],
   attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'> & { closeSuggested?: number },
   unextractedMergeCount?: number,
+  closedPRStatusCount = 0,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
@@ -646,6 +648,19 @@ export function computeActionMenu(
       key: 'extract_learnings',
       label: `Extract learnings from ${unextracted} recently merged PR${unextracted === 1 ? '' : 's'}`,
       description: 'Distill maintainer review feedback into per-repo contribution guidelines',
+    });
+  }
+
+  // Closed-PR status nudge (#1863) — the user's PR closed without merge and
+  // the linked issue has heard nothing from them since. Routes to
+  // workflows/closed-pr-status-update.md, which drafts the comment through
+  // draft-review-post; nothing posts automatically. Self-clears once the
+  // user comments on the issue or the PR leaves the recently-closed window.
+  if (closedPRStatusCount > 0) {
+    items.push({
+      key: 'closed_pr_status',
+      label: `Post status update on linked issue${closedPRStatusCount === 1 ? '' : 's'} (${closedPRStatusCount})`,
+      description: 'Your PR closed without merge; tell the issue what you found and whether you are stepping away',
     });
   }
 

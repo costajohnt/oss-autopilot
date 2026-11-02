@@ -85,6 +85,14 @@ export interface FetchPRsResult {
    * Callers (daily, dashboard) surface these so users see the signal.
    */
   warnings?: string[];
+  /**
+   * Set when the open-PR search hit the Search API's 1000-result cap, so
+   * `prs` is missing some of the user's open PRs (#1863). Structured twin of
+   * the truncation warning above: the daily run's closed-PR status check
+   * reads this flag, not the warning text, to decide whether a successor PR
+   * could be missing from the list. Absent when the search was complete.
+   */
+  searchTruncated?: true;
 }
 
 /**
@@ -253,7 +261,8 @@ export class PRMonitor {
       }
     }
 
-    if (totalCount > SEARCH_API_RESULT_CAP) {
+    const searchTruncated = totalCount > SEARCH_API_RESULT_CAP;
+    if (searchTruncated) {
       warnings.push(
         `GitHub Search API returned ${totalCount} PRs for @${searchUsername}, ` +
           `but results are capped at ${SEARCH_API_RESULT_CAP}. ` +
@@ -362,7 +371,12 @@ export class PRMonitor {
       return a.status === 'needs_addressing' ? -1 : 1;
     });
 
-    return warnings.length > 0 ? { prs, failures, warnings } : { prs, failures };
+    return {
+      prs,
+      failures,
+      ...(warnings.length > 0 && { warnings }),
+      ...(searchTruncated && { searchTruncated: true as const }),
+    };
   }
 
   /**
@@ -659,6 +673,29 @@ export class PRMonitor {
   async fetchRecentlyClosedPRs(days: number = 7): Promise<ClosedPR[]> {
     const config = this.stateManager.getState().config;
     return fetchRecentlyClosedPRsImpl(this.octokit, config, days);
+  }
+
+  /**
+   * Login of the account that closed a PR (#1863), or undefined when GitHub
+   * reports none. The Search API items behind `fetchRecentlyClosedPRs` carry
+   * no `closed_by`, so this is one `issues.get` per PR (PRs are issues to
+   * that endpoint). Lets the daily run act only on PRs the user closed
+   * themselves, not ones a maintainer or bot closed.
+   *
+   * @throws {ValidationError} If `prUrl` is not a GitHub PR or issue URL
+   * @throws Octokit errors (404 when the PR is gone, rate limit, auth) unchanged
+   */
+  async fetchPRClosedBy(prUrl: string): Promise<string | undefined> {
+    const parsed = parseGitHubUrl(prUrl);
+    if (!parsed) {
+      throw new ValidationError(`Invalid PR URL format: ${prUrl}`);
+    }
+    const { data } = await this.octokit.issues.get({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+    });
+    return data.closed_by?.login ?? undefined;
   }
 
   /**
