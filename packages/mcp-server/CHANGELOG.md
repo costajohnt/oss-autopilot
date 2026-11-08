@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.11.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.0...mcp-v5.11.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* warn when dismiss targets an open PR it cannot clear ([#1886](https://github.com/costajohnt/oss-autopilot/issues/1886)) ([b5725fe](https://github.com/costajohnt/oss-autopilot/commit/b5725fe495872e40f7104cabe6826030834b5a88))
+
 ## [5.11.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.10.1...mcp-v5.11.0) (2026-11-02)
 
 
