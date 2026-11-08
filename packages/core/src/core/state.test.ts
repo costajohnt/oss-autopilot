@@ -1456,6 +1456,8 @@ describe('maybeCheckpoint (#1370)', () => {
     const warning = await maybeCheckpoint(stub, 'test');
     expect(warning).toMatch(/push failed after retry/);
     expect(warning).toMatch(/local mutation is saved/);
+    expect(warning).toMatch(/NOT synced/);
+    expect(warning).not.toMatch(/will sync on the next/);
   });
 
   it('returns null when checkpoint resolves true', async () => {
@@ -1561,6 +1563,32 @@ describe('maybeCheckpoint Gist conflict recovery (audit 2026-10-30 H1)', () => {
     await expect(manager.refreshFromGist({ force: true })).resolves.toBe(false);
     expect(store.refreshFromGist).not.toHaveBeenCalled();
     expect(manager.getIssueDismissedAt('https://github.com/o/r/issues/7')).toBe('2026-10-31T00:00:00.000Z');
+  });
+
+  it('a non-forced refresh pushes un-pushed changes before pulling (audit 2026-11-07 H1)', async () => {
+    const { manager, store } = makeManager();
+    const staged: string[] = [];
+    Object.assign(store, {
+      setState: (json: string) => staged.push(json),
+      push: vi.fn().mockResolvedValue(true),
+    });
+    manager.dismissIssue('https://github.com/o/r/issues/7', '2026-10-31T00:00:00.000Z');
+
+    await expect(manager.refreshFromGist()).resolves.toBe(true);
+    expect(staged.at(-1)).toContain('https://github.com/o/r/issues/7');
+    expect(manager.getStateStaleness()).toBeNull();
+  });
+
+  it('a non-forced refresh keeps un-pushed changes when the push-before-pull fails (audit 2026-11-07 H1)', async () => {
+    const { manager, store } = makeManager();
+    Object.assign(store, { setState: vi.fn(), push: vi.fn().mockResolvedValue(false) });
+    manager.dismissIssue('https://github.com/o/r/issues/7', '2026-10-31T00:00:00.000Z');
+
+    await expect(manager.refreshFromGist()).resolves.toBe(false);
+    expect(store.refreshFromGist).not.toHaveBeenCalled();
+    expect(manager.getIssueDismissedAt('https://github.com/o/r/issues/7')).toBe('2026-10-31T00:00:00.000Z');
+    expect(manager.hasUnpushedChanges()).toBe(true);
+    expect(manager.getStateStaleness()?.reason).toMatch(/not pushed yet/);
   });
 
   it('forgetUnpushedChanges marks the saves disposable so a refresh may replace them', async () => {
