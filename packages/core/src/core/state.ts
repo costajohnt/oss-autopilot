@@ -172,7 +172,9 @@ export async function maybeCheckpoint(
 async function pushOrWarn(stateManager: StateManager, callerModule: string): Promise<string | null> {
   if (await stateManager.checkpoint()) return null;
   const msg =
-    'Gist checkpoint push failed after retry; the local mutation is saved and will sync on the next successful push';
+    'Gist checkpoint push failed after retry; the local mutation is saved but NOT synced yet. ' +
+    'A running MCP server or dashboard retries the push before its next Gist refresh; ' +
+    'a new CLI run starts from the Gist without it, so re-run the command there';
   warn(callerModule, msg);
   return msg;
 }
@@ -690,6 +692,28 @@ export class StateManager {
     if (options.force && this.mutationDepth === 0 && this.unpushed) {
       warn(MODULE, 'Forced Gist refresh refused: local changes are not pushed yet and nothing would re-apply them');
       return false;
+    }
+    // Push-before-pull (audit 2026-11-07 H1): a non-forced pull here would
+    // replace un-pushed changes and nothing would ever re-push them. Retry
+    // the push first. A failed push keeps them (skip the pull, retry next
+    // time); a thrown conflict means nothing can re-apply them, so the pull
+    // proceeds and the loss is surfaced below.
+    if (!options.force && this.unpushed) {
+      const isPushed = await this.checkpoint().catch((err: unknown) => {
+        warn(MODULE, `Push before Gist refresh failed: ${errorMessage(err)}`);
+        return null;
+      });
+      if (isPushed === false) {
+        this.staleness = {
+          source: 'cache',
+          reason: 'Gist refresh skipped: local changes are not pushed yet (push failed); serving local state',
+          lastSuccessfulRefresh: this.lastSuccessfulRefreshAt,
+          detectedAt: new Date().toISOString(),
+        };
+        return false;
+      }
+      // A mutation may have started while the push was in flight.
+      if (this.mutationDepth > 0) return false;
     }
     const result = await this.gistStore.refreshFromGist(options);
     // StateManager keeps its boolean shape (callers rely on truthy-check
