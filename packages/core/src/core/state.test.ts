@@ -1597,7 +1597,7 @@ describe('maybeCheckpoint Gist conflict recovery (audit 2026-10-30 H1)', () => {
     Object.assign(store, {
       setState: vi.fn(),
       push: async () => {
-        void manager.runMutation(() => new Promise<void>((r) => (release = r)));
+        void manager.runMutation(() => new Promise<void>((resolve) => (release = resolve)));
         return true;
       },
     });
