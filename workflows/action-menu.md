@@ -99,6 +99,8 @@ If an issue type doesn't match any row above, default to **Medium** (matches the
 
 **Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
 
+**`needs_response` with nothing to answer** (a drive-by or bystander comment that asks for nothing): clear the PR with `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" move {pr.url} waiting --json`, not `dismiss`. `dismiss` on an open authored PR is recorded but never removes it from Needs Attention; its result carries a `warning` saying so (#1885).
+
 Use `pr.daysSinceActivity` from the resolved PR (already computed).
 
 ### Recently Closed PRs (Informational)

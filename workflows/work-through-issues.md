@@ -80,7 +80,7 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | CI Not Running | Info | Investigate why CI isn't running. Check if workflows exist, if fork has actions enabled. |
 | Fork Limitation | Info | Note as expected — no action needed. |
 | Merge Conflict | Tier 2 | Identify conflicting files, recommend resolution strategy (see pr-health-checker's "Merge Conflict Resolution Strategies" for direct resolution vs squash-and-reapply vs asking the maintainer). DO NOT push. |
-| Needs Response | Tier 2 | Analyze maintainer feedback, draft a response (see Code Verification Rules below). DO NOT post — return for approval. |
+| Needs Response | Tier 2 | Analyze maintainer feedback, draft a response (see Code Verification Rules below). DO NOT post — return for approval. If the comment needs no reply, recommend `move <pr-url> waiting` to clear it; `dismiss` does not clear an open authored PR (#1885). |
 | Changes Requested | Tier 2 | Analyze requested changes, identify what's addressed vs outstanding (see Code Verification Rules below). Recommend approach. |
 | Waiting on Maintainer | Info | Note that the ball is in the maintainer's court — either approved and waiting for merge, or changes were pushed after review and awaiting re-review. No contributor action needed. |
 | Missing Required Files | Tier 2 | Only when a bot comment or a check on this PR names it: identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
