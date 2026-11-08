@@ -47,14 +47,22 @@ export interface DismissOutput {
 /**
  * Warning for dismissing one of the user's open PRs (#1885). Reads the open PR
  * set persisted by the last `daily` run; no GitHub call. Undefined when the URL
- * is not an open PR there (merged, closed, never seen, or no digest yet).
+ * is not an open PR there (merged, closed, never seen, or no digest yet), or
+ * when the PR is shelved: `daily` keeps shelved PRs in `openPRs` but out of
+ * Needs Attention, and `move <pr-url> waiting` would unshelve one.
+ *
+ * URL validation accepts any owner/repo casing while `openPRs` holds GitHub's,
+ * so the match is case-insensitive and the suggested `move` command uses the
+ * stored URL, which is the one `daily` checks against the shelf.
  */
 function openPRDismissWarning(stateManager: ReturnType<typeof getStateManager>, url: string): string | undefined {
   const openPRs = stateManager.getState().lastDigest?.openPRs ?? [];
-  if (openPRs.every((pr) => pr.url !== url)) return undefined;
+  const wanted = url.toLowerCase();
+  const openPR = openPRs.find((pr) => pr.url.toLowerCase() === wanted);
+  if (!openPR || stateManager.isPRShelved(openPR.url)) return undefined;
   return (
-    `${url} is one of your open PRs. dismiss records it but does not clear the PR from Needs Attention; ` +
-    `run \`move ${url} waiting\` for that.`
+    `${openPR.url} is one of your open PRs. dismiss records it but does not clear the PR from Needs Attention; ` +
+    `run \`move ${openPR.url} waiting\` for that.`
   );
 }
 

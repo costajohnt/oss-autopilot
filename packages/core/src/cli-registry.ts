@@ -1474,16 +1474,20 @@ export const commands: CLICommandDef[] = [
             (data) => {
               if (data.dismissed) {
                 console.log(`Dismissed: ${url}`);
-                console.log('Notifications are now muted.');
-                console.log(
-                  options.head
-                    ? 'A new push or a comment after this point will resurface it automatically.'
-                    : 'New responses after this point will resurface automatically.',
-                );
+                if (data.warning) {
+                  // An open PR stays in Needs Attention: the mute lines would be false (#1885).
+                  console.log(`Warning: ${data.warning}`);
+                } else {
+                  console.log('Notifications are now muted.');
+                  console.log(
+                    options.head
+                      ? 'A new push or a comment after this point will resurface it automatically.'
+                      : 'New responses after this point will resurface automatically.',
+                  );
+                }
               } else {
                 console.log('Already dismissed.');
               }
-              if (data.warning) console.log(`Warning: ${data.warning}`);
             },
           ),
         );

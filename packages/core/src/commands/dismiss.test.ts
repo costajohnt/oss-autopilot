@@ -27,13 +27,16 @@ function digestWithOpenPRs(...urls: string[]) {
 describe('runDismiss', () => {
   const mockDismissIssue = vi.fn();
   const mockGetState = vi.fn();
+  const mockIsPRShelved = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetState.mockReturnValue({});
+    mockIsPRShelved.mockReturnValue(false);
     mockGetStateManager.mockReturnValue({
       dismissIssue: mockDismissIssue,
       getState: mockGetState,
+      isPRShelved: mockIsPRShelved,
     } as any);
   });
 
@@ -109,6 +112,31 @@ describe('runDismiss', () => {
       const result = await runDismiss({ url: TEST_PR_URL, head: 'a'.repeat(40) });
 
       expect(result.warning).toContain(`move ${TEST_PR_URL} waiting`);
+    });
+
+    it('gives no warning when the open PR is shelved: it is not in Needs Attention and move waiting would unshelve it', async () => {
+      mockDismissIssue.mockReturnValue(true);
+      mockGetState.mockReturnValue(digestWithOpenPRs(TEST_PR_URL));
+      mockIsPRShelved.mockReturnValue(true);
+
+      const result = await runDismiss({ url: TEST_PR_URL });
+
+      expect(mockIsPRShelved).toHaveBeenCalledWith(TEST_PR_URL);
+      expect(result).toEqual({ dismissed: true, url: TEST_PR_URL });
+      expect(result).not.toHaveProperty('warning');
+    });
+
+    it('matches the open PR case-insensitively and suggests move with the stored (GitHub) casing', async () => {
+      mockDismissIssue.mockReturnValue(true);
+      mockGetState.mockReturnValue(digestWithOpenPRs(TEST_PR_URL));
+      const typedUrl = 'https://github.com/Owner/REPO/pull/42';
+
+      const result = await runDismiss({ url: typedUrl });
+
+      expect(mockIsPRShelved).toHaveBeenCalledWith(TEST_PR_URL);
+      expect(result.url).toBe(typedUrl);
+      expect(result.warning).toContain(`move ${TEST_PR_URL} waiting`);
+      expect(result.warning).not.toContain(typedUrl);
     });
 
     it('gives no warning for a PR URL that is not an open PR in the last digest (merged or unknown)', async () => {
