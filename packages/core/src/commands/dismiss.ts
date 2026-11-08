@@ -10,6 +10,13 @@
  * lands. A review follow-up dismissed with `--head <sha>` also records the
  * PR's head, so a push (new head) brings it back while bot, label and
  * bystander updates do not; see `daily-reviewed-prs.ts`.
+ *
+ * Dismissing one of the user's own open PRs is still recorded, but it does
+ * not clear the PR from Needs Attention: the actionable list is built from
+ * the open PR set without a dismiss filter (#657), and `move <pr-url>
+ * waiting` is the tool for that. The result carries a `warning` when the URL
+ * matches an open PR from the last daily digest so the user and the /oss
+ * workflow learn this (#1885).
  */
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
@@ -27,8 +34,36 @@ const MODULE = 'dismiss';
 export interface DismissOutput {
   dismissed: boolean;
   url: string;
+  /**
+   * Set when the URL is one of the user's open PRs in the last daily digest:
+   * the dismiss was recorded but does not clear the PR from Needs Attention;
+   * `move <pr-url> waiting` does (#1885).
+   */
+  warning?: string;
   /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
   gistSyncWarning?: string;
+}
+
+/**
+ * Warning for dismissing one of the user's open PRs (#1885). Reads the open PR
+ * set persisted by the last `daily` run; no GitHub call. Undefined when the URL
+ * is not an open PR there (merged, closed, never seen, or no digest yet), or
+ * when the PR is shelved: `daily` keeps shelved PRs in `openPRs` but out of
+ * Needs Attention, and `move <pr-url> waiting` would unshelve one.
+ *
+ * URL validation accepts any owner/repo casing while `openPRs` holds GitHub's,
+ * so the match is case-insensitive and the suggested `move` command uses the
+ * stored URL, which is the one `daily` checks against the shelf.
+ */
+function openPRDismissWarning(stateManager: ReturnType<typeof getStateManager>, url: string): string | undefined {
+  const openPRs = stateManager.getState().lastDigest?.openPRs ?? [];
+  const wanted = url.toLowerCase();
+  const openPR = openPRs.find((pr) => pr.url.toLowerCase() === wanted);
+  if (!openPR || stateManager.isPRShelved(openPR.url)) return undefined;
+  return (
+    `${openPR.url} is one of your open PRs. dismiss records it but does not clear the PR from Needs Attention; ` +
+    `run \`move ${openPR.url} waiting\` for that.`
+  );
 }
 
 export interface UndismissOutput {
@@ -54,7 +89,8 @@ export interface UndismissOutput {
  *   hidden until the head moves or someone comments after the dismiss.
  *   Without it, only the stamp decides, and any update to the PR can resurface it.
  * @returns Whether the issue was newly dismissed (false if already dismissed);
- *   always true for a PR URL
+ *   always true for a PR URL. Carries a `warning` when the PR is one of the
+ *   user's open PRs from the last daily digest (#1885).
  * @throws {ValidationError} If the URL is not a valid GitHub issue or PR URL,
  *   if `head` is not a full 40-hex SHA, or if `head` is given with an issue URL
  */
@@ -76,8 +112,14 @@ export async function runDismiss(options: { url: string; head?: string }): Promi
   const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () =>
     stateManager.dismissIssue(options.url, dismissedAt, dismissOptions),
   );
+  const warning = isPR ? openPRDismissWarning(stateManager, options.url) : undefined;
 
-  return { dismissed: added, url: options.url, ...(gistSyncWarning && { gistSyncWarning }) };
+  return {
+    dismissed: added,
+    url: options.url,
+    ...(warning && { warning }),
+    ...(gistSyncWarning && { gistSyncWarning }),
+  };
 }
 
 /**
