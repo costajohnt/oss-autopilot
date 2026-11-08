@@ -712,6 +712,8 @@ export class StateManager {
         };
         return false;
       }
+      // A mutation may have started while the push was in flight.
+      if (this.mutationDepth > 0) return false;
     }
     const result = await this.gistStore.refreshFromGist(options);
     // StateManager keeps its boolean shape (callers rely on truthy-check

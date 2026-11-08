@@ -1591,6 +1591,23 @@ describe('maybeCheckpoint Gist conflict recovery (audit 2026-10-30 H1)', () => {
     expect(manager.getStateStaleness()?.reason).toMatch(/not pushed yet/);
   });
 
+  it('skips the pull when a mutation started during the push-before-pull', async () => {
+    const { manager, store } = makeManager();
+    let release!: () => void;
+    Object.assign(store, {
+      setState: vi.fn(),
+      push: async () => {
+        void manager.runMutation(() => new Promise<void>((r) => (release = r)));
+        return true;
+      },
+    });
+    manager.dismissIssue('https://github.com/o/r/issues/7', '2026-10-31T00:00:00.000Z');
+
+    await expect(manager.refreshFromGist()).resolves.toBe(false);
+    expect(store.refreshFromGist).not.toHaveBeenCalled();
+    release();
+  });
+
   it('forgetUnpushedChanges marks the saves disposable so a refresh may replace them', async () => {
     const { manager, store } = makeManager();
     manager.dismissIssue('https://github.com/o/r/issues/7', '2026-10-31T00:00:00.000Z');
