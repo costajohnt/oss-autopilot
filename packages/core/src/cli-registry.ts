@@ -1483,6 +1483,7 @@ export const commands: CLICommandDef[] = [
               } else {
                 console.log('Already dismissed.');
               }
+              if (data.warning) console.log(`Warning: ${data.warning}`);
             },
           ),
         );

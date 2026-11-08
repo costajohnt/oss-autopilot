@@ -776,7 +776,7 @@ export function registerTools(server: McpServer): void {
     'dismiss',
     {
       description:
-        'Dismiss a GitHub issue so it no longer appears in notifications, or a PR so its merged-PR maintainer notes or review follow-up stop being raised. For a review follow-up, pass the entry’s headSha as `head` so the PR stays hidden until a new push or comment.',
+        'Dismiss a GitHub issue so it no longer appears in notifications, or a PR so its merged-PR maintainer notes or review follow-up stop being raised. For a review follow-up, pass the entry’s headSha as `head` so the PR stays hidden until a new push or comment. Dismissing one of the user’s own open PRs does not clear it from Needs Attention (the result carries a `warning`); use `move` with target `waiting` for that.',
       inputSchema: {
         url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to dismiss'),
         head: z

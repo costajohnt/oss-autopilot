@@ -738,6 +738,18 @@ describe('--json vs display output branching', () => {
     expect(consoleLogSpy).toHaveBeenCalledWith('New responses after this point will resurface automatically.');
   });
 
+  it('dismiss display prints the open-PR warning after the dismiss lines (#1885)', async () => {
+    const prUrl = 'https://github.com/owner/repo/pull/42';
+    const warning = `${prUrl} is one of your open PRs. run \`move ${prUrl} waiting\` for that.`;
+    mockRunDismiss.mockResolvedValue({ dismissed: true, url: prUrl, warning });
+    const program = buildProgram('dismiss');
+
+    await program.parseAsync(['node', 'cli', 'dismiss', prUrl]);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Dismissed: ${prUrl}`);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Warning: ${warning}`);
+  });
+
   it('dismiss display should show "Already dismissed." for no-op', async () => {
     mockRunDismiss.mockResolvedValue({ dismissed: false });
     const program = buildProgram('dismiss');
