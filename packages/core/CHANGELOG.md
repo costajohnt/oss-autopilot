@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.40.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.40.1...core-v3.40.2) (2026-11-08)
+
+
+### Bug Fixes
+
+* **core:** push un-pushed Gist changes before a refresh replaces them ([ba2355c](https://github.com/costajohnt/oss-autopilot/commit/ba2355cf75e034280099aae2222e7def2185b0c6))
+* **core:** push un-pushed Gist changes before a refresh replaces them ([53300d0](https://github.com/costajohnt/oss-autopilot/commit/53300d095fb6bb0c88624f031d394477e67bb3bc))
+* **core:** skip the pull if a mutation started during push-before-pull ([f9e0bfe](https://github.com/costajohnt/oss-autopilot/commit/f9e0bfe6ba06465cc4e7fdf65ef4a8cc9f3087c3))
+* warn when dismiss targets an open PR it cannot clear ([#1886](https://github.com/costajohnt/oss-autopilot/issues/1886)) ([b5725fe](https://github.com/costajohnt/oss-autopilot/commit/b5725fe495872e40f7104cabe6826030834b5a88))
+
 ## [3.40.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.40.0...core-v3.40.1) (2026-11-02)
 
 
