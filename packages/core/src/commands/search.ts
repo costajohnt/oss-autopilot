@@ -3,6 +3,7 @@
  * Searches for new issues to work on via @oss-scout/core
  */
 
+import * as fs from 'node:fs';
 import {
   adaptScoutLinkedPR,
   buildCandidateLinkedPR,
@@ -69,6 +70,39 @@ interface SearchOptions {
    * cursor does not advance either; pair it with `full`.
    */
   record?: boolean;
+  /**
+   * Issue URLs to leave out of this search (`--exclude-file`). Scout skips
+   * them before vetting, so they use no vetting or result slots. Matching is
+   * exact, against the URL as search prints it.
+   */
+  excludeUrls?: string[];
+}
+
+/**
+ * Read the issue URLs out of an `--exclude-file`. The file can be any text
+ * (one URL per line, or lines like `2026-11-01 <url>`); every GitHub issue URL
+ * in it is used, each once.
+ *
+ * @throws {Error} If the file cannot be read. A silent miss would resurface
+ *   everything the caller meant to exclude.
+ */
+export function readExcludeFile(path: string): string[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(`Cannot read --exclude-file "${path}": ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
+  }
+  const urls = [...new Set(text.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/\d+/g) ?? [])];
+  // An empty file is a fresh seen list. Text with no URL in it is more likely
+  // the wrong file or the wrong format, and would otherwise exclude nothing
+  // without a word.
+  if (urls.length === 0 && text.trim() !== '') {
+    warn(MODULE, `--exclude-file "${path}" has content but no GitHub issue URLs; nothing is excluded`);
+  }
+  return urls;
 }
 
 /**
@@ -200,7 +234,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   // soft, so a GitHub hiccup never blocks the search.
   await refreshStarredReposIfStale(stateManager);
 
-  const scout = await createAutopilotScout(bridgeDiagnostics);
+  const scout = await createAutopilotScout(bridgeDiagnostics, options.excludeUrls);
 
   // Derive personalization from local history (#1244). `computeStrategy`
   // returns null below the merged-PR floor — in that case we pass nothing

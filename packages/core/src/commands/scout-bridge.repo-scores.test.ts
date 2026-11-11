@@ -103,6 +103,15 @@ describe('repoScores aliasing contract (#1458)', () => {
     expect(liveState.closedPRs).toHaveLength(1);
   });
 
+  it('forwards excludeUrls into the scout it builds, as skipped issues', async () => {
+    const state = makeAgentState({});
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const scout = await createAutopilotScout(undefined, ['https://github.com/o/r/issues/7']);
+
+    expect((scout.getState().skippedIssues ?? []).map((s) => s.url)).toContain('https://github.com/o/r/issues/7');
+  });
+
   it('for an un-ledgered PR, scout writes through the shared repoScores object with ITS OWN formula, and its ledger append does not flow back', async () => {
     const state = makeAgentState({
       repoScores: { [REPO]: makeRepoScore({ score: 5, mergedPRCount: 0 }) },

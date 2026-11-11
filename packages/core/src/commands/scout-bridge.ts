@@ -103,8 +103,10 @@ export function buildCandidateLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | und
  * @param diagnostics - Optional collector for degradation signals (#1448,
  *   #1528); `skipListUnavailable` is set when the configured skipped-issues
  *   file is unreadable or missing at its resolved path.
+ * @param excludeUrls - Issue URLs the caller wants left out of this search
+ *   (`search --exclude-file`). Non-issue URLs are ignored.
  */
-export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutState {
+export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrls: readonly string[] = []): ScoutState {
   const state = getStateManager().getState();
   const { config } = state;
 
@@ -162,6 +164,26 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       title: '',
       skippedAt: claim.startedAt,
       reason: `implementation in progress (session ${claim.session})`,
+      permanent: true,
+    });
+  }
+
+  // Caller-supplied exclusions (`search --exclude-file`). A scheduled search
+  // run with --no-record keeps its own seen list; passing it here makes scout
+  // skip those issues before vetting, where discarding them from the results
+  // afterwards would hand back the same top-ranked issues every run.
+  const excludedAt = new Date().toISOString();
+  for (const url of excludeUrls) {
+    if (skippedUrls.has(url) || !ISSUE_URL_PATTERN.test(url)) continue;
+    const parsed = parseGitHubUrl(url);
+    skippedUrls.add(url);
+    skippedIssues.push({
+      url,
+      repo: parsed ? `${parsed.owner}/${parsed.repo}` : '',
+      number: parsed?.number ?? 0,
+      title: '',
+      skippedAt: excludedAt,
+      reason: 'excluded by caller',
       permanent: true,
     });
   }
@@ -311,12 +333,16 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
  *
  * @param diagnostics - Optional collector for degradation signals (#1448),
  *   forwarded to {@link buildScoutState}.
+ * @param excludeUrls - Issue URLs to leave out, forwarded to {@link buildScoutState}.
  */
-export async function createAutopilotScout(diagnostics?: ScoutBridgeDiagnostics): Promise<OssScout> {
+export async function createAutopilotScout(
+  diagnostics?: ScoutBridgeDiagnostics,
+  excludeUrls?: readonly string[],
+): Promise<OssScout> {
   const token = requireGitHubToken();
   return createScout({
     githubToken: token,
     persistence: 'provided',
-    initialState: buildScoutState(diagnostics),
+    initialState: buildScoutState(diagnostics, excludeUrls),
   });
 }

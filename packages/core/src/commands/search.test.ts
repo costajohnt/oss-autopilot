@@ -3,6 +3,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 const mockSearch = vi.fn();
 const mockScoutState = { searchRotation: { languageOffset: 0 } as { languageOffset: number; lastRotatedAt?: string } };
@@ -36,7 +39,13 @@ vi.mock('../core/starred-repos.js', () => ({
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
-import { runSearch, recordSearchSeen, parseSearchStrategies, SEARCH_SEEN_RETENTION_DAYS } from './search.js';
+import {
+  runSearch,
+  recordSearchSeen,
+  parseSearchStrategies,
+  readExcludeFile,
+  SEARCH_SEEN_RETENTION_DAYS,
+} from './search.js';
 
 /** A scout `ProjectHealth` success snapshot for a healthy, active repo. */
 function healthyProjectHealth(repo: string) {
@@ -106,6 +115,15 @@ describe('runSearch', () => {
     expect(sm.setSearchSeen).not.toHaveBeenCalled();
     expect(sm.setSearchRotation).not.toHaveBeenCalled();
     expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('hands excludeUrls to the scout factory so scout skips them before vetting', async () => {
+    mockSearch.mockResolvedValue({ candidates: [], excludedRepos: [], aiPolicyBlocklist: [], strategiesUsed: [] });
+    const excludeUrls = ['https://github.com/o/r/issues/7'];
+
+    await runSearch({ maxResults: 5, excludeUrls });
+
+    expect(vi.mocked(createAutopilotScout)).toHaveBeenCalledWith(expect.anything(), excludeUrls);
   });
 
   it('writes back the rotation cursor scout advanced, before the Gist checkpoint (#1630)', async () => {
@@ -887,5 +905,59 @@ describe('parseSearchStrategies (#1244 selector)', () => {
     expect(() => parseSearchStrategies('broad,nope')).toThrow(
       /Valid strategies: merged, orgs, starred, broad, maintained, all/,
     );
+  });
+});
+
+describe('readExcludeFile', () => {
+  /** A path for `name` inside a fresh temp dir. */
+  function tmpFile(name: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exclude-'));
+    return path.join(dir, name);
+  }
+
+  it('returns every issue URL in the file once, whatever surrounds it', () => {
+    const file = tmpFile('seen.txt');
+    fs.writeFileSync(
+      file,
+      [
+        '2026-11-01 https://github.com/o/r/issues/1',
+        'https://github.com/o/r/issues/2',
+        '- [#1](https://github.com/o/r/issues/1) listed twice',
+        'https://github.com/o/r/pull/3 is a pull request',
+        'https://github.com/o.dot/r-x_y/issues/44',
+        'not a url',
+        '',
+      ].join('\n'),
+    );
+
+    expect(readExcludeFile(file)).toEqual([
+      'https://github.com/o/r/issues/1',
+      'https://github.com/o/r/issues/2',
+      'https://github.com/o.dot/r-x_y/issues/44',
+    ]);
+  });
+
+  it('returns an empty list for an empty file without warning', () => {
+    const file = tmpFile('empty.txt');
+    fs.writeFileSync(file, '\n');
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(readExcludeFile(file)).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('warns when a file has content but no issue URLs', () => {
+    const file = tmpFile('wrong.txt');
+    fs.writeFileSync(file, 'github.com/o/r/issues/1\nhttp://github.com/o/r/issues/2\n');
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(readExcludeFile(file)).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no GitHub issue URLs'));
+    warnSpy.mockRestore();
+  });
+
+  it('throws when the file cannot be read instead of excluding nothing', () => {
+    expect(() => readExcludeFile('/nonexistent/dir/seen.txt')).toThrow(/Cannot read --exclude-file/);
   });
 });
