@@ -92,7 +92,10 @@ vi.mock('./commands/search.js', () => ({
   MAX_SEARCH_RESULTS: 100,
   DEFAULT_SEARCH_RESULTS: 15,
   parseSearchStrategies: (raw?: string) => (raw === undefined ? undefined : [raw]),
-  readExcludeFile: (path: string) => [`url-from:${path}`],
+  readExcludeFile: (path: string) => {
+    if (path === '' || path === '/missing') throw new Error(`Cannot read --exclude-file "${path}"`);
+    return [`url-from:${path}`];
+  },
 }));
 
 const mockRunDismiss = vi.fn();
@@ -413,6 +416,18 @@ describe('search count validation', () => {
       record: true,
       excludeUrls: ['url-from:/state/seen.txt'],
     });
+  });
+
+  it.each(['/missing', ''])('fails the search when --exclude-file "%s" cannot be read', async (file) => {
+    const program = buildProgram('search');
+
+    await expect(program.parseAsync(['node', 'cli', 'search', '--exclude-file', file, '--json'])).rejects.toThrow(
+      'process.exit called',
+    );
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(`Cannot read --exclude-file "${file}"`, 'UNKNOWN');
+    expect(mockRunSearch).not.toHaveBeenCalled();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
   it('passes no excludeUrls without --exclude-file', async () => {

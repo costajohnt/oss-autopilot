@@ -909,8 +909,14 @@ describe('parseSearchStrategies (#1244 selector)', () => {
 });
 
 describe('readExcludeFile', () => {
+  /** A path for `name` inside a fresh temp dir. */
+  function tmpFile(name: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exclude-'));
+    return path.join(dir, name);
+  }
+
   it('returns every issue URL in the file once, whatever surrounds it', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'exclude-')), 'seen.txt');
+    const file = tmpFile('seen.txt');
     fs.writeFileSync(
       file,
       [
@@ -931,11 +937,24 @@ describe('readExcludeFile', () => {
     ]);
   });
 
-  it('returns an empty list for a file with no issue URLs', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'exclude-')), 'empty.txt');
-    fs.writeFileSync(file, '');
+  it('returns an empty list for an empty file without warning', () => {
+    const file = tmpFile('empty.txt');
+    fs.writeFileSync(file, '\n');
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     expect(readExcludeFile(file)).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('warns when a file has content but no issue URLs', () => {
+    const file = tmpFile('wrong.txt');
+    fs.writeFileSync(file, 'github.com/o/r/issues/1\nhttp://github.com/o/r/issues/2\n');
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(readExcludeFile(file)).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no GitHub issue URLs'));
+    warnSpy.mockRestore();
   });
 
   it('throws when the file cannot be read instead of excluding nothing', () => {

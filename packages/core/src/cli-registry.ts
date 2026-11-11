@@ -395,7 +395,7 @@ export const commands: CLICommandDef[] = [
         )
         .option(
           '--exclude-file <path>',
-          'Leave out every GitHub issue URL found in this file. For scheduled searches that keep their own seen list (see --no-record).',
+          'Leave out every GitHub issue URL found in this file, matched exactly as search prints them. For scheduled searches that keep their own seen list (see --no-record).',
         )
         .action(async (count: string | undefined, options: SearchCliOptions) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
@@ -420,7 +420,7 @@ export const commands: CLICommandDef[] = [
               if (!options.json) {
                 console.log(`\nSearching for issues (max ${maxResults})...\n`);
               }
-              const excludeUrls = options.excludeFile ? readExcludeFile(options.excludeFile) : undefined;
+              const excludeUrls = options.excludeFile === undefined ? undefined : readExcludeFile(options.excludeFile);
               return runSearch({ maxResults, strategies, full: options.full, record: options.record, excludeUrls });
             },
             (data) => {

@@ -72,8 +72,8 @@ interface SearchOptions {
   record?: boolean;
   /**
    * Issue URLs to leave out of this search (`--exclude-file`). Scout skips
-   * them before vetting, so a caller that keeps its own seen list still gets
-   * a full set of new candidates.
+   * them before vetting, so they use no vetting or result slots. Matching is
+   * exact, against the URL as search prints it.
    */
   excludeUrls?: string[];
 }
@@ -95,7 +95,14 @@ export function readExcludeFile(path: string): string[] {
       cause: err,
     });
   }
-  return [...new Set(text.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/\d+/g) ?? [])];
+  const urls = [...new Set(text.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/\d+/g) ?? [])];
+  // An empty file is a fresh seen list. Text with no URL in it is more likely
+  // the wrong file or the wrong format, and would otherwise exclude nothing
+  // without a word.
+  if (urls.length === 0 && text.trim() !== '') {
+    warn(MODULE, `--exclude-file "${path}" has content but no GitHub issue URLs; nothing is excluded`);
+  }
+  return urls;
 }
 
 /**
