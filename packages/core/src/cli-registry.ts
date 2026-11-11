@@ -20,6 +20,7 @@ interface SearchCliOptions {
   strategy?: string;
   full?: boolean;
   record?: boolean;
+  excludeFile?: string;
 }
 
 interface CLICommandDef {
@@ -392,12 +393,16 @@ export const commands: CLICommandDef[] = [
           '--no-record',
           "Don't save surfaced issues or the rotation cursor to shared state. For scheduled searches on a second machine, so they don't hide issues from your own searches. Use with --full.",
         )
+        .option(
+          '--exclude-file <path>',
+          'Leave out every GitHub issue URL found in this file. For scheduled searches that keep their own seen list (see --no-record).',
+        )
         .action(async (count: string | undefined, options: SearchCliOptions) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
             async () => {
-              const { runSearch, MAX_SEARCH_RESULTS, DEFAULT_SEARCH_RESULTS, parseSearchStrategies } =
+              const { runSearch, MAX_SEARCH_RESULTS, DEFAULT_SEARCH_RESULTS, parseSearchStrategies, readExcludeFile } =
                 await import('./commands/search.js');
               const strategies = parseSearchStrategies(options.strategy);
               let maxResults = DEFAULT_SEARCH_RESULTS;
@@ -415,7 +420,8 @@ export const commands: CLICommandDef[] = [
               if (!options.json) {
                 console.log(`\nSearching for issues (max ${maxResults})...\n`);
               }
-              return runSearch({ maxResults, strategies, full: options.full, record: options.record });
+              const excludeUrls = options.excludeFile ? readExcludeFile(options.excludeFile) : undefined;
+              return runSearch({ maxResults, strategies, full: options.full, record: options.record, excludeUrls });
             },
             (data) => {
               if (data.hiddenOwnPRCount > 0) {

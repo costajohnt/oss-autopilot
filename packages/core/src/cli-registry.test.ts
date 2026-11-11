@@ -92,6 +92,7 @@ vi.mock('./commands/search.js', () => ({
   MAX_SEARCH_RESULTS: 100,
   DEFAULT_SEARCH_RESULTS: 15,
   parseSearchStrategies: (raw?: string) => (raw === undefined ? undefined : [raw]),
+  readExcludeFile: (path: string) => [`url-from:${path}`],
 }));
 
 const mockRunDismiss = vi.fn();
@@ -399,6 +400,28 @@ describe('search count validation', () => {
     await program.parseAsync(['node', 'cli', 'search', '10', '--full', '--no-record', '--json']);
 
     expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 10, full: true, record: false });
+  });
+
+  it('passes the URLs read from --exclude-file as excludeUrls', async () => {
+    mockRunSearch.mockResolvedValue(emptySearchResult);
+    const program = buildProgram('search');
+
+    await program.parseAsync(['node', 'cli', 'search', '--exclude-file', '/state/seen.txt', '--json']);
+
+    expect(mockRunSearch).toHaveBeenCalledWith({
+      maxResults: 15,
+      record: true,
+      excludeUrls: ['url-from:/state/seen.txt'],
+    });
+  });
+
+  it('passes no excludeUrls without --exclude-file', async () => {
+    mockRunSearch.mockResolvedValue(emptySearchResult);
+    const program = buildProgram('search');
+
+    await program.parseAsync(['node', 'cli', 'search', '--json']);
+
+    expect(mockRunSearch.mock.calls[0][0].excludeUrls).toBeUndefined();
   });
 
   it('should accept a valid positive integer count', async () => {

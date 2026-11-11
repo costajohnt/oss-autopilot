@@ -404,6 +404,37 @@ describe('buildScoutState', () => {
     ]);
   });
 
+  it('adds caller-supplied exclude URLs to skippedIssues, once each, ignoring non-issue URLs', () => {
+    const dismissed = 'https://github.com/owner/repo/issues/42';
+    const state = makeAgentState({
+      config: { skippedIssuesPath: undefined, dismissedIssues: { [dismissed]: '2026-05-01T10:00:00.000Z' } },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+
+    const result = buildScoutState(undefined, [
+      'https://github.com/owner/repo/issues/7',
+      'https://github.com/owner/repo/issues/7',
+      dismissed,
+      'https://github.com/owner/repo/pull/9',
+      'not a url',
+    ]);
+
+    expect(result.skippedIssues.map((s) => [s.url, s.reason])).toEqual([
+      [dismissed, 'dismissed'],
+      ['https://github.com/owner/repo/issues/7', 'excluded by caller'],
+    ]);
+    expect(result.skippedIssues[1]).toMatchObject({ repo: 'owner/repo', number: 7, permanent: true });
+  });
+
+  it('leaves skippedIssues untouched when no exclude URLs are passed', () => {
+    const state = makeAgentState({ config: { skippedIssuesPath: undefined } });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+
+    expect(buildScoutState().skippedIssues).toEqual([]);
+  });
+
   it('does not forward dismissed merged-PR URLs to the skip list (#1861)', () => {
     const state = makeAgentState({
       config: {
