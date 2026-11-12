@@ -356,7 +356,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
         reasonsToApprove: c.reasonsToApprove,
         reasonsToSkip: c.reasonsToSkip,
         searchPriority: c.searchPriority,
-        ...(c.complexityUnlocked ? { complexityUnlocked: true as const } : {}),
+        ...(c.complexityUnlocked && { complexityUnlocked: true as const }),
         viabilityScore: sanitizeViabilityScore(c.viabilityScore),
         grade,
         repoScore: repoScoreRecord

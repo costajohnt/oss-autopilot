@@ -83,6 +83,25 @@ function stateWithOpenPRs(openRepos: string[], repoScores: Record<string, { merg
   } as any);
 }
 
+function unlockCandidate(number: number, extra: object) {
+  return {
+    issue: {
+      repo: 'owner/repo',
+      number,
+      title: 'Issue',
+      url: `https://github.com/owner/repo/issues/${number}`,
+      labels: [],
+    },
+    recommendation: 'approve',
+    reasonsToApprove: [],
+    reasonsToSkip: [],
+    searchPriority: 'merged_pr',
+    viabilityScore: 80,
+    projectHealth: healthyProjectHealth('owner/repo'),
+    ...extra,
+  };
+}
+
 describe('runSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -259,27 +278,11 @@ describe('runSearch', () => {
   });
 
   it('should pass complexityUnlocked through and omit the key when scout did not set it', async () => {
-    const candidate = (number: number, extra: object) => ({
-      issue: {
-        repo: 'owner/repo',
-        number,
-        title: 'Issue',
-        url: `https://github.com/owner/repo/issues/${number}`,
-        labels: [],
-      },
-      recommendation: 'approve',
-      reasonsToApprove: [],
-      reasonsToSkip: [],
-      searchPriority: 'merged_pr',
-      viabilityScore: 80,
-      projectHealth: healthyProjectHealth('owner/repo'),
-      ...extra,
-    });
     mockSearch.mockResolvedValue({
       candidates: [
-        candidate(1, { complexityUnlocked: true }),
-        candidate(2, {}),
-        candidate(3, { complexityUnlocked: false }),
+        unlockCandidate(1, { complexityUnlocked: true }),
+        unlockCandidate(2, {}),
+        unlockCandidate(3, { complexityUnlocked: false }),
       ],
       excludedRepos: [],
       aiPolicyBlocklist: [],

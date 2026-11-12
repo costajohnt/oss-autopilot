@@ -108,7 +108,8 @@ describe('runVet', () => {
       vettingResult: {},
     };
     mockVetIssue.mockResolvedValue({ ...candidate, complexityUnlocked: true });
-    expect((await runVet({ issueUrl: TEST_ISSUE_URL })).complexityUnlocked).toBe(true);
+    const unlocked = await runVet({ issueUrl: TEST_ISSUE_URL });
+    expect(unlocked.complexityUnlocked).toBe(true);
 
     mockVetIssue.mockResolvedValue({ ...candidate, complexityUnlocked: false });
     expect('complexityUnlocked' in (await runVet({ issueUrl: TEST_ISSUE_URL }))).toBe(false);

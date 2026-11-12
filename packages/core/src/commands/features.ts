@@ -109,7 +109,7 @@ function toFeaturesCandidate(
     reasonsToApprove: scoutCandidate.reasonsToApprove,
     reasonsToSkip: scoutCandidate.reasonsToSkip,
     searchPriority: scoutCandidate.searchPriority,
-    ...(scoutCandidate.complexityUnlocked ? { complexityUnlocked: true as const } : {}),
+    ...(scoutCandidate.complexityUnlocked && { complexityUnlocked: true as const }),
     viabilityScore: sanitizeViabilityScore(scoutCandidate.viabilityScore),
     grade,
     repoScore: repoScoreRecord
