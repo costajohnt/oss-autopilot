@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.41.0...core-v3.42.0) (2026-11-12)
+
+
+### Features
+
+* **search:** add complexIssues setting and bump @oss-scout/core to 1.14.0 ([#1893](https://github.com/costajohnt/oss-autopilot/issues/1893)) ([d0a1549](https://github.com/costajohnt/oss-autopilot/commit/d0a1549d6d9c483136b96447de828b2427fafc9f))
+
 ## [3.41.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.40.2...core-v3.41.0) (2026-11-11)
 
 
