@@ -425,6 +425,14 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(threshold);
             break;
           }
+          case 'complexIssues': {
+            if (value !== 'off' && value !== 'warm') {
+              throw new ValidationError(`Invalid value for complexIssues: "${value}". Must be "off" or "warm".`);
+            }
+            stateManager.updateConfig({ complexIssues: value });
+            results[key] = value;
+            break;
+          }
           case 'healthCheckFreshnessMinutes': {
             const minutes = parsePositiveInt(value, 'healthCheckFreshnessMinutes');
             stateManager.updateConfig({ healthCheckFreshnessMinutes: minutes });

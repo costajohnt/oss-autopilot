@@ -312,6 +312,7 @@ describe('AgentConfigSchema', () => {
     it('should produce full config with all defaults from empty object', () => {
       const result = AgentConfigSchema.parse({});
 
+      expect(result.complexIssues).toBe('off');
       expect(result.setupComplete).toBe(false);
       expect(result.maxActivePRs).toBe(10);
       expect(result.dormantThresholdDays).toBe(30);

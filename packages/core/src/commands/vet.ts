@@ -70,6 +70,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     recommendation: reconcileRecommendation(candidate.recommendation, grade),
     reasonsToApprove: candidate.reasonsToApprove,
     reasonsToSkip: candidate.reasonsToSkip,
+    ...(candidate.complexityUnlocked ? { complexityUnlocked: true as const } : {}),
     projectHealth: candidate.projectHealth,
     vettingResult: candidate.vettingResult,
     antiLLMPolicy: candidate.antiLLMPolicy,

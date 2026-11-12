@@ -125,6 +125,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'non-negative integer (0 disables)',
   },
   {
+    key: 'complexIssues',
+    description:
+      'Surface larger issues in repos where you already have a merged PR: only a PR that closes the issue counts as an existing PR, and maintainer-filed issues pass without code in the body.',
+    settableVia: 'setup',
+    valueHint: 'off|warm',
+  },
+  {
     key: 'minRepoScoreThreshold',
     description: 'Minimum repo maintainer-health score required for discovery (0–10).',
     settableVia: 'setup',

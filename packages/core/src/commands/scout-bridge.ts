@@ -234,6 +234,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
       interPhaseDelayMs: 0,
       broadPhaseDelayMs: 0,
       skipBroadWhenSufficientResults: config.skipBroadWhenSufficientResults,
+      complexIssues: config.complexIssues === 'warm' ? 'warm' : 'off',
       persistence: config.persistence as 'local' | 'gist',
       slmTriageModel: config.slmTriageModel,
       slmTriageHost: config.slmTriageHost,

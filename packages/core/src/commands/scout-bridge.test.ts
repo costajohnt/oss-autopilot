@@ -54,6 +54,7 @@ describe('buildScoutState', () => {
         minStars: 100,
         maxIssueAgeDays: 30,
         skipBroadWhenSufficientResults: 3,
+        complexIssues: 'warm',
         includeDocIssues: false,
         minRepoScoreThreshold: 6,
         persistence: 'local',
@@ -91,6 +92,7 @@ describe('buildScoutState', () => {
     expect(result.preferences.maxIssueAgeDays).toBe(30);
     // Read from config (not the old hardcoded 15) so users can tune/disable it.
     expect(result.preferences.skipBroadWhenSufficientResults).toBe(3);
+    expect(result.preferences.complexIssues).toBe('warm');
     expect(result.preferences.includeDocIssues).toBe(false);
     expect(result.preferences.minRepoScoreThreshold).toBe(6);
     expect(result.preferences.persistence).toBe('local');
@@ -99,6 +101,18 @@ describe('buildScoutState', () => {
     expect(result.repoScores).toBe(state.repoScores);
     expect(result.lastRunAt).toBe('2026-03-01T12:00:00Z');
     expect(result.savedResults).toEqual([]);
+  });
+
+  it.each([
+    ['off', 'off'],
+    ['anchor', 'off'],
+    ['WARM', 'off'],
+    [undefined, 'off'],
+  ])('passes complexIssues %j to scout as %j (only "warm" unlocks)', (stored, expected) => {
+    const state = makeAgentState({ config: { complexIssues: stored } });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    expect(buildScoutState().preferences.complexIssues).toBe(expected);
   });
 
   it('reads avoidRepos and boostIssueTypes from config into ScoutPreferences (#1464)', () => {

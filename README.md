@@ -241,6 +241,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `avoidRepos` | `[]` | Repos to rank lower in search without excluding them |
 | `boostIssueTypes` | `[]` | Issue label types to rank higher in search (for example `bug`) |
 | `includeDocIssues` | `true` | Include documentation issues in search |
+| `complexIssues` | `off` | `warm` relaxes issue vetting in repos where you already have a merged PR, so larger and maintainer-filed issues surface there |
 | `autoExtractLearnings` | `true` | After a PR merges, extract what the maintainers asked for into per-repo guidelines |
 | `issueListPath` | (none) | Path to your own curated issue list |
 | `projectCategories` | `[]` | Categories to prioritize (nonprofit, devtools, and so on) |

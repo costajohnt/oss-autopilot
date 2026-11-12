@@ -65,6 +65,7 @@ function toFeaturesCandidate(
     reasonsToApprove: string[];
     reasonsToSkip: string[];
     searchPriority: SearchCandidate['searchPriority'];
+    complexityUnlocked?: true;
     viabilityScore: unknown;
     horizon: FeaturesCandidate['horizon'];
     /** Optional — present on real scout candidates, omitted in some test fixtures. */
@@ -108,6 +109,7 @@ function toFeaturesCandidate(
     reasonsToApprove: scoutCandidate.reasonsToApprove,
     reasonsToSkip: scoutCandidate.reasonsToSkip,
     searchPriority: scoutCandidate.searchPriority,
+    ...(scoutCandidate.complexityUnlocked ? { complexityUnlocked: true as const } : {}),
     viabilityScore: sanitizeViabilityScore(scoutCandidate.viabilityScore),
     grade,
     repoScore: repoScoreRecord

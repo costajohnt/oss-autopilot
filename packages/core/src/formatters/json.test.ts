@@ -520,6 +520,20 @@ describe('SearchOutputSchema (#1147)', () => {
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 
+  it('keeps complexityUnlocked on the candidates that carry it', () => {
+    const data = {
+      candidates: [{ ...makeSearchCandidate(), complexityUnlocked: true as const }, makeSearchCandidate()],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      hiddenOwnPRCount: 0,
+      reposAtCap: [],
+    };
+    const out = formatJson(SearchOutputSchema, data);
+    const candidates = (out as unknown as { data: { candidates: Array<Record<string, unknown>> } }).data.candidates;
+    expect(candidates[0].complexityUnlocked).toBe(true);
+    expect('complexityUnlocked' in candidates[1]).toBe(false);
+  });
+
   it('round-trips an empty result', () => {
     const data = {
       candidates: [],
