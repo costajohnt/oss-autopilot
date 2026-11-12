@@ -203,8 +203,43 @@ describe('description check', () => {
     });
     expect(result.score).toBe(33);
   });
-  it('warns when the body contains only an issue reference', () => {
-    expect(computeComplianceScore(meta({ body: 'Closes #42' })).checks.description.status).toBe('warn');
+  it.each([
+    'fix',
+    'WIP',
+    'N/A',
+    '## Summary\nx',
+    '12345678901234567890 !? ✅',
+    'A short 12345678901234567890 fix',
+    'Closes #42',
+    'Closes: #42',
+    'Fixes: owner/repo#42',
+    'Resolves #42, #43',
+    'Relates to #42',
+    'Related to owner/repo#42',
+    'References #42',
+    'Refs: #42',
+    'See #42',
+    'owner/repository-name#42',
+    '#42 #43 #44',
+    'https://github.com/owner/repository/issues/42',
+    '<https://github.com/owner/repository/issues/42>',
+    'www.example.com/a-very-long-path',
+    'References https://github.com/owner/repository/issues/42',
+    '[#42](https://github.com/owner/repository/issues/42)',
+    'Relates to #42\nCloses: #43\nhttps://example.com/very-long-path',
+    'Fix\nRelates to #42\nhttps://example.com/very-long-path',
+    '## Summary\n<!-- Describe the change here -->\nRelates to #42',
+    '九文字だけの説明文',
+  ])('warns on insufficient prose even with scaffolding or references: %s', (body) => {
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
+  it.each([
+    'Ten letters',
+    'Ten letters\nRelates to #42',
+    'Ten letters\nCloses: #42\nhttps://example.com/path',
+    '十分な長さの説明文です',
+  ])('accepts meaningful prose alongside references and links: %s', (body) => {
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
   it('warns on a template left unfilled (headings and placeholder comments only)', () => {
     const body =

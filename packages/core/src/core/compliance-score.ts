@@ -263,10 +263,11 @@ function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): Compl
   };
 }
 
-const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+/gi;
+const DESCRIPTION_REF =
+  /(?<![\w/.-])(?:(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|relate[sd]?\s+to|refs?|references?|see)\s*(?::\s*)?)?(?:[\w.-]+\/[\w.-]+)?#\d+/gi;
 
-// The body minus template scaffolding (HTML comments, headings) and closing
-// references, so an unfilled template does not count as a description.
+// The body minus template scaffolding, URLs and issue references, so they
+// cannot supply the prose needed for description credit.
 type Span = [start: number, end: number];
 
 // Closed code fences: a line opening with 3+ backticks, closed by a later line
@@ -351,7 +352,9 @@ function proseOf(body: string): string {
     uncommented
       // A heading is a short title line, not a sentence that starts with "# ".
       .replaceAll(/^ {0,3}#{1,6}[ \t]+[^\n]{0,60}$/gm, (line) => (/[.!?。]\s*$/.test(line) ? line : ''))
-      .replaceAll(CLOSING_REF, '')
+      .replaceAll(/\b(?:refs?|references?|see)\s*(?::\s*)?(?=https?:\/\/|www\.)/gi, '')
+      .replaceAll(/\b(?:https?:\/\/|www\.)[^\s<>]+/gi, '')
+      .replaceAll(DESCRIPTION_REF, '')
       .trim()
   );
 }
@@ -365,13 +368,13 @@ function checkDescription(meta: PRMetadata): ComplianceCheckResult {
     return { status: 'fail', weight, detail: 'description is empty' };
   }
   const prose = proseOf(meta.body);
-  if (/\p{L}/u.test(prose)) {
+  if ((prose.match(/\p{L}/gu)?.length ?? 0) >= 10) {
     return { status: 'pass', weight, detail: 'describes the change' };
   }
   return {
     status: 'warn',
     weight,
-    detail: 'no description beyond scaffolding or references; say what changed and why',
+    detail: 'too little description beyond scaffolding or references; say what changed and why',
   };
 }
 

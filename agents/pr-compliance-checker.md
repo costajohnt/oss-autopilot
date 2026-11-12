@@ -70,8 +70,8 @@ Look in PR body for `Closes #N` / `Fixes #N` (auto-closes) or `Relates to #N` / 
 ### 2. Description Quality (25%) — Required
 PR body should explain **what** changed and **why**. Headings are never required: a sentence or two of plain prose is a full description. If the repo has a PR template, follow it; do not add sections (Test Plan, Screenshots) the template does not ask for.
 
-- ✅ Description text beyond template scaffolding or issue references, regardless of headings or length
-- ⚠️ No description beyond scaffolding or issue references (e.g. an unfilled template or only `Closes #N`)
+- ✅ At least 10 Unicode letters of description text beyond template scaffolding, issue references, or URLs; no headings required
+- ⚠️ Too little description beyond scaffolding, issue references, or URLs (e.g. `fix`, `WIP`, or only `Closes #N`)
 - ❌ Empty
 
 The deterministic score checks for description text; it cannot establish that the text explains the change. Review what changed and why against the target repository's template and documented requirements, and flag genuinely missing required information. Do not add a heading or invent verification claims to improve the score.
