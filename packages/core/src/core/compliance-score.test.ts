@@ -226,6 +226,11 @@ describe('description check', () => {
     'www.example.com/a-very-long-path',
     'References https://github.com/owner/repository/issues/42',
     '[#42](https://github.com/owner/repository/issues/42)',
+    'References: [#42](https://github.com/owner/repository/issues/42)',
+    'References [#42](https://github.com/owner/repository/issues/42)',
+    '[References](https://github.com/owner/repository/issues/42)',
+    'WIP\nRelated to: https://github.com/owner/repository/issues/42',
+    'Fix\nRelates to: <https://github.com/owner/repository/issues/42>',
     'Relates to #42\nCloses: #43\nhttps://example.com/very-long-path',
     'Fix\nRelates to #42\nhttps://example.com/very-long-path',
     '## Summary\n<!-- Describe the change here -->\nRelates to #42',
@@ -237,6 +242,8 @@ describe('description check', () => {
     'Ten letters',
     'Ten letters\nRelates to #42',
     'Ten letters\nCloses: #42\nhttps://example.com/path',
+    'Ten letters\nReferences: [#42](https://github.com/owner/repository/issues/42)',
+    'Fix [paging](https://example.com) so the last page is retained.',
     '十分な長さの説明文です',
   ])('accepts meaningful prose alongside references and links: %s', (body) => {
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
