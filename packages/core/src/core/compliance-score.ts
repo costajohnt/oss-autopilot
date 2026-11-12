@@ -353,11 +353,8 @@ function proseOf(body: string): string {
       // A heading is a short title line, not a sentence that starts with "# ".
       .replaceAll(/^ {0,3}#{1,6}[ \t]+[^\n]{0,60}$/gm, (line) => (/[.!?。]\s*$/.test(line) ? line : ''))
       .replaceAll(/\[([^\][\n]*)\]\(((?:https?:\/\/|www\.)[^\s<>)]*)\)/gi, '$1 $2')
-      .replaceAll(
-        /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|relate[sd]?\s+to|refs?|references?|see)\s*(?::\s*)?(?=<?(?:https?:\/\/|www\.))/gi,
-        '',
-      )
-      .replaceAll(/\b(?:https?:\/\/|www\.)[^\s<>]+/gi, '')
+      // Normalize URLs to a reference token so the same rule removes their prefixes.
+      .replaceAll(/<?\b(?:https?:\/\/|www\.)[^\s<>]+>?/gi, '#0')
       .replaceAll(DESCRIPTION_REF, '')
       .trim()
   );
