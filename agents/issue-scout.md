@@ -90,7 +90,7 @@ Hidden signals (policy PRs, hidden comments) aren't document-scannable — note 
 ## Search Process
 
 1. **Run `search`** (MCP tool or CLI) — it automatically loads user preferences, applies multi-strategy search (merged repos, orgs, starred, broad, maintained), scores by viability (0–100), filters to active/available, and returns structured candidates.
-2. **Parse results.** Each candidate has `issue`, `recommendation`, `reasonsToApprove`, `reasonsToSkip`, `viabilityScore`, `grade`, `searchPriority`, optional `repoScore`. Strategy-biased searches (#1244) also carry optional `boostReasons` (why this result was boosted, e.g. repo affinity or language match) and `diversitySlot: true` (deliberately outside the user's usual languages/repos — the echo-chamber counterweight). Quote these in your summary so the user sees why each result surfaced; do not treat a diversity slot as a lower-quality result.
+2. **Parse results.** Each candidate has `issue`, `recommendation`, `reasonsToApprove`, `reasonsToSkip`, `viabilityScore`, `grade`, `searchPriority`, optional `repoScore`, optional `complexityUnlocked` (also on `vet` output). Strategy-biased searches (#1244) also carry optional `boostReasons` (why this result was boosted, e.g. repo affinity or language match) and `diversitySlot: true` (deliberately outside the user's usual languages/repos — the echo-chamber counterweight). Quote these in your summary so the user sees why each result surfaced; do not treat a diversity slot as a lower-quality result.
 3. **Manual context** via `status --json`: preferences, open PRs with health, history, cached repo scores.
 
 ### gh fallback
@@ -185,7 +185,8 @@ If `gh` also fails, STOP and report.
 
 The composite score is **issue quality + repo quality + relationship modifiers**.
 
-- **Issue quality (0–5):** clarity + scope + competition.
+- **Issue quality (0–5):** clarity + decided + competition. **Decided** means a maintainer has settled what should be done: they filed the issue as a task, stated the wanted behaviour in a comment, applied an accepted / confirmed / help wanted / difficulty label, or set a milestone. A reproducible bug report (steps plus expected vs actual) that no maintainer has disputed also counts as decided, triaged or not. On hold, blocked, "needs design", reserved for maintainers, or an open question is not decided, and such a marker overrides a decided label: cap issue quality at 2 and recommend `needs_review` at most (report it as `maybe` when the dispatcher asks for pursue/maybe/skip).
+- **Size (S / M / L) is reported, never scored.** S is one area and under about 100 changed lines with tests, M is up to about 400 lines or two to three areas, L is more. The `complexityUnlocked: true` flag on `search` or `vet` output (a repo where the user already has a merged PR, with the `complexIssues` setting at `warm`) changes one thing: without it, an L issue is `needs_review` (`maybe`) at most, and say why. With it, L is fine.
 - **Repo quality (0–5):** condensed projection of the canonical health rubric in [`docs/repo-scores.md` §Health score](../docs/repo-scores.md#health-score-theirs) — activity, PR speed/merge rate, responsiveness, guidelines, stability.
 - **Relationship modifiers:** merged PR here **+3**; starred **+2**; healthy open PR **+1**; dormant PR (20+ days) **−3**; PR closed without merge **−1**. A repo with a dormant PR should almost never be recommended unless the issue is exceptional.
 
@@ -203,7 +204,7 @@ The composite score is **issue quality + repo quality + relationship modifiers**
 #### 1. [acme/widgets#123](https://…) — title (Score: 12, Success: 10/10)
 **Your history:** merged 2 PRs here — great relationship!
 **Success likelihood:** 10/10 (merges 85% of PRs, 2-day avg response)
-**Why:** clarity [yes/somewhat/no] · scope [yes/maybe/no] · active [yes/somewhat/no] · no linked PRs [yes/no]
+**Why:** clarity [yes/somewhat/no] · decided [yes/no + who] · size [S/M/L] · active [yes/somewhat/no] · no linked PRs [yes/no]
 **Quick start:** [1–2 sentences on how to approach]
 
 ---

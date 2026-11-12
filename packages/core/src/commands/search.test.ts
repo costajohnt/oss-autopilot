@@ -83,6 +83,25 @@ function stateWithOpenPRs(openRepos: string[], repoScores: Record<string, { merg
   } as any);
 }
 
+function unlockCandidate(number: number, extra: object) {
+  return {
+    issue: {
+      repo: 'owner/repo',
+      number,
+      title: 'Issue',
+      url: `https://github.com/owner/repo/issues/${number}`,
+      labels: [],
+    },
+    recommendation: 'approve',
+    reasonsToApprove: [],
+    reasonsToSkip: [],
+    searchPriority: 'merged_pr',
+    viabilityScore: 80,
+    projectHealth: healthyProjectHealth('owner/repo'),
+    ...extra,
+  };
+}
+
 describe('runSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -256,6 +275,25 @@ describe('runSearch', () => {
     expect(result.candidates[0].diversitySlot).toBe(true);
     expect('diversitySlot' in result.candidates[1]).toBe(false);
     expect(result.candidates[1].boostReasons).toEqual(['language match: TypeScript']);
+  });
+
+  it('should pass complexityUnlocked through and omit the key when scout did not set it', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        unlockCandidate(1, { complexityUnlocked: true }),
+        unlockCandidate(2, {}),
+        unlockCandidate(3, { complexityUnlocked: false }),
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['merged'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect(result.candidates[0].complexityUnlocked).toBe(true);
+    expect('complexityUnlocked' in result.candidates[1]).toBe(false);
+    expect('complexityUnlocked' in result.candidates[2]).toBe(false);
   });
 
   it('should search and return candidates', async () => {

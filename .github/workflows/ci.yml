@@ -37,7 +37,7 @@ env:
   #     deterministic. If the threshold trips on a no-op rebuild, it's a
   #     real increase somewhere upstream — not noise.
   BUNDLE_MAX_CORE: 940000 # ~918 KB. Raised from 920000 (#1869): 2026-11-02 added four daily phases (closed-PR status, merged-PR notes, engaged issues, review follow-ups) and the work command; bundle measured 901.9 KB.
-  BUNDLE_MAX_MCP: 1160000 # ~1133 KB (lowered for the same reason, 1237 -> 990 KB; #1651)
+  BUNDLE_MAX_MCP: 1180000 # ~1152 KB. Raised from 1160000: main measured 1159924 bytes (76 under), and @oss-scout/core 1.14.0 (complexIssues) adds about 4 KB; this bundle inlines core and scout. Was lowered 1237 -> 990 KB in #1651.
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
 jobs:

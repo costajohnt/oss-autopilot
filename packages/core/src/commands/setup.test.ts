@@ -234,6 +234,17 @@ describe('runSetup', () => {
     expect(mockUpdateConfig).not.toHaveBeenCalled();
   });
 
+  it.each(['warm', 'off'] as const)('should handle complexIssues=%s', async (value) => {
+    const result = (await runSetup({ set: [`complexIssues=${value}`] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ complexIssues: value });
+    expect(result.settings.complexIssues).toBe(value);
+  });
+
+  it.each(['anchor', 'WARM', '', 'true'])('should reject complexIssues=%j', async (value) => {
+    await expect(runSetup({ set: [`complexIssues=${value}`] })).rejects.toThrow(/Must be "off" or "warm"/);
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
   it('should handle healthCheckFreshnessMinutes setting', async () => {
     await runSetup({ set: ['healthCheckFreshnessMinutes=45'] });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ healthCheckFreshnessMinutes: 45 });

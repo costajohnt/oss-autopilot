@@ -98,6 +98,26 @@ describe('runVet', () => {
     });
   });
 
+  it('passes complexityUnlocked through from scout and omits the key otherwise', async () => {
+    const candidate = {
+      issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: ['bug'] },
+      recommendation: 'approve' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    };
+    mockVetIssue.mockResolvedValue({ ...candidate, complexityUnlocked: true });
+    const unlocked = await runVet({ issueUrl: TEST_ISSUE_URL });
+    expect(unlocked.complexityUnlocked).toBe(true);
+
+    mockVetIssue.mockResolvedValue({ ...candidate, complexityUnlocked: false });
+    expect('complexityUnlocked' in (await runVet({ issueUrl: TEST_ISSUE_URL }))).toBe(false);
+
+    mockVetIssue.mockResolvedValue(candidate);
+    expect('complexityUnlocked' in (await runVet({ issueUrl: TEST_ISSUE_URL }))).toBe(false);
+  });
+
   it('records the vet-time prediction for calibration (#1824)', async () => {
     mockVetIssue.mockResolvedValue({
       issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },

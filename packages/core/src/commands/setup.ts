@@ -90,6 +90,13 @@ export interface CheckSetupOutput {
   username: string;
 }
 
+function parseComplexIssues(value: string): 'off' | 'warm' {
+  if (value !== 'off' && value !== 'warm') {
+    throw new ValidationError(`Invalid value for complexIssues: "${value}". Must be "off" or "warm".`);
+  }
+  return value;
+}
+
 /**
  * Interactive setup wizard or direct setting application.
  *
@@ -423,6 +430,12 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const threshold = parseNonNegativeInt(value, 'skipBroadWhenSufficientResults');
             stateManager.updateConfig({ skipBroadWhenSufficientResults: threshold });
             results[key] = String(threshold);
+            break;
+          }
+          case 'complexIssues': {
+            const mode = parseComplexIssues(value);
+            stateManager.updateConfig({ complexIssues: mode });
+            results[key] = mode;
             break;
           }
           case 'healthCheckFreshnessMinutes': {

@@ -36,6 +36,7 @@ describe('CONFIG_KEY_REGISTRY', () => {
       'maxIssueAgeDays',
       'minRepoScoreThreshold',
       'skipBroadWhenSufficientResults',
+      'complexIssues',
       'starredRepos',
       'starredReposLastFetched',
       'skippedIssuesPath',

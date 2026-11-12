@@ -786,6 +786,7 @@ const SearchCandidateSchema = z.object({
   reasonsToApprove: z.array(z.string()),
   reasonsToSkip: z.array(z.string()),
   searchPriority: SearchPrioritySchema,
+  complexityUnlocked: z.literal(true).optional(),
   viabilityScore: z.number(),
   grade: z.object({
     score: z.number().min(1).max(10),
@@ -1365,6 +1366,8 @@ export interface SearchCandidate {
   reasonsToApprove: string[];
   reasonsToSkip: string[];
   searchPriority: SearchPriority;
+  /** Set when the `complexIssues` setting unlocked this repo: size is not a reason to pass on the issue. */
+  complexityUnlocked?: true;
   /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
   viabilityScore: number;
   /**
@@ -1675,6 +1678,8 @@ export interface VetOutput {
   recommendation: 'approve' | 'skip' | 'needs_review';
   reasonsToApprove: string[];
   reasonsToSkip: string[];
+  /** Set when the `complexIssues` setting unlocked this repo: size is not a reason to pass on the issue. */
+  complexityUnlocked?: true;
   projectHealth: unknown;
   vettingResult: unknown;
   /**

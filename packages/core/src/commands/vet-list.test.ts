@@ -410,13 +410,16 @@ describe('runVetList', () => {
       reasonsToSkip: [],
       projectHealth: {},
       vettingResult: {},
+      complexityUnlocked: true,
     });
 
     const result = await runVetList({ concurrency: 1 });
 
     expect(result.results[0].listStatus).toBe('closed');
     expect(result.results[0].verification?.verdict).toBe('closed');
+    expect('complexityUnlocked' in result.results[0]).toBe(false);
     expect(result.results[1].listStatus).toBe('still_available');
+    expect(result.results[1].complexityUnlocked).toBe(true);
     // Scout was consulted only for the available issue, not the closed one.
     expect(mockVetIssue).toHaveBeenCalledTimes(1);
     expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/other/lib/issues/2');

@@ -339,6 +339,12 @@ export const AgentConfigSchema = z
     // found (0 disables — broad always runs). Affinity/starred-repo candidates do
     // not count, so the broad phase still surfaces repos you haven't touched.
     skipBroadWhenSufficientResults: z.number().min(0).default(8),
+    // Passed to scout as its `complexIssues` preference. "warm" relaxes vetting
+    // in repos the user already has a merged PR in, so larger and
+    // maintainer-filed issues surface there. "off" keeps one rule set everywhere.
+    // Open enum: a later release may add a mode, and this one must still load
+    // the shared state. Anything but "warm" reads as off (scout-bridge.ts).
+    complexIssues: openEnum(['off', 'warm'] as const).default('off'),
 
     languages: z.array(z.string()).default(['typescript', 'javascript']),
     labels: z.array(z.string()).default(['good first issue', 'help wanted']),

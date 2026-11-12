@@ -57,6 +57,20 @@ describe('runFeatures', () => {
     } as never);
   });
 
+  it('passes complexityUnlocked through and omits the key when scout did not set it', async () => {
+    mockFeatures.mockResolvedValue({
+      quickWins: [makeScoutFeatureCandidate({ complexityUnlocked: true })],
+      biggerBets: [makeScoutFeatureCandidate({ horizon: 'bigger-bet', complexityUnlocked: false })],
+      anchorRepos: [],
+      message: null,
+    });
+
+    const result = await runFeatures({ maxResults: 5 });
+
+    expect(result.quickWins[0].complexityUnlocked).toBe(true);
+    expect('complexityUnlocked' in result.biggerBets[0]).toBe(false);
+  });
+
   it('passes options through to scout.features (count + per-call overrides)', async () => {
     mockFeatures.mockResolvedValue({
       quickWins: [],
