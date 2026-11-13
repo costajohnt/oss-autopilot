@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.1...core-v3.42.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* keep merged PR counts at the ledger total past the 300-PR search cap ([58654d6](https://github.com/costajohnt/oss-autopilot/commit/58654d68d87e06bf616e46e69ea395fb2e942aca))
+* keep merged PR counts at the ledger total past the 300-PR search cap ([bface23](https://github.com/costajohnt/oss-autopilot/commit/bface23dd33ccb2556c312a6cba00ccee8abd310)), closes [#1897](https://github.com/costajohnt/oss-autopilot/issues/1897)
+* **mcp:** release the MCP server with every core release ([#1898](https://github.com/costajohnt/oss-autopilot/issues/1898)) ([2fd69aa](https://github.com/costajohnt/oss-autopilot/commit/2fd69aae1837186e317724c9ad59904e5943c81d))
+
 ## [3.42.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.0...core-v3.42.1) (2026-11-13)
 
 
