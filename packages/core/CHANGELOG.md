@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.2...core-v3.42.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* **state:** reconcile PR counts when loading from the Gist ([2b9ddf9](https://github.com/costajohnt/oss-autopilot/commit/2b9ddf9cf72bd7e027ad12fcb8020feec0c5c3b1))
+* **state:** reconcile PR counts when loading from the Gist ([8c0e13e](https://github.com/costajohnt/oss-autopilot/commit/8c0e13ea41adcd70ed0b1ca6c0a3b9246647c8fb)), closes [#1897](https://github.com/costajohnt/oss-autopilot/issues/1897)
+
 ## [3.42.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.1...core-v3.42.2) (2026-11-13)
 
 
