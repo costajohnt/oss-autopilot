@@ -104,6 +104,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getClosedPRs: vi.fn(() => []),
       releaseIssue: mockReleaseIssue,
       renameRepo: mockRenameRepo,
+      tryReconcilePRCounts: vi.fn(),
       setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
@@ -968,6 +969,24 @@ describe('executeDailyCheck() — error resilience', () => {
     );
     expect(zeroCalls).toHaveLength(0);
     consoleSpy.mockRestore();
+  });
+
+  it('skips stale repo reset when the merged PR search was truncated (#1897)', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        repoScores: {
+          'owner/existing': { repo: 'owner/existing', mergedPRCount: 3, closedWithoutMergeCount: 0, score: 7 },
+        },
+      }),
+    );
+    mockFetchUserMergedPRCounts.mockResolvedValue({
+      ...makeMergedResult(new Map([['owner/other', { count: 1, lastMergedAt: '2026-01-01T00:00:00Z' }]])),
+      truncated: true,
+    });
+
+    await executeDailyCheck('test-token');
+
+    expect(mockUpdateRepoScore).not.toHaveBeenCalledWith('owner/existing', { mergedPRCount: 0 });
   });
 });
 
