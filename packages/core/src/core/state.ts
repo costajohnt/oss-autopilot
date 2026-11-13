@@ -355,9 +355,10 @@ export class StateManager {
 
   /**
    * Attempt PR count reconciliation, logging a warning on failure.
-   * Called after every state load from disk.
+   * Called after every state load and ledger addition, and by daily after it
+   * overwrites counts from the pagination-capped search (#1897).
    */
-  private tryReconcilePRCounts(): void {
+  tryReconcilePRCounts(): void {
     try {
       this.reconcilePRCounts();
     } catch (err) {
@@ -905,6 +906,7 @@ export class StateManager {
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
+    this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
   }
@@ -967,6 +969,7 @@ export class StateManager {
     this.state.closedPRs.push(...newPRs);
     this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
+    this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
   }
