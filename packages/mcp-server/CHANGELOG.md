@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.11.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.2...mcp-v5.11.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* **mcp:** bundle @oss-autopilot/core 3.42.3 ([fe680bf](https://github.com/costajohnt/oss-autopilot/commit/fe680bf31cb775bf51453c620780e0203992f52f))
+
 ## [5.11.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.1...mcp-v5.11.2) (2026-11-13)
 
 

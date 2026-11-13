@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.3...core-v3.42.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.14.2 so features honors minStars ([#1903](https://github.com/costajohnt/oss-autopilot/issues/1903)) ([cc3dd16](https://github.com/costajohnt/oss-autopilot/commit/cc3dd1692bcbb7a20feddfdd67eee78325fcc726))
+
 ## [3.42.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.2...core-v3.42.3) (2026-11-13)
 
 
