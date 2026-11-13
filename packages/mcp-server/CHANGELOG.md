@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.11.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.1...mcp-v5.11.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **mcp:** release the MCP server with every core release ([#1898](https://github.com/costajohnt/oss-autopilot/issues/1898)) ([2fd69aa](https://github.com/costajohnt/oss-autopilot/commit/2fd69aae1837186e317724c9ad59904e5943c81d))
+
 ## [5.11.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.0...mcp-v5.11.1) (2026-11-08)
 
 
