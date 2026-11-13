@@ -338,6 +338,10 @@ export class StateManager {
     // Surface a recovery that happened while loading the local file for Gist
     // migration — the recovered (or fresh) state is what got migrated.
     manager.loadRecovery = localRecovery;
+    // Same derived bookkeeping as refreshFromGist: repair counts a capped
+    // daily run left below the ledger, without counting it as un-pushed (#1897).
+    manager.tryReconcilePRCounts();
+    manager.unpushed = false;
 
     // Seed the staleness marker if bootstrap fell back to the local cache —
     // a `daily` running on a cron right after this start needs to know.
