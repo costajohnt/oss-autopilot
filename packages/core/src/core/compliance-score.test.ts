@@ -158,7 +158,8 @@ describe('issueReference check', () => {
 
 describe('description check', () => {
   it('fails on empty body', () => {
-    expect(computeComplianceScore(meta({ body: ' '.repeat(3) })).checks.description.status).toBe('fail');
+    const body = ' '.repeat(3);
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('fail');
   });
   it('passes on a summary heading without a test plan', () => {
     const body = '## Summary\nx\n(no why, no test plan)';
@@ -168,8 +169,85 @@ describe('description check', () => {
     const body = 'Fixes the off-by-one in the pager so the last page is no longer dropped when the count is exact.';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
-  it('warns on a short body with no headings', () => {
-    expect(computeComplianceScore(meta({ body: 'Closes #42' })).checks.description.status).toBe('warn');
+  it.each([
+    'Fixes paging so the last page is kept.',
+    '## Summary\nFixes paging so the last page is kept.',
+    '## Change\nKeep the last page.\n\n## Reason\nAvoid dropping results.',
+    'ページが欠落しないように修正しました。',
+  ])('gives full description credit independent of headings: %s', (body) => {
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('accepts a completed repository template without adding generic sections', () => {
+    const body = '## Change\nKeep the last page to avoid missing results.\n\nCloses #1';
+    const result = computeComplianceScore(meta({ body }));
+    expect(result.checks.description.status).toBe('pass');
+    expect(result.score).toBe(100);
+  });
+  it('preserves unrelated compliance failures for a clear description', () => {
+    const result = computeComplianceScore(
+      meta({
+        body: 'Fixes paging so the last page is kept.\n\nCloses #1',
+        title: 'WIP',
+        branch: 'main',
+        filesChangedCount: 21,
+        files: ['src/paging.ts'],
+      }),
+      { linkedIssues: [{ number: 1, repo: 'owner/repo', crossRepo: false, state: 'not_found' }] },
+    );
+    expect(result.checks).toMatchObject({
+      description: { status: 'pass', weight: 25 },
+      issueReference: { status: 'fail', weight: 25 },
+      focusedChanges: { status: 'fail', weight: 20 },
+      tests: { status: 'warn', weight: 15 },
+      title: { status: 'fail', weight: 10 },
+      branch: { status: 'fail', weight: 5 },
+    });
+    expect(result.score).toBe(33);
+  });
+  it.each([
+    'fix',
+    'WIP',
+    'N/A',
+    '## Summary\nx',
+    '12345678901234567890 !? ✅',
+    'A short 12345678901234567890 fix',
+    'Closes #42',
+    'Closes: #42',
+    'Fixes: owner/repo#42',
+    'Resolves #42, #43',
+    'Relates to #42',
+    'Related to owner/repo#42',
+    'References #42',
+    'Refs: #42',
+    'See #42',
+    'owner/repository-name#42',
+    '#42 #43 #44',
+    'https://github.com/owner/repository/issues/42',
+    '<https://github.com/owner/repository/issues/42>',
+    'www.example.com/a-very-long-path',
+    'References https://github.com/owner/repository/issues/42',
+    '[#42](https://github.com/owner/repository/issues/42)',
+    'References: [#42](https://github.com/owner/repository/issues/42)',
+    'References [#42](https://github.com/owner/repository/issues/42)',
+    '[References](https://github.com/owner/repository/issues/42)',
+    'WIP\nRelated to: https://github.com/owner/repository/issues/42',
+    'Fix\nRelates to: <https://github.com/owner/repository/issues/42>',
+    'Relates to #42\nCloses: #43\nhttps://example.com/very-long-path',
+    'Fix\nRelates to #42\nhttps://example.com/very-long-path',
+    '## Summary\n<!-- Describe the change here -->\nRelates to #42',
+    '九文字だけの説明文',
+  ])('warns on insufficient prose even with scaffolding or references: %s', (body) => {
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
+  it.each([
+    'Ten letters',
+    'Ten letters\nRelates to #42',
+    'Ten letters\nCloses: #42\nhttps://example.com/path',
+    'Ten letters\nReferences: [#42](https://github.com/owner/repository/issues/42)',
+    'Fix [paging](https://example.com) so the last page is retained.',
+    '十分な長さの説明文です',
+  ])('accepts meaningful prose alongside references and links: %s', (body) => {
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
   it('warns on a template left unfilled (headings and placeholder comments only)', () => {
     const body =
