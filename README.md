@@ -247,7 +247,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `projectCategories` | `[]` | Categories to prioritize (nonprofit, devtools, and so on) |
 | `preferredOrgs` | `[]` | Orgs to prioritize |
 
-**Stats and badges.** `oss-autopilot stats` prints your merged-PR numbers; `--markdown` gives a shareable report and `--badge` gives shields.io endpoint JSON. For a live profile badge and SVG cards, see [oss-widgets](https://github.com/costajohnt/oss-widgets).
+**Stats and badges.** `oss-autopilot stats` prints your merged-PR numbers; `--markdown` gives a shareable report and `--badge` gives shields.io endpoint JSON.
 
 **Sync across machines (optional).** State can be stored in a secret GitHub gist instead of only on disk. See `oss-autopilot state --help`. A secret gist is unlisted, not access-controlled, so anyone with the URL can read it.
 
@@ -342,17 +342,7 @@ The diagrams in this README are generated from the JSON files in [`docs/diagrams
 
 ## About
 
-Built and used daily by [costajohnt](https://github.com/costajohnt). The contributions below were managed with it.
-
-<p align="center">
-<a href="https://github.com/costajohnt/oss-widgets">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" />
-  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=light&minStars=50" />
-  <img alt="OSS contribution stats for costajohnt" src="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" width="495" />
-</picture>
-</a>
-</p>
+Built and used daily by [costajohnt](https://github.com/costajohnt).
 
 ## License
 
