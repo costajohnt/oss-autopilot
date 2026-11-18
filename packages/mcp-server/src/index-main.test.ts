@@ -49,7 +49,7 @@ vi.mock('@oss-autopilot/core', () => ({
 
 // Mock StdioServerTransport — must use function() not arrow to support `new`
 // Needs start/close methods since McpServer.connect() calls transport.start()
-vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+vi.mock('@modelcontextprotocol/server/stdio', () => ({
   StdioServerTransport: vi.fn().mockImplementation(function () {
     return { start: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) };
   }),
@@ -70,8 +70,8 @@ vi.mock('node:http', async (importOriginal) => {
 
 // Mock StreamableHTTPServerTransport
 const mockHandleRequest = vi.fn().mockResolvedValue(undefined);
-vi.mock('@modelcontextprotocol/sdk/server/streamableHttp.js', () => ({
-  StreamableHTTPServerTransport: vi.fn().mockImplementation(function () {
+vi.mock('@modelcontextprotocol/node', () => ({
+  NodeStreamableHTTPServerTransport: vi.fn().mockImplementation(function () {
     return {
       handleRequest: mockHandleRequest,
       start: vi.fn().mockResolvedValue(undefined),
@@ -145,7 +145,7 @@ describe('main() in-process', () => {
 
       await main();
 
-      const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+      const { StdioServerTransport } = await import('@modelcontextprotocol/server/stdio');
       expect(StdioServerTransport).toHaveBeenCalled();
     });
   });
@@ -262,7 +262,8 @@ describe('main() in-process', () => {
       const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
       await handler(req, res);
 
-      const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+      const { NodeStreamableHTTPServerTransport: StreamableHTTPServerTransport } =
+        await import('@modelcontextprotocol/node');
       expect(StreamableHTTPServerTransport).toHaveBeenCalled();
       expect(mockHandleRequest).toHaveBeenCalledWith(req, res);
     });

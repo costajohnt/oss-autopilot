@@ -26,9 +26,10 @@
     "prepublishOnly": "pnpm run build && pnpm run bundle"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
     "@oss-autopilot/core": "workspace:^",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@modelcontextprotocol/node": "^2.1.2"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
@@ -36,7 +37,8 @@
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "@vitest/coverage-v8": "^5.0.0",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "@modelcontextprotocol/client": "^2.4.0"
   },
   "engines": {
     "node": ">=22"
