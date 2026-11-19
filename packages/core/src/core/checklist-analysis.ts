@@ -50,11 +50,56 @@ const LEAD_IN_SUBJECT_VERB_RE =
   /^(?:the\s+)?(?:pr|change|code)\s+(?:adds|changes|modifies|updates|removes|introduces|touches)\b/i;
 const ENDS_WITH_ONLY_COLON_RE = /^[^:]*:\s*$/;
 
-function isConditionalLeadIn(line: string): boolean {
+/**
+ * Template lead-ins that condition on what changed without naming you, the PR,
+ * the change or the code as the subject, as in the template from #1796:
+ * "If user exposed functionality or configuration variables are added/changed:"
+ * (the clause ends in a change verb) and "If the code communicates with ...:"
+ * (`the code` plus a verb about what it talks to or depends on).
+ * Bare "change"/"changes" is also a noun, so it counts only after a subject:
+ * "If the public API changes:" qualifies, "When submitting changes:" and
+ * "If you have questions about your changes:" do not. Auxiliaries and review
+ * verbs ("the code is complete", "the code looks good") are not in the list.
+ */
+const LEAD_IN_ENDS_IN_PARTICIPLE_RE =
+  /\b(?:added|changed|modified|updated|removed|introduced|deleted|renamed)\s*:\s*$/i;
+/** Words before a bare "change(s)" that make it a noun, not the clause's verb. */
+const CHANGE_NOUN_CUES = new Set(
+  'your my our their its the these those this that any some no of with about for to in on have has had make made propose proposed request requested'.split(
+    ' ',
+  ),
+);
+
+const BARE_CHANGE_VERBS = new Set(['change', 'changes']);
+
+function isBareChangeVerbEnding(rest: string): boolean {
+  const words = rest.replace(/:\s*$/, '').trim().toLowerCase().split(/\s+/);
+  const prev = words.at(-2);
+  if (prev === undefined || !BARE_CHANGE_VERBS.has(words.at(-1) ?? '')) return false;
+  return !prev.endsWith('ing') && !CHANGE_NOUN_CUES.has(prev);
+}
+
+const LEAD_IN_CODE_VERB_RE =
+  /^the\s+code\s+(?:communicates|interacts|calls|uses|depends|talks|connects|accesses|reads|writes|sends|stores|fetches|imports|loads)\b/i;
+
+/** The clause after "If"/"When"/"Only if" on a lead-in line ending in its only colon. */
+function leadInClause(line: string): string | undefined {
   const opener = LEAD_IN_OPENER_RE.exec(line);
-  if (!opener || !ENDS_WITH_ONLY_COLON_RE.test(line)) return false;
-  const rest = line.slice(opener[0].length);
-  return LEAD_IN_YOU_VERB_RE.test(rest) || LEAD_IN_SUBJECT_VERB_RE.test(rest);
+  if (!opener || !ENDS_WITH_ONLY_COLON_RE.test(line)) return undefined;
+  return line.slice(opener[0].length);
+}
+
+function isConditionalLeadIn(line: string): boolean {
+  const rest = leadInClause(line);
+  return rest !== undefined && (LEAD_IN_YOU_VERB_RE.test(rest) || LEAD_IN_SUBJECT_VERB_RE.test(rest));
+}
+
+function isTemplateLeadIn(line: string): boolean {
+  const rest = leadInClause(line);
+  return (
+    rest !== undefined &&
+    (LEAD_IN_ENDS_IN_PARTICIPLE_RE.test(rest) || isBareChangeVerbEnding(rest) || LEAD_IN_CODE_VERB_RE.test(rest))
+  );
 }
 
 /** An unindented checkbox line; nested boxes end a conditional run. */
@@ -155,17 +200,21 @@ function markConditionalRunExempt(lines: string[], runStart: number, runEnd: num
 
 interface RunRule {
   /** Blank lines allowed between the introducing line and the run. */
-  skipBlanks: boolean;
+  maxBlanks: number;
   inRun: RegExp;
   mark: (lines: string[], runStart: number, runEnd: number, exempt: Set<number>) => void;
 }
 
-const PICK_ONE_RUN: RunRule = { skipBlanks: true, inRun: ANY_CHECKBOX_RE, mark: markPickOneRunExempt };
-const CONDITIONAL_RUN: RunRule = { skipBlanks: false, inRun: TOP_LEVEL_CHECKBOX_RE, mark: markConditionalRunExempt };
+const PICK_ONE_RUN: RunRule = { maxBlanks: Infinity, inRun: ANY_CHECKBOX_RE, mark: markPickOneRunExempt };
+const CONDITIONAL_RUN: RunRule = { maxBlanks: 0, inRun: TOP_LEVEL_CHECKBOX_RE, mark: markConditionalRunExempt };
+/** Templates with these lead-ins put one blank line before the boxes (#1796). */
+const TEMPLATE_CONDITIONAL_RUN: RunRule = { ...CONDITIONAL_RUN, maxBlanks: 1 };
 
 /** The run rule a line introduces, if any. */
 function runRuleFor(line: string): RunRule | undefined {
   if (PICK_ONE_COMMENT_RE.test(line)) return PICK_ONE_RUN;
+  // Template first: "If the code changes:" is both shapes and gets the blank line too.
+  if (isTemplateLeadIn(line)) return TEMPLATE_CONDITIONAL_RUN;
   if (isConditionalLeadIn(line)) return CONDITIONAL_RUN;
   return undefined;
 }
@@ -175,10 +224,11 @@ function runRuleFor(line: string): RunRule | undefined {
  * are intentionally unchecked because of the line introducing their run:
  * - a pick-one HTML comment (PICK_ONE_COMMENT_RE) whose run has exactly one box
  *   checked, so the unchecked alternatives are intentional (#1760);
- * - a conditional lead-in line ({@link isConditionalLeadIn}), so its run is
- *   conditional like an "(if ...)" item, except NEVER_EXEMPT_RE boxes (#1796).
+ * - a conditional lead-in line ({@link isConditionalLeadIn}, {@link isTemplateLeadIn}),
+ *   so its run is conditional like an "(if ...)" item, except NEVER_EXEMPT_RE boxes (#1796).
  * A pick-one run is the contiguous checkbox lines after the comment, past blanks;
- * a conditional run is the unindented boxes directly below the lead-in.
+ * a conditional run is the unindented boxes directly below the lead-in, or after
+ * one blank line for a template lead-in.
  */
 function collectRunExemptLineIndices(lines: string[]): Set<number> {
   const exempt = new Set<number>();
@@ -191,9 +241,9 @@ function collectRunExemptLineIndices(lines: string[]): Set<number> {
       continue;
     }
 
-    // Advance past the introducing line, skipping any blank lines before the checkbox run
+    // Advance past the introducing line and up to maxBlanks blank lines before the checkbox run
     let j = i + 1;
-    while (rule.skipBlanks && j < lines.length && lines[j].trim() === '') j++;
+    for (let blanks = 0; blanks < rule.maxBlanks && j < lines.length && lines[j].trim() === ''; blanks++) j++;
 
     // Collect the contiguous checkbox run
     const runStart = j;

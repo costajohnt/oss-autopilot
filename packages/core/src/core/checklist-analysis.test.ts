@@ -355,6 +355,70 @@ describe('analyzeChecklist: conditional lead-in lines and inline annotations (#1
     });
   });
 
+  describe('template lead-ins: a clause ending in a change verb, or "the code <verb>"', () => {
+    it.each([
+      'If user-exposed functionality is added or changed:',
+      'when the code communicates with third-party tools:',
+      'Only if dependencies are updated:',
+    ])('exempts the run after "%s" and one blank line', (leadIn) => {
+      expect(stats([leadIn, '', '- [x] Applicable work completed', '- [ ] Conditional work'])).toEqual({
+        hasIncompleteChecklist: false,
+        checklistStats: { checked: 1, total: 1 },
+      });
+    });
+
+    it('handles multiple conditional runs in the reported template', () => {
+      const body = [
+        '## Checklist',
+        '- [x] The code change is tested and works locally.',
+        '- [x] Tests have been added.',
+        '',
+        'If user exposed functionality or configuration variables are added/changed:',
+        '',
+        '- [ ] Documentation added/updated for the docs site',
+        '',
+        'If the code communicates with devices, web services, or third-party tools:',
+        '',
+        '- [ ] The manifest file has all fields filled out correctly.',
+        '- [ ] New dependencies have been added to the requirements file.',
+        '- [ ] A diff between dependency versions is included.',
+      ];
+      expect(stats(body)).toEqual({ hasIncompleteChecklist: false, checklistStats: { checked: 2, total: 2 } });
+    });
+
+    it.each([
+      ['with no blank line', ['If dependencies are updated:', '- [ ] Updated requirements']],
+      ['"the code changes" with one blank line', ['If the code changes:', '', '- [ ] Updated docs']],
+    ])('exempts a template lead-in %s', (_name, lines) => {
+      expect(isIncomplete([...H, ...lines])).toBe(false);
+    });
+
+    it('omits stats when every checkbox belongs to a conditional run', () => {
+      expect(
+        stats(['If dependencies change:', '', '- [ ] Update requirements', '- [ ] Add a dependency diff']),
+      ).toEqual({ hasIncompleteChecklist: false });
+    });
+
+    it.each([
+      [
+        'two blank lines after the lead-in',
+        [...H, 'If dependencies are updated:', '', '', '- [ ] Updated requirements'],
+      ],
+      ['a change verb before the end of the clause', [...H, 'If files are added to the repo:', '- [ ] Updated docs']],
+      ['an agreement box', [...H, 'If configuration variables are changed:', '', '- [ ] I signed the CLA']],
+      ['"changes" as a noun after a gerund', [...H, 'When submitting changes:', '', '- [ ] I ran the linter']],
+      [
+        '"changes" after a possessive',
+        [...H, 'If you have questions about your changes:', '', '- [ ] Read CONTRIBUTING'],
+      ],
+      ['"updates" as a noun', [...H, 'If you need help with updates:', '', '- [ ] Ran the tests']],
+      ['"the code is"', [...H, 'When the code is complete:', '', '- [ ] Ran the test suite']],
+      ['"the code looks"', [...H, 'If the code looks good to you:', '- [ ] Approved the PR']],
+    ])('still counts %s', (_name, body) => {
+      expect(isIncomplete(body)).toBe(true);
+    });
+  });
+
   describe('everything else still counts', () => {
     it.each([
       ['a help lead-in', [...H, 'If you have questions:', '- [ ] I have read CONTRIBUTING']],
