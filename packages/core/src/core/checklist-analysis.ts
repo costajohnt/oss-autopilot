@@ -55,11 +55,32 @@ const ENDS_WITH_ONLY_COLON_RE = /^[^:]*:\s*$/;
  * the change or the code as the subject, as in the template from #1796:
  * "If user exposed functionality or configuration variables are added/changed:"
  * (the clause ends in a change verb) and "If the code communicates with ...:"
- * (`the code <verb>`). "the code of conduct" has no verb there, so it does not qualify.
+ * (`the code` plus a verb about what it talks to or depends on).
+ * Bare "change"/"changes" is also a noun, so it counts only after a subject:
+ * "If the public API changes:" qualifies, "When submitting changes:" and
+ * "If you have questions about your changes:" do not. Auxiliaries and review
+ * verbs ("the code is complete", "the code looks good") are not in the list.
  */
-const LEAD_IN_ENDS_IN_CHANGE_RE =
-  /\b(?:added|changed|modified|updated|removed|introduced|deleted|renamed|changes?|updates?)\s*:\s*$/i;
-const LEAD_IN_CODE_VERB_RE = /^the\s+code\s+[a-z]+s\b/i;
+const LEAD_IN_ENDS_IN_PARTICIPLE_RE =
+  /\b(?:added|changed|modified|updated|removed|introduced|deleted|renamed)\s*:\s*$/i;
+/** Words before a bare "change(s)" that make it a noun, not the clause's verb. */
+const CHANGE_NOUN_CUES = new Set(
+  'your my our their its the these those this that any some no of with about for to in on have has had make made propose proposed request requested'.split(
+    ' ',
+  ),
+);
+
+const BARE_CHANGE_VERBS = new Set(['change', 'changes']);
+
+function isBareChangeVerbEnding(rest: string): boolean {
+  const words = rest.replace(/:\s*$/, '').trim().toLowerCase().split(/\s+/);
+  const prev = words.at(-2);
+  if (prev === undefined || !BARE_CHANGE_VERBS.has(words.at(-1) ?? '')) return false;
+  return !prev.endsWith('ing') && !CHANGE_NOUN_CUES.has(prev);
+}
+
+const LEAD_IN_CODE_VERB_RE =
+  /^the\s+code\s+(?:communicates|interacts|calls|uses|depends|talks|connects|accesses|reads|writes|sends|stores|fetches|imports|loads)\b/i;
 
 /** The clause after "If"/"When"/"Only if" on a lead-in line ending in its only colon. */
 function leadInClause(line: string): string | undefined {
@@ -75,7 +96,10 @@ function isConditionalLeadIn(line: string): boolean {
 
 function isTemplateLeadIn(line: string): boolean {
   const rest = leadInClause(line);
-  return rest !== undefined && (LEAD_IN_ENDS_IN_CHANGE_RE.test(rest) || LEAD_IN_CODE_VERB_RE.test(rest));
+  return (
+    rest !== undefined &&
+    (LEAD_IN_ENDS_IN_PARTICIPLE_RE.test(rest) || isBareChangeVerbEnding(rest) || LEAD_IN_CODE_VERB_RE.test(rest))
+  );
 }
 
 /** An unindented checkbox line; nested boxes end a conditional run. */
@@ -189,8 +213,9 @@ const TEMPLATE_CONDITIONAL_RUN: RunRule = { ...CONDITIONAL_RUN, maxBlanks: 1 };
 /** The run rule a line introduces, if any. */
 function runRuleFor(line: string): RunRule | undefined {
   if (PICK_ONE_COMMENT_RE.test(line)) return PICK_ONE_RUN;
-  if (isConditionalLeadIn(line)) return CONDITIONAL_RUN;
+  // Template first: "If the code changes:" is both shapes and gets the blank line too.
   if (isTemplateLeadIn(line)) return TEMPLATE_CONDITIONAL_RUN;
+  if (isConditionalLeadIn(line)) return CONDITIONAL_RUN;
   return undefined;
 }
 

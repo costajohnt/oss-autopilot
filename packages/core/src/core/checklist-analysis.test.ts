@@ -386,6 +386,13 @@ describe('analyzeChecklist: conditional lead-in lines and inline annotations (#1
       expect(stats(body)).toEqual({ hasIncompleteChecklist: false, checklistStats: { checked: 2, total: 2 } });
     });
 
+    it.each([
+      ['with no blank line', ['If dependencies are updated:', '- [ ] Updated requirements']],
+      ['"the code changes" with one blank line', ['If the code changes:', '', '- [ ] Updated docs']],
+    ])('exempts a template lead-in %s', (_name, lines) => {
+      expect(isIncomplete([...H, ...lines])).toBe(false);
+    });
+
     it('omits stats when every checkbox belongs to a conditional run', () => {
       expect(
         stats(['If dependencies change:', '', '- [ ] Update requirements', '- [ ] Add a dependency diff']),
@@ -399,6 +406,14 @@ describe('analyzeChecklist: conditional lead-in lines and inline annotations (#1
       ],
       ['a change verb before the end of the clause', [...H, 'If files are added to the repo:', '- [ ] Updated docs']],
       ['an agreement box', [...H, 'If configuration variables are changed:', '', '- [ ] I signed the CLA']],
+      ['"changes" as a noun after a gerund', [...H, 'When submitting changes:', '', '- [ ] I ran the linter']],
+      [
+        '"changes" after a possessive',
+        [...H, 'If you have questions about your changes:', '', '- [ ] Read CONTRIBUTING'],
+      ],
+      ['"updates" as a noun', [...H, 'If you need help with updates:', '', '- [ ] Ran the tests']],
+      ['"the code is"', [...H, 'When the code is complete:', '', '- [ ] Ran the test suite']],
+      ['"the code looks"', [...H, 'If the code looks good to you:', '- [ ] Approved the PR']],
     ])('still counts %s', (_name, body) => {
       expect(isIncomplete(body)).toBe(true);
     });
