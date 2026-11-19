@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll, afterEach } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { Client } from '@modelcontextprotocol/client';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { request } from 'node:http';
 import * as fs from 'node:fs';

@@ -109,11 +109,23 @@ export interface PRCountsResult<R> {
    * renamed since a stored PR was recorded (see findRepoTransfers).
    */
   searchedPRs: Array<{ url: string; title: string }>;
+  /**
+   * True when the search had more results than it fetched (pagination cap),
+   * so `repos` undercounts and a repo missing from it may still have PRs.
+   */
+  truncated: boolean;
 }
 
 /** Returns an empty PRCountsResult. Used as the fallback when stats fetches fail or username is empty. */
 export function emptyPRCountsResult<R>(): PRCountsResult<R> {
-  return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {}, searchedPRs: [] };
+  return {
+    repos: new Map(),
+    monthlyCounts: {},
+    monthlyOpenedCounts: {},
+    dailyActivityCounts: {},
+    searchedPRs: [],
+    truncated: false,
+  };
 }
 
 /** Serialized shape of a cached PRCountsResult (Map stored as entries array). */
@@ -124,6 +136,7 @@ interface CachedPRCounts {
   dailyActivityCounts: Record<string, number>;
   /** Absent on entries cached before searchedPRs existed. */
   searchedPRs?: Array<{ url: string; title: string }>;
+  truncated?: boolean;
 }
 
 /** Type guard for deserialized cache data — prevents crashes on corrupt/stale cache. */
@@ -174,6 +187,7 @@ async function fetchUserPRCounts<R>(
       monthlyOpenedCounts: cached.monthlyOpenedCounts,
       dailyActivityCounts: cached.dailyActivityCounts,
       searchedPRs: Array.isArray(cached.searchedPRs) ? cached.searchedPRs : [],
+      truncated: cached.truncated === true,
     };
   }
 
@@ -253,7 +267,8 @@ async function fetchUserPRCounts<R>(
     page++;
   }
 
-  if (fetched < totalCount && page >= MAX_PAGINATION_PAGES) {
+  const isTruncated = fetched < totalCount;
+  if (isTruncated && page >= MAX_PAGINATION_PAGES) {
     warn(
       MODULE,
       `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${totalCount} ${label} PRs. Stats may be incomplete for prolific contributors.`,
@@ -268,13 +283,14 @@ async function fetchUserPRCounts<R>(
   // for up to 24 hours, but these are cosmetic and self-heal on the next cache expiry.
   cache.set(cacheKey, '', {
     reposEntries: Array.from(repos.entries()),
+    truncated: isTruncated,
     monthlyCounts,
     monthlyOpenedCounts,
     dailyActivityCounts,
     searchedPRs,
   });
 
-  return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts, searchedPRs };
+  return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts, searchedPRs, truncated: isTruncated };
 }
 
 /**

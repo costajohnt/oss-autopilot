@@ -89,7 +89,7 @@ Then add the server to your MCP client config:
 }
 ```
 
-The MCP server exposes 35 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@5.7.4`) if you would rather update on your own schedule.
+The MCP server exposes 35 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
 
 </details>
 
@@ -237,7 +237,8 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `labels` | (chosen at setup) | Issue labels for issue search |
 | `squashByDefault` | `true` | Squash commits before merge (`true`, `false`, or `"ask"`) |
 | `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push repo-cap check warns before opening a new one |
-| `excludeOrgs` | `[]` | Orgs to leave out of everything (for example, your employer) |
+| `excludeOrgs` | `[]` | Orgs to leave out of issue discovery. PRs already open there are still tracked |
+| `untrackedOrgs` | `[]` | Orgs whose PRs are not tracked at all (for example, your employer). Discovery is unaffected |
 | `avoidRepos` | `[]` | Repos to rank lower in search without excluding them |
 | `boostIssueTypes` | `[]` | Issue label types to rank higher in search (for example `bug`) |
 | `includeDocIssues` | `true` | Include documentation issues in search |
@@ -247,7 +248,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `projectCategories` | `[]` | Categories to prioritize (nonprofit, devtools, and so on) |
 | `preferredOrgs` | `[]` | Orgs to prioritize |
 
-**Stats and badges.** `oss-autopilot stats` prints your merged-PR numbers; `--markdown` gives a shareable report and `--badge` gives shields.io endpoint JSON. For a live profile badge and SVG cards, see [oss-widgets](https://github.com/costajohnt/oss-widgets).
+**Stats and badges.** `oss-autopilot stats` prints your merged-PR numbers; `--markdown` gives a shareable report and `--badge` gives shields.io endpoint JSON.
 
 **Sync across machines (optional).** State can be stored in a secret GitHub gist instead of only on disk. See `oss-autopilot state --help`. A secret gist is unlisted, not access-controlled, so anyone with the URL can read it.
 
@@ -307,8 +308,8 @@ npm run bundle
 **My PRs do not show up**
 
 - Run `/setup-oss` and confirm the GitHub username.
-- Only PRs you authored are tracked.
-- Check `excludeRepos`, `excludeOrgs`, and `minStars`.
+- Only PRs you authored are tracked, and PRs to repos you own are skipped.
+- Check `untrackedOrgs`. `excludeRepos` and `excludeOrgs` only affect issue discovery, and `minStars` only affects stats and charts.
 
 **Updating**
 
@@ -342,17 +343,7 @@ The diagrams in this README are generated from the JSON files in [`docs/diagrams
 
 ## About
 
-Built and used daily by [costajohnt](https://github.com/costajohnt). The contributions below were managed with it.
-
-<p align="center">
-<a href="https://github.com/costajohnt/oss-widgets">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" />
-  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=light&minStars=50" />
-  <img alt="OSS contribution stats for costajohnt" src="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" width="495" />
-</picture>
-</a>
-</p>
+Built and used daily by [costajohnt](https://github.com/costajohnt).
 
 ## License
 

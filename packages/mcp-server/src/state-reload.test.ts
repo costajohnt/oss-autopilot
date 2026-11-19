@@ -16,8 +16,7 @@
  * mutation — a second consecutive conflict surfaces as the normal error.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
 const {
   mockGetGitHubTokenAsync,

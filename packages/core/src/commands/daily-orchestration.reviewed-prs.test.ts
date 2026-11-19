@@ -79,6 +79,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getClosedPRs: vi.fn(() => []),
       releaseIssue: vi.fn(() => 'not_tracked'),
       renameRepo: vi.fn(),
+      tryReconcilePRCounts: vi.fn(),
       setLastStrategyAt: vi.fn(),
       save: vi.fn(),
       isPRShelved: vi.fn(() => false),

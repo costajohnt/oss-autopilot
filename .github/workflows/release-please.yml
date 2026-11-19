@@ -76,6 +76,47 @@ jobs:
           git commit -m "chore: pin .mcp.json to @oss-autopilot/mcp@${VERSION}"
           git push origin "HEAD:${BRANCH}"
 
+      # The MCP server bundle inlines @oss-autopilot/core (and through it
+      # @oss-scout/core), but release-please only bumps the mcp component for
+      # commits under packages/mcp-server, and it has no option to count
+      # another path. So a core-only release used to leave npm's MCP server on
+      # the old core: scout 1.13.0, 1.14.0 and 1.14.1 all shipped in core
+      # 3.41.x-3.42.1 while @oss-autopilot/mcp stayed at 5.11.1. When this
+      # release PR bumps core but not mcp, add a fix(mcp) commit that records
+      # the core version in packages/mcp-server/BUNDLED_CORE_VERSION. Merging
+      # the release PR brings that commit to main, and release-please then
+      # opens the MCP release that rebuilds the bundle against the new core.
+      # The marker check keeps re-runs (release-please force-pushes this
+      # branch) from stacking commits; an mcp-only release leaves core alone,
+      # so this never loops.
+      - name: Queue an MCP release for a core-only release
+        if: steps.release-pr.outputs.branch != ''
+        env:
+          BRANCH: ${{ steps.release-pr.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git fetch -q --depth=1 origin main
+          ver() { node -e 'const m = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(String(m[process.argv[1]] ?? ""))' "$1"; }
+          CORE=$(ver . < .release-please-manifest.json)
+          MCP=$(ver packages/mcp-server < .release-please-manifest.json)
+          BASE_CORE=$(git show FETCH_HEAD:.release-please-manifest.json | ver .)
+          BASE_MCP=$(git show FETCH_HEAD:.release-please-manifest.json | ver packages/mcp-server)
+          if [ "$CORE" = "$BASE_CORE" ] || [ "$MCP" != "$BASE_MCP" ]; then
+            echo "No core-only release (core $BASE_CORE -> $CORE, mcp $BASE_MCP -> $MCP)"
+            exit 0
+          fi
+          MARKER=packages/mcp-server/BUNDLED_CORE_VERSION
+          if [ "$(cat "$MARKER" 2>/dev/null)" = "$CORE" ]; then
+            echo "$MARKER already records core $CORE"
+            exit 0
+          fi
+          echo "$CORE" > "$MARKER"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$MARKER"
+          git commit -m "fix(mcp): bundle @oss-autopilot/core ${CORE}"
+          git push origin "HEAD:${BRANCH}"
+
   publish-npm:
     name: Publish to npm
     needs: release-please

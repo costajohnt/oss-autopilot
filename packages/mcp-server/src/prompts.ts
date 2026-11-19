@@ -8,7 +8,7 @@
  *   - find-issues: Discover and rank contributable issues
  *   - extract-learnings: Distill durable guidance from past PR feedback (#867)
  */
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
   runDaily,
@@ -75,9 +75,9 @@ export function registerPrompts(server: McpServer): void {
     {
       title: 'Respond to PR',
       description: 'Get context for a PR to help draft a response to maintainer feedback',
-      argsSchema: {
+      argsSchema: z.object({
         prUrl: z.string().url().describe('GitHub PR URL to respond to'),
-      },
+      }),
     },
     async ({ prUrl }) => {
       try {
@@ -102,9 +102,9 @@ export function registerPrompts(server: McpServer): void {
     {
       title: 'Find Issues to Work On',
       description: 'Search for good issues to contribute to, ranked by viability',
-      argsSchema: {
+      argsSchema: z.object({
         maxResults: z.coerce.number().optional().describe(`Max issues to return (default: ${DEFAULT_SEARCH_RESULTS})`),
-      },
+      }),
     },
     async ({ maxResults }) => {
       try {
@@ -138,14 +138,14 @@ export function registerPrompts(server: McpServer): void {
       title: 'Extract Per-Repo Learnings',
       description:
         'Given raw PR comment bundles for a repo, produce a structured guidelines document distilling durable maintainer preferences. Filter PR-specific nitpicks; keep general rules. Optional existingGuidelines argument enables incremental updates.',
-      argsSchema: {
+      argsSchema: z.object({
         repo: z.string().describe('Target repo as owner/repo'),
         corpus: z.string().describe('JSON-serialized array of PRCommentBundle objects from guidelines-fetch-corpus'),
         existingGuidelines: z
           .string()
           .optional()
           .describe('Existing guidelines markdown to update incrementally; omit on first extraction'),
-      },
+      }),
     },
     async ({ repo, corpus, existingGuidelines }) => {
       let bundles: PRCommentBundle[];

@@ -112,6 +112,21 @@ describe('fetchUserPRCounts caching', () => {
     expect(legacy.searchedPRs).toEqual([]);
   });
 
+  it('flags a pagination-capped result as truncated, through a cache round-trip (#1897)', async () => {
+    const octokit = makeOctokit([makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')], 450);
+
+    const fresh = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(fresh.truncated).toBe(true);
+    const cached = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(cached.truncated).toBe(true);
+
+    const complete = await fetchUserClosedPRCounts(
+      makeOctokit([makeClosedItem('org', 'repo', '2025-06-01T00:00:00Z')]),
+      'testuser',
+    );
+    expect(complete.truncated).toBe(false);
+  });
+
   it('should exclude own repos via -user: qualifier in search query', async () => {
     const items = [makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')];
     const octokit = makeOctokit(items);

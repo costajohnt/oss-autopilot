@@ -338,6 +338,10 @@ export class StateManager {
     // Surface a recovery that happened while loading the local file for Gist
     // migration — the recovered (or fresh) state is what got migrated.
     manager.loadRecovery = localRecovery;
+    // Same derived bookkeeping as refreshFromGist: repair counts a capped
+    // daily run left below the ledger, without counting it as un-pushed (#1897).
+    manager.tryReconcilePRCounts();
+    manager.unpushed = false;
 
     // Seed the staleness marker if bootstrap fell back to the local cache —
     // a `daily` running on a cron right after this start needs to know.
@@ -355,9 +359,10 @@ export class StateManager {
 
   /**
    * Attempt PR count reconciliation, logging a warning on failure.
-   * Called after every state load from disk.
+   * Called after every state load and ledger addition, and by daily after it
+   * overwrites counts from the pagination-capped search (#1897).
    */
-  private tryReconcilePRCounts(): void {
+  tryReconcilePRCounts(): void {
     try {
       this.reconcilePRCounts();
     } catch (err) {
@@ -905,6 +910,7 @@ export class StateManager {
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
+    this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
   }
@@ -967,6 +973,7 @@ export class StateManager {
     this.state.closedPRs.push(...newPRs);
     this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
+    this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
   }

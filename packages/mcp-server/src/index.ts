@@ -98,7 +98,8 @@ export async function main() {
     const tokenInfo = await ensureHttpToken();
 
     const { createServer: createHttpServer } = await import('node:http');
-    const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+    const { NodeStreamableHTTPServerTransport: StreamableHTTPServerTransport } =
+      await import('@modelcontextprotocol/node');
 
     const httpServer = createHttpServer(async (req, res) => {
       // DNS-rebinding defense: reject Host headers outside the loopback
@@ -190,7 +191,7 @@ export async function main() {
   } else {
     // Default: stdio transport
     const server = createServer();
-    const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+    const { StdioServerTransport } = await import('@modelcontextprotocol/server/stdio');
     const transport = new StdioServerTransport();
     await server.connect(transport);
   }

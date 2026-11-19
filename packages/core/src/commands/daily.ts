@@ -181,6 +181,8 @@ interface FetchedPRData {
   prs: FetchedPR[];
   failures: PRCheckFailure[];
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>;
+  /** The merged-count search hit its pagination cap, so `mergedCounts` is partial. */
+  wasMergedSearchTruncated: boolean;
   closedCounts: Map<string, number>;
   /** Every PR the merged/closed count searches returned, for transfer detection. */
   searchedPRs: Array<{ url: string; title: string }>;
@@ -413,6 +415,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
     recentlyMergedFetchFailed: didRecentlyMergedFetchFail,
+    wasMergedSearchTruncated: mergedResult.truncated,
     successorGaps,
     prs,
     failures,
@@ -437,6 +440,7 @@ async function updateRepoScores(
   prMonitor: PRMonitor,
   prs: FetchedPR[],
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>,
+  wasMergedSearchTruncated: boolean,
   closedCounts: Map<string, number>,
   searchedPRs: Array<{ url: string; title: string }>,
   warnings: DailyWarning[],
@@ -467,6 +471,9 @@ async function updateRepoScores(
           MODULE,
           `Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
         );
+      } else if (wasMergedSearchTruncated) {
+        // A repo absent from a pagination-capped search may still have merges (#1897).
+        debug(MODULE, 'Skipping stale repo reset: merged PR search was truncated.');
       } else {
         for (const score of Object.values(stateManager.getState().repoScores)) {
           if (!mergedCounts.has(score.repo)) {
@@ -531,6 +538,10 @@ async function updateRepoScores(
           `[CLOSED_COUNT_UPDATES_FAILED] ${closedCountFailures} of ${closedCounts.size} closed count update(s) failed.`,
         );
       }
+
+      // The search counts above are capped at 300 PRs; raise each repo back
+      // to its ledger count so a prolific user's totals never drop (#1897).
+      stateManager.tryReconcilePRCounts();
 
       // Ledger-derived signals, recomputed each run for every scored repo so a
       // corrected closeReason clears hostility and repos without samples reset to null.
@@ -1221,6 +1232,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     prs,
     failures,
     mergedCounts,
+    wasMergedSearchTruncated,
     closedCounts,
     searchedPRs,
     monthlyCounts,
@@ -1235,7 +1247,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   } = await fetchPRData(prMonitor, token, warnings);
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
-  await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts, searchedPRs, warnings);
+  await updateRepoScores(prMonitor, prs, mergedCounts, wasMergedSearchTruncated, closedCounts, searchedPRs, warnings);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.

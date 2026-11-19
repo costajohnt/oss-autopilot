@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.3...core-v3.42.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.14.2 so features honors minStars ([#1903](https://github.com/costajohnt/oss-autopilot/issues/1903)) ([cc3dd16](https://github.com/costajohnt/oss-autopilot/commit/cc3dd1692bcbb7a20feddfdd67eee78325fcc726))
+
+## [3.42.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.2...core-v3.42.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* **state:** reconcile PR counts when loading from the Gist ([2b9ddf9](https://github.com/costajohnt/oss-autopilot/commit/2b9ddf9cf72bd7e027ad12fcb8020feec0c5c3b1))
+* **state:** reconcile PR counts when loading from the Gist ([8c0e13e](https://github.com/costajohnt/oss-autopilot/commit/8c0e13ea41adcd70ed0b1ca6c0a3b9246647c8fb)), closes [#1897](https://github.com/costajohnt/oss-autopilot/issues/1897)
+
+## [3.42.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.1...core-v3.42.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* keep merged PR counts at the ledger total past the 300-PR search cap ([58654d6](https://github.com/costajohnt/oss-autopilot/commit/58654d68d87e06bf616e46e69ea395fb2e942aca))
+* keep merged PR counts at the ledger total past the 300-PR search cap ([bface23](https://github.com/costajohnt/oss-autopilot/commit/bface23dd33ccb2556c312a6cba00ccee8abd310)), closes [#1897](https://github.com/costajohnt/oss-autopilot/issues/1897)
+* **mcp:** release the MCP server with every core release ([#1898](https://github.com/costajohnt/oss-autopilot/issues/1898)) ([2fd69aa](https://github.com/costajohnt/oss-autopilot/commit/2fd69aae1837186e317724c9ad59904e5943c81d))
+
+## [3.42.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.0...core-v3.42.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.14.1 so the warm-repo phase honors minStars ([#1895](https://github.com/costajohnt/oss-autopilot/issues/1895)) ([8f247fb](https://github.com/costajohnt/oss-autopilot/commit/8f247fb066a8ca7abb12850d370387d4fa76ccff))
+
 ## [3.42.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.41.0...core-v3.42.0) (2026-11-12)
 
 

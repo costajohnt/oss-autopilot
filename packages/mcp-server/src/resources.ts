@@ -4,8 +4,8 @@
  * Registers static resources and dynamic resource templates that expose
  * oss-autopilot state data (status, config, PRs) via the MCP resource protocol.
  */
-import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ResourceTemplate } from '@modelcontextprotocol/server';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
 import {
   getStateManager,
