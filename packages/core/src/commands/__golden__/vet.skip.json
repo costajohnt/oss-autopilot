@@ -8,7 +8,9 @@
   },
   "recommendation": "skip",
   "reasonsToApprove": [],
-  "reasonsToSkip": ["Issue already has a linked PR"],
+  "reasonsToSkip": [
+    "Issue already has a linked PR"
+  ],
   "projectHealth": {
     "repo": "owner/repo",
     "lastCommitAt": "2026-01-01T00:00:00.000Z",
@@ -29,7 +31,9 @@
       "clearRequirements": true,
       "contributionGuidelinesFound": false
     },
-    "notes": ["Linked PR already exists"]
+    "notes": [
+      "Linked PR already exists"
+    ]
   },
   "linkedPRClassification": "none",
   "slmTriage": null,
