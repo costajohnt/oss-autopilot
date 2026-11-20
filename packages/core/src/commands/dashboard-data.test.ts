@@ -59,7 +59,7 @@ const {
   mockFetchCommentedIssues: vi.fn(),
   mockGetOctokit: vi.fn().mockReturnValue({}),
   mockFetchMergedPRsSince: vi.fn().mockResolvedValue({ prs: [], truncated: false }),
-  mockFetchClosedPRsSince: vi.fn().mockResolvedValue([]),
+  mockFetchClosedPRsSince: vi.fn().mockResolvedValue({ prs: [], truncated: false }),
   mockBuildStarFilter: vi.fn().mockReturnValue(undefined),
   // Identity by default (also re-installed in beforeEach after clearAllMocks);
   // #1416 ordering tests swap in a status-flipping implementation to prove
@@ -155,6 +155,7 @@ vi.mock('../core/github-stats.js', () => ({
     dailyActivityCounts: {},
   }),
   MERGED_LEDGER_TRUNCATED_MESSAGE: 'merged ledger truncated',
+  CLOSED_LEDGER_TRUNCATED_MESSAGE: 'closed ledger truncated',
   fetchMergedPRsSince: (...args: unknown[]) => mockFetchMergedPRsSince(...args),
   fetchClosedPRsSince: (...args: unknown[]) => mockFetchClosedPRsSince(...args),
 }));
@@ -945,7 +946,7 @@ describe('fetchDashboardData', () => {
     mockFetchUserClosedPRCounts.mockResolvedValue(makePRCountsResult());
     mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], lookupFailures: 0, warnings: [] });
     mockFetchMergedPRsSince.mockResolvedValue({ prs: [], truncated: false });
-    mockFetchClosedPRsSince.mockResolvedValue([]);
+    mockFetchClosedPRsSince.mockResolvedValue({ prs: [], truncated: false });
 
     // generateDigest returns a valid digest and setLastDigest stores it
     mockGenerateDigest.mockReturnValue(makeMockDigest());
@@ -1029,6 +1030,26 @@ describe('fetchDashboardData', () => {
 
       expect(mockAddMergedPRs).toHaveBeenCalledWith([]);
       expect(result.partialFailures).toContain('merged ledger truncated');
+    });
+
+    it('names a truncated closed-PR fetch on the banner and stores no closed rows (#1924)', async () => {
+      mockGetState.mockReturnValue(makeDefaultState({ lastDigest: null }));
+      mockFetchClosedPRsSince.mockResolvedValue({ prs: [], truncated: true });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(mockAddClosedPRs).toHaveBeenCalledWith([]);
+      expect(result.partialFailures).toContain('closed ledger truncated');
+    });
+
+    it('hands both ledger fetches the user config, which carries untrackedOrgs (#1924)', async () => {
+      const state = makeDefaultState({ lastDigest: null });
+      mockGetState.mockReturnValue(state);
+
+      await fetchDashboardData('test-token');
+
+      expect(mockFetchMergedPRsSince.mock.calls[0][1]).toBe(state.config);
+      expect(mockFetchClosedPRsSince.mock.calls[0][1]).toBe(state.config);
     });
 
     it('stores nothing when the gap fetch fails, so the watermark stays for the next refresh (#1924)', async () => {
@@ -1449,9 +1470,10 @@ describe('fetchDashboardData', () => {
       truncated: false,
       prs: [{ url: 'https://github.com/a/b/pull/1', title: 'New merged', mergedAt: '2026-01-01T00:00:00Z' }],
     });
-    mockFetchClosedPRsSince.mockResolvedValue([
-      { url: 'https://github.com/a/b/pull/2', title: 'New closed', closedAt: '2026-01-02T00:00:00Z' },
-    ]);
+    mockFetchClosedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [{ url: 'https://github.com/a/b/pull/2', title: 'New closed', closedAt: '2026-01-02T00:00:00Z' }],
+    });
 
     const result = await fetchDashboardData('test-token');
 
@@ -1469,9 +1491,10 @@ describe('fetchDashboardData', () => {
     mockAddClosedPRs.mockImplementation(() => {
       throw new Error('closed storage failed');
     });
-    mockFetchClosedPRsSince.mockResolvedValue([
-      { url: 'https://github.com/a/b/pull/2', title: 'New closed', closedAt: '2026-01-02T00:00:00Z' },
-    ]);
+    mockFetchClosedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [{ url: 'https://github.com/a/b/pull/2', title: 'New closed', closedAt: '2026-01-02T00:00:00Z' }],
+    });
 
     const result = await fetchDashboardData('test-token');
 
@@ -1497,14 +1520,17 @@ describe('fetchDashboardData', () => {
         },
       ],
     });
-    mockFetchClosedPRsSince.mockResolvedValue([
-      {
-        url: 'https://github.com/a/b/pull/2',
-        title: 'New closed',
-        closedAt: '2026-01-11T00:00:00Z',
-        openedAt: '2026-01-02T00:00:00Z',
-      },
-    ]);
+    mockFetchClosedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [
+        {
+          url: 'https://github.com/a/b/pull/2',
+          title: 'New closed',
+          closedAt: '2026-01-11T00:00:00Z',
+          openedAt: '2026-01-02T00:00:00Z',
+        },
+      ],
+    });
 
     await fetchDashboardData('test-token');
 

@@ -16,7 +16,10 @@ import { recordWarning } from './daily-warnings.js';
 const MODULE = 'daily';
 
 type StateManagerLike = ReturnType<typeof getStateManager>;
-type LedgerStateManager = Pick<StateManagerLike, 'getMergedPRs' | 'getClosedPRs' | 'renameRepo' | 'evictClosedPRs'>;
+type LedgerStateManager = Pick<
+  StateManagerLike,
+  'getMergedPRs' | 'getClosedPRs' | 'renameRepo' | 'evictClosedPRs' | 'evictUntrackedOrgPRs'
+>;
 
 /**
  * Bring the stored merged/closed ledgers in line with what GitHub reports now.
@@ -30,6 +33,10 @@ type LedgerStateManager = Pick<StateManagerLike, 'getMergedPRs' | 'getClosedPRs'
  *    `closedWithoutMergeCount` back to a ledger that still holds them (#1923).
  *    This runs every day, so state inflated before the fix heals on the next
  *    run, as does an entry another machine's older copy brought back.
+ * 3. Drop merged and closed rows, and the repoScores entries, of repositories
+ *    in `config.untrackedOrgs` (#1924). The fetches no longer return them;
+ *    this removes what earlier versions stored, and what another machine's
+ *    older copy brings back.
  *
  * @param searchedPRs - every merged/closed PR the count searches returned
  * @param openPRs - the user's currently open PRs, as just fetched
@@ -44,6 +51,8 @@ export function syncLedgersWithGitHub(
     stateManager.renameRepo(from, to);
   }
   stateManager.evictClosedPRs(openPRs.map((pr) => pr.url));
+  const untracked = stateManager.evictUntrackedOrgPRs();
+  if (untracked > 0) warn(MODULE, `Removed ${untracked} ledger PR(s) in untracked organisations.`);
 }
 
 /**
@@ -95,7 +104,9 @@ const GAP_FETCH_OPERATION = 'fetch merged PRs for the ledger';
  *
  * A failed or truncated fetch is recorded in `warnings`, and
  * {@link storeMergedLedger} then stores nothing, so the next run asks for the
- * same range again.
+ * same range again. Until a run stores them, today's merges are not in the
+ * ledger, so the "extract learnings" nudge, which counts ledger rows of
+ * recent merges, is also held back for them.
  */
 export async function fetchMergedLedgerGap(
   octokit: Octokit,
@@ -126,7 +137,11 @@ export async function fetchMergedLedgerGap(
  *
  * Then compares the ledger with GitHub's all-time merged count. A hole older
  * than the newest entry is invisible to the gap fetch; the count is the one
- * signal that shows it, and `ledger-backfill` is what fills it.
+ * signal that shows it, and `ledger-backfill` is what fills it. The count
+ * search and the ledger fetch share one scope (externalPRScope: public, not
+ * the user's own, no untracked organisations), so the two are comparable;
+ * when that scope cannot be put in a query the count is undefined and the
+ * check is skipped.
  */
 export function storeMergedLedger(
   stateManager: Pick<StateManagerLike, 'addMergedPRs' | 'getMergedPRs'>,

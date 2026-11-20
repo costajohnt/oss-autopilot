@@ -307,7 +307,7 @@ describe('runLedgerBackfill merged history (#1924)', () => {
     expect(sm.getMergedPRs().map((pr) => pr.url)).toEqual([MERGED, HOLE]);
     expect(sm.getMergedPRs()[1].backfilledAt).toBeDefined();
     // All time, no result limit: no date bound in the query.
-    expect(mocks.search.mock.calls[0][0].q).toBe('is:pr is:merged author:me -user:me');
+    expect(mocks.search.mock.calls[0][0].q).toBe('is:pr is:merged is:public author:me -user:me');
 
     const rerun = await runLedgerBackfill();
     expect(rerun.mergedAdded).toBe(0);
@@ -320,6 +320,23 @@ describe('runLedgerBackfill merged history (#1924)', () => {
 
     expect(sm.getMergedPRs().map((pr) => pr.url)).toContain(CLOSED);
     expect(sm.getClosedPRs()).toEqual([]);
+  });
+
+  it('adds neither an untracked organisation PR nor a private repository PR', async () => {
+    sm.updateConfig({ untrackedOrgs: ['acme'] });
+    const employer = searchItem('https://github.com/Acme/internal/pull/1', '2025-12-21T00:00:00Z');
+    const privateRepo = searchItem('https://github.com/o/secret/pull/2', '2025-12-22T00:00:00Z');
+    // GitHub applies `is:public`; the stand-in does too, and ignores `-org:`.
+    mocks.search.mockImplementation(({ q }: { q: string }) => {
+      const items = q.includes('is:public') ? [employer] : [employer, privateRepo];
+      return Promise.resolve({ data: { total_count: items.length, items } });
+    });
+
+    const result = await runLedgerBackfill();
+
+    expect(mocks.search.mock.calls[0][0].q).toBe('is:pr is:merged is:public author:me -user:me -org:acme');
+    expect(result.mergedAdded).toBe(0);
+    expect(sm.getMergedPRs().map((pr) => pr.url)).toEqual([MERGED]);
   });
 
   it('adds nothing and warns when the history walk fails, and still backfills the entries it has', async () => {

@@ -9,7 +9,7 @@ import { fetchMergedPRsSince } from '../core/github-stats.js';
 import { StateManager } from '../core/state.js';
 import type { MergedPR } from '../core/types.js';
 import type { DailyWarning } from '../formatters/json.js';
-import { fetchMergedLedgerGap, storeMergedLedger } from './daily-ledger.js';
+import { fetchMergedLedgerGap, storeMergedLedger, syncLedgersWithGitHub } from './daily-ledger.js';
 
 // Calls through; wrapped only so a test can see which fetch daily goes to.
 vi.mock('../core/github-stats.js', async (importOriginal) => {
@@ -103,7 +103,7 @@ describe('merged-ledger gap filling (#1924)', () => {
     expect(storedUrls(sm)).toEqual([prUrl(5), prUrl(4), prUrl(3), prUrl(2), prUrl(1)]);
     expect(warnings).toEqual([]);
     // One request, bounded one day before the newest entry the ledger had.
-    expect(queriesOf(search)).toEqual([`is:pr is:merged author:me -user:me updated:>${daysAgo(13)}`]);
+    expect(queriesOf(search)).toEqual([`is:pr is:merged is:public author:me -user:me updated:>${daysAgo(13)}`]);
   });
 
   it('goes through fetchMergedPRsSince, the fetch the dashboard uses, with the ledger watermark', async () => {
@@ -121,7 +121,7 @@ describe('merged-ledger gap filling (#1924)', () => {
 
     await runLedgerStep(empty, search.octokit);
 
-    expect(queriesOf(search)).toEqual(['is:pr is:merged author:me -user:me']);
+    expect(queriesOf(search)).toEqual(['is:pr is:merged is:public author:me -user:me']);
     expect(storedUrls(empty)).toEqual([prUrl(5), prUrl(4), prUrl(3), prUrl(2)]);
   });
 
@@ -204,6 +204,81 @@ describe('merged-ledger gap filling (#1924)', () => {
       const warnings = await runLedgerStep(sm, search.octokit, { allTimeCount });
 
       expect(warnings).toEqual([]);
+    });
+  });
+});
+
+describe('untracked organisations and private repositories stay out of the ledger (#1924)', () => {
+  const at = daysAgo(2);
+  const employer = { ...searchItem(1, at), html_url: 'https://github.com/Acme/internal/pull/1' };
+  const privateRepo = { ...searchItem(2, at), html_url: 'https://github.com/org/secret/pull/2' };
+  const publicRepo = searchItem(3, at);
+  let sm: StateManager;
+
+  beforeEach(() => {
+    sm = new StateManager(true);
+    sm.updateConfig({ githubUsername: 'me', untrackedOrgs: ['acme'] });
+  });
+
+  it('daily stores neither: the query is public-only and an untracked row GitHub returns is dropped', async () => {
+    // GitHub applies `is:public`; the stand-in does too, and ignores `-org:`
+    // so the result filter is what keeps the employer PR out.
+    const issuesAndPullRequests = vi.fn(({ q }: { q: string }) => {
+      const items = q.includes('is:public') ? [employer, publicRepo] : [employer, privateRepo, publicRepo];
+      return Promise.resolve({ data: { total_count: items.length, items } });
+    });
+    const octokit = { search: { issuesAndPullRequests } } as unknown as Octokit;
+
+    await runLedgerStep(sm, octokit);
+
+    expect(issuesAndPullRequests.mock.calls[0][0].q).toBe('is:pr is:merged is:public author:me -user:me -org:acme');
+    expect(storedUrls(sm)).toEqual([publicRepo.html_url]);
+  });
+
+  describe('rows stored by earlier versions', () => {
+    const row = (url: string) => ({ url, title: 'stored', mergedAt: at });
+    const closedRow = { url: 'https://github.com/ACME/tools/pull/9', title: 'stored', closedAt: at };
+
+    beforeEach(() => {
+      sm.addMergedPRs([row(employer.html_url), row(publicRepo.html_url)]);
+      sm.addClosedPRs([closedRow]);
+      sm.updateRepoScore('Acme/internal', { stargazersCount: 500 });
+      sm.updateRepoScore('ACME/tools', { stargazersCount: 500 });
+      sm.updateRepoScore('org/repo', { stargazersCount: 500 });
+    });
+
+    it('are removed by the daily upkeep, with their scores, and the totals follow', () => {
+      expect(sm.getStats()).toMatchObject({ mergedPRs: 2, closedPRs: 1 });
+
+      syncLedgersWithGitHub(sm, [], []);
+
+      expect(storedUrls(sm)).toEqual([publicRepo.html_url]);
+      expect(sm.getClosedPRs()).toEqual([]);
+      expect(Object.keys(sm.getState().repoScores)).toEqual(['org/repo']);
+      expect(sm.getStats()).toMatchObject({ mergedPRs: 1, closedPRs: 0 });
+    });
+
+    it('stay removed on the next upkeep, which changes nothing more', () => {
+      syncLedgersWithGitHub(sm, [], []);
+      const after = structuredClone(sm.getState());
+
+      expect(sm.evictUntrackedOrgPRs()).toBe(0);
+      syncLedgersWithGitHub(sm, [], []);
+
+      expect(sm.getState()).toEqual(after);
+    });
+
+    it.each([
+      ['empty', []],
+      ['unset', undefined],
+    ])('are all kept when untrackedOrgs is %s', (_label, untrackedOrgs) => {
+      sm.updateConfig({ untrackedOrgs });
+
+      syncLedgersWithGitHub(sm, [], []);
+
+      expect(storedUrls(sm)).toHaveLength(2);
+      expect(sm.getClosedPRs()).toHaveLength(1);
+      expect(Object.keys(sm.getState().repoScores)).toContain('Acme/internal');
     });
   });
 });

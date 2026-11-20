@@ -10,7 +10,7 @@
 
 import { AgentState, RepoScore, RepoScoreUpdate, StoredMergedPR, StoredClosedPR, isBelowMinStars } from './types.js';
 import { debug, warn } from './logger.js';
-import { parseGitHubUrl } from './urls.js';
+import { parseGitHubUrl, isUntrackedOrg } from './urls.js';
 
 const MODULE = 'scoring';
 
@@ -272,6 +272,44 @@ function countByRepo(prs: ReadonlyArray<{ url: string }>): Map<string, number> {
     counts.set(repo, (counts.get(repo) ?? 0) + 1);
   }
   return counts;
+}
+
+/**
+ * Remove everything stored about repositories in `config.untrackedOrgs` (the
+ * user's employer): their merged and closed ledger rows and their repoScores
+ * entries, so they are no longer counted, shown or synced (#1924). Earlier
+ * versions stored them through the dashboard's ledger fetch and counted them
+ * in the count searches. The scores entry is deleted rather than lowered:
+ * nothing about such a repository should remain, and none of the fetches
+ * that write scores returns it any more.
+ *
+ * Private repositories are not covered: a stored row does not record
+ * visibility, so they cannot be told apart from public ones here.
+ *
+ * Idempotent; a no-op when `untrackedOrgs` is empty or unset.
+ * @returns ledger rows and repoScores entries removed
+ */
+export function evictUntrackedOrgPRs(state: AgentState): { rows: number; repos: number } {
+  const orgs = state.config.untrackedOrgs ?? [];
+  if (orgs.length === 0) return { rows: 0, repos: 0 };
+
+  const isTracked = (pr: { url: string }): boolean => {
+    const parsed = parseGitHubUrl(pr.url);
+    return !parsed || !isUntrackedOrg(parsed.owner, orgs);
+  };
+  const merged = state.mergedPRs ?? [];
+  const closed = state.closedPRs ?? [];
+  const keptMerged = merged.filter((pr) => isTracked(pr));
+  const keptClosed = closed.filter((pr) => isTracked(pr));
+  const rows = merged.length - keptMerged.length + (closed.length - keptClosed.length);
+  if (rows > 0) {
+    state.mergedPRs = keptMerged;
+    state.closedPRs = keptClosed;
+  }
+
+  const untrackedRepos = Object.keys(state.repoScores).filter((repo) => isUntrackedOrg(repo.split('/', 1)[0], orgs));
+  for (const repo of untrackedRepos) delete state.repoScores[repo];
+  return { rows, repos: untrackedRepos.length };
 }
 
 /**

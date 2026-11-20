@@ -1017,6 +1017,17 @@ export class StateManager {
     return evicted;
   }
 
+  /**
+   * Remove ledger rows and repoScores entries for repositories in
+   * `config.untrackedOrgs` (#1924). See repoScoring.evictUntrackedOrgPRs.
+   * @returns the number of ledger rows removed
+   */
+  evictUntrackedOrgPRs(): number {
+    const { rows, repos } = repoScoring.evictUntrackedOrgPRs(this.state);
+    if (rows + repos > 0) this.autoSave();
+    return rows;
+  }
+
   /** Returns the most recent close date, used as a watermark for incremental fetching. */
   getClosedPRWatermark(): string | undefined {
     return this.state.closedPRs?.[0]?.closedAt || undefined;

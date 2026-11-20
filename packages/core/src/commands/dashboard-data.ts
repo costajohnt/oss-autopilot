@@ -26,6 +26,7 @@ import {
   fetchMergedPRsSince,
   fetchClosedPRsSince,
   type RecentListTruncation,
+  CLOSED_LEDGER_TRUNCATED_MESSAGE,
   MERGED_LEDGER_TRUNCATED_MESSAGE,
   type PRsSinceResult,
 } from '../core/github-stats.js';
@@ -329,13 +330,13 @@ function engagedScanLabels(
 }
 
 /**
- * The rows of a merged-ledger gap fetch (#1924). A truncated fetch has none
- * and goes on the partial-data banner, which names `ledger-backfill`.
+ * The rows of a ledger gap fetch (#1924). A truncated fetch has none and
+ * puts `truncatedMessage` on the partial-data banner.
  */
-function mergedGapRows(gap: PRsSinceResult<StoredMergedPR>, partialFailures: string[]): StoredMergedPR[] {
+function gapRows<T>(gap: PRsSinceResult<T>, truncatedMessage: string, partialFailures: string[]): T[] {
   if (gap.truncated) {
-    partialFailures.push(MERGED_LEDGER_TRUNCATED_MESSAGE);
-    warn(MODULE, MERGED_LEDGER_TRUNCATED_MESSAGE);
+    partialFailures.push(truncatedMessage);
+    warn(MODULE, truncatedMessage);
   }
   return gap.prs;
 }
@@ -407,7 +408,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     mergedResult,
     closedResult,
     mergedGap,
-    newClosedPRs,
+    closedGap,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
     prMonitor
@@ -428,11 +429,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       trackingCatch('fetch merged PRs for storage', { prs: [] as StoredMergedPR[], truncated: false }),
     ),
     fetchClosedPRsSince(octokit, config, closedWatermark).catch(
-      trackingCatch('fetch closed PRs for storage', [] as StoredClosedPR[]),
+      trackingCatch('fetch closed PRs for storage', { prs: [] as StoredClosedPR[], truncated: false }),
     ),
   ]);
 
-  const newMergedPRs = mergedGapRows(mergedGap, partialFailures);
+  const newMergedPRs = gapRows(mergedGap, MERGED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
+  const newClosedPRs = gapRows(closedGap, CLOSED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
 
   // Issue conversations run after the PR lists: the engaged set (#1862)
   // needs the open, recently closed and recently merged PRs. The fetch has

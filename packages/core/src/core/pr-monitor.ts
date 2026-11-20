@@ -643,7 +643,7 @@ export class PRMonitor {
     starFilter?: StarFilter,
   ): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
     const config = this.stateManager.getState().config;
-    return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername, starFilter);
+    return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername, starFilter, config.untrackedOrgs);
   }
 
   /**
@@ -653,7 +653,7 @@ export class PRMonitor {
    */
   async fetchUserClosedPRCounts(starFilter?: StarFilter): Promise<PRCountsResult<number>> {
     const config = this.stateManager.getState().config;
-    return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername, starFilter);
+    return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername, starFilter, config.untrackedOrgs);
   }
 
   /**

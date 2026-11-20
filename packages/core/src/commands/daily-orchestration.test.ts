@@ -111,6 +111,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       renameRepo: mockRenameRepo,
       tryReconcilePRCounts: vi.fn(),
       evictClosedPRs: mockEvictClosedPRs,
+      evictUntrackedOrgPRs: vi.fn(() => 0),
       getMergedPRWatermark: mockGetMergedPRWatermark,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
@@ -1250,7 +1251,7 @@ describe('executeDailyCheck() — merged-ledger gap (#1924)', () => {
     const [stored] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
     expect(stored.map((pr) => pr.url)).toEqual([recent.url, items[0].html_url, items[1].html_url]);
     expect(mockSearchPRs.mock.calls[0][0].q).toBe(
-      'is:pr is:merged author:testuser -user:testuser updated:>2026-01-09T00:00:00Z',
+      'is:pr is:merged is:public author:testuser -user:testuser updated:>2026-01-09T00:00:00Z',
     );
     expect(result.warnings).toEqual([]);
   });
