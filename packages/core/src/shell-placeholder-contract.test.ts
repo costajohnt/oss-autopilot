@@ -25,13 +25,10 @@ function shellPlaceholders(file: string, source: string): string[] {
   let fence: { marker: string; shell: boolean } | undefined;
   for (const [index, line] of source.split('\n').entries()) {
     const match = FENCE.exec(line);
-    if (match && fence === undefined) {
-      fence = { marker: match[1], shell: SHELL_LANGS.has(match[2].toLowerCase()) };
-    } else if (match && fence !== undefined && line.trim().startsWith(fence.marker)) {
-      fence = undefined;
-    } else if (fence?.shell && PLACEHOLDER.test(line)) {
-      hits.push(`${file}:${index + 1}`);
-    }
+    const closes = fence !== undefined && match !== null && line.trim().startsWith(fence.marker);
+    if (fence?.shell && !closes && PLACEHOLDER.test(line)) hits.push(`${file}:${index + 1}`);
+    const opened = match ? { marker: match[1], shell: SHELL_LANGS.has(match[2].toLowerCase()) } : undefined;
+    fence = closes ? undefined : (fence ?? opened);
   }
   return hits;
 }
