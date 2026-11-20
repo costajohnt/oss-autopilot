@@ -221,6 +221,13 @@ export function categorizeCIStatus(input: {
 }
 
 /**
+ * Check-run conclusions that count as failing. `startup_failure` is a workflow
+ * that never started (an invalid workflow file, for one): no job ran, so
+ * nothing passed (#1918).
+ */
+const FAILING_CONCLUSIONS = new Set(['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure']);
+
+/**
  * Analyze check runs (GitHub Actions, etc.) and categorize them.
  * Returns flags for failing/pending/success and lists of failing check names + conclusions.
  */
@@ -238,12 +245,7 @@ export function analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: st
   const failingCheckConclusions = new Map<string, string>();
 
   for (const check of checkRuns) {
-    if (
-      check.conclusion === 'failure' ||
-      check.conclusion === 'cancelled' ||
-      check.conclusion === 'timed_out' ||
-      check.conclusion === 'action_required'
-    ) {
+    if (check.conclusion !== null && FAILING_CONCLUSIONS.has(check.conclusion)) {
       hasFailingChecks = true;
       failingCheckNames.push(check.name);
       failingCheckConclusions.set(check.name, check.conclusion);
@@ -257,10 +259,11 @@ export function analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: st
       hasFailingChecks = true;
       failingCheckNames.push(check.name);
       failingCheckConclusions.set(check.name, 'action_required');
-    } else if (check.conclusion === null && check.status !== 'completed') {
+    } else if ((check.conclusion === null && check.status !== 'completed') || check.conclusion === 'stale') {
       // Any other run without a conclusion that has not completed is
       // pending: in_progress and queued, but also pending (concurrency
-      // group) and requested.
+      // group) and requested. `stale` is a run GitHub gave up on before it
+      // finished, so it never reached a verdict either.
       hasPendingChecks = true;
     } else if (check.conclusion === 'success') {
       hasSuccessfulChecks = true;
@@ -357,13 +360,16 @@ export function mergeStatuses(
     return { status: 'pending', failingCheckNames: [], failingCheckConclusions: new Map() };
   }
 
-  if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
-    return { status: 'passing', failingCheckNames: [], failingCheckConclusions: new Map() };
-  }
-
-  // No checks found at all — common for repos without CI
+  // No checks found at all — common for repos without CI. This has to come
+  // before the passing branch: analyzeCombinedStatus reports `success` for an
+  // empty status list, which would otherwise read a PR nothing ran on as
+  // passing (#1918).
   if (!hasStatuses && checkRunCount === 0) {
     return unknownCIStatus();
+  }
+
+  if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
+    return { status: 'passing', failingCheckNames: [], failingCheckConclusions: new Map() };
   }
 
   return unknownCIStatus();
@@ -499,7 +505,9 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
             `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`,
           );
         }
-        return null;
+        // null, not [], for a failed fetch: the caller must not read "could not
+        // fetch" as "no check runs" (#1918).
+        return status === 404 ? [] : null;
       }),
       fetchWorkflowBySuite(octokit, owner, repo, sha),
     ]);
@@ -510,7 +518,11 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
       workflowId: workflowBySuite.get(run.check_suite?.id),
     }));
 
-    return computeCIStatus(allCheckRuns, combinedStatus);
+    const result = computeCIStatus(allCheckRuns, combinedStatus);
+    // The check runs could not be read (already logged above), so a clean
+    // combined status proves nothing about them. A failing or pending result
+    // stands: no check run could have turned it into a pass (#1918).
+    return checkRuns === null && result.status === 'passing' ? unknownCIStatus() : result;
   } catch (error) {
     const statusCode = getHttpStatusCode(error);
 

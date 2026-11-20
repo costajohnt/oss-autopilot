@@ -518,6 +518,47 @@ describe('normalizePRNode same-named jobs across workflows (#1917)', () => {
   });
 });
 
+const lintRun = (conclusion: string | null, status: string) => ({
+  ...buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z'),
+  conclusion,
+  status,
+  name: 'lint',
+});
+
+describe('normalizePRNode CI status with no checks (#1918)', () => {
+  it('reads unknown, not passing, when the commit has no check runs and no statuses', () => {
+    expect(ciStatusForRollup([]).status).toBe('unknown');
+  });
+
+  it('reads unknown when the commit has no rollup at all', () => {
+    const outcome = normalizePRNode(makeNode());
+    if (outcome.kind !== 'ok') throw new Error('expected ok');
+    expect(outcome.data.ciStatus.status).toBe('unknown');
+  });
+
+  it('still reads passing when every check passed', () => {
+    const ciStatus = ciStatusForRollup([buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z')]);
+    expect(ciStatus.status).toBe('passing');
+  });
+
+  it('still reads failing for a mix of passing and failing checks', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z'),
+      lintRun('FAILURE', 'COMPLETED'),
+    ]);
+    expect(ciStatus.status).toBe('failing');
+    expect(ciStatus.failingCheckNames).toEqual(['lint']);
+  });
+
+  it('still reads pending for a mix of passing and running checks', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z'),
+      lintRun(null, 'IN_PROGRESS'),
+    ]);
+    expect(ciStatus.status).toBe('pending');
+  });
+});
+
 describe('batchFetchPRDetails', () => {
   it('routes every PR to REST when the client has no graphql method', async () => {
     const octokit = {} as any;
