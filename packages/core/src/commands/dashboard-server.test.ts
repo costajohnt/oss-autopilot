@@ -107,6 +107,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
     // genuine buckets and the shelve partition mirrors the daily check.
     classifyAttentionBucket: actual.classifyAttentionBucket,
     CRITICAL_STATUSES: actual.CRITICAL_STATUSES,
+    shouldAutoUnshelve: actual.shouldAutoUnshelve,
     // Used by the real reconcileShelvePartition (imported via importActual below).
     toShelvedPRRef: vi.fn((pr: unknown) => pr),
   };
@@ -758,6 +759,37 @@ describe('dashboard-server', () => {
 
       expect(data.shelvedPRUrls).not.toContain(pr.url);
       expect(data.activePRs.map((p) => p.url)).toContain(pr.url);
+    });
+
+    it('keeps a PR display-shelved when it was shelved while already critical (#1922)', () => {
+      const pr = makeFetchedPR({
+        url: 'https://github.com/o/r/pull/13',
+        number: 13,
+        repo: 'o/r',
+        title: 'Shelved with a review already unanswered',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        lastMaintainerActivityAt: '2026-01-20T00:00:00Z',
+      });
+      const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
+      const shelved = makeState({
+        // Stored in the casing the user typed; matched to GitHub's canonical pr.url.
+        config: {
+          shelvedPRUrls: ['https://github.com/O/R/pull/13'],
+          shelvedPRInfo: { 'o/r#13': { at: '2026-01-21T00:00:00.000Z', reasons: ['needs_response'] } },
+        },
+        lastDigest: digest,
+      });
+      expect(buildDashboardJson(digest, shelved, []).shelvedPRUrls).toContain(pr.url);
+
+      // A maintainer acting after the shelve resurfaces it, as the daily check would.
+      const engaged = makeState({
+        config: { shelvedPRUrls: [pr.url], shelvedPRInfo: { 'o/r#13': { at: '2026-01-19T00:00:00.000Z' } } },
+        lastDigest: makeDigest({ openPRs: [pr], shelvedPRs: [] }),
+      });
+      expect(
+        buildDashboardJson(makeDigest({ openPRs: [pr], shelvedPRs: [] }), engaged, []).shelvedPRUrls,
+      ).not.toContain(pr.url);
     });
 
     it('keeps a dormant-auto-shelved open PR shelved even when not in config', () => {

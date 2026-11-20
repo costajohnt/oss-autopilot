@@ -104,6 +104,9 @@ export { enableDebug, isDebugEnabled, debug, info, warn, timed } from './logger.
 export { HttpCache, getHttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
 export {
   CRITICAL_STATUSES,
+  shouldAutoUnshelve,
+  shelveReasonsOf,
+  withoutShelvedNeedsAddressing,
   applyStatusOverrides,
   computeRepoSignals,
   computeLedgerRepoSignals,

@@ -18,7 +18,7 @@
 import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
-import { parseGitHubUrl } from './urls.js';
+import { parseGitHubUrl, issueRefKey } from './urls.js';
 import { MAINTAINER_RESPONSE_RULE } from './review-analysis.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
@@ -27,6 +27,7 @@ import type {
   StalenessTier,
   ActionReason,
   AgentState,
+  DailyDigest,
   ShelvedPRRef,
   ComputedRepoSignals,
   RepoGroup,
@@ -49,6 +50,54 @@ import type {
  * Used for auto-unshelving shelved PRs.
  */
 export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
+
+/**
+ * The action reasons a shelve record stores and compares (#1922): every
+ * reason the PR has while it needs addressing, none when it does not. A PR
+ * that carries only a primary reason yields that one.
+ */
+export function shelveReasonsOf(pr: Pick<FetchedPR, 'status' | 'actionReason' | 'actionReasons'>): string[] {
+  if (!CRITICAL_STATUSES.has(pr.status)) return [];
+  if (pr.actionReasons?.length) return pr.actionReasons;
+  return [pr.actionReason ?? 'needs_addressing'];
+}
+
+/**
+ * Whether an explicitly shelved PR goes back to active (#1922). It must need
+ * addressing, and something must be new since it was shelved: maintainer
+ * activity after the shelve, or an action reason not among the recorded ones.
+ * A PR shelved while it already needed addressing stays shelved until then,
+ * also when one of its recorded reasons clears or comes back.
+ * A record without reasons (the PR was not in the digest at shelve time)
+ * only unshelves on maintainer activity; the daily run then fills the reasons
+ * in. Without a shelve record (shelved before `config.shelvedPRInfo` existed)
+ * or a known maintainer-activity time, needing addressing alone unshelves it.
+ *
+ * @param shelvedPRInfo - `config.shelvedPRInfo`, keyed by `issueRefKey`
+ */
+export function shouldAutoUnshelve(
+  pr: Pick<FetchedPR, 'url' | 'status' | 'actionReason' | 'actionReasons' | 'lastMaintainerActivityAt'>,
+  shelvedPRInfo: AgentState['config']['shelvedPRInfo'] | undefined,
+): boolean {
+  if (!CRITICAL_STATUSES.has(pr.status)) return false;
+  const info = shelvedPRInfo?.[issueRefKey(pr.url) ?? pr.url];
+  if (!info || !pr.lastMaintainerActivityAt) return true;
+  const known = info.reasons;
+  if (known && shelveReasonsOf(pr).some((reason) => !known.includes(reason))) return true;
+  const activityMs = Date.parse(pr.lastMaintainerActivityAt);
+  const shelvedMs = Date.parse(info.at);
+  // An unparseable date resurfaces the PR instead of hiding it.
+  return Number.isNaN(activityMs) || Number.isNaN(shelvedMs) || activityMs > shelvedMs;
+}
+
+/**
+ * A PR shelved while it needs addressing stays shelved (#1922): keep it out
+ * of the Needs Addressing list the brief and --json output render.
+ */
+export function withoutShelvedNeedsAddressing(digest: DailyDigest, shelvedPRs: ShelvedPRRef[]): DailyDigest {
+  const shelvedUrls = new Set(shelvedPRs.map((ref) => ref.url));
+  return { ...digest, needsAddressingPRs: digest.needsAddressingPRs.filter((pr) => !shelvedUrls.has(pr.url)) };
+}
 
 /**
  * ActionReason values that indicate high-priority issues blocking capacity.
