@@ -577,15 +577,10 @@ describe('agent body tool references ↔ frontmatter tool grants (#1377)', () =>
 
 describe('every agents/*.md declares a tools allowlist (#1946)', () => {
   it('has frontmatter with a non-empty `tools:` list', () => {
-    const offenders: string[] = [];
-    for (const file of listAgentFiles()) {
-      const rel = path.relative(REPO_ROOT, file);
-      try {
-        if (!parseAgentDoc(file).tools?.size) offenders.push(`${rel}: no \`tools:\` list in frontmatter`);
-      } catch (error) {
-        offenders.push((error as Error).message);
-      }
-    }
+    // parseAgentDoc throws on a file with no frontmatter, which fails this test too.
+    const offenders = listAgentFiles()
+      .filter((file) => !parseAgentDoc(file).tools?.size)
+      .map((file) => `${path.relative(REPO_ROOT, file)}: no \`tools:\` list in frontmatter`);
     expect(
       offenders,
       `every markdown file in agents/ is loaded as an agent; move docs elsewhere or add a narrow \`tools:\` list:\n  ` +
