@@ -11,10 +11,11 @@
  *  3. If there is no local ID, or that Gist is gone (404), search the user's
  *     Gists for a private one with description `oss-autopilot-state`
  *  4. If found via search, store the ID locally and fetch it
- *  5. Only when the search ran to the end of the list and found nothing, create
- *     a new private Gist with seed files and store the ID. A failed search
- *     degrades to the local cache; an unfinished or ambiguous one (list longer
- *     than the search window, or only a public match) throws
+ *  5. Only when the search ran to the end of the list (a page with no
+ *     `rel="next"` link) and found nothing, create a new private Gist with seed
+ *     files and store the ID. A failed search degrades to the local cache; an
+ *     unfinished or ambiguous one (list longer than the search window, or only
+ *     a public match) throws
  *     {@link GistDiscoveryError}. Neither creates a Gist (#1926).
  *  6. Cache all Gist file contents in memory for session-scoped reads
  *  7. Write state to a local cache file for fallback
@@ -151,7 +152,10 @@ export interface OctokitLike {
     get: (params: {
       gist_id: string;
     }) => Promise<{ data: GistResponseData; headers?: Record<string, string | undefined> }>;
-    list: (params: { per_page: number; page: number }) => Promise<{ data: GistListItem[] }>;
+    list: (params: {
+      per_page: number;
+      page: number;
+    }) => Promise<{ data: GistListItem[]; headers?: Record<string, string | undefined> }>;
     create: (params: {
       description: string;
       public: boolean;
@@ -175,6 +179,7 @@ interface GistListItem {
   id: string;
   description: string | null;
   public: boolean;
+  created_at: string;
 }
 
 /** Shape of a full Gist response (subset). */
@@ -908,8 +913,9 @@ export class GistStateStore {
 
   /**
    * Search the authenticated user's Gists for the private one with the
-   * well-known description. Pages through up to 10 pages (100 Gists per page);
-   * a page shorter than that is the end of the list.
+   * well-known description. Pages through up to 10 pages (100 Gists per page).
+   * The list has ended when a response carries no `rel="next"` Link header;
+   * page length is not used, since a short page need not be the last.
    *
    * Returns `null` only when the search ran to the end of the list and found
    * no Gist with the description. The callers create a new Gist on `null`, so
@@ -922,31 +928,49 @@ export class GistStateStore {
     const maxPages = 10;
     const perPage = 100;
     let publicId: string | undefined;
-    let reachedEnd = false;
-    for (let page = 1; page <= maxPages && !reachedEnd; page++) {
-      const { data: gists } = await this.octokit.gists.list({ per_page: perPage, page });
+    let hasReachedEnd = false;
+    for (let page = 1; !hasReachedEnd && page <= maxPages; page++) {
+      const { data: gists, headers } = await this.octokit.gists.list({ per_page: perPage, page });
       const matches = gists.filter((g) => g.description === GIST_DESCRIPTION);
-      const privateIds = matches.filter((g) => !g.public).map((g) => g.id);
-      if (privateIds.length > 1) {
-        warn(MODULE, `Found ${privateIds.length} state Gists (${privateIds.join(', ')}), using ${privateIds[0]}`);
-      }
-      if (privateIds[0]) return privateIds[0];
+      const [first, ...rest] = matches.filter((g) => !g.public);
+      if (first) return this.pickStateGist(first, rest);
       publicId ??= matches[0]?.id;
-      reachedEnd = gists.length < perPage;
+      hasReachedEnd = !headers?.link?.includes('rel="next"');
     }
+    if (hasReachedEnd && !publicId) return null;
     const idHint = `to ${getGistIdPath()}`;
-    if (publicId) {
+    if (hasReachedEnd) {
       throw new GistDiscoveryError(
         `Found a public Gist (${publicId}) with the "${GIST_DESCRIPTION}" description. A public Gist is not ` +
           `adopted automatically. To keep using it, write its ID ${idHint}; to start fresh, delete that Gist.`,
       );
     }
-    if (reachedEnd) return null;
+    const publicNote = publicId
+      ? ` A public Gist with that description (${publicId}) was seen; it is not adopted automatically, ` +
+        `but writing its ID there keeps using it.`
+      : '';
     throw new GistDiscoveryError(
       `Searched the first ${maxPages * perPage} Gists without finding a private "${GIST_DESCRIPTION}" Gist or ` +
         `reaching the end of the list, so no new Gist was created. Write the state Gist's ID (the last path ` +
-        `segment of its URL) ${idHint}.`,
+        `segment of its URL) ${idHint}.${publicNote}`,
     );
+  }
+
+  /** Pick the oldest of the private state Gists found on a page, warning when there are several. */
+  private pickStateGist(first: GistListItem, rest: GistListItem[]): string {
+    let chosen = first;
+    for (const g of rest) {
+      if (Date.parse(g.created_at) < Date.parse(chosen.created_at)) chosen = g;
+    }
+    if (rest.length > 0) {
+      const others = [first, ...rest].filter((g) => g !== chosen).map((g) => g.id);
+      warn(
+        MODULE,
+        `Found ${others.length + 1} private "${GIST_DESCRIPTION}" Gists. Using the oldest, ${chosen.id}; ` +
+          `ignoring ${others.join(', ')}. Delete the others, or write ${chosen.id} to ${getGistIdPath()}.`,
+      );
+    }
+    return chosen.id;
   }
 
   /**

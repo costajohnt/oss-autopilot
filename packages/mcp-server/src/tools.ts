@@ -209,9 +209,16 @@ function gistInitFailureReason(e: unknown, isRepairTool: boolean): string {
     throw new Error(`${message} To fix it, ${GIST_FILE_SIZE_REMEDY}. ${GIST_INIT_HALT_RETRY}`, { cause: e });
   }
   if (!isRepairTool && e instanceof GistDiscoveryError) {
-    throw new Error(`${message} ${GIST_INIT_HALT_RETRY}`, { cause: e });
+    // Writing the gist-id file does not clear the memo, so say what does.
+    throw new Error(
+      `${message} After writing the file, run the config tool with no arguments to retry right away; ` +
+        `otherwise Gist init is retried after ${GIST_SIZE_HALT_TTL_MS / 60_000} minutes.`,
+      { cause: e },
+    );
   }
   if (!(isRepairTool && e instanceof ConfigurationError)) throw e;
+  // A GistDiscoveryError carries its own remedy; the scope hint below would mislead.
+  if (e instanceof GistDiscoveryError) return `initialization failed (${message})`;
   return e instanceof GistFileSizeError
     ? `initialization failed (${message}). To fix it, ${GIST_FILE_SIZE_REMEDY}`
     : `initialization failed (${message}) — fix the Gist setup ` +

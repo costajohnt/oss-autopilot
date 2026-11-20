@@ -435,9 +435,21 @@ describe('ensureGistInit retry semantics (#1368)', () => {
       expect(second.isError).toBe(true);
       const text = (second.content as Array<{ text: string }>)[0].text;
       expect(text).toContain('write the Gist ID to gist-id');
-      expect(text).toMatch(/retried after 10 minutes, or right away after config, setup, init, or state-unlink/);
+      expect(text).toMatch(/After writing the file, run the config tool with no arguments to retry right away/);
+      expect(text).toMatch(/retried after 10 minutes/);
       expect(text).not.toContain('trim repoScores');
       expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+
+      // The config tool runs through it, shows the message without the
+      // gist-scope hint, and resets the memo.
+      const commands = await import('@oss-autopilot/core/commands');
+      vi.mocked(commands.runConfig as (args?: unknown) => Promise<unknown>).mockResolvedValueOnce({ ok: true });
+      const repair = await client.callTool({ name: 'config', arguments: {} });
+      const payload = JSON.parse((repair.content as Array<{ text: string }>)[0].text);
+      expect(payload.gistInitWarning).toContain('write the Gist ID to gist-id');
+      expect(payload.gistInitWarning).not.toMatch(/gist scope/);
+      await client.callTool({ name: 'status', arguments: {} });
+      expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
     });
 
     it('a memoized GistFileSizeError expires after 10 minutes', async () => {

@@ -105,6 +105,9 @@ type MockOctokit = OctokitLike & {
   };
 };
 
+/** Response headers of a Gist list page that is not the last one. */
+const NEXT_PAGE = { link: '<https://api.github.com/gists?per_page=100&page=2>; rel="next"' };
+
 function makeMockOctokit(): MockOctokit {
   // The cast is load-bearing: a bare vi.fn() satisfies the Mock side of the
   // intersection but not OctokitLike's concrete call signatures.
@@ -276,12 +279,12 @@ describe('GistStateStore', () => {
       // Preflight scope check
       octokit.gists.list.mockResolvedValueOnce({ data: [] });
 
-      // Page 1: 100 unrelated Gists (not empty, so search continues)
+      // Page 1: 100 unrelated Gists, with a next link so the search continues
       const page1 = Array.from({ length: 100 }, (_, i) => ({
         id: `unrelated-${i}`,
         description: `other gist ${i}`,
       }));
-      octokit.gists.list.mockResolvedValueOnce({ data: page1 });
+      octokit.gists.list.mockResolvedValueOnce({ data: page1, headers: NEXT_PAGE });
 
       // Page 2: contains target
       octokit.gists.list.mockResolvedValueOnce({
@@ -380,7 +383,7 @@ describe('GistStateStore', () => {
     });
 
     it.each(methods)('%s refuses to create when the Gist list outruns the search window', async (method) => {
-      octokit.gists.list.mockResolvedValue({ data: fullPage });
+      octokit.gists.list.mockResolvedValue({ data: fullPage, headers: NEXT_PAGE });
 
       const store = new GistStateStore(octokit);
       const attempt = store[method](createFreshState());
@@ -414,7 +417,7 @@ describe('GistStateStore', () => {
         ...fullPage.slice(1),
       ];
       octokit.gists.list.mockResolvedValueOnce({ data: [] });
-      octokit.gists.list.mockResolvedValueOnce({ data: publicFirst });
+      octokit.gists.list.mockResolvedValueOnce({ data: publicFirst, headers: NEXT_PAGE });
       octokit.gists.list.mockResolvedValueOnce({
         data: [{ id: 'private-state', description: GIST_DESCRIPTION, public: false }],
       });
@@ -427,36 +430,109 @@ describe('GistStateStore', () => {
       expect(octokit.gists.create).not.toHaveBeenCalled();
     });
 
-    it('treats a short page as the end of the list and creates after an empty search', async () => {
+    it('reads the end of the list from the Link header, not from the page length', async () => {
       octokit.gists.list.mockResolvedValueOnce({ data: [] });
-      octokit.gists.list.mockResolvedValueOnce({ data: fullPage });
-      octokit.gists.list.mockResolvedValueOnce({ data: fullPage.slice(0, 99) });
+      // A short page that still has a next link is not the end...
+      octokit.gists.list.mockResolvedValueOnce({ data: fullPage.slice(0, 3), headers: NEXT_PAGE });
+      // ...and a full page without one is.
+      octokit.gists.list.mockResolvedValueOnce({ data: fullPage, headers: {} });
 
       const store = new GistStateStore(octokit);
       const result = await store.bootstrap();
 
       expect(result.created).toBe(true);
-      // 1 preflight + 2 search pages, no trailing empty page
+      // 1 preflight + 2 search pages
       expect(octokit.gists.list).toHaveBeenCalledTimes(3);
     });
 
-    it('adopts the first of several private state Gists and warns with every ID', async () => {
+    it('names a public match in the window error without advising to delete it', async () => {
+      const publicFirst = [
+        { id: 'public-lookalike', description: GIST_DESCRIPTION, public: true },
+        ...fullPage.slice(1),
+      ];
+      octokit.gists.list.mockResolvedValue({ data: publicFirst, headers: NEXT_PAGE });
+
+      const store = new GistStateStore(octokit);
+      const attempt = store.bootstrap();
+
+      await expect(attempt).rejects.toThrow(/Searched the first 1000 Gists.*public-lookalike/);
+      await expect(attempt).rejects.not.toThrow(/delete that Gist/);
+      expect(octokit.gists.create).not.toHaveBeenCalled();
+    });
+
+    it('adopts the oldest of several private state Gists and warns how to resolve the duplicate', async () => {
       octokit.gists.list.mockResolvedValue({
         data: [
-          { id: 'state-a', description: GIST_DESCRIPTION, public: false },
-          { id: 'state-b', description: GIST_DESCRIPTION, public: false },
+          { id: 'state-new', description: GIST_DESCRIPTION, public: false, created_at: '2026-03-01T00:00:00Z' },
+          { id: 'state-old', description: GIST_DESCRIPTION, public: false, created_at: '2025-01-01T00:00:00Z' },
         ],
       });
-      octokit.gists.get.mockResolvedValue(makeGistResponse('state-a', makeStateJson()));
+      octokit.gists.get.mockResolvedValue(makeGistResponse('state-old', makeStateJson()));
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const store = new GistStateStore(octokit);
       const result = await store.bootstrap();
 
-      expect(result.gistId).toBe('state-a');
-      const logged = errorSpy.mock.calls.map((call) => String(call[0]));
-      expect(logged.some((line) => line.includes('state-a, state-b'))).toBe(true);
+      expect(result.gistId).toBe('state-old');
+      const logged = errorSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toMatch(
+        /Using the oldest, state-old; ignoring state-new\. Delete the others, or write state-old to .*gist-id/,
+      );
       errorSpy.mockRestore();
+    });
+  });
+
+  describe('bootstrap: the saved Gist ID across a search (#1926)', () => {
+    const gone = Object.assign(new Error('Not Found'), { status: 404 });
+    const methods = ['bootstrap', 'bootstrapWithMigration'] as const;
+
+    beforeEach(() => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'saved-gist');
+      octokit.gists.create.mockResolvedValue(makeGistResponse('newly-created', makeStateJson()));
+    });
+
+    it.each([
+      [
+        'only a public Gist matches',
+        { data: [{ id: 'public-lookalike', description: GIST_DESCRIPTION, public: true }] },
+      ],
+      [
+        'the search window is exhausted',
+        { data: [{ id: 'other', description: null, public: false }], headers: NEXT_PAGE },
+      ],
+    ])('keeps the saved ID when it returns 404 and %s', async (_name, listPage) => {
+      octokit.gists.get.mockRejectedValue(gone);
+      octokit.gists.list.mockResolvedValue(listPage);
+
+      const store = new GistStateStore(octokit);
+
+      await expect(store.bootstrap()).rejects.toThrow(GistDiscoveryError);
+      expect(store.getGistId()).toBeNull();
+      expect(octokit.gists.create).not.toHaveBeenCalled();
+      expect(fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8')).toBe('saved-gist');
+    });
+
+    it.each(methods)('%s replaces the saved ID when it returns 404 and a completed search is empty', async (method) => {
+      octokit.gists.get.mockRejectedValue(gone);
+
+      const store = new GistStateStore(octokit);
+      const result = await store[method](createFreshState());
+
+      expect(result.created).toBe(true);
+      expect(fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8')).toBe('newly-created');
+    });
+
+    it('bootstraps from a saved ID that points at a public Gist without searching', async () => {
+      const response = makeGistResponse('saved-gist', makeStateJson());
+      octokit.gists.get.mockResolvedValue({ data: { ...response.data, public: true } });
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.gistId).toBe('saved-gist');
+      expect(result.created).toBe(false);
+      // Preflight only
+      expect(octokit.gists.list).toHaveBeenCalledTimes(1);
     });
   });
 
