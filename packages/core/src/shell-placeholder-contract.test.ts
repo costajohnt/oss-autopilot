@@ -26,7 +26,7 @@ function shellPlaceholders(file: string, source: string): string[] {
   for (const [index, line] of source.split('\n').entries()) {
     const match = FENCE.exec(line);
     const closes = fence !== undefined && match !== null && line.trim().startsWith(fence.marker);
-    if (fence?.shell && !closes && PLACEHOLDER.test(line)) hits.push(`${file}:${index + 1}`);
+    if (!closes && fence?.shell && PLACEHOLDER.test(line)) hits.push(`${file}:${index + 1}`);
     const opened = match ? { marker: match[1], shell: SHELL_LANGS.has(match[2].toLowerCase()) } : undefined;
     fence = closes ? undefined : (fence ?? opened);
   }
