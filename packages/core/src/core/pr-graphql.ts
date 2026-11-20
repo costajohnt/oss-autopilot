@@ -165,6 +165,7 @@ interface GraphQLCheckRunNode {
   conclusion: string | null;
   status: string | null;
   startedAt: string | null;
+  checkSuite?: { workflowRun: { event: string; workflow: { name: string } } | null } | null;
 }
 
 interface GraphQLStatusContextNode {
@@ -300,7 +301,7 @@ const PR_FIELDS = `
             totalCount
             nodes {
               __typename
-              ... on CheckRun { name conclusion status startedAt }
+              ... on CheckRun { name conclusion status startedAt checkSuite { workflowRun { event workflow { name } } } }
               ... on StatusContext { context state description }
             }
           }
@@ -354,6 +355,10 @@ function toCIStatus(commit: GraphQLCommitNode | undefined): CIStatusResult {
       conclusion: n.conclusion ? n.conclusion.toLowerCase() : null,
       status: (n.status ?? '').toLowerCase(),
       started_at: n.startedAt ?? null,
+      // Same key the `gh` CLI dedupes on: workflow name + trigger event (#1917).
+      workflow: n.checkSuite?.workflowRun
+        ? `${n.checkSuite.workflowRun.workflow.name}/${n.checkSuite.workflowRun.event}`
+        : null,
     }));
 
   // Combined statuses come from the legacy status object (mirrors

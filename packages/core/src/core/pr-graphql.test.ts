@@ -455,6 +455,47 @@ describe('normalizePRNode', () => {
   });
 });
 
+const buildRun = (workflow: string, conclusion: string, startedAt: string) => ({
+  conclusion,
+  startedAt,
+  __typename: 'CheckRun',
+  name: 'build',
+  status: 'COMPLETED',
+  checkSuite: { workflowRun: { event: 'pull_request', workflow: { name: workflow } } },
+});
+
+const ciStatusForRollup = (nodes: unknown[]) => {
+  const commit = {
+    oid: 'abc',
+    authoredDate: '2026-02-06T00:00:00Z',
+    author: { user: { login: 'contributor' } },
+    status: null,
+    statusCheckRollup: { contexts: { nodes, totalCount: nodes.length } },
+  };
+  const outcome = normalizePRNode(makeNode({ commits: { nodes: [{ commit }] } }));
+  if (outcome.kind !== 'ok') throw new Error('expected ok');
+  return outcome.data.ciStatus;
+};
+
+describe('normalizePRNode same-named jobs across workflows (#1917)', () => {
+  it('keeps an earlier failure when a same-named job in another workflow passes later', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun('CI', 'FAILURE', '2026-02-06T00:00:00Z'),
+      buildRun('Docs', 'SUCCESS', '2026-02-06T00:01:00Z'),
+    ]);
+    expect(ciStatus.status).toBe('failing');
+    expect(ciStatus.failingCheckNames).toEqual(['build']);
+  });
+
+  it('still drops a superseded failure when the same workflow is re-triggered', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun('CI', 'FAILURE', '2026-02-06T00:00:00Z'),
+      buildRun('CI', 'SUCCESS', '2026-02-06T00:01:00Z'),
+    ]);
+    expect(ciStatus.status).toBe('passing');
+  });
+});
+
 describe('batchFetchPRDetails', () => {
   it('routes every PR to REST when the client has no graphql method', async () => {
     const octokit = {} as any;

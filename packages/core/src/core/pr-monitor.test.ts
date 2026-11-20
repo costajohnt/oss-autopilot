@@ -261,6 +261,79 @@ describe('PRMonitor CI status deduplication', () => {
   });
 });
 
+// Two `build` check runs in different check suites. The failing one started
+// first, so a bare-name dedupe would discard it (#1917).
+const SAME_NAME_CHECK_RUNS = [
+  {
+    name: 'build',
+    status: 'completed',
+    conclusion: 'failure',
+    started_at: '2026-02-07T12:00:00Z',
+    check_suite: { id: 1 },
+  },
+  {
+    name: 'build',
+    status: 'completed',
+    conclusion: 'success',
+    started_at: '2026-02-07T12:01:00Z',
+    check_suite: { id: 2 },
+  },
+];
+
+/** Workflow runs for suites 1 and 2: suite 1 ran workflow 100, suite 2 the given one. */
+const workflowRunsResponse = (secondWorkflowId: number) => ({
+  data: {
+    workflow_runs: [
+      { check_suite_id: 1, workflow_id: 100, event: 'pull_request' },
+      { check_suite_id: 2, workflow_id: secondWorkflowId, event: 'pull_request' },
+    ],
+  },
+});
+
+const sameNameOctokit = (listWorkflowRunsForRepo: ReturnType<typeof vi.fn>): typeof mockOctokitInstance => {
+  const combinedStatus = { data: { state: 'success', statuses: [] } };
+  return {
+    repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(combinedStatus) },
+    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: SAME_NAME_CHECK_RUNS } }) },
+    actions: { listWorkflowRunsForRepo },
+  };
+};
+
+describe('getCIStatus same-named jobs across workflows (#1917)', () => {
+  it('keeps a failing job when a same-named job in another workflow passes later', async () => {
+    const listWorkflowRunsForRepo = vi.fn().mockResolvedValue(workflowRunsResponse(200));
+    const result = await getCIStatus(sameNameOctokit(listWorkflowRunsForRepo), 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['build']);
+    expect(listWorkflowRunsForRepo).toHaveBeenCalledWith(expect.objectContaining({ head_sha: 'abc123' }));
+  });
+
+  it('drops a superseded run when the same workflow was re-triggered into a new check suite', async () => {
+    const octokit = sameNameOctokit(vi.fn().mockResolvedValue(workflowRunsResponse(100)));
+
+    const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+  });
+
+  it('falls back to name-only dedupe when the workflow-run lookup fails', async () => {
+    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+    const octokit = sameNameOctokit(vi.fn().mockRejectedValue(notFound));
+
+    const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+  });
+
+  it('propagates a rate limit from the workflow-run lookup', async () => {
+    const rateLimited = Object.assign(new Error('Too Many Requests'), { status: 429 });
+    const octokit = sameNameOctokit(vi.fn().mockRejectedValue(rateLimited));
+
+    await expect(getCIStatus(octokit, 'owner', 'repo', 'abc123')).rejects.toMatchObject({ status: 429 });
+  });
+});
+
 describe('PRMonitor analyzeChecklist', () => {
   beforeEach(() => {
     mockOctokitInstance = {};

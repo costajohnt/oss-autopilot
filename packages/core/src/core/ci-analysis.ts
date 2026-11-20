@@ -5,7 +5,7 @@
 
 import type { Octokit } from '@octokit/rest';
 import { CIFailureCategory, ClassifiedCheck, CIStatusResult, CIStatus, CIStatusCategorization } from './types.js';
-import { getHttpStatusCode, errorMessage } from './errors.js';
+import { getHttpStatusCode, errorMessage, isRateLimitOrAuthError } from './errors.js';
 import { debug, warn } from './logger.js';
 import { paginateAll } from './pagination.js';
 
@@ -377,6 +377,10 @@ export interface RawCheckRun {
   status: string;
   /** ISO timestamp used to pick the most recent run when a name repeats. */
   started_at?: string | null;
+  /** Identity of the workflow (plus trigger event) that produced the run. Two
+   *  runs are the same check only when both this and `name` match; absent for
+   *  non-Actions check runs, which fall back to name alone (#1917). */
+  workflow?: string | null;
 }
 
 /** Minimal combined-status shape consumed by {@link computeCIStatus} — mirrors
@@ -394,18 +398,21 @@ export interface RawCombinedStatus {
  * only difference between the two is where the raw check-run / combined-status
  * data comes from, guaranteeing CI-status parity by construction.
  *
- * Deduplicates check runs by name (keeping the most recent run per name), then
- * merges the check-run and combined-status analyses.
+ * Deduplicates check runs by workflow + name (keeping the most recent run per
+ * pair), then merges the check-run and combined-status analyses.
  */
 export function computeCIStatus(checkRuns: RawCheckRun[], combinedStatus: RawCombinedStatus): CIStatusResult {
-  // Deduplicate check runs by name, keeping only the most recent run per unique name.
+  // Deduplicate check runs, keeping only the most recent run per workflow + name.
   // GitHub returns all historical runs (including re-runs), so without deduplication
   // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
+  // The workflow is part of the key because two workflows can each have a `build`
+  // job: keyed on the bare name, a later pass in one hides a failure in the other (#1917).
   const latestCheckRunsByName = new Map<string, RawCheckRun>();
   for (const check of checkRuns) {
-    const existing = latestCheckRunsByName.get(check.name);
+    const key = `${check.workflow ?? ''}\n${check.name}`;
+    const existing = latestCheckRunsByName.get(key);
     if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
-      latestCheckRunsByName.set(check.name, check);
+      latestCheckRunsByName.set(key, check);
     }
   }
   const deduped = [...latestCheckRunsByName.values()];
@@ -417,6 +424,43 @@ export function computeCIStatus(checkRuns: RawCheckRun[], combinedStatus: RawCom
 }
 
 /**
+ * Map each check suite on a commit to the workflow (plus trigger event) that ran it.
+ *
+ * A REST check run names its check suite but not its workflow, and a re-triggered
+ * workflow gets a new suite, so the suite id alone cannot tell "re-run of the same
+ * job" from "same-named job in another workflow" (#1917). If the lookup fails the
+ * map is empty and dedupe degrades to name alone rather than losing the CI status.
+ */
+async function fetchWorkflowBySuite(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  sha: string,
+): Promise<Map<number | undefined, string>> {
+  const fetchPage = async (page: number) => {
+    const res = await octokit.actions.listWorkflowRunsForRepo({ owner, repo, page, head_sha: sha, per_page: 100 });
+    return { data: res.data.workflow_runs };
+  };
+  const workflowBySuite = new Map<number | undefined, string>();
+  let runs: Awaited<ReturnType<typeof fetchPage>>['data'];
+  try {
+    runs = await paginateAll(fetchPage);
+  } catch (err) {
+    if (isRateLimitOrAuthError(err)) throw err;
+    const reason = errorMessage(err);
+    debug(
+      'pr-monitor',
+      `Workflow runs unavailable for ${owner}/${repo}@${sha.slice(0, 7)}; deduping by name: ${reason}`,
+    );
+    return workflowBySuite;
+  }
+  for (const run of runs) {
+    workflowBySuite.set(run.check_suite_id, `${run.workflow_id}/${run.event}`);
+  }
+  return workflowBySuite;
+}
+
+/**
  * Get CI status for a commit SHA by querying both the combined status API and check runs API.
  * Returns the merged status and names of any failing checks for diagnostics.
  */
@@ -424,8 +468,8 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
   if (!sha) return unknownCIStatus();
 
   try {
-    // Fetch both combined status and check runs in parallel
-    const [statusResponse, checkRuns] = await Promise.all([
+    // Fetch combined status, check runs and workflow runs in parallel
+    const [statusResponse, checkRuns, workflowBySuite] = await Promise.all([
       // per_page 100: the default page holds 30 statuses, and analyzeCombinedStatus
       // only sees the page it is given.
       octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha, per_page: 100 }),
@@ -454,10 +498,14 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
         }
         return null;
       }),
+      fetchWorkflowBySuite(octokit, owner, repo, sha),
     ]);
 
     const combinedStatus = statusResponse.data;
-    const allCheckRuns = checkRuns ?? [];
+    const allCheckRuns = (checkRuns ?? []).map((run) => ({
+      ...run,
+      workflow: workflowBySuite.get(run.check_suite?.id),
+    }));
 
     return computeCIStatus(allCheckRuns, combinedStatus);
   } catch (error) {
