@@ -11,8 +11,9 @@
  *   2. A tool that writes to GitHub under the user's identity asks the user
  *      through the host (MCP elicitation) before it runs.
  */
+import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { inputRequired, inputResponse } from '@modelcontextprotocol/server';
+import { createRequestStateCodec, inputRequired, inputResponse } from '@modelcontextprotocol/server';
 import type { ClientCapabilities, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
 import { assertAttended, errorMessage } from '@oss-autopilot/core';
 
@@ -109,6 +110,37 @@ export function framed(label: string, text: string): string {
   return `--- ${label} start (${characterCount(text)}) ---\n${body}\n--- ${label} end ---`;
 }
 
+/**
+ * Signs the `requestState` an approval form travels with (#2015). The key is
+ * per process and module-level, so every server instance in the process
+ * shares it: the HTTP transport builds a fresh server for each POST, and the
+ * follow-up call that carries the answer is a different POST. Pass
+ * {@link approvalStateVerify} as `ServerOptions.requestState.verify`; the SDK
+ * then refuses a forged, altered or expired state before the tool runs.
+ */
+const approvalState = createRequestStateCodec<{ args: string }>({ key: randomBytes(32) });
+export const approvalStateVerify = (state: string, ctx: ServerContext) => approvalState.verify(state, ctx);
+
+/**
+ * What an approval is for: the action and the exact arguments, hashed. The
+ * arguments are the SDK's zod output, whose keys follow the schema's order,
+ * so equal arguments serialize the same way whatever order the host sent.
+ */
+function approvedArgs(action: string, args: unknown): string {
+  return createHash('sha256')
+    .update(JSON.stringify([action, args]))
+    .digest('hex');
+}
+
+/**
+ * True when the verified `requestState` is the one minted for these
+ * arguments. The SDK has already checked the signature, so a decoded state is
+ * one this process minted; a raw string (no verify hook) or none at all fails.
+ */
+function isApprovedArgs(action: string, args: unknown, ctx: ServerContext): boolean {
+  return ctx.mcpReq.requestState<{ args?: string } | undefined>()?.args === approvedArgs(action, args);
+}
+
 function refusal(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true as const };
 }
@@ -173,10 +205,18 @@ export function requireApproval<A, R>(
         inputRequests: {
           [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema }),
         },
+        requestState: await approvalState.mint({ args: approvedArgs(action, args) }),
       });
     }
     if (answer.kind !== 'elicit' || answer.action !== 'accept' || answer.content?.approve !== true) {
       return refusal(`The user did not approve: refusing to ${action}. Do not retry unless the user asks for it.`);
+    }
+    // The approval covers the arguments the form showed, not whatever arrives with the answer (#2015).
+    if (!isApprovedArgs(action, args, ctx)) {
+      return refusal(
+        `Refusing to ${action}: the approval does not match these arguments (they changed after the user saw them, ` +
+          'or the approval came without the state the form was sent with). Nothing was sent.',
+      );
     }
     return handler(args);
   };

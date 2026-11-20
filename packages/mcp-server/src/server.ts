@@ -11,6 +11,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { registerTools } from './tools.js';
 import { registerResources } from './resources.js';
 import { registerPrompts } from './prompts.js';
+import { approvalStateVerify } from './trust-boundary.js';
 
 const version: string = (() => {
   try {
@@ -39,7 +40,8 @@ export function createServer(): McpServer {
     },
     // An approval form left unanswered refuses the call after two minutes
     // ("Request timed out") instead of holding the request open for ten.
-    { inputRequired: { roundTimeoutMs: APPROVAL_TIMEOUT_MS } },
+    // The approval's requestState is checked before a tool runs (#2015).
+    { inputRequired: { roundTimeoutMs: APPROVAL_TIMEOUT_MS }, requestState: { verify: approvalStateVerify } },
   );
 
   registerTools(server);
