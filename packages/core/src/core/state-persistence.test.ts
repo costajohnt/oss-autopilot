@@ -952,7 +952,7 @@ describe('loadState rejected-file preservation and recovery metadata (#1371)', (
     // A digest PR with an unknown status counts as needing attention, not hidden.
     expect(loaded.state.lastDigest?.needsAddressingPRs.map((pr) => pr.url)).toEqual([prUrl]);
 
-    saveState(loaded.state, loaded.mtimeMs);
+    saveState(loaded.state, loaded.fileId);
     const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config).toMatchObject({
       persistence: 'gist-v2',
