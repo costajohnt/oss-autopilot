@@ -39,7 +39,7 @@ import { assertAttended } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { getReportsDir, resolveDataDir } from '../core/paths.js';
 import type { OvernightPrepared, OvernightRecord } from '../core/types.js';
-import { handoffDir, importHandoffBundle, loadHandoff } from './overnight-handoff.js';
+import { handoffDir, importHandoffBundle, importWorktreeBranch, loadHandoff } from './overnight-handoff.js';
 import { publishReport, reportDateFor, writePreparedSection } from './overnight.js';
 
 const MODULE = 'overnight-push-prep';
@@ -219,11 +219,30 @@ function worktreesRoot(): string {
   return path.join(resolveDataDir(), 'worktrees');
 }
 
-/** True when `worktree`, symlinks resolved, sits below the worktrees root. Both must exist. */
+/**
+ * True when `worktree`, symlinks resolved, sits below the worktrees root. Both
+ * must exist. The path comes from the preparer's report, so Git never runs
+ * with the token in a directory it named elsewhere.
+ */
 function isPreparerWorktree(worktree: string): boolean {
   const root = worktreesRoot();
   if (!fs.existsSync(root)) return false;
   return fs.realpathSync(worktree).startsWith(fs.realpathSync(root) + path.sep);
+}
+
+/**
+ * The private repo the push runs from: filled from the bundle (handoff) or
+ * from the worktree's branch, never anything the tick can write. The
+ * worktree's own config, hooks and URL rewrites are not read (#1937).
+ */
+function importBranchToPush(dropDir: string | null, entry: OvernightPrepared): { repo: string; cleanup: () => void } {
+  return dropDir
+    ? importHandoffBundle(dropDir, entry.branch)
+    : importWorktreeBranch(fs.realpathSync(entry.worktree!), entry.branch);
+}
+
+function outsideRoot(worktree: string): string {
+  return `worktree ${worktree} is not under ${worktreesRoot()}`;
 }
 
 function gitStderr(err: unknown): string {
@@ -371,19 +390,22 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
   async function pushOne(entry: OvernightPrepared): Promise<PushPrepResult> {
     let target: PushTarget;
     let upstream: string | undefined;
+    // Where the push goes: always a URL, never a remote name a repository's config would resolve.
+    let pushUrl: string;
     if (dropDir) {
       const resolved = await handoffTarget(entry.url);
       if (typeof resolved === 'string') return skip(entry, resolved);
       ({ target, upstream } = resolved);
+      pushUrl = target.remote;
     } else {
       if (!entry.worktree) return skip(entry, 'no worktree recorded');
       if (!fs.existsSync(entry.worktree)) return skip(entry, `worktree ${entry.worktree} does not exist`);
-      // The path came from the preparer's report: never run Git with the token in a directory it named elsewhere.
-      if (!isPreparerWorktree(entry.worktree))
-        return skip(entry, `worktree ${entry.worktree} is not under ${worktreesRoot()}`);
-      const found = resolvePushRemote(parseRemotesOutput(git(entry.worktree, ['remote', '-v'])), login);
+      if (!isPreparerWorktree(entry.worktree)) return skip(entry, outsideRoot(entry.worktree));
+      const remotes = parseRemotesOutput(git(entry.worktree, ['remote', '-v']));
+      const found = resolvePushRemote(remotes, login);
       if (!found) return skip(entry, `no remote in ${entry.worktree} is owned by ${login}`);
       target = found;
+      pushUrl = remotes.find((r) => r.name === found.remote)?.url ?? found.remote;
     }
 
     const notFork = await forkSkipReason(target, upstream);
@@ -414,17 +436,17 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     // from writing refs/tags/*; `--` keeps the remote name out of option
     // parsing.
     assertPrepRef(ref);
-    // Handoff: push out of a private repo filled from the bundle, never out
-    // of anything the tick can write. A bundle that cannot be imported is a
-    // failure (the tick recorded a branch it did not deliver), not a gate.
-    let source: { repo: string; cleanup: () => void };
+    // A branch that cannot be imported is a failure (the tick recorded a
+    // branch it did not deliver), not a gate.
+    let source: ReturnType<typeof importBranchToPush>;
     try {
-      source = dropDir ? importHandoffBundle(dropDir, entry.branch) : { repo: entry.worktree!, cleanup: () => {} };
+      source = importBranchToPush(dropDir, entry);
     } catch (err) {
-      return notPushed('failed', entry, `bundle import failed: ${errorMessage(err)}`, target, ref);
+      const what = dropDir ? 'bundle import' : 'reading the branch from the worktree';
+      return notPushed('failed', entry, `${what} failed: ${errorMessage(err)}`, target, ref);
     }
     try {
-      git(source.repo, ['push', '--no-follow-tags', '--', target.remote, `refs/heads/${entry.branch}:${ref}`]);
+      git(source.repo, ['push', '--no-follow-tags', '--', pushUrl, `refs/heads/${entry.branch}:${ref}`]);
     } catch (err) {
       return isNonFastForward(err)
         ? skip(

@@ -173,12 +173,7 @@ What it does, for each entry recorded with a `--worktree`:
 
 0. Without the handoff below: skips a worktree that does not resolve (symlinks
    followed) to a directory under `~/.oss-autopilot/worktrees/`, since the
-   path comes from the preparer's report. Every git call it makes overrides
-   `core.hooksPath`, `core.fsmonitor` and `core.sshCommand`, so a hook or
-   command the tick left in that worktree does not run with your token
-   (#1937). Other config in the worktree still applies; the handoff is what
-   takes the tick's files out of the picture. If you rely on a
-   `core.sshCommand` of your own for pushes, set `GIT_SSH_COMMAND` instead.
+   path comes from the preparer's report.
 1. Reads the worktree's remotes and picks the one whose URL owner is the
    authenticated login (case-insensitive on the parsed URL; remote names are
    never trusted). The URL read is the effective one, after any `pushurl` or
@@ -187,7 +182,13 @@ What it does, for each entry recorded with a `--worktree`:
    skipped with a reason.
 2. Refuses unless that repo is a fork (`fork: true` on the repo) that the login
    owns, so your own source repos never get `prep/*` branches.
-3. Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
+3. Copies the recorded branch into a temporary bare repository (`git fetch`
+   from the worktree's path) and pushes from there to the remote's URL, so
+   nothing the tick could have written in the worktree is read by the push:
+   no credential helper, hook, ssh command or URL rewrite of its making
+   (#1937). The temporary repository is removed afterwards. Only the remote
+   list is read from the worktree, to find the URL.
+   Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
    head branch, never `--force`, never tags; a non-fast-forward is a skip with
    a reason.
 4. Records `pushedRef` and a compare URL (`<fork>/compare/<pr-head>...prep/<branch>`)
@@ -237,6 +238,12 @@ pushing stay inside the normal draft-approval flow there.
 
 ## Scheduling
 
+Claude Code's own documentation says permission rules on Bash arguments are
+fragile and not a security boundary. That applies to everything in this
+section: the boundary is the split-user setup above (or an OS sandbox), and
+the rules below are what keeps a run that follows its charter from publishing
+by accident.
+
 The CLI renders the launchd job:
 
 ```bash
@@ -247,7 +254,9 @@ Run it again after upgrading the plugin: the allowlist is baked into the
 plist when it is written, so a schedule installed before a change to the list
 (such as `gh issue view` leaving it, #1932) keeps the old one until this
 command rewrites it. `doctor` warns when the installed plist's rules or
-environment differ from what this version would write (#1937).
+environment differ from what this version would write (#1937). It checks the
+launchd plist only; a systemd unit or cron entry you wrote yourself is not
+compared.
 
 It writes `~/Library/LaunchAgents/com.oss-autopilot.overnight.plist`, a
 settings file `~/.oss-autopilot/reports/overnight-settings.json` that enables
@@ -256,7 +265,10 @@ job runs `claude -p "/oss-overnight" --permission-mode dontAsk
 --setting-sources "" --settings <that file> --allowedTools "<list>"`. The empty
 `--setting-sources` matters: permission allow rules union across settings
 layers, so a user whose own settings allow bare `Bash` would otherwise void the
-enumerated allowlist and keep only the deny list. Dropping the user's settings
+enumerated allowlist and keep only the deny list. The empty value is not
+documented by Claude Code, so this depends on behaviour that could change;
+`--restricted` (managed settings and `--settings` only, file tools confined
+to working directories) is the documented flag to evaluate as a replacement. Dropping the user's settings
 also drops their CLAUDE.md and hooks for this job; the plugin's own charter is
 what the run follows.
 headless runs start in manual permission mode where any unapproved tool call
@@ -274,13 +286,25 @@ allowed programs (`npm exec`/`npm x`, `pnpm dlx`/`pnpm exec`, `node
 -e`/`--eval`/`-p`/`--print`), and `AskUserQuestion`. Since #1937 it also names
 the git option forms that run a program or inject config (`-c name=value`,
 `--config`/`--config-env`, `--exec-path`, `--exec`/`-x`, `--upload-pack`/`clone -u`,
-`--receive-pack`, `--template`, `--ext-diff`, `--output`, the `ext::` transport),
-push by another name (`send-pack`, `http-push`), `git credential`, `gh auth`,
-`security`, and reads of the credential files (`~/.config/gh`, `~/.ssh`,
-`~/.npmrc`, `~/.netrc`, `~/.git-credentials`). The plist also sets a git
-environment: pushes to GitHub URLs are rewritten to a host that does not
-resolve (`pushInsteadOf`), credential prompts fail, and the `ext::` transport
-is off.
+`--receive-pack`, `--template`, `--ext-diff`, `--output`, the `ext::` transport,
+with the abbreviations git accepts such as `--upl` and a value attached to a
+short option such as `-x<cmd>`), push by another name (`send-pack`,
+`http-push`), `git credential`, `gh auth`, `security`, and reads of the
+credential files (`~/.config/gh`, `~/.ssh`, `~/.npmrc`, `~/.netrc`,
+`~/.git-credentials`). Those `Read(~/...)` rules are documented syntax and
+best effort: they cover the file tools and the file commands Bash recognises,
+and a subprocess can still read the files. These rules match text anywhere in
+a command, a quoted commit message included, which is why the preparer
+commits with `git commit -F <file>` and never `-m`. An option with quotes
+inside it (`--up"load-pack"`), or a short option bundled behind another
+(`-qu`), is not matched.
+
+The plist also sets a git environment. Pushes to a remote whose URL starts
+with `https://github.com/`, `git@github.com:`, `ssh://git@github.com/`,
+`ssh://git@github.com:22/` or `git@ssh.github.com:` are rewritten to a host
+that does not resolve (`pushInsteadOf`); any other spelling of the host, and
+a remote with an explicit `pushurl`, is not rewritten. Credential prompts
+fail, and the `ext::` transport is off.
 
 **None of this is a sandbox.** A rule is a pattern over the text of a command,
 so it stops a spelling, not a capability. Three things stay possible by design:

@@ -74,10 +74,14 @@ function fakeOctokit(opts: { login?: string; fork?: boolean; head?: string; repo
   return octokit;
 }
 
+/** The `git init` and `git fetch` that copy the branch into the private repo the push runs from (#1937). */
+const isImport = (args: string[]): boolean => args[0] === 'init' || args[2] === '-c';
+
 /** `git remote -v` answers with `remotes`; `git push` answers with `push` (a string) or throws it (an Error). */
 function fakeGit(remotes: string, push: string | Error = '') {
   mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
     if (args[2] === 'remote') return remotes;
+    if (isImport(args)) return '';
     if (args[2] === 'push') {
       if (push instanceof Error) throw push;
       return push;
@@ -298,11 +302,12 @@ describe('runOvernightPushPrep', () => {
     expect(pushCalls()).toEqual([
       [
         '-C',
-        tmp,
+        // Never the worktree: a private repo holding only the branch, pushed to the remote's URL.
+        expect.stringMatching(/oss-push-prep-.+repo\.git$/),
         'push',
         '--no-follow-tags',
         '--',
-        'origin',
+        'https://github.com/OctoCat/react.git',
         'refs/heads/overnight/42-2026-09-18:refs/heads/prep/overnight/42-2026-09-18',
       ],
     ]);
@@ -340,7 +345,7 @@ describe('runOvernightPushPrep', () => {
     expect(second.results).toEqual(first.results);
     expect({ ...secondSaved, pushedAt: undefined }).toEqual({ ...firstSaved, pushedAt: undefined });
     expect(pushCalls()).toHaveLength(2);
-    expect(new Set(pushCalls().map((c) => c.join(' '))).size).toBe(1);
+    expect(new Set(pushCalls().map((c) => c.slice(2).join(' '))).size).toBe(1);
     expect(sm.getLastOvernight()!.prepared).toHaveLength(1);
     const md = fs.readFileSync(reportPath, 'utf8');
     expect(md.match(/pushed to `prep\//g)).toHaveLength(1);
@@ -457,6 +462,22 @@ describe('runOvernightPushPrep', () => {
     expect(mockExecFileSync).not.toHaveBeenCalled();
   });
 
+  it('a branch that cannot be copied out of the worktree is `failed`, and nothing is pushed (#1937)', async () => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
+      if (args[2] === 'remote') return forkRemotes;
+      throw new Error('boom');
+    }) as never);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('failed');
+    expect(out.results[0].reason).toBe('reading the branch from the worktree failed: boom');
+    expect(pushCalls()).toEqual([]);
+  });
+
   it('a non-fast-forward is a skip with a reason, never a retry with --force', async () => {
     mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
     fakeOctokit();
@@ -484,6 +505,7 @@ describe('runOvernightPushPrep', () => {
     let calls = 0;
     mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
       if (args[2] === 'remote') return forkRemotes;
+      if (isImport(args)) return '';
       if (++calls === 1) throw Object.assign(new Error('boom'), { stderr: 'fatal: unable to access' });
       return '';
     }) as never);
@@ -523,6 +545,7 @@ describe('runOvernightPushPrep', () => {
     let calls = 0;
     mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
       if (args[2] === 'remote') return forkRemotes;
+      if (isImport(args)) return '';
       if (++calls === 1) throw Object.assign(new Error('boom'), { stderr: 'remote: Permission denied' });
       return '';
     }) as never);

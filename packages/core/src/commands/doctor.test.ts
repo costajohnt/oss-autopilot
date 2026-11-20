@@ -417,7 +417,7 @@ const plistIn = (dir: string) => path.join(dir, 'overnight.plist');
 describe('checkOvernightSchedule', () => {
   it('is ok when no schedule is installed or the installed one matches this version', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-schedule-'));
-    expect(checkOvernightSchedule(plistIn(dir))).toMatchObject({ status: 'ok', message: /No overnight schedule/ });
+    expect(checkOvernightSchedule(plistIn(dir))).toMatchObject({ status: 'ok', message: /No launchd schedule found/ });
     fs.writeFileSync(plistIn(dir), renderLaunchdPlist({ hour: 4, claudePath: '/bin/claude' }, '/log', '/s.json'));
     expect(checkOvernightSchedule(plistIn(dir))).toMatchObject({ status: 'ok', message: /matches this version/ });
     fs.rmSync(dir, { recursive: true, force: true });
@@ -433,6 +433,9 @@ describe('checkOvernightSchedule', () => {
     expect(check.remediation).toMatch(/overnight schedule --install/);
     // An older environment block counts too.
     fs.writeFileSync(plistIn(dir), current.replace('<key>GIT_ALLOW_PROTOCOL</key>', '<key>X</key>'));
+    expect(checkOvernightSchedule(plistIn(dir)).status).toBe('warning');
+    // So does a different permission mode.
+    fs.writeFileSync(plistIn(dir), current.replace('<string>dontAsk</string>', '<string>bypassPermissions</string>'));
     expect(checkOvernightSchedule(plistIn(dir)).status).toBe('warning');
     fs.rmSync(dir, { recursive: true, force: true });
   });

@@ -373,14 +373,16 @@ export function checkOvernightSchedule(
   plistPath: string = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`),
 ): DoctorCheck {
   const name = 'Overnight schedule';
-  if (!fs.existsSync(plistPath)) return { name, status: 'ok', message: 'No overnight schedule installed' };
+  if (!fs.existsSync(plistPath)) {
+    return { name, status: 'ok', message: 'No launchd schedule found (systemd and cron jobs are not checked)' };
+  }
   if (isScheduleCurrent(fs.readFileSync(plistPath, 'utf8'))) {
     return { name, status: 'ok', message: 'Installed schedule matches this version' };
   }
   return {
     name,
     status: 'warning',
-    message: `${plistPath} was written by another version: its tool rules or environment differ from the current ones`,
+    message: `${plistPath} was written by another version: its permission flags, tool rules or environment differ from the current ones`,
     remediation:
       'Run `overnight schedule --install --hour <hour> --claude-path "$(command -v claude)"` again, then the launchctl command it prints',
   };

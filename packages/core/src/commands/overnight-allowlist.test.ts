@@ -1,22 +1,21 @@
 /**
  * The scheduled overnight run's tool rules, checked as a rule set (#1937).
  *
- * The repo has no matcher to reuse, so `admitted` mirrors the semantics that
- * overnight.ts and commands/oss-overnight.md rely on. Assumptions:
+ * The repo has no matcher to reuse, so `isAdmitted` mirrors what Claude
+ * Code's permissions documentation says about `Bash(<pattern>)` rules:
  *
- * - `Bash(<pattern>)` is matched against the whole command string. `*` is any
- *   run of characters, spaces included (that is how `git * push *` reaches
- *   `git -C <dir> push`); nothing else is special, so `X *` does not match a
- *   bare `X` (the lists carry both forms).
- * - Deny beats allow.
- * - A compound command (`&&`, `||`, `;`, `|`, `&`, newline) is split and every
- *   part must pass (`cd <dir> && git ...` is denied under dontAsk).
- * - The string is matched as typed: no understanding of quotes, comments or a
- *   leading `VAR=value`.
+ * - `*` matches any text, spaces included, at any position.
+ * - A trailing ` *` that is the rule's only wildcard also matches the bare
+ *   command (`ls *` matches `ls`).
+ * - Deny is checked before allow.
+ * - A compound command is split on `&&`, `||`, `;`, `|`, `|&`, `&` and
+ *   newlines, and every part must be allowed. A deny applies when any part
+ *   matches, inside a subshell or a command substitution too, so this matcher
+ *   also splits on `(`, `)`, `$(` and backticks.
  *
- * Where Claude Code is stricter than this, the refusals below still hold.
- * Where it is looser, this file cannot know: it tests the rule set, not the
- * product.
+ * Not modelled: quotes, comments, a leading `VAR=value`, and whatever else
+ * the product normalises. The documentation calls argument patterns fragile
+ * and not a security boundary; this file tests the rule set, not the product.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -43,6 +42,10 @@ function bashPatterns(rules: string): RegExp[] {
     .filter((rule) => rule.startsWith('Bash('))
     .map((rule) => {
       const body = rule.slice('Bash('.length, -1);
+      // `X *` with no other wildcard: the bare command matches too.
+      if (body.endsWith(' *') && body.indexOf('*') === body.length - 1) {
+        return new RegExp(`^${escapeRegExp(body.slice(0, -2))}(?: .*)?$`, 's');
+      }
       const source = body
         .split('*')
         .map((literal) => escapeRegExp(literal))
@@ -56,7 +59,7 @@ const DENY = bashPatterns(OVERNIGHT_DISALLOWED_TOOLS);
 
 function parts(command: string): string[] {
   return command
-    .split(/&&|\|\||[;|&\n]/)
+    .split(/&&|\|\||\$\(|[;|&\n()`]/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
 }
@@ -109,6 +112,21 @@ const DENIED = [
   'git -C /wt log --ext-diff -p',
   'git -C /wt show --ext-diff HEAD',
   'git -C /wt diff --output=/home/u/.zshrc',
+  // The abbreviations Git accepts, and a short option with its value attached.
+  'git -C /wt fetch --upl=evil origin',
+  'git clone --u=evil https://github.com/o/r.git /tmp/r',
+  'git clone --up evil https://github.com/o/r.git /tmp/r',
+  'git -C /tmp clone --u=evil https://github.com/o/r.git',
+  'git clone --conf core.fsmonitor=evil https://github.com/o/r.git /tmp/r',
+  'git clone --co core.fsmonitor=evil https://github.com/o/r.git /tmp/r',
+  'git clone --te=/tmp/hooks https://github.com/o/r.git /tmp/r',
+  'git clone -uevil https://github.com/o/r.git',
+  'git clone -ccore.fsmonitor=evil https://github.com/o/r.git /tmp/r',
+  'git -C /wt rebase --ex evil main',
+  'git -C /wt rebase -xevil main',
+  // Inside a substitution or a subshell.
+  'git -C /wt status $(git -C /wt push fork x)',
+  '(gh auth token)',
   // Credentials.
   'git credential fill',
   'git -C /wt credential fill',
@@ -139,6 +157,44 @@ const DENIED = [
   'npm x cowsay',
   'pnpm dlx cowsay',
   'pnpm --dir /wt exec sh',
+];
+
+/**
+ * The denies match the same text inside a quoted argument. A commit message
+ * on the command line can therefore be refused, which is why the preparer
+ * writes the message to a file and commits with `-F` (see PROCEDURE).
+ */
+const REFUSED_COMMIT_MESSAGES = [
+  'git -C /wt commit -m "fix: honour the --output flag"',
+  'git -C /wt commit -m "fix: read --config before --exec"',
+  'git -C /wt commit -m "docs: the ext:: transport"',
+  'git -C /wt commit -m "fix: retry the push once"',
+  'git -C /wt commit -m "fix: credential lookup on macOS"',
+  'git -C /wt commit -m "test: run with -c core.pager=cat"',
+];
+
+/**
+ * Ordinary preparer commands that share a word with a deny rule: a repository
+ * or a file named after one, a script or package named like a registry write.
+ * A deny that matches one of these blocks a whole night's work on that repo.
+ */
+const LEGITIMATE = [
+  'git clone https://github.com/git-ecosystem/git-credential-manager.git /home/u/Documents/oss/git-credential-manager',
+  'git -C /home/u/Documents/oss/git-credential-manager fetch origin main',
+  'git -C /home/u/.oss-autopilot/worktrees/git-ecosystem-git-credential-manager-42 status',
+  'git -C /home/u/.oss-autopilot/worktrees/git-ecosystem-git-credential-manager-42 commit -F /home/u/.oss-autopilot/worktrees/git-ecosystem-git-credential-manager-42.commit-msg.txt',
+  'git -C /wt add src/credential-store.ts',
+  'git -C /wt add credential-store.ts',
+  'git -C /wt add send-pack.c',
+  'git -C /wt diff -- builtin/send-pack.c http-push.c',
+  'git -C /wt log --oneline -- src/credential-store.ts',
+  'git -C /wt add docs/publish.md',
+  'git -C /wt checkout fix/push-retry',
+  'git -C /wt status --untracked-files=no',
+  'git -C /wt diff --cached',
+  'git -C /wt rebase --continue',
+  'npm --prefix /wt run publish:docs',
+  'pnpm --filter publish-utils test',
 ];
 
 /** No allow rule matches these; nothing in the deny list is needed to refuse them. */
@@ -192,7 +248,8 @@ const PROCEDURE = [
   'git -C /wt rebase --continue',
   'git -C /wt add -A',
   'git -C /wt add src/a.ts',
-  'git -C /wt commit -m "fix: handle empty input"',
+  // The message is in a file the preparer wrote with the Write tool: nothing in it can meet a deny rule.
+  'git -C /wt commit -F /home/u/.oss-autopilot/worktrees/o-r-42.commit-msg.txt',
   'git -C /wt rev-parse HEAD',
   'git -C /wt merge-base HEAD origin/main',
   'git -C /wt branch --show-current',
@@ -211,7 +268,8 @@ const PROCEDURE = [
  * three are the design: the run executes the CLI bundle and a repository's
  * checks, and `Write` can put any file where the user can. The rest are the
  * matcher: `git -C * <sub>` cannot tell a subcommand from an argument, and a
- * glob does not parse quotes. The dedicated-user setup is the boundary.
+ * glob does not parse quotes, so an option with quotes inside it or bundled
+ * behind another short option passes. The dedicated-user setup is the boundary.
  */
 const ADMITTED_BY_DESIGN = [
   'node /tmp/written-by-the-run.js',
@@ -221,6 +279,11 @@ const ADMITTED_BY_DESIGN = [
   'git -C /wt p origin log',
   'git -C /wt config core.hooksPath /tmp/hooks status',
   'git -C /wt "-c" alias.p=push p origin log',
+  // Quotes inside an option, and a short option bundled behind another.
+  'git -C /wt fetch --up"load-pack"=evil origin',
+  'git clone --"u"=evil https://github.com/o/r.git /tmp/r',
+  'git -C /wt rebase -"x" evil main',
+  'git clone -qu evil https://github.com/o/r.git /tmp/r',
   // Outside what the Git environment rewrites (an explicit push URL, another spelling of the host).
   'git -C /wt remote set-url --push origin https://GitHub.com/me/r.git',
 ];
@@ -237,6 +300,20 @@ describe('overnight rule set (#1937)', () => {
 
   it.each(PROCEDURE)('still allows the documented procedure: %s', (command) => {
     expect(isAdmitted(command)).toBe(true);
+  });
+
+  it.each(LEGITIMATE)('does not block an ordinary command: %s', (command) => {
+    expect(isAdmitted(command)).toBe(true);
+  });
+
+  it.each(REFUSED_COMMIT_MESSAGES)('refuses a message on the command line, hence `commit -F`: %s', (command) => {
+    expect(isDenied(command)).toBe(true);
+  });
+
+  it('matches a bare command with a trailing-wildcard rule, as the documentation says', () => {
+    expect(isAdmitted('gh pr view')).toBe(true);
+    expect(isDenied('gh auth')).toBe(true);
+    expect(isDenied('security')).toBe(true);
   });
 
   it.each(ADMITTED_BY_DESIGN)('is not a sandbox, still admits: %s', (command) => {
@@ -257,30 +334,45 @@ describe('overnight rule set (#1937)', () => {
     const rules = OVERNIGHT_DISALLOWED_TOOLS.split(',');
     for (const rule of [
       'Bash(git -c *)',
-      'Bash(git * -c *=*)',
-      'Bash(git * -x *)',
-      'Bash(git clone -u *)',
-      'Bash(git clone * -u *)',
-      'Bash(git * clone -u *)',
-      'Bash(git * clone * -u *)',
+      'Bash(git * -c*=*)',
+      'Bash(git * -x*)',
+      'Bash(git clone -u*)',
+      'Bash(git clone * -u*)',
+      'Bash(git * clone -u*)',
+      'Bash(git * clone * -u*)',
+      'Bash(git clone *--u*)',
+      'Bash(git * clone *--u*)',
+      'Bash(git clone *--co*)',
+      'Bash(git * clone *--co*)',
+      'Bash(git clone *--te*)',
+      'Bash(git * clone *--te*)',
+      'Bash(git rebase *--ex*)',
+      'Bash(git * rebase *--ex*)',
       'Bash(git *--config*)',
       'Bash(git *--exec*)',
-      'Bash(git *--upload-pack*)',
+      'Bash(git *--upl*)',
       'Bash(git *--receive-pack*)',
       'Bash(git *--template*)',
       'Bash(git *--ext-diff*)',
       'Bash(git *--output*)',
       'Bash(git *ext::*)',
-      'Bash(git *send-pack*)',
-      'Bash(git *http-push*)',
+      'Bash(git send-pack*)',
+      'Bash(git * send-pack)',
+      'Bash(git * send-pack *)',
+      'Bash(git http-push*)',
+      'Bash(git * http-push)',
+      'Bash(git * http-push *)',
       'Bash(git credential*)',
-      'Bash(git * credential fill*)',
-      'Bash(git *credential-*)',
+      'Bash(git * credential)',
+      'Bash(git * credential *)',
+      'Bash(git * credential-* get*)',
       'Bash(gh auth)',
       'Bash(gh auth *)',
       'Bash(security *)',
-      'Bash(npm * publish*)',
-      'Bash(pnpm * publish*)',
+      'Bash(npm * publish)',
+      'Bash(npm * publish *)',
+      'Bash(pnpm * publish)',
+      'Bash(pnpm * publish *)',
       'Read(~/.config/gh/**)',
       'Read(~/.ssh/**)',
       'Read(~/.npmrc)',
@@ -318,13 +410,15 @@ describe('overnight git environment (#1937)', () => {
       git('remote', 'add', 'https', 'https://github.com/me/r.git');
       git('remote', 'add', 'scp', 'git@github.com:me/r.git');
       git('remote', 'add', 'ssh', 'ssh://git@github.com/me/r.git');
+      git('remote', 'add', 'ssh22', 'ssh://git@github.com:22/me/r.git');
+      git('remote', 'add', 'alt', 'git@ssh.github.com:me/r.git');
       const remotes = git('remote', '-v');
       fs.rmSync(repo, { recursive: true, force: true });
 
       expect(remotes).toContain('https\thttps://github.com/me/r.git (fetch)');
       expect(remotes).toContain('scp\tgit@github.com:me/r.git (fetch)');
       const pushUrls = remotes.split('\n').filter((line) => line.endsWith('(push)'));
-      expect(pushUrls).toHaveLength(3);
+      expect(pushUrls).toHaveLength(5);
       expect(pushUrls.every((line) => line.includes(`\t${PUSH_DISABLED_URL}me/r.git `))).toBe(true);
     },
   );
@@ -336,5 +430,9 @@ describe('overnight git environment (#1937)', () => {
       isScheduleCurrent(plist.replace(',Bash(gh repo view *)', ',Bash(gh repo view *),Bash(gh auth status *)')),
     ).toBe(false);
     expect(isScheduleCurrent(plist.replace('<key>GIT_CONFIG_COUNT</key>', '<key>OLD</key>'))).toBe(false);
+    expect(isScheduleCurrent(plist.replace('<string>dontAsk</string>', '<string>acceptEdits</string>'))).toBe(false);
+    const withUserSettings = plist.replace('<string></string>', '<string>user</string>');
+    expect(withUserSettings).not.toBe(plist);
+    expect(isScheduleCurrent(withUserSettings)).toBe(false);
   });
 });
