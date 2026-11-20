@@ -10,6 +10,7 @@ import {
   activeWorkClaims,
   getStateManager,
   isLinkedPRStalled,
+  issueRefKey,
   parseGitHubUrl,
   requireGitHubToken,
 } from '../core/index.js';
@@ -133,10 +134,15 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
   // issues scout could surface, so only `/issues/` URLs are forwarded.
   const skippedIssues = [...skippedIssuesLoad.issues];
   const skippedUrls = new Set(skippedIssues.map((s) => s.url));
+  // One entry per issue (#2001): a dismiss key in another casing of a URL
+  // already forwarded is not sent again. Scout compares URLs itself.
+  const skippedRefs = new Set(skippedIssues.map((s) => issueRefKey(s.url) ?? s.url));
   for (const [url, dismissedAt] of Object.entries(config.dismissedIssues ?? {})) {
-    if (skippedUrls.has(url) || !ISSUE_URL_PATTERN.test(url)) continue;
+    const ref = issueRefKey(url) ?? url;
+    if (skippedUrls.has(url) || skippedRefs.has(ref) || !ISSUE_URL_PATTERN.test(url)) continue;
     const parsed = parseGitHubUrl(url);
     skippedUrls.add(url);
+    skippedRefs.add(ref);
     skippedIssues.push({
       url,
       repo: parsed ? `${parsed.owner}/${parsed.repo}` : '',

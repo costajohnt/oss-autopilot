@@ -11,7 +11,7 @@
  */
 import { z } from 'zod';
 import { CLOSE_REASONS, SELF_CLOSE_REASONS } from './close-reason.js';
-import { issueRefKey } from './urls.js';
+import { issueRefKey, parseGitHubUrl } from './urls.js';
 
 /**
  * An enum that also accepts values it does not know (#1831): a newer release
@@ -452,27 +452,51 @@ function stampRank(at: string): number {
   return Number.isNaN(ms) ? -Infinity : ms;
 }
 
+/** One issue or PR's entries in a URL-keyed map, folded by {@link groupByRef}. */
+interface RefGroup<T> {
+  /** Key the folded entry is stored under: the first `/pull/` key, else the first key. */
+  key: string;
+  /** Key the kept value came from. */
+  source: string;
+  value: T;
+}
+
 /**
- * Keep one entry per issue or PR in a URL-keyed map (#2001): keys naming the
- * same {@link issueRefKey} (owner/repo casing, `/issues/N` vs `/pull/N`) fold
- * into the one `rank` scores highest, first wins a tie. The winner keeps its
- * own key, a URL, which older clients sharing the Gist look up by exact match.
+ * Group the keys of a URL-keyed map that name the same issue or PR (#2001):
+ * owner/repo casing, `/issues/N` vs `/pull/N`. Each group keeps the value
+ * `rank` scores highest (the first on a tie) under the key an older client
+ * sharing the Gist most likely looks up by exact match: the `/pull/` form,
+ * which GitHub reports for a PR, else the first key.
  */
-function foldByRef<T>(map: Record<string, T>, rank: (key: string, value: T) => number): Record<string, T> {
-  const winners = new Map<string, string>();
+function groupByRef<T>(map: Record<string, T>, rank: (value: T) => number): Map<string, RefGroup<T>> {
+  const groups = new Map<string, RefGroup<T>>();
   for (const [key, value] of Object.entries(map)) {
     const ref = issueRefKey(key) ?? key;
-    const current = winners.get(ref);
-    if (current === undefined || rank(key, value) > rank(current, map[current])) winners.set(ref, key);
+    const group = groups.get(ref);
+    if (!group) {
+      groups.set(ref, { key, value, source: key });
+      continue;
+    }
+    if (parseGitHubUrl(group.key)?.type !== 'pull' && parseGitHubUrl(key)?.type === 'pull') group.key = key;
+    if (rank(value) > rank(group.value)) {
+      group.source = key;
+      group.value = value;
+    }
   }
-  if (winners.size === Object.keys(map).length) return map;
-  return Object.fromEntries(Array.from(winners.values(), (key) => [key, map[key]]));
+  return groups;
+}
+
+/** The map `groups` folds `map` into; `map` itself when nothing folded. */
+function foldedMap<T>(map: Record<string, T>, groups: Map<string, RefGroup<T>>): Record<string, T> {
+  if (groups.size === Object.keys(map).length) return map;
+  return Object.fromEntries(Array.from(groups.values(), (group) => [group.key, group.value]));
 }
 
 /**
  * Fold duplicate keys of `dismissedIssues`, `dismissedPRHeads` and
- * `statusOverrides` on load (#2001), newest stamp kept. A PR's dismiss head
- * follows the dismiss stamp that won.
+ * `statusOverrides` on load (#2001), newest stamp kept. A dismissed PR keeps
+ * only the head recorded under the key its winning dismiss stamp came from:
+ * a newest dismiss without a head means the head was cleared.
  */
 function foldRefKeys<
   C extends {
@@ -481,14 +505,29 @@ function foldRefKeys<
     statusOverrides?: Record<string, { setAt: string }>;
   },
 >(config: C): C {
-  const dismissedIssues = foldByRef(config.dismissedIssues, (_key, at) => stampRank(at));
-  const dismissKeys = new Set(Object.keys(dismissedIssues));
+  const dismissGroups = groupByRef(config.dismissedIssues, stampRank);
+  const dismissedPRHeads: Record<string, string> = {};
+  const headGroups = groupByRef(config.dismissedPRHeads, () => 0);
+  for (const [ref, group] of headGroups) {
+    const dismiss = dismissGroups.get(ref);
+    if (!dismiss) {
+      dismissedPRHeads[group.key] = group.value;
+      continue;
+    }
+    if (Object.hasOwn(config.dismissedPRHeads, dismiss.source)) {
+      dismissedPRHeads[dismiss.key] = config.dismissedPRHeads[dismiss.source];
+    }
+  }
+  const overrides = config.statusOverrides;
   return {
     ...config,
-    dismissedIssues,
-    dismissedPRHeads: foldByRef(config.dismissedPRHeads, (key) => (dismissKeys.has(key) ? 1 : 0)),
-    ...(config.statusOverrides && {
-      statusOverrides: foldByRef(config.statusOverrides, (_key, override) => stampRank(override.setAt)),
+    dismissedIssues: foldedMap(config.dismissedIssues, dismissGroups),
+    dismissedPRHeads,
+    ...(overrides && {
+      statusOverrides: foldedMap(
+        overrides,
+        groupByRef(overrides, (override) => stampRank(override.setAt)),
+      ),
     }),
   };
 }

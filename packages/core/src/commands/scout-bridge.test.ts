@@ -496,6 +496,22 @@ describe('buildScoutState', () => {
     expect(result.skippedIssues.map((s) => s.url)).toEqual(['https://github.com/owner/repo/issues/42']);
   });
 
+  it('forwards one skip entry per dismissed issue when keys differ only in casing (#2001)', () => {
+    const state = makeAgentState({
+      config: {
+        skippedIssuesPath: undefined,
+        dismissedIssues: {
+          'https://github.com/Owner/Repo/issues/42': '2026-05-01T10:00:00.000Z',
+          'https://github.com/owner/repo/issues/42': '2026-05-02T10:00:00.000Z',
+        },
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+
+    expect(buildScoutState().skippedIssues.map((s) => s.url)).toEqual(['https://github.com/Owner/Repo/issues/42']);
+  });
+
   it('lists a URL that is both in the skip file and dismissed exactly once', () => {
     const url = 'https://github.com/owner/repo/issues/42';
     const state = makeAgentState({

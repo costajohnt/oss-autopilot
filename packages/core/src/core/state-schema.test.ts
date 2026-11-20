@@ -357,27 +357,35 @@ describe('AgentConfigSchema', () => {
       expect(legacy.dismissedPRHeads).toEqual({});
     });
 
-    it('folds dismiss and status-override keys naming the same issue or PR, newest stamp kept (#2001)', () => {
+    it('folds dismiss and status-override keys naming the same issue or PR: newest value, /pull/ key (#2001)', () => {
       const canonical = 'https://github.com/Owner/Repo/pull/7';
       const typed = 'https://github.com/owner/repo/issues/7';
       const other = 'https://github.com/owner/repo/issues/8';
+      const newerOverride = { status: 'needs_addressing', setAt: '2026-11-05T00:00:00Z', lastActivityAt: 'z' };
       const config = AgentConfigSchema.parse({
-        dismissedIssues: { [canonical]: '2026-11-01T00:00:00.000Z', [typed]: '2026-11-05T00:00:00.000Z', [other]: 'x' },
+        dismissedIssues: { [typed]: '2026-11-05T00:00:00.000Z', [canonical]: '2026-11-01T00:00:00.000Z', [other]: 'x' },
         dismissedPRHeads: { [canonical]: 'a'.repeat(40), [typed]: 'b'.repeat(40) },
         statusOverrides: {
-          [typed]: {
-            status: 'needs_addressing',
-            setAt: '2026-11-01T00:00:00Z',
-            lastActivityAt: '2026-11-01T00:00:00Z',
-          },
+          [typed]: newerOverride,
           [canonical]: { status: 'waiting_on_maintainer', setAt: '2026-11-04T00:00:00Z', lastActivityAt: 'z' },
         },
       });
-      expect(config.dismissedIssues).toEqual({ [typed]: '2026-11-05T00:00:00.000Z', [other]: 'x' });
-      expect(config.dismissedPRHeads).toEqual({ [typed]: 'b'.repeat(40) });
-      expect(config.statusOverrides).toEqual({
-        [canonical]: { status: 'waiting_on_maintainer', setAt: '2026-11-04T00:00:00Z', lastActivityAt: 'z' },
+      // The newest value is kept under the /pull/ key an older client looks up.
+      expect(config.dismissedIssues).toEqual({ [canonical]: '2026-11-05T00:00:00.000Z', [other]: 'x' });
+      // The head recorded with the winning (typed) dismiss follows it.
+      expect(config.dismissedPRHeads).toEqual({ [canonical]: 'b'.repeat(40) });
+      expect(config.statusOverrides).toEqual({ [canonical]: newerOverride });
+    });
+
+    it('drops a dismiss head recorded under a losing key: the newest dismiss had none (#2001)', () => {
+      const canonical = 'https://github.com/owner/repo/pull/7';
+      const typed = 'https://github.com/Owner/Repo/pull/7';
+      const config = AgentConfigSchema.parse({
+        dismissedIssues: { [canonical]: '2026-11-01T00:00:00.000Z', [typed]: '2026-11-05T00:00:00.000Z' },
+        dismissedPRHeads: { [canonical]: 'a'.repeat(40) },
       });
+      expect(config.dismissedIssues).toEqual({ [canonical]: '2026-11-05T00:00:00.000Z' });
+      expect(config.dismissedPRHeads).toEqual({});
     });
 
     it('should preserve overridden values while defaulting the rest', () => {

@@ -109,7 +109,8 @@ export function findRefKey(map: Readonly<Record<string, unknown>> | undefined, u
   if (!map) return undefined;
   if (Object.hasOwn(map, url)) return url;
   const key = issueRefKey(url);
-  // ponytail: linear scan per miss; maps hold tens to hundreds of entries.
+  // ponytail: linear scan per miss, and these maps are never pruned, so cost grows with every
+  // dismiss/override ever made. Upgrade: build a ref -> key index once per daily/dashboard pass.
   return key === null ? undefined : Object.keys(map).find((k) => issueRefKey(k) === key);
 }
 

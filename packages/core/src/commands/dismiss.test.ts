@@ -82,6 +82,16 @@ describe('runDismiss', () => {
     expect(mockDismissIssue).not.toHaveBeenCalled();
   });
 
+  it('treats the /issues/N form of a PR dismissed as /pull/N as that PR: refreshes and accepts --head (#2001)', async () => {
+    mockDismissIssue.mockReturnValue(true);
+    mockGetState.mockReturnValue({ config: { dismissedIssues: { [TEST_PR_URL]: '2026-11-01T00:00:00.000Z' } } });
+    const issuesForm = 'https://github.com/Owner/Repo/issues/42';
+    const head = 'a'.repeat(40);
+    await runDismiss({ url: issuesForm, head });
+
+    expect(mockDismissIssue).toHaveBeenCalledWith(issuesForm, expect.any(String), { refresh: true, headSha: head });
+  });
+
   it('should report not dismissed when issue is already dismissed', async () => {
     mockDismissIssue.mockReturnValue(false);
     const result = await runDismiss({ url: TEST_ISSUE_URL });
@@ -164,8 +174,10 @@ describe('runDismiss', () => {
 
       const result = await runDismiss({ url: TEST_ISSUE_URL });
 
+      // No warning, and still dismissed as an issue (dismiss now reads state to
+      // spot the /issues/N form of a dismissed PR, #2001).
       expect(result).toEqual({ dismissed: true, url: TEST_ISSUE_URL });
-      expect(mockGetState).not.toHaveBeenCalled();
+      expect(mockDismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL, expect.any(String), { refresh: false });
     });
   });
 });
