@@ -14,7 +14,8 @@
     }
   },
   "files": [
-    "dist/"
+    "dist/mcp-server.bundle.cjs",
+    "dist/*.d.ts"
   ],
   "scripts": {
     "build": "tsc",

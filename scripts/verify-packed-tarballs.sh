@@ -66,6 +66,22 @@ for name in $(node -p 'Object.keys(require("./package.json").dependencies).join(
       exit 1
       ;;
   esac
+  if [ "$name" = "@oss-autopilot/mcp" ]; then
+    # The package declares no dependencies (#2007), so the bundle may require
+    # only node builtins. The ajv paths are code strings for ajv's standalone
+    # codegen, never executed. An `external` in scripts/bundle.mjs fails here.
+    node -e '
+      const { builtinModules } = require("node:module");
+      const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+      const bad = [...new Set([...src.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1]))].filter(
+        (id) => !id.startsWith("node:") && !builtinModules.includes(id) && !/^ajv(-formats)?\/dist\//.test(id),
+      );
+      if (bad.length > 0) {
+        console.error(`::error::mcp-server.bundle.cjs requires non-builtin modules: ${bad.join(", ")}`);
+        process.exit(1);
+      }
+    ' "$PREFIX/node_modules/$name/dist/mcp-server.bundle.cjs"
+  fi
   expected=$(node -p 'require(process.argv[1]).version' "$PREFIX/node_modules/$name/package.json")
   actual=$(run_bin "$bin" --version)
   if [ "$actual" != "$expected" ]; then

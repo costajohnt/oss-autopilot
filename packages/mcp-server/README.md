@@ -196,7 +196,7 @@ const server = createServer();
 // Connect to your own transport
 ```
 
-The package installs no dependencies: the bin and this entry point are one self-contained bundle. The type declarations refer to `@modelcontextprotocol/server` and `@oss-autopilot/core`, so install those as dev dependencies if you need full types.
+The package installs no dependencies: the bin and this entry point are one self-contained bundle. The type declarations refer to `@modelcontextprotocol/server`; install it as a dev dependency if you need full types. Those types come from the SDK version you install, which may not exactly match the version bundled into the server.
 
 ## More Information
 
