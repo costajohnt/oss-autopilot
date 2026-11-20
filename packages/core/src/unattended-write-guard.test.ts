@@ -20,6 +20,11 @@
  * shorthand), `octokit.paginate('POST ...')`, a `gh` or `git push` built from
  * non-literal arguments, a shell-string `exec`, and writes made by dependencies.
  *
+ * A second gate (#1936) covers the MCP tools: a tool that reaches a command
+ * guarded this way must ask the user through `requireApproval`, or be exempt
+ * by name. Same limit: it reads `tools.ts` as text, one `registerTool` call at
+ * a time, and only sees commands named there.
+ *
  * `packages/dashboard` is not scanned: it is a browser SPA with no GitHub
  * client; its POSTs go to the local dashboard server, whose handlers are in core.
  */
@@ -132,6 +137,53 @@ const FINDINGS = SCAN_ROOTS.flatMap((root) => scanRoot(root));
 const UNGUARDED = FINDINGS.filter((finding) => !finding.guarded);
 const ALLOWED_KEYS = new Set(Object.keys(ALLOWED));
 
+// ── MCP approval gate (#1936) ─────────────────────────────────────────
+// A command that refuses unattended is one that needs a person. When an MCP
+// tool reaches such a command, the tool must ask that person through
+// `requireApproval` (mcp-server/src/trust-boundary.ts) or be listed here.
+
+/** Guarded commands an MCP tool may call without `requireApproval`. Value: why. */
+const MCP_APPROVAL_EXEMPT: Record<string, string> = {
+  runGuidelinesStore:
+    "writes the user's own state Gist, not someone else's repository; gated by `reviewed: true` and the review record (#1929)",
+};
+
+const EXPORTED_FUNCTION = /^export (?:async )?function (\w+)\(/;
+
+/** Exported functions with `assertAttended(...)` as a direct body statement. */
+function attendedOnlyFunctions(raw: string): string[] {
+  const lines = raw.split('\n');
+  return lines.flatMap((line, index) => {
+    const name = EXPORTED_FUNCTION.exec(line)?.[1];
+    if (name === undefined) return [];
+    const end = lines.indexOf('}', index);
+    return lines.slice(index, end).some((bodyLine) => DIRECT_GUARD.test(bodyLine)) ? [name] : [];
+  });
+}
+
+/** The attended-only commands each `server.registerTool(...)` call references without the approval gate. */
+function ungatedToolCommands(toolsSource: string, attendedOnly: string[]): string[] {
+  return toolsSource
+    .split('server.registerTool(')
+    .slice(1)
+    .filter((registration) => !registration.includes('requireApproval('))
+    .flatMap((registration) => {
+      const words = new Set(registration.match(/\w+/g));
+      return attendedOnly.filter((name) => words.has(name));
+    });
+}
+
+const COMMANDS_DIR = path.join(PACKAGES_DIR, 'core/src/commands');
+const ATTENDED_ONLY = fs
+  .readdirSync(COMMANDS_DIR)
+  .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+  .flatMap((file) => attendedOnlyFunctions(fs.readFileSync(path.join(COMMANDS_DIR, file), 'utf8')));
+const MCP_EXEMPT_NAMES = new Set(Object.keys(MCP_APPROVAL_EXEMPT));
+const UNGATED_TOOL_COMMANDS = ungatedToolCommands(
+  fs.readFileSync(path.join(PACKAGES_DIR, 'mcp-server/src/tools.ts'), 'utf8'),
+  ATTENDED_ONLY,
+);
+
 /** Scanner fixtures: the unguarded calls in a source text, and a one-function file with this body. */
 const unguardedCalls = (source: string): string[] =>
   scanSource('x.ts', source)
@@ -162,6 +214,35 @@ describe('unattended write guard (#1945)', () => {
   it('has no stale allowlist entries', () => {
     const stale = Object.keys(ALLOWED).filter((key) => UNGUARDED.every((finding) => finding.key !== key));
     expect(stale, 'ALLOWED entry no longer matches an unguarded write; remove it.').toEqual([]);
+  });
+
+  describe('MCP approval gate (#1936)', () => {
+    it('finds the commands that refuse unattended', () => {
+      expect(ATTENDED_ONLY).toEqual(expect.arrayContaining(['runPost', 'runClaim', 'runGuidelinesStore']));
+    });
+
+    it('every MCP tool that reaches one asks the user through requireApproval or is exempt', () => {
+      const violations = UNGATED_TOOL_COMMANDS.filter((name) => !MCP_EXEMPT_NAMES.has(name));
+      expect(
+        violations,
+        'An MCP tool calls a command that refuses unattended, without requireApproval(...) in its registerTool call. ' +
+          'Wrap the handler (see the post tool), or add the command to MCP_APPROVAL_EXEMPT with the reason.',
+      ).toEqual([]);
+    });
+
+    it('has no stale exemptions', () => {
+      const stale = [...MCP_EXEMPT_NAMES].filter((name) => !UNGATED_TOOL_COMMANDS.includes(name));
+      expect(stale, 'MCP_APPROVAL_EXEMPT entry no longer matches an ungated tool; remove it.').toEqual([]);
+    });
+
+    it('flags a tool registered without the gate and accepts one with it', () => {
+      const bare = "server.registerTool('merge', {}, wrapTool(runMerge));";
+      const gated = "server.registerTool('merge', {}, requireApproval(server, 'merge', preview, wrapTool(runMerge)));";
+      const source = "export async function runMerge() {\n  assertAttended('merge');\n  await x();\n}\n";
+      expect(attendedOnlyFunctions(source)).toEqual(['runMerge']);
+      expect(ungatedToolCommands(bare, ['runMerge'])).toEqual(['runMerge']);
+      expect(ungatedToolCommands(gated, ['runMerge'])).toEqual([]);
+    });
   });
 
   describe('scanner', () => {

@@ -63,6 +63,7 @@ import {
   GIST_FILE_SIZE_REMEDY,
   ConfigurationError,
 } from '@oss-autopilot/core';
+import { assertMcpSettable, assertMcpSettablePairs, mcpSettableKeys, requireApproval } from './trust-boundary.js';
 
 // ── GitHub URL validation (#1053) ─────────────────────────────────────
 // Previously every `url` / `prUrl` / `issueUrl` was `z.string()` with no
@@ -93,8 +94,9 @@ const githubIssueOrPrUrlSchema = z
 
 // Known config-key enum (#1053) sourced from @oss-autopilot/core so it stays
 // in sync with the CLI surface. Union of setup + config keys — the config
-// tool delegates to both `runConfig` and `runSetup` internally.
-const KNOWN_CONFIG_KEYS = Array.from(new Set([...getSetupKeys(), ...getConfigKeys()]));
+// tool delegates to both `runConfig` and `runSetup` internally. Keys whose
+// value a later workflow runs as a command are left out (#1934).
+const KNOWN_CONFIG_KEYS = mcpSettableKeys([...new Set([...getSetupKeys(), ...getConfigKeys()])]);
 const configKeySchema = KNOWN_CONFIG_KEYS.length > 0 ? z.enum(KNOWN_CONFIG_KEYS as [string, ...string[]]) : z.string(); // defensive: if the registry is empty, fall back to the old shape
 
 /** One-shot Gist persistence activation (memoized per process, #1368). */
@@ -402,6 +404,10 @@ function wrapTool<A>(
  * Registers all OSS Autopilot CLI commands as MCP tools on the given server.
  */
 export function registerTools(server: McpServer): void {
+  // What the connected host declared at initialize. This server speaks the
+  // 2025-era protocol, where this accessor is the only place that is kept.
+  const hostCapabilities = () => server.server.getClientCapabilities();
+
   // 1. daily — Run daily PR check
   server.registerTool(
     'daily',
@@ -451,7 +457,8 @@ export function registerTools(server: McpServer): void {
             `Maximum number of issues to return (default: ${DEFAULT_SEARCH_RESULTS}, max: ${MAX_SEARCH_RESULTS}). Must be a positive integer.`,
           ),
       }),
-      annotations: { readOnlyHint: true },
+      // Not read-only: records the issues it showed and the search rotation in state.
+      annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool((args: { maxResults?: number }) => {
       const maxResults = args.maxResults ?? DEFAULT_SEARCH_RESULTS;
@@ -674,14 +681,20 @@ export function registerTools(server: McpServer): void {
     'post',
     {
       description:
-        "Post a comment on a GitHub issue or pull request. WARNING: posts a public comment under the authenticated user's identity. Irreversible (the comment can only be edited or deleted, not un-posted). Do not call without explicit user confirmation.",
+        "Post a comment on a GitHub issue or pull request. WARNING: posts a public comment under the authenticated user's identity. Irreversible (the comment can only be edited or deleted, not un-posted). Do not call without explicit user confirmation. Where the host supports it, the server shows the user the comment and posts only after they approve; refused in unattended runs.",
       inputSchema: z.object({
         url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to comment on'),
         message: z.string().min(1).describe('The comment text to post'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    wrapTool(runPost),
+    requireApproval(
+      hostCapabilities,
+      'post a comment',
+      (args: Parameters<typeof runPost>[0]) =>
+        `Post this comment on ${args.url} under your GitHub account?\n\n${args.message}`,
+      wrapTool(runPost),
+    ),
   );
 
   // 10. claim — Claim an issue (#1053: destructive; posts under user's identity)
@@ -689,14 +702,21 @@ export function registerTools(server: McpServer): void {
     'claim',
     {
       description:
-        "Claim a GitHub issue by posting a comment expressing intent to work on it. WARNING: posts a public comment under the authenticated user's identity. Irreversible. Do not call without explicit user confirmation.",
+        "Claim a GitHub issue by posting a comment expressing intent to work on it. WARNING: posts a public comment under the authenticated user's identity. Irreversible. Do not call without explicit user confirmation. Where the host supports it, the server shows the user the comment and posts only after they approve; refused in unattended runs.",
       inputSchema: z.object({
         issueUrl: githubIssueUrlSchema.describe('Full GitHub issue URL to claim'),
         message: z.string().optional().describe('Custom claim message. If omitted, a default message is used.'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    wrapTool(runClaim),
+    requireApproval(
+      hostCapabilities,
+      'claim an issue',
+      (args: Parameters<typeof runClaim>[0]) =>
+        `Claim ${args.issueUrl} by posting this comment under your GitHub account?\n\n` +
+        (args.message || '(the default message, which asks the maintainers to assign the issue to you)'),
+      wrapTool(runClaim),
+    ),
   );
 
   // 11. config — Get or set configuration
@@ -704,7 +724,7 @@ export function registerTools(server: McpServer): void {
     'config',
     {
       description:
-        'Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value.',
+        'Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value. diffToolCustomCommand and diffTool=custom cannot be set here: the user sets them in a terminal.',
       inputSchema: z.object({
         key: configKeySchema
           .optional()
@@ -721,6 +741,7 @@ export function registerTools(server: McpServer): void {
         // next call rather than trusting a memoized local-mode resolution.
         // finally: the memo must reset even on failure — a partially applied
         // call can still have flipped persistence-affecting config (#1431).
+        if (args.key) assertMcpSettable(args.key, args.value);
         try {
           return await runConfig(args);
         } finally {
@@ -778,6 +799,7 @@ export function registerTools(server: McpServer): void {
         // finally: runSetup applies earlier --set pairs in memory BEFORE a later
         // invalid value throws, so even a FAILED call can have flipped
         // persistence — the memo must reset either way (#1431).
+        assertMcpSettablePairs(args.set);
         try {
           return await runSetup(args);
         } finally {

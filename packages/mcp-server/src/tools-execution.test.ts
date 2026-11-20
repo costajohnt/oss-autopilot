@@ -74,6 +74,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     labelGuidelinesContent: actual.labelGuidelinesContent,
     // Real title fence (#1931): the wrapTool assertion below exercises it.
     fenceTitlesDeep: actual.fenceTitlesDeep,
+    // Real unattended check: post and claim run it before anything else (#1936).
+    assertAttended: actual.assertAttended,
     errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
     getStateManager: vi.fn().mockReturnValue({
       getState: vi.fn().mockReturnValue({

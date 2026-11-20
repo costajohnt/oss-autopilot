@@ -115,7 +115,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 |------|-------------|-----------|
 | `daily` | Run daily PR monitoring check with prioritized summary | No |
 | `status` | Show current PR tracking status | Yes |
-| `search` | Search GitHub for contributable issues | Yes |
+| `search` | Search GitHub for contributable issues; records the issues it showed in state | No |
 | `features` | Find feature-scoped opportunities in repos with 3+ merged PRs (relationship-anchored) | Yes |
 | `vet` | Analyze an issue for contribution suitability; records the vet-time prediction and issue traits (labels, author association, competing PRs, first PR in the repo) for calibration | No |
 | `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting; also returns the issue author, author association and comment count | Yes |
@@ -127,11 +127,11 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `strategy` | On-demand contribution strategy snapshot via `computeStrategy()` (#1243) | Yes |
 | `eval` | Calibration and outcome report from the outcome ledger (#1825) | Yes |
 | `comments` | Fetch and display PR comments | Yes |
-| `post` | Post a comment on an issue or PR | No |
-| `claim` | Claim an issue by posting a comment | No |
-| `config` | Get or set configuration values | No |
+| `post` | Post a comment on an issue or PR; asks the user to approve first (see below) | No |
+| `claim` | Claim an issue by posting a comment; asks the user to approve first (see below) | No |
+| `config` | Get or set configuration values (not `diffToolCustomCommand` or `diffTool=custom`, see below) | No |
 | `init` | Initialize with a GitHub username | No |
-| `setup` | Configure preferences (languages, interests) | No |
+| `setup` | Configure preferences (languages, interests); same two settings refused | No |
 | `check-setup` | Check if setup is complete | Yes |
 | `startup` | Run startup checks (auth, state, config) | No |
 | `dismiss` | Dismiss an issue from notifications | No |
@@ -149,6 +149,14 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `guidelines-store` | Persist per-repo guidelines the user has reviewed (`reviewed: true` required; refused when unattended; 8 KB cap; requires Gist mode) | No |
 | `guidelines-reset` | Tombstone the guidelines file for a repo | No |
 | `guidelines-fetch-corpus` | Fetch raw PR comment bundles for the host's `extract-learnings` prompt to consume | No |
+
+
+### What the tools will not do on the model's word
+
+Tool arguments come from a model that also reads text written by strangers, so two rules are enforced in the server rather than in the tool descriptions.
+
+- **`post` and `claim` ask the user.** Both write a public comment under your GitHub account and carry `destructiveHint` and `openWorldHint`. When the host declares the MCP elicitation capability, the server sends it a form with the target URL and the exact comment text, and posts only if you tick the box and accept; declining, cancelling or leaving the box empty refuses the call. The answer travels host to server, so the model cannot supply it. A host without elicitation runs the tool as before, and its own permission prompt is the only approval: do not auto-approve these two tools there. Both tools refuse outright while `OSS_AUTOPILOT_UNATTENDED` is set. The HTTP transport is stateless and never asks.
+- **Settings that become commands are terminal-only.** `diffToolCustomCommand` is a command line the pre-commit review runs, and `diffTool=custom` switches it on. `config` and `setup` refuse both; set them yourself with `oss-autopilot setup --set diffTool=custom --set diffToolCustomCommand="<command>"`. The review workflow also shows the stored command and asks before its first run in a session.
 
 ## Resources Reference
 

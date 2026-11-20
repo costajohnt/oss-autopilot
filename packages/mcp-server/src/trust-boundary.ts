@@ -1,0 +1,117 @@
+/**
+ * What an agent may do through the MCP tools without the user (#1934, #1936).
+ *
+ * Tool arguments are written by a model that also reads text from strangers
+ * (issue bodies, PR comments), so a tool description that says "ask the user
+ * first" is a request, not a control. The two rules here are enforced in the
+ * server instead:
+ *
+ *   1. Settings whose stored value a later workflow runs as a command cannot
+ *      be written through MCP. A person types them into the CLI.
+ *   2. A tool that writes to GitHub under the user's identity asks the user
+ *      through the host (MCP elicitation) before it runs.
+ */
+import { z } from 'zod';
+import { inputRequired, inputResponse } from '@modelcontextprotocol/server';
+import type { ClientCapabilities, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
+import { assertAttended, errorMessage } from '@oss-autopilot/core';
+
+// ── 1. Settings an agent may not write (#1934) ────────────────────────
+
+/** Keys refused over MCP whatever the value. */
+const CLI_ONLY_KEYS: ReadonlySet<string> = new Set(['diffToolCustomCommand']);
+/** Values refused over MCP for an otherwise settable key. */
+const CLI_ONLY_VALUES: ReadonlyMap<string, readonly string[]> = new Map([['diffTool', ['custom']]]);
+
+/** The config keys the MCP `config` tool accepts: every known key except the CLI-only ones. */
+export function mcpSettableKeys(keys: readonly string[]): string[] {
+  return keys.filter((key) => !CLI_ONLY_KEYS.has(key));
+}
+
+/**
+ * Throw when `key=value` is a setting only the CLI may write.
+ *
+ * `diffToolCustomCommand` is a command line the pre-commit review runs, and
+ * `diffTool=custom` is the switch that makes it run. Either one written by an
+ * injected tool call turns a config write into command execution on every
+ * machine that shares the synced state.
+ */
+export function assertMcpSettable(key: string, value: string | undefined): void {
+  const isCliOnlyKey = CLI_ONLY_KEYS.has(key);
+  const isCliOnlyValue = value !== undefined && (CLI_ONLY_VALUES.get(key) ?? []).includes(value);
+  if (!isCliOnlyKey && !isCliOnlyValue) return;
+  const setting = isCliOnlyKey ? key : `${key}=${value}`;
+  const example = isCliOnlyKey ? `${key}="<command>"` : setting;
+  throw new Error(
+    `${setting} cannot be set through the MCP server: its value decides which command a later review runs. ` +
+      `The user sets it in a terminal: oss-autopilot setup --set ${example}`,
+  );
+}
+
+/** {@link assertMcpSettable} for the `key=value` pairs of the `setup` tool, split the way `runSetup` splits them. */
+export function assertMcpSettablePairs(pairs: readonly string[] = []): void {
+  for (const pair of pairs) {
+    const [key, ...valueParts] = pair.split('=');
+    assertMcpSettable(key, valueParts.join('='));
+  }
+}
+
+// ── 2. User approval for GitHub writes (#1936) ────────────────────────
+
+const APPROVAL_KEY = 'approval';
+const approvalSchema = z.object({
+  approve: z.boolean().describe('Send this under my GitHub account'),
+});
+
+function refusal(text: string) {
+  return { content: [{ type: 'text' as const, text }], isError: true as const };
+}
+
+/** True when the host said it can show the user a form: `elicitation: {}` (the pre-mode shape) or one with `form`. */
+function canShowForm(capabilities: ClientCapabilities | undefined): boolean {
+  const elicitation = capabilities?.elicitation;
+  return elicitation !== undefined && (elicitation.form !== undefined || elicitation.url === undefined);
+}
+
+/**
+ * Gate a GitHub-writing tool on the user's approval.
+ *
+ * The question goes to the user through the host, outside the model's reach:
+ * the answer arrives as a protocol-level input response, never as a tool
+ * argument, so the model cannot supply it. Anything but an accepted form with
+ * the box ticked refuses.
+ *
+ * A host that cannot ask (no elicitation capability) runs the tool as before:
+ * there the host's own permission prompt, driven by the tool's
+ * `destructiveHint` and `openWorldHint` annotations, is the only approval.
+ * An unattended run is refused before anything is asked.
+ *
+ * `hostCapabilities` returns what the connected host declared, read per call.
+ */
+export function requireApproval<A, R>(
+  hostCapabilities: () => ClientCapabilities | undefined,
+  action: string,
+  preview: (args: A) => string,
+  handler: (args: A) => Promise<R>,
+): (args: A, ctx: ServerContext) => Promise<R | InputRequiredResult | ReturnType<typeof refusal>> {
+  return async (args, ctx) => {
+    try {
+      assertAttended(action);
+    } catch (e) {
+      return refusal(errorMessage(e));
+    }
+    if (!canShowForm(hostCapabilities())) return handler(args);
+    const answer = inputResponse(ctx.mcpReq.inputResponses, APPROVAL_KEY);
+    if (answer.kind === 'missing') {
+      return inputRequired({
+        inputRequests: {
+          [APPROVAL_KEY]: inputRequired.elicit({ message: preview(args), requestedSchema: approvalSchema }),
+        },
+      });
+    }
+    if (answer.kind !== 'elicit' || answer.action !== 'accept' || answer.content?.approve !== true) {
+      return refusal(`The user did not approve: refusing to ${action}. Do not retry unless the user asks for it.`);
+    }
+    return handler(args);
+  };
+}
