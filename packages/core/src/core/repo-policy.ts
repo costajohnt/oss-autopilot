@@ -4,8 +4,8 @@
  *
  * `derivePolicy` runs the anti-LLM / disclosure scans (anti-llm-policy.ts)
  * and the CONTRIBUTING requirement extraction (contributing.ts) over a repo's
- * docs. `vet` stores the result unreviewed, `policy set` stores the user's
- * record, and `pr-preflight` enforces it.
+ * docs. `vet` and `vet-list` store the result unreviewed, `policy set` stores the user's
+ * record, and `pr-preflight` enforces it (including the commit rules).
  *
  * Policy text comes from other people's repos, so a record holds only
  * enumerated values plus short quoted lines ({@link quote}). The older
@@ -130,6 +130,29 @@ const COMMIT_RULE_MATCHERS: ReadonlyArray<Partial<LineRule> & { rule: string; ca
 const CLA_EVIDENCE = /\bCLA\b|contributor\s+license\s+agreement/i;
 const CLA_NEGATED = negated(String.raw`(?:CLA\b|contributor\s+license)`);
 
+const COUNT_WORDS: Record<string, number> = { one: 1, 'a single': 1, two: 2, three: 3, four: 4, five: 5 };
+const COUNT = String.raw`(\d{1,2}|one|a\s+single|two|three|four|five)`;
+const AI_PRS = String.raw`(?:open\s+)?(?:AI|LLM)[-\s](?:assisted|generated|authored|written)\s+(?:PRs?|pull\s+requests?)`;
+/** "one AI-assisted PR at a time", "no more than 2 open AI-generated pull requests", "don't open more than one AI-assisted PR". */
+const AI_PR_LIMITS: readonly RegExp[] = [
+  new RegExp(String.raw`\b${COUNT}\s+${AI_PRS}\s+(?:open\s+)?(?:at\s+(?:a|any\s+one)\s+time|at\s+once)`, 'i'),
+  new RegExp(
+    String.raw`(?:\bno\s+more\s+than|(?:\bnot|n't|\bnever)\s+(?:\w+\s+)?more\s+than|\bat\s+most|\bup\s+to|\ba\s+maximum\s+of|\blimit(?:ed)?\s+(?:of|to))\s+${COUNT}\s+${AI_PRS}`,
+    'i',
+  ),
+];
+/** "there is no limit on ...", "you don't need to keep to one ...": the rest of the sentence states no limit. */
+const AI_PR_LIMIT_NEGATED =
+  /(?:\bno|\bnot|n't)\s+(?:\w+\s+){0,2}?(?:limit|restrict|cap\b|maximum|requir|need|have\s+to|must)[^.;!?]*/gi;
+
+function aiPrLimit(line: string): number | null {
+  const text = affirmed(line, AI_PR_LIMIT_NEGATED);
+  const count = AI_PR_LIMITS.map((re) => re.exec(text)?.[1]).find((c) => c !== undefined);
+  if (count === undefined) return null;
+  const n = COUNT_WORDS[count.toLowerCase().replaceAll(/\s+/g, ' ')] ?? Number(count);
+  return n > 0 ? n : null;
+}
+
 function lineMatching(text: string, rule: LineRule): string | null {
   return text.split(/\r?\n/).find((line) => rule.all.every((p) => p.test(affirmed(line, rule.none)))) ?? null;
 }
@@ -145,6 +168,7 @@ interface Found {
   cla: Hit | null;
   commitRules: Array<Hit & { rule: string }>;
   gates: Map<PrGate, Hit>;
+  aiPrLimit: (Hit & { max: number }) | null;
 }
 
 /** A ban in any doc wins; then a disclosure ask; then an invitation to mention AI reads as `allowed`. */
@@ -190,6 +214,18 @@ function scanRequirements(doc: PolicyDoc, found: Found): void {
     const line = lineMatching(doc.content, rule);
     if (line && !found.gates.has(gate)) found.gates.set(gate, { file: doc.file, line });
   }
+  if (!found.aiPrLimit) scanAiPrLimit(doc, found);
+}
+
+function scanAiPrLimit(doc: PolicyDoc, found: Found): void {
+  const lines = doc.content.split(/\r?\n/);
+  for (const line of lines) {
+    const max = aiPrLimit(line);
+    if (max !== null) {
+      found.aiPrLimit = { file: doc.file, line, max };
+      return;
+    }
+  }
 }
 
 /**
@@ -198,7 +234,7 @@ function scanRequirements(doc: PolicyDoc, found: Found): void {
  * as `none`. Silence on AI stays `unknown`: it is not permission.
  */
 export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date()): RepoPolicy {
-  const found: Found = { ai: null, disclosure: null, cla: null, commitRules: [], gates: new Map() };
+  const found: Found = { ai: null, disclosure: null, cla: null, commitRules: [], gates: new Map(), aiPrLimit: null };
   const readable = docs.filter((d) => d.content.trim() !== '');
   for (const doc of readable) {
     scanAi(doc, found);
@@ -206,7 +242,7 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
   }
   const gate = GATE_ORDER.find((g) => found.gates.has(g));
   const silent = readable.length > 0 ? 'none' : 'unknown';
-  const hits = [found.ai, found.cla, gate ? found.gates.get(gate) : undefined, ...found.commitRules];
+  const hits = [found.ai, found.cla, gate ? found.gates.get(gate) : undefined, found.aiPrLimit, ...found.commitRules];
   const source = hits
     .filter((h) => h !== null && h !== undefined)
     .map((h) => ({ file: quote(h.file).slice(0, 100), quotedLine: quote(h.line) }))
@@ -217,10 +253,42 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
     cla: found.cla ? 'required' : silent,
     commitRules: found.commitRules.map((r) => r.rule),
     prGate: gate ?? silent,
+    ...(found.aiPrLimit && { maxOpenAiPRs: found.aiPrLimit.max }),
     source,
     reviewedByUser: false,
     updatedAt: now.toISOString(),
   };
+}
+
+/** Markdown link targets: `[text](target)`. */
+const MD_LINK = /\]\(\s*<?([^\s)>]+)/g;
+const POLICY_DOC_PATH = /(?:contribut|guideline|ai[-_]?(?:policy|usage|use)|llm)[^/]*\.(?:md|markdown|rst|txt)$/i;
+/** Where scout already reads CONTRIBUTING from. */
+const SCOUT_READ = new Set(['contributing.md', '.github/contributing.md', 'docs/contributing.md']);
+
+/**
+ * Up to `max` paths in `repo` that its README links to and that look like a
+ * contribution guide or AI policy (relative links, or github.com blob links to
+ * the same repo). Links to other sites, other repos or outside the repo root
+ * are dropped, as are the CONTRIBUTING paths scout reads anyway.
+ */
+export function linkedPolicyDocs(readme: string, repo: string, max = 2): string[] {
+  const escaped = repo.replaceAll('.', '\\.');
+  const sameRepo = new RegExp(String.raw`^https?://github\.com/${escaped}/blob/[^/]+/`, 'i');
+  const paths = new Set<string>();
+  for (const [, href] of readme.matchAll(MD_LINK)) {
+    const path = policyDocPath(href.split(/[?#]/, 1)[0].replace(sameRepo, ''));
+    if (path !== null) paths.add(path);
+  }
+  return [...paths].slice(0, max);
+}
+
+/** The repo path a link target names when it looks like a contribution doc, else null. */
+function policyDocPath(target: string): string | null {
+  // A scheme means another site (or a blob link to another repo); `..` leaves the repo.
+  if (/^[a-z][\w+.-]*:/i.test(target) || target.split('/').includes('..')) return null;
+  const path = target.replace(/^(?:\.?\/)+/, '');
+  return POLICY_DOC_PATH.test(path) && !SCOUT_READ.has(path.toLowerCase()) ? path : null;
 }
 
 const EPOCH = '1970-01-01T00:00:00.000Z';

@@ -2,7 +2,7 @@
  * Tests for vet command
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockVetIssue = vi.fn();
 const mockGetRepoScore = vi.fn();
@@ -10,6 +10,9 @@ const mockRecordPickSnapshots = vi.fn();
 const mockGetState = vi.fn();
 const mockFetchVerification = vi.fn();
 const mockSetRepoPolicy = vi.fn();
+/** The Octokit vet reads the PR template and README-linked docs with (#2013); `{}` makes those reads fail. */
+const mockOctokit: { value: unknown } = { value: {} };
+const mockFetchPRTemplate = vi.fn();
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -26,7 +29,7 @@ vi.mock('../core/index.js', async () => {
   return {
     ...actual,
     fetchIssueVerification: (...args: unknown[]) => mockFetchVerification(...args),
-    getOctokit: () => ({}),
+    getOctokit: () => mockOctokit.value,
     requireGitHubToken: () => 'fake-token',
     getStateManager: () => ({
       getRepoScore: mockGetRepoScore,
@@ -38,6 +41,12 @@ vi.mock('../core/index.js', async () => {
     }),
   };
 });
+
+// Contents arrive as plain text in these stubs: no base64 round trip to maintain.
+vi.mock('../core/pr-template.js', () => ({
+  decodeBase64: (content: string) => content,
+  fetchPRTemplate: () => mockFetchPRTemplate(),
+}));
 
 import { runVet } from './vet.js';
 
@@ -54,6 +63,65 @@ function policyCandidate(rawContent?: string) {
     antiLLMPolicy: { matched: false, matchedKeywords: [], sourceFile: null },
   };
 }
+
+/** A contents-API file response; decodeBase64 is mocked to pass text through. */
+function fileResponse(text: string) {
+  return { data: { type: 'file', content: text } };
+}
+
+describe('runVet: PR template and README-linked docs (#2013)', () => {
+  const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+  let getContent: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetchVerification.mockRejectedValue(new Error('offline'));
+    mockGetRepoScore.mockReturnValue(undefined);
+    mockGetState.mockReturnValue({ config: {} });
+    mockVetIssue.mockResolvedValue(policyCandidate('Thanks for contributing.'));
+    mockFetchPRTemplate.mockResolvedValue({
+      template: '- [ ] I comment on the issue and get assigned before opening a PR',
+      source: '.github/pull_request_template.md',
+    });
+    const files = new Map([['docs/ai-policy.md', 'Please keep to one AI-assisted PR at a time.']]);
+    getContent = vi.fn(({ path }: { path: string }) => {
+      const text = files.get(path);
+      return text === undefined ? Promise.reject(notFound) : Promise.resolve(fileResponse(text));
+    });
+    const readme = [
+      '[guide](docs/ai-policy.md) [same](CONTRIBUTING.md) [other](https://github.com/else/where/blob/main/docs/contributing.md)',
+      '[escape](../CONTRIBUTING-outside.md) [site](https://example.com/contributing.md)',
+    ].join('\n');
+    mockOctokit.value = {
+      repos: { getContent, getReadme: vi.fn().mockResolvedValue(fileResponse(readme)) },
+    };
+  });
+
+  afterEach(() => {
+    mockOctokit.value = {};
+  });
+
+  it('reads the PR template and a same-repo doc the README links to, and records what they say', async () => {
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.policy).toMatchObject({ prGate: 'claim-first', maxOpenAiPRs: 1, reviewedByUser: false });
+    expect(mockSetRepoPolicy).toHaveBeenCalledWith(
+      'owner/repo',
+      expect.objectContaining({ prGate: 'claim-first', maxOpenAiPRs: 1 }),
+    );
+    // Only the linked same-repo doc is read: not the other repo's, the other site's, or CONTRIBUTING.md again.
+    expect(getContent.mock.calls.map(([arg]) => (arg as { path: string }).path)).toEqual(['docs/ai-policy.md']);
+  });
+
+  it('still vets, from scout alone, when those reads fail', async () => {
+    mockFetchPRTemplate.mockRejectedValue(new Error('rate limited'));
+    mockVetIssue.mockResolvedValue(policyCandidate('Comment on the issue and get assigned before opening a PR.'));
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.policy).toMatchObject({ prGate: 'claim-first' });
+  });
+});
 
 describe('runVet: repo contribution policy (#1953)', () => {
   const BAN = 'We do not accept AI-generated contributions.';

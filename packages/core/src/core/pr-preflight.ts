@@ -10,7 +10,7 @@
 
 import type { IssueAvailabilityVerdict, IssueVerification } from './issue-verification.js';
 import type { RepoCapStatus } from './repo-cap.js';
-import { banNote, fencePolicyText, summarizePolicy, type RepoPolicy } from './repo-policy.js';
+import { banNote, fencePolicyText, quote, summarizePolicy, type RepoPolicy } from './repo-policy.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
 import { isOwnRepo, splitRepo } from './urls.js';
 
@@ -59,6 +59,8 @@ export interface PreflightFacts {
   mergeBase: string | null;
   /** `git log --oneline` lines for upstream commits since the merge base that touch files this branch changed. */
   overlappingCommits: string[];
+  /** Full messages of this branch's own commits (`git log <mergeBase>..HEAD`, merges left out); null without a merge base. */
+  branchCommits: string[] | null;
   /** Set when `--fetch` was passed and the fetch failed. */
   fetchError: string | null;
   /** Configured GitHub username. */
@@ -378,6 +380,50 @@ export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
   return check(id, 'pass', `${repo}: AI policy ${policy.aiPolicy}, PR gate ${policy.prGate}`, details);
 }
 
+/** Per commit rule id: true when a commit message breaks it. An id this release does not know is not checked. */
+const COMMIT_RULE_BROKEN: Record<string, (message: string) => boolean> = {
+  'conventional-commits': (m) => !/^\w+(?:\([^)\n]*\))?!?: \S/.test(m),
+  'dco-signoff': (m) => !/^Signed-off-by: .+ <[^>\n]+>\s*$/im.test(m),
+  'no-closing-keyword-in-commit': (m) => /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+\S*#\d+/i.test(m),
+};
+
+const MAX_LISTED_VIOLATIONS = 10;
+
+/**
+ * The repo's recorded commit rules over this branch's commits (local, no
+ * network). A rule the user confirmed fails; one read from the docs and not
+ * reviewed only warns. Commit subjects arrive fenced.
+ */
+export function checkCommitRules(facts: PreflightFacts): PreflightCheck {
+  const id = 'commit-rules';
+  const { repo, policy, branchCommits } = facts;
+  const rules = (policy?.commitRules ?? []).filter((rule) => Object.hasOwn(COMMIT_RULE_BROKEN, rule));
+  if (!repo || !policy || rules.length === 0) return check(id, 'skipped', 'no commit rules recorded for this repo');
+  if (branchCommits === null) {
+    return check(id, 'skipped', 'the branch point is unknown (target branch not fetched); run again with --fetch');
+  }
+  const broken = branchCommits.flatMap((message) =>
+    rules
+      .filter((rule) => COMMIT_RULE_BROKEN[rule](message))
+      .map((rule) => `${rule}: ${quote(message.split('\n', 1)[0])}`),
+  );
+  if (broken.length === 0) {
+    return check(id, 'pass', `${branchCommits.length} commit(s) follow ${rules.join(', ')}`, { rules });
+  }
+  const unreviewed = policy.reviewedByUser
+    ? ''
+    : ` (rules read from the repo docs, not reviewed: record them with policy set --repo ${repo} --ai-policy <value> --commit-rules <ids> if misread)`;
+  return check(
+    id,
+    policy.reviewedByUser ? 'fail' : 'warn',
+    `${broken.length} commit rule violation(s): reword those commits${unreviewed}`,
+    {
+      rules,
+      violations: wrapUntrustedContent(broken.slice(0, MAX_LISTED_VIOLATIONS).join('\n'), 'commit-subjects'),
+    },
+  );
+}
+
 /** Every check, in output order. A new check is added here. */
 export const PREFLIGHT_CHECKS: ReadonlyArray<(facts: PreflightFacts) => PreflightCheck> = [
   checkDrift,
@@ -387,6 +433,7 @@ export const PREFLIGHT_CHECKS: ReadonlyArray<(facts: PreflightFacts) => Prefligh
   checkCompetingWork,
   checkRepoCap,
   checkRepoPolicy,
+  checkCommitRules,
 ];
 
 /** `fail` when any check fails, else `warn` when any warns, else `pass`. Skipped checks do not count. */

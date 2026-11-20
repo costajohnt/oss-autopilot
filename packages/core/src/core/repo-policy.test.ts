@@ -9,6 +9,7 @@ import {
   effectivePolicy,
   isUnreadable,
   isUserReviewed,
+  linkedPolicyDocs,
   quote,
   storedBans,
   storedPolicy,
@@ -166,6 +167,59 @@ describe('derivePolicy: CLA and commit rules', () => {
   it('a negated clause does not veto a positive claim phrase on the same line', () => {
     expect(gate('Comment on the issue and get assigned before opening a PR.')).toBe('claim-first');
     expect(gate("You don't need to be assigned, but comment on the issue before opening a PR.")).toBe('claim-first');
+  });
+});
+
+describe('derivePolicy: maxOpenAiPRs', () => {
+  it('reads the open AI-PR limit from ai-pr-limit.md, with the line quoted as its source', () => {
+    const policy = fromFixture('ai-pr-limit');
+    expect(policy.maxOpenAiPRs).toBe(1);
+    expect(policy.source).toContainEqual({
+      file: 'CONTRIBUTING.md',
+      quotedLine: 'Please keep to one AI-assisted PR at a time, so maintainers are not flooded.',
+    });
+  });
+
+  it('records no limit from ai-pr-limit-negated.md (a negated limit, counts that are not limits)', () => {
+    expect(fromFixture('ai-pr-limit-negated').maxOpenAiPRs).toBeUndefined();
+    expect(fromFixture('silent').maxOpenAiPRs).toBeUndefined();
+  });
+
+  it.each([
+    ['No more than 2 open AI-generated pull requests per contributor.', 2],
+    ['Please do not open more than three LLM-generated PRs at once.', 3],
+    ["Don't open more than one AI-assisted PR.", 1],
+    ['Contributors may have at most 5 open AI-authored PRs.', 5],
+    ['Keep a single AI-generated pull request open at any one time.', 1],
+    ['Only a single AI-generated pull request at a time, please.', 1],
+  ])('"%s" reads as %s', (line, expected) => {
+    expect(policyOf(line).maxOpenAiPRs).toBe(expected);
+  });
+
+  it.each([
+    'You do not need to limit yourself to one AI-assisted PR at a time.',
+    "There's no cap: one AI-assisted PR at a time is not required.",
+    'We received 40 AI-generated pull requests last week.',
+    'One AI-assisted PR fixed the parser.',
+    'No more than 2 open pull requests per contributor.',
+  ])('"%s" sets no limit', (line) => {
+    expect(policyOf(line).maxOpenAiPRs).toBeUndefined();
+  });
+});
+
+describe('linkedPolicyDocs', () => {
+  it('keeps up to two same-repo contribution docs the README links to', () => {
+    const readme = [
+      '[a](./docs/CONTRIBUTING-guide.md#setup) [b](https://github.com/Owner/Repo/blob/main/AI_POLICY.md)',
+      '[c](docs/guidelines.md) [img](docs/logo.png) [d](https://github.com/owner/repo2/blob/main/contributing.md)',
+    ].join('\n');
+    expect(linkedPolicyDocs(readme, 'owner/repo')).toEqual(['docs/CONTRIBUTING-guide.md', 'AI_POLICY.md']);
+  });
+
+  it('drops other sites, paths outside the repo, and the CONTRIBUTING files scout reads', () => {
+    const readme =
+      '[x](https://example.com/CONTRIBUTING.md) [y](../other/CONTRIBUTING.md) [z](.github/CONTRIBUTING.md) [w](mailto:contributing.md)';
+    expect(linkedPolicyDocs(readme, 'owner/repo')).toEqual([]);
   });
 });
 

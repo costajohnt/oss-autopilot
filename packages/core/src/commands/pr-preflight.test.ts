@@ -169,6 +169,7 @@ describe('runPrPreflight: a ready branch', () => {
       ['competing-work', 'pass'],
       ['repo-cap', 'pass'],
       ['repo-policy', 'pass'],
+      ['commit-rules', 'skipped'],
     ]);
     expect(mocks.reposGet).toHaveBeenCalledWith({ owner: 'up', repo: 'proj' });
     expect(mocks.getBranch).toHaveBeenCalledWith({ owner: 'up', repo: 'proj', branch: 'main' });
@@ -439,6 +440,7 @@ describe('runPrPreflight: without GitHub', () => {
       ['competing-work', 'skipped'],
       ['repo-cap', 'skipped'],
       ['repo-policy', 'pass'],
+      ['commit-rules', 'skipped'],
     ]);
     expect(summaryOf(data, 'repo-cap')).toContain('no GitHub token');
     expect(mocks.reposGet).not.toHaveBeenCalled();
@@ -569,6 +571,84 @@ describe('runPrPreflight: repo contribution policy (#1953)', () => {
   });
 });
 
+/** State with a stored policy for up/proj carrying `commitRules`. */
+function withRules(commitRules: string[], isReviewed: boolean): void {
+  mocks.getState.mockReturnValue({
+    config: { githubUsername: 'me', excludeRepos: [] },
+    repoScores: {},
+    mergedPRs: [{ url: 'https://github.com/up/proj/pull/1' }],
+    repoPolicies: {
+      'up/proj': {
+        commitRules,
+        aiPolicy: 'allowed',
+        cla: 'none',
+        prGate: 'none',
+        source: [],
+        reviewedByUser: isReviewed,
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      },
+    },
+  });
+}
+
+/** Commit a new file on the branch under test with `message`. */
+function commitWithMessage(message: string): void {
+  fs.writeFileSync(path.join(ctx.clone, 'b.txt'), 'b\n');
+  git(ctx.clone, ['add', '--', 'b.txt']);
+  git(ctx.clone, [...IDENTITY, 'commit', '-q', '-m', message]);
+}
+
+describe('runPrPreflight: commit rules (#2013)', () => {
+  it('warns on an unreviewed rule and quotes the offending subject inside the fence, in --local mode', async () => {
+    withRules(['conventional-commits', 'no-closing-keyword-in-commit'], false);
+    commitWithMessage('fix: handle empty input\n\nFixes #7');
+
+    const data = await runPrPreflight({ dir: ctx.clone, fetch: false, local: true });
+
+    const check = data.checks.find((c) => c.id === 'commit-rules');
+    expect(check?.status).toBe('warn');
+    expect(check?.summary).toContain('2 commit rule violation(s)');
+    expect(check?.summary).toContain('not reviewed');
+    const violations = String(check?.details?.violations);
+    expect(violations).toMatch(/^<github-content/);
+    expect(violations).toContain('conventional-commits: change a.txt');
+    expect(violations).toContain('no-closing-keyword-in-commit: fix: handle empty input');
+    expect(mocks.reposGet).not.toHaveBeenCalled();
+  });
+
+  it('fails on a rule the user reviewed', async () => {
+    withRules(['dco-signoff'], true);
+
+    const data = await runPrPreflight({ dir: ctx.clone, fetch: false, local: true });
+
+    expect(statusOf(data, 'commit-rules')).toBe('fail');
+    expect(data.verdict).toBe('fail');
+  });
+
+  it('passes when every branch commit follows the rules, and ignores the upstream history', async () => {
+    withRules(['conventional-commits', 'dco-signoff', 'no-closing-keyword-in-commit'], true);
+    git(ctx.clone, ['reset', '-q', '--hard', 'upstream/main']);
+    commitWithMessage('feat(parser): accept empty input\n\nRefs #7\n\nSigned-off-by: T <t@example.com>');
+
+    const data = await runPrPreflight({ dir: ctx.clone, fetch: false, local: true });
+
+    expect(statusOf(data, 'commit-rules')).toBe('pass');
+    expect(summaryOf(data, 'commit-rules')).toContain('1 commit(s) follow');
+  });
+
+  it('is skipped with no commit rules recorded, and without a branch point', async () => {
+    withRules([], true);
+    expect(statusOf(await runPrPreflight({ dir: ctx.clone, fetch: false, local: true }), 'commit-rules')).toBe(
+      'skipped',
+    );
+
+    withRules(['dco-signoff'], true);
+    const data = await runPrPreflight({ dir: ctx.clone, base: 'nope', fetch: false, local: true });
+    expect(statusOf(data, 'commit-rules')).toBe('skipped');
+    expect(summaryOf(data, 'commit-rules')).toContain('--fetch');
+  });
+});
+
 describe('printPrPreflight', () => {
   it('prints the verdict and one line per check', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -579,6 +659,6 @@ describe('printPrPreflight', () => {
     const lines = log.mock.calls.map((call) => String(call[0]));
     expect(lines[0]).toBe('\nPR preflight: FAIL  (detached HEAD) -> up/proj:main');
     expect(lines).toContain('  [fail] head-branch: detached HEAD: check out a feature branch before opening a PR');
-    expect(lines).toHaveLength(8);
+    expect(lines).toHaveLength(9);
   });
 });

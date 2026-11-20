@@ -260,26 +260,52 @@ export async function runPolicyReset(options: { repo: string }): Promise<PolicyR
  * never thrown: recording the policy must not fail the vet.
  */
 export async function recordVetPolicy(repo: string, derived: RepoPolicy): Promise<void> {
+  await recordVetPolicies([{ repo, policy: derived }]);
+}
+
+/**
+ * {@link recordVetPolicy} for several repos, with one Gist checkpoint. With
+ * `fillOnly` (vet-list, which reads only scout's CONTRIBUTING text) a stored
+ * record is replaced only by a ban: a narrower reading must not overwrite one
+ * vet took from more docs.
+ */
+export async function recordVetPolicies(
+  readings: ReadonlyArray<{ repo: string; policy: RepoPolicy }>,
+  options: { fillOnly?: boolean } = {},
+): Promise<void> {
   try {
-    await writeVetPolicy(repo, derived);
+    await writeVetPolicies(readings, options.fillOnly === true);
   } catch (error) {
-    warn(MODULE, `Could not record the contribution policy for ${repo}: ${errorMessage(error)}`);
+    const repos = readings.map((r) => r.repo).join(', ');
+    warn(MODULE, `Could not record the contribution policy for ${repos}: ${errorMessage(error)}`);
   }
 }
 
-async function writeVetPolicy(repo: string, derived: RepoPolicy): Promise<void> {
+async function writeVetPolicies(
+  readings: ReadonlyArray<{ repo: string; policy: RepoPolicy }>,
+  isFillOnly: boolean,
+): Promise<void> {
   const sm = getStateManager();
   sm.reloadIfChanged();
-  const state = sm.getState();
-  // Never replace the user's record or one a newer release wrote.
-  if (isUserReviewed(state, repo) || isUnreadable(state, repo)) return;
-  const stored = storedPolicy(state, repo);
-  if (stored && isSamePolicy(stored, derived)) return;
-  // A recorded ban stays until the user says otherwise: a later reading that misses it does not lift it.
-  if (stored?.aiPolicy === 'banned' && derived.aiPolicy !== 'banned') return;
+  const writes = readings.filter(({ repo, policy }) => shouldWrite(repo, policy, isFillOnly));
+  if (writes.length === 0) return;
   const write = (): void => {
-    if (!isUserReviewed(sm.getState(), repo)) sm.setRepoPolicy(repo, derived);
+    for (const { repo, policy } of writes) {
+      if (!isUserReviewed(sm.getState(), repo)) sm.setRepoPolicy(repo, policy);
+    }
   };
   write();
   await maybeCheckpoint(sm, MODULE, write);
+}
+
+function shouldWrite(repo: string, derived: RepoPolicy, isFillOnly: boolean): boolean {
+  const state = getStateManager().getState();
+  // Never replace the user's record or one a newer release wrote.
+  if (isUserReviewed(state, repo) || isUnreadable(state, repo)) return false;
+  const stored = storedPolicy(state, repo);
+  if (!stored) return true;
+  if (isSamePolicy(stored, derived)) return false;
+  // A recorded ban stays until the user says otherwise: a later reading that misses it does not lift it.
+  if (stored.aiPolicy === 'banned') return derived.aiPolicy === 'banned';
+  return !isFillOnly || derived.aiPolicy === 'banned';
 }

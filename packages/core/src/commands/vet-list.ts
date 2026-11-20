@@ -1,6 +1,12 @@
 /**
  * Vet-list command (#764)
  * Re-vets all available issues in a curated issue list file via @oss-scout/core.
+ *
+ * Each vetted repo's contribution policy (#2013) is read from scout's
+ * CONTRIBUTING text and anti-LLM scan only (no extra GitHub reads; `vet` adds
+ * the PR template and README-linked docs), applied to the row as in `vet` (a
+ * ban makes it a skip), and recorded once after the fan-out without replacing
+ * a stored reading unless it is a ban.
  */
 
 import * as fs from 'node:fs';
@@ -16,6 +22,9 @@ import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { repoCapField } from '../core/repo-cap.js';
 import { ValidationError } from '../core/errors.js';
+import type { RepoPolicy } from '../core/repo-policy.js';
+import { policyFields, vetPolicy } from './vet.js';
+import { recordVetPolicies } from './policy.js';
 import {
   getStateManager,
   classifyLinkedPR,
@@ -193,6 +202,16 @@ function ruledOutVetOutput(v: IssueVerification): VetOutput {
   };
 }
 
+/** {@link vetPolicy} for one candidate, added to `readings` when there is one. */
+function readPolicy(
+  candidate: Parameters<typeof vetPolicy>[0],
+  readings: Array<{ repo: string; policy: RepoPolicy }>,
+): RepoPolicy | null {
+  const policy = vetPolicy(candidate);
+  if (policy) readings.push({ repo: candidate.issue.repo, policy });
+  return policy;
+}
+
 /**
  * Re-vet all available issues in a curated issue list.
  * Reads the list file, extracts available (non-done) issues,
@@ -267,6 +286,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   const scout = await createAutopilotScout();
   // Vet-time predictions for calibration (#1824), recorded once after the fan-out.
   const picks: PickSnapshot[] = [];
+  const policies: Array<{ repo: string; policy: RepoPolicy }> = [];
 
   /**
    * Run scout's grade/health vet for an issue (the search-driven path). A pick is
@@ -310,6 +330,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       slmTriage: candidate.slmTriage ?? null,
       grade,
       ...repoCapField(getStateManager().getState(), candidate.issue.repo),
+      ...policyFields(candidate, readPolicy(candidate, policies)),
     };
     if (verification) {
       const pick = pickSnapshotFromVet(vetResult, 'vet-list', {
@@ -428,6 +449,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => processNext());
   await Promise.all(workers);
   const pickPersistence = await persistPickSnapshots(getStateManager(), picks);
+  await recordVetPolicies(policies, { fillOnly: true });
 
   // 4. Compute summary
   const summary = {
