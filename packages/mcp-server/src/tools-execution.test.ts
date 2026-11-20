@@ -96,6 +96,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     // tools.ts run against these.
     ConfigurationError: class ConfigurationError extends Error {},
     ConcurrencyError: class ConcurrencyError extends Error {},
+    StateLockTimeoutError: class StateLockTimeoutError extends Error {},
+    NewerStateVersionError: class NewerStateVersionError extends Error {},
     GistConcurrencyError: class GistConcurrencyError extends Error {},
   };
 });

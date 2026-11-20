@@ -123,6 +123,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   GistDiscoveryError: MockGistDiscoveryError,
   GIST_FILE_SIZE_REMEDY: 'trim repoScores and searchSeen, or run state-unlink',
   ConcurrencyError: class ConcurrencyError extends Error {},
+  StateLockTimeoutError: class StateLockTimeoutError extends Error {},
+  NewerStateVersionError: class NewerStateVersionError extends Error {},
   GistConcurrencyError: class GistConcurrencyError extends Error {},
 }));
 

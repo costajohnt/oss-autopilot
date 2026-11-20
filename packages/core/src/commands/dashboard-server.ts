@@ -16,7 +16,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { getGitHubToken, getCLIVersion } from '../core/index.js';
-import { errorMessage, ValidationError, ConcurrencyError, GistConcurrencyError } from '../core/errors.js';
+import {
+  errorMessage,
+  ValidationError,
+  ConcurrencyError,
+  GistConcurrencyError,
+  StateLockTimeoutError,
+} from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
 import type { MoveTarget } from './move.js';
@@ -208,7 +214,21 @@ function sanitizeHeaderValue(value: string): string {
  * save. See state-concurrency.test.ts (#1378) and errors.ts.
  */
 function isConcurrencyConflict(error: unknown): boolean {
+  if (error instanceof StateLockTimeoutError) return false; // a reload cannot help: see didSendLockTimeout
   return error instanceof ConcurrencyError || error instanceof GistConcurrencyError;
+}
+
+/**
+ * Answer a state-lock timeout (#1951) and report whether it did. The lock is
+ * held by another process, so neither a server-side reload-and-retry nor the
+ * page's 409 re-prime-and-retry helps, and each retry blocks the event loop
+ * for the full lock wait. 423 is a status the page does not retry; the
+ * message names the lock file and the way out.
+ */
+function didSendLockTimeout(res: http.ServerResponse, error: unknown): boolean {
+  if (!(error instanceof StateLockTimeoutError)) return false;
+  sendJson(res, 423, { error: error.message, code: 'STATE_LOCKED', retryable: false });
+  return true;
 }
 
 /**
@@ -554,6 +574,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     try {
       await sm.runMutation(async () => applyMutation());
     } catch (error) {
+      if (didSendLockTimeout(res, error)) return;
       if (!isConcurrencyConflict(error)) {
         warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
         sendError(res, 500, 'Action failed');
@@ -574,6 +595,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         await reloadState({ force: true });
         await sm.runMutation(async () => applyMutation());
       } catch (retryError) {
+        if (didSendLockTimeout(res, retryError)) return;
         if (isConcurrencyConflict(retryError)) {
           warn(MODULE, `Action conflicted twice: ${body.action} ${body.url} ${errorMessage(retryError)}`);
           sendConflict(res);
@@ -667,6 +689,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       // No server-side retry here (unlike handleAction): a refresh re-run is a
       // full GitHub fetch — expensive and rate-limited. The 409 is retryable
       // by the client, which re-POSTs /api/refresh on its own schedule (#1397).
+      if (didSendLockTimeout(res, error)) return;
       if (isConcurrencyConflict(error)) {
         warn(MODULE, `Dashboard refresh hit a concurrent state write: ${errorMessage(error)}`);
         sendConflict(res);

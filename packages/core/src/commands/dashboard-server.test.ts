@@ -190,7 +190,7 @@ import {
 import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
 import { detectIssueList } from './startup.js';
 import { getGitHubToken } from '../core/index.js';
-import { ConcurrencyError, ConfigurationError } from '../core/errors.js';
+import { ConcurrencyError, ConfigurationError, StateLockTimeoutError } from '../core/errors.js';
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -1142,6 +1142,25 @@ describe('dashboard-server', () => {
 
       expect(result.statusCode).toBe(200);
       expect(mockStateManager.dismissIssue).toHaveBeenCalledTimes(2);
+    });
+
+    it('answers a state lock timeout with a non-retryable 423 and the lock message, without retrying (#1951)', async () => {
+      mockRunMove.mockClear();
+      mockRunMove.mockRejectedValueOnce(new StateLockTimeoutError('/data/state.json.lock', 1000));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(423);
+      expect(JSON.parse(result.body)).toMatchObject({
+        code: 'STATE_LOCKED',
+        retryable: false,
+        error: expect.stringContaining('delete /data/state.json.lock'),
+      });
+      expect(mockRunMove).toHaveBeenCalledTimes(1);
     });
 
     it('returns a machine-readable 409 when the retry also hits ConcurrencyError', async () => {
@@ -2237,6 +2256,15 @@ describe('dashboard-server', () => {
       expect(result.statusCode).toBe(500);
       const data = JSON.parse(result.body);
       expect(data.error).toContain('Refresh failed');
+    });
+
+    it('answers a state lock timeout with a non-retryable 423 (#1951)', async () => {
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockRejectedValueOnce(new StateLockTimeoutError('/data/state.json.lock', 1000));
+
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(423);
+      expect(JSON.parse(result.body)).toMatchObject({ code: 'STATE_LOCKED', retryable: false });
     });
 
     it('returns a machine-readable 409 on ConcurrencyError (#1397)', async () => {

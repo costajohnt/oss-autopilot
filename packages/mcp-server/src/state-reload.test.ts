@@ -25,6 +25,8 @@ const {
   mockRunMove,
   mockStateManager,
   MockConcurrencyError,
+  MockStateLockTimeoutError,
+  MockNewerStateVersionError,
   MockGistConcurrencyError,
 } = vi.hoisted(() => {
   // Stand-ins for the core error classes (the whole module is mocked, so
@@ -41,6 +43,19 @@ const {
       this.name = 'GistConcurrencyError';
     }
   }
+  // As in core: a lock timeout IS a ConcurrencyError.
+  class MockStateLockTimeoutError extends MockConcurrencyError {
+    constructor(message: string) {
+      super(message);
+      this.name = 'MockStateLockTimeoutError';
+    }
+  }
+  class MockNewerStateVersionError extends Error {
+    constructor(message: string, options?: ErrorOptions) {
+      super(message, options);
+      this.name = 'MockNewerStateVersionError';
+    }
+  }
   return {
     mockGetGitHubTokenAsync: vi.fn(),
     mockEnsureGistPersistence: vi.fn(),
@@ -54,6 +69,8 @@ const {
       runMutation: (fn: () => Promise<unknown>) => fn(),
     },
     MockConcurrencyError,
+    MockStateLockTimeoutError,
+    MockNewerStateVersionError,
     MockGistConcurrencyError,
   };
 });
@@ -109,6 +126,8 @@ vi.mock('@oss-autopilot/core', () => ({
   getSetupKeys: () => ['username'],
   getConfigKeys: () => ['username'],
   ConcurrencyError: MockConcurrencyError,
+  StateLockTimeoutError: MockStateLockTimeoutError,
+  NewerStateVersionError: MockNewerStateVersionError,
   GistConcurrencyError: MockGistConcurrencyError,
   ConfigurationError: class ConfigurationError extends Error {},
 }));
@@ -263,15 +282,51 @@ describe('per-tool-call state reload + concurrency retry (#1439)', () => {
     expect(mockStateManager.refreshFromGist).toHaveBeenLastCalledWith({ force: true });
   });
 
-  it('a reload failure never fails the call — degraded read serves cached state', async () => {
-    mockStateManager.reloadIfChanged.mockImplementation(() => {
-      throw new Error('EACCES: permission denied');
-    });
+  it('a failed Gist refresh never fails the call — degraded read serves cached state', async () => {
+    mockEnsureGistPersistence.mockResolvedValue('gist');
+    mockStateManager.isGistMode.mockReturnValue(true);
+    mockStateManager.refreshFromGist.mockRejectedValue(new Error('socket hang up'));
     mockRunStatus.mockResolvedValueOnce({ ok: true });
 
     const result = await client.callTool({ name: 'status', arguments: {} });
 
     expect(result.isError).toBeFalsy();
     expect(JSON.parse((result.content as Array<{ text: string }>)[0].text).ok).toBe(true);
+  });
+
+  // #1951: serving old in-memory state after these ends in writing it over newer data.
+  it('a local state file reload failure fails the call with the real error', async () => {
+    mockStateManager.reloadIfChanged.mockImplementation(() => {
+      throw new Error('EIO: i/o error, read');
+    });
+
+    const result = await client.callTool({ name: 'status', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0].text).toContain('EIO: i/o error');
+    expect(mockRunStatus).not.toHaveBeenCalled();
+  });
+
+  it('Gist state from a newer release fails the call instead of serving cached state', async () => {
+    mockEnsureGistPersistence.mockResolvedValue('gist');
+    mockStateManager.isGistMode.mockReturnValue(true);
+    mockStateManager.refreshFromGist.mockRejectedValue(new MockNewerStateVersionError('update this client'));
+
+    const result = await client.callTool({ name: 'status', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0].text).toContain('update this client');
+    expect(mockRunStatus).not.toHaveBeenCalled();
+  });
+
+  it('a state lock timeout is not retried: a reload cannot free the lock', async () => {
+    mockRunMove.mockRejectedValue(new MockStateLockTimeoutError('State file is locked by another process'));
+
+    const result = await client.callTool({ name: 'move', arguments: { prUrl: PR_URL, target: 'shelved' } });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0].text).toContain('locked by another process');
+    expect(mockRunMove).toHaveBeenCalledTimes(1);
+    expect(mockStateManager.reloadIfChanged).toHaveBeenCalledTimes(1);
   });
 });

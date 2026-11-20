@@ -1542,6 +1542,13 @@ describe('StateManager Gist staleness marker (#1193)', () => {
     expect(staleness?.reason).toMatch(/payload was invalid/);
   });
 
+  it('throws the update error when the refreshed payload is from a newer release (#1951)', async () => {
+    mockGistStore.refreshFromGist.mockResolvedValue({ status: 'refreshed' });
+    mockGistStore.cachedFiles.set('state.json', JSON.stringify({ version: 5 }));
+
+    await expect(manager.refreshFromGist()).rejects.toThrow(/Gist state was written by a newer oss-autopilot release/);
+  });
+
   it('sets a marker when refreshFromGist returns true but state.json is missing', async () => {
     mockGistStore.refreshFromGist.mockResolvedValue({ status: 'refreshed' });
     mockGistStore.cachedFiles.delete('state.json');

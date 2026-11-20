@@ -143,9 +143,28 @@ export class StateLockTimeoutError extends ConcurrencyError {
       0,
       0,
       `State file is locked by another process (waited ${waitedMs} ms). Nothing was written; re-run the command. ` +
-        `If no other oss-autopilot process is running, the lock expires on its own, or delete ${lockPath}.`,
+        'A lock left by a crashed process expires after 30 seconds, or after 10 minutes when its PID now belongs ' +
+        `to a live process. To clear it by hand, make sure no oss-autopilot process is running and delete ${lockPath}.`,
     );
     this.name = 'StateLockTimeoutError';
+  }
+}
+
+/**
+ * Thrown when stored state (the state file, the Gist, or its local cache)
+ * carries a schema version above this release's (#1951). It is not corruption:
+ * it is never restored over, replaced by fresh state, or moved aside. A
+ * {@link ConfigurationError} because it stays until the user updates.
+ */
+export class NewerStateVersionError extends ConfigurationError {
+  constructor(source: string, version: number, supported: number) {
+    super(
+      `The ${source} was written by a newer oss-autopilot release (schema version ${version}; this release ` +
+        `reads up to ${supported}). Nothing was changed. Update this client and retry: run ` +
+        '`claude plugin update oss-autopilot@oss-autopilot` and restart Claude Code, or install the latest ' +
+        '@oss-autopilot packages.',
+    );
+    this.name = 'NewerStateVersionError';
   }
 }
 

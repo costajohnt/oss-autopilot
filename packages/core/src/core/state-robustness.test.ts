@@ -8,9 +8,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import path from 'node:path';
 
-import { acquireLock, loadState, saveState, createFreshState } from './state-persistence.js';
+import { acquireLock, releaseLock, loadState, saveState, createFreshState } from './state-persistence.js';
 import { StateManager } from './state.js';
-import { ConcurrencyError, StateLockTimeoutError } from './errors.js';
+import { ConcurrencyError, NewerStateVersionError, StateLockTimeoutError } from './errors.js';
 import { getBackupDir, getDataDir, getStatePath } from './paths.js';
 
 // Real fs throughout; these four are spies so a test can fail one call or run
@@ -111,11 +111,29 @@ function errnoError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`${code}: simulated failure`), { code });
 }
 
-function failStateReads(error: Error): void {
+function failReadsWhere(isTarget: (file: string) => boolean, error: Error): void {
   mockReadFileSync.mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
-    if (args[0] === getStatePath()) throw error;
+    if (isTarget(String(args[0]))) throw error;
     return real.readFileSync(...args);
   });
+}
+
+function failStateReads(error: Error): void {
+  failReadsWhere((file) => file === getStatePath(), error);
+}
+
+function failLockReads(error: Error): void {
+  failReadsWhere((file) => file === lockPath(), error);
+}
+
+/** Give the state file an mtime no earlier load can have seen. */
+function touchState(): void {
+  const later = new Date(Date.now() + 5000);
+  real.utimesSync(getStatePath(), later, later);
+}
+
+function errorLines(): string[] {
+  return vi.mocked(console.error).mock.calls.map((call) => String(call[0]));
 }
 
 function failStateTmpWrites(error: Error): void {
@@ -167,20 +185,19 @@ describe('lock contention', () => {
 });
 
 describe('stale-lock takeover', () => {
-  it('leaves a lock alone when a rival took it over between the staleness check and the claim', () => {
+  it('puts a lock back when a rival took it over between the staleness check and the claim', () => {
     real.writeFileSync(lockPath(), ownerlessLock());
     stubWait();
-    const rival = { lock: '' };
+    const rival = liveLock(0);
     mockRenameSync.mockImplementationOnce((from, to) => {
-      acquireLock(lockPath()); // the rival: a complete takeover of the same stale lock
-      rival.lock = readLock();
+      real.unlinkSync(lockPath()); // the rival: claimed the same stale lock ...
+      real.writeFileSync(lockPath(), rival); // ... and created its own
       real.renameSync(from, to); // the claim now grabs the rival's fresh lock
     });
 
     expect(() => acquireLock(lockPath())).toThrow(StateLockTimeoutError);
 
-    expect(JSON.parse(rival.lock)).toMatchObject({ pid: process.pid });
-    expect(readLock()).toBe(rival.lock);
+    expect(readLock()).toBe(rival);
     expect(real.readdirSync(getDataDir())).toEqual(['state.json.lock']);
   });
 
@@ -250,6 +267,158 @@ describe('stale-lock takeover', () => {
     acquireLock(lockPath());
 
     expect(JSON.parse(readLock())).toMatchObject({ pid: process.pid });
+  });
+});
+
+describe('lock ownership and lock-file errors', () => {
+  it('takes over a lock carrying its own PID at once: a synchronous acquirer cannot be the holder', () => {
+    const leftover = JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: 'earlier-call' });
+    real.writeFileSync(lockPath(), leftover);
+    const wait = stubWait();
+
+    const held = acquireLock(lockPath());
+
+    expect(held).not.toBe(leftover);
+    expect(readLock()).toBe(held);
+    expect(wait).not.toHaveBeenCalled();
+  });
+
+  it('does not let a timestamp in the future make a lock immortal', () => {
+    real.writeFileSync(lockPath(), JSON.stringify({ timestamp: Date.now() + 60 * MINUTE }));
+    const aged = new Date(Date.now() - MINUTE);
+    real.utimesSync(lockPath(), aged, aged);
+    stubWait();
+
+    const held = acquireLock(lockPath());
+
+    expect(readLock()).toBe(held);
+  });
+
+  it('names both expiry limits and the manual way out when it times out', () => {
+    real.writeFileSync(lockPath(), liveLock(0));
+    stubWait();
+
+    expect(() => acquireLock(lockPath())).toThrow(/waited \d+ ms.*30 seconds.*10 minutes.*delete .*state\.json\.lock/);
+  });
+
+  it('releases only the lock it was handed', () => {
+    const held = acquireLock(lockPath());
+
+    releaseLock(lockPath(), 'some other content');
+    expect(readLock()).toBe(held);
+
+    releaseLock(lockPath(), held);
+    expect(real.existsSync(lockPath())).toBe(false);
+    expect(errorLines()).toEqual([]);
+  });
+
+  it('warns instead of throwing when the lock cannot be released, and stays quiet when it is gone', () => {
+    releaseLock(lockPath());
+    expect(errorLines()).toEqual([]);
+
+    const held = acquireLock(lockPath());
+    failLockReads(errnoError('EIO'));
+    releaseLock(lockPath(), held);
+
+    expect(errorLines().join('\n')).toMatch(/Could not release the state lock .*EIO/);
+    expect(real.existsSync(lockPath())).toBe(true);
+  });
+
+  it('rethrows a lock read error instead of reporting contention', () => {
+    real.writeFileSync(lockPath(), liveLock(0));
+    const wait = stubWait();
+    const error = errnoError('EMFILE');
+    failLockReads(error);
+
+    expect(() => acquireLock(lockPath())).toThrow(error);
+    expect(wait).not.toHaveBeenCalled();
+  });
+
+  it('does not leave its own lock behind when it cannot read it back', () => {
+    const error = errnoError('EMFILE');
+    failLockReads(error);
+
+    expect(() => acquireLock(lockPath())).toThrow(error);
+    expect(real.existsSync(lockPath())).toBe(false);
+  });
+
+  it('puts a claimed lock back when it cannot be read to confirm it is the stale one', () => {
+    const stale = ownerlessLock();
+    real.writeFileSync(lockPath(), stale);
+    stubWait();
+    failReadsWhere((file) => file.includes('.stale-'), errnoError('EIO'));
+
+    expect(() => acquireLock(lockPath())).toThrow(StateLockTimeoutError);
+
+    expect(readLock()).toBe(stale);
+    expect(real.readdirSync(getDataDir())).toEqual(['state.json.lock']);
+  });
+
+  it('refuses the write when its lock was taken over before the commit', () => {
+    writeState(stateJson('on-disk'));
+    const usurper = liveLock(0);
+    // saveState reads the state file once, between acquiring and writing: take the lock over there.
+    mockReadFileSync.mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+      if (args[0] === getStatePath()) real.writeFileSync(lockPath(), usurper);
+      return real.readFileSync(...args);
+    });
+
+    expect(() => saveState(createFreshState())).toThrow(ConcurrencyError);
+
+    expect(real.readFileSync(getStatePath(), 'utf8')).toBe(stateJson('on-disk'));
+    expect(readLock()).toBe(usurper);
+  });
+
+  it('does not let allowReloadAndLoseMutation swallow a lock timeout', () => {
+    writeState(stateJson('on-disk'));
+    const manager = new StateManager(false);
+    real.writeFileSync(lockPath(), liveLock(0));
+    stubWait();
+
+    expect(() => manager.save({ allowReloadAndLoseMutation: true })).toThrow(StateLockTimeoutError);
+  });
+});
+
+describe('reload and save against state this client must not touch', () => {
+  it('reloadIfChanged surfaces newer-version state instead of keeping stale memory', () => {
+    writeState(stateJson('mine'));
+    const manager = new StateManager(false);
+    writeState(stateJson('theirs', 5));
+    touchState();
+    const before = snapshotDataDir();
+
+    expect(() => manager.reloadIfChanged()).toThrow(NewerStateVersionError);
+    expect(snapshotDataDir()).toEqual(before);
+  });
+
+  it('reloadIfChanged surfaces a read error', () => {
+    writeState(stateJson('mine'));
+    const manager = new StateManager(false);
+    touchState();
+    const error = errnoError('EIO');
+    failStateReads(error);
+
+    expect(() => manager.reloadIfChanged()).toThrow(error);
+  });
+
+  it('reloadIfChanged still treats a deleted state file as no change', () => {
+    writeState(stateJson('mine'));
+    const manager = new StateManager(false);
+    real.unlinkSync(getStatePath());
+
+    expect(manager.reloadIfChanged()).toBe(false);
+    expect(manager.getState().config.githubUsername).toBe('mine');
+  });
+
+  it('save refuses to overwrite newer-version state even with no mtime baseline', () => {
+    const manager = new StateManager(false); // started before any state file existed
+    writeState(stateJson('theirs', 5));
+    getBackupDir();
+    const before = snapshotDataDir();
+
+    expect(() => manager.save()).toThrow(NewerStateVersionError);
+    expect(() => saveState(createFreshState())).toThrow(/Update this client/);
+    expect(snapshotDataDir()).toEqual(before);
   });
 });
 

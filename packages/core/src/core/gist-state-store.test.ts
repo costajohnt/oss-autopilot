@@ -8,7 +8,13 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { AgentStateSchema } from './state-schema.js';
-import { GistConcurrencyError, GistCorruptError, GistDiscoveryError, GistFileSizeError } from './errors.js';
+import {
+  GistConcurrencyError,
+  GistCorruptError,
+  GistDiscoveryError,
+  GistFileSizeError,
+  NewerStateVersionError,
+} from './errors.js';
 import { createFreshState } from './state-persistence.js';
 import { serializeState } from './state-prune.js';
 
@@ -1317,6 +1323,36 @@ describe('GistStateStore', () => {
       expect(logged.some((line) => line.includes('Local state cache has 1 unreadable work claim(s)'))).toBe(true);
       errorSpy.mockRestore();
     });
+
+    // #1951: newer-version state is neither corrupt nor replaceable by fresh state.
+    it('surfaces a Gist written by a newer release as an update error, not as corrupt', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'newer-gist');
+      octokit.gists.get.mockResolvedValue(makeGistResponse('newer-gist', makeStateJson({ version: 5 })));
+      octokit.gists.list.mockResolvedValue({ data: [] });
+
+      const store = new GistStateStore(octokit);
+
+      await expect(store.bootstrap()).rejects.toThrow(NewerStateVersionError);
+      expect(fs.readdirSync(tmpDir).filter((name) => name.includes('.rejected-'))).toEqual([]);
+    });
+
+    it.each(['bootstrap', 'bootstrapWithMigration'] as const)(
+      '%s refuses a local cache written by a newer release instead of starting fresh',
+      async (method) => {
+        const cachePath = path.join(tmpDir, 'state-cache.json');
+        const newerCache = makeStateJson({ version: 5 });
+        fs.writeFileSync(cachePath, newerCache);
+        octokit.gists.get.mockRejectedValue(new Error('Network error'));
+        octokit.gists.list.mockRejectedValue(new Error('Network error'));
+        octokit.gists.create.mockRejectedValue(new Error('Network error'));
+
+        const store = new GistStateStore(octokit);
+
+        await expect(store[method](createFreshState())).rejects.toThrow(/local state cache was written by a newer/);
+        expect(fs.readFileSync(cachePath, 'utf8')).toBe(newerCache);
+        expect(fs.readdirSync(tmpDir).filter((name) => name.includes('.rejected-'))).toEqual([]);
+      },
+    );
 
     it('returns fresh state when API fails AND no local cache exists', async () => {
       // No cache file written, all API methods reject

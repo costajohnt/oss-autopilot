@@ -55,6 +55,8 @@ import {
   getStateManager,
   renderGistWarning,
   ConcurrencyError,
+  StateLockTimeoutError,
+  NewerStateVersionError,
   GistConcurrencyError,
   GistDiscoveryError,
   GistFileSizeError,
@@ -230,6 +232,9 @@ function gistInitFailureReason(e: unknown, isRepairTool: boolean): string {
  * persistence backend — mirrors the dashboard server's isConcurrencyConflict
  * (dashboard-server.ts, #1397). */
 function isConcurrencyConflict(e: unknown): boolean {
+  // A lock timeout is not retried: a reload cannot free the lock, and a second
+  // full lock wait only blocks the event loop longer (#1951).
+  if (e instanceof StateLockTimeoutError) return false;
   return e instanceof ConcurrencyError || e instanceof GistConcurrencyError;
 }
 
@@ -241,27 +246,31 @@ function isConcurrencyConflict(e: unknown): boolean {
  * ConcurrencyError until process restart — and every read serves boot-time
  * state. Mirrors the dashboard server's reloadState() (#1397).
  *
- * The reload itself never fails the call: a failed reload degrades to the
- * cached in-memory state (the same contract resource reads and degraded
- * gist mode already follow), and for mutations the save-time CAS still
- * protects against lost updates. `getStateManager()` is called OUTSIDE the
+ * A failed Gist refresh never fails the call: it degrades to the cached
+ * in-memory state (the same contract resource reads and degraded gist mode
+ * already follow), and for mutations the save-time CAS still protects
+ * against lost updates. Two failures do surface (#1951), because serving old
+ * state there ends in writing it over newer data: state written by a newer
+ * release, and anything the local state file reload throws (it already
+ * treats a deleted file as "no change"). `getStateManager()` is called OUTSIDE the
  * guard — if state is fundamentally unloadable the caller must see that,
  * exactly as it would when the tool/resource body calls it.
  */
 export async function reloadExternalState(options: { force?: boolean } = {}): Promise<void> {
   const stateManager = getStateManager();
+  if (!stateManager.isGistMode()) {
+    stateManager.reloadIfChanged();
+    return;
+  }
   try {
-    if (stateManager.isGistMode()) {
-      // Throttled to once per 30s inside GistStateStore, so per-call refresh
-      // is cheap; fetch failures RESOLVE (status 'error') rather than throw,
-      // serving cached state. `force` bypasses the throttle on the
-      // conflict-retry path, where the first reload of the same request
-      // stamped it seconds ago (audit 2026-10-30 M1).
-      await stateManager.refreshFromGist(options);
-    } else {
-      stateManager.reloadIfChanged();
-    }
+    // Throttled to once per 30s inside GistStateStore, so per-call refresh
+    // is cheap; fetch failures RESOLVE (status 'error') rather than throw,
+    // serving cached state. `force` bypasses the throttle on the
+    // conflict-retry path, where the first reload of the same request
+    // stamped it seconds ago (audit 2026-10-30 M1).
+    await stateManager.refreshFromGist(options);
   } catch (e) {
+    if (e instanceof NewerStateVersionError) throw e;
     console.error('[MCP] State reload failed; proceeding on cached state:', e);
   }
 }
