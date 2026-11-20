@@ -124,11 +124,12 @@ export {
   buildStarFilter,
   firstMaintainerResponseFromDigest,
   lastReviewStateFromDigest,
-  formatActionHint,
-  formatBriefSummary,
-  formatSummary,
-  printDigest,
 } from './daily-logic.js';
+// Kept on the public entry for semver only (#1948). These printers live in
+// commands/; core modules must not import them, so this re-export stays here
+// rather than in daily-logic.ts.
+/** @deprecated Since #1948; will be removed in the next major version. */
+export { formatActionHint, formatBriefSummary, formatSummary, printDigest } from '../commands/daily-render.js';
 export {
   collectEngagedIssues,
   toIssueEngagement,
@@ -220,6 +221,11 @@ export {
   type AntiLLMMatch,
   type AntiLLMScanResult,
 } from './anti-llm-policy.js';
+/**
+ * Formatter detection behind the deprecated detect-formatters command.
+ *
+ * @deprecated Since #1948; will be removed in the next major version.
+ */
 export {
   detectFormatters,
   diagnoseCIFormatterFailure,

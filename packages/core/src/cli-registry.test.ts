@@ -2213,6 +2213,9 @@ describe('orphan-files command', () => {
 
     expect(mockRunCheckIntegration).toHaveBeenCalledWith({ base: 'main' });
     expect(consoleLogSpy).toHaveBeenCalledWith('\nNo new code files to check.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Warning: `orphan-files` is deprecated and will be removed in the next major version.',
+    );
   });
 
   it('--json routes through outputJsonValidated', async () => {
@@ -2582,6 +2585,9 @@ describe('detect-formatters command', () => {
 
     expect(mockRunDetectFormatters).toHaveBeenCalledWith({ repoPath: undefined, ciLog: undefined });
     expect(consoleLogSpy).toHaveBeenCalledWith('\nNo formatters detected.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Warning: `detect-formatters` is deprecated and will be removed in the next major version.',
+    );
   });
 
   it('renders formatters, scripts, and a positive CI diagnosis', async () => {

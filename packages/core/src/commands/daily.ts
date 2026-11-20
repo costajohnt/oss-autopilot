@@ -30,8 +30,6 @@ import {
   collectEngagedIssues,
   getOctokit,
   toShelvedPRRef,
-  formatBriefSummary,
-  formatSummary,
   summarizeAttentionBuckets,
   shouldSuggestClose,
   selectClosedPRStatusCandidates,
@@ -83,6 +81,7 @@ import {
   nonFatalCatchWithWarning,
   recordWarning,
 } from './daily-warnings.js';
+import { formatBriefSummary, formatSummary } from './daily-render.js';
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
 import { fetchRecentPRLists } from './daily-recent-prs.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
@@ -109,11 +108,9 @@ export {
   collectActionableIssues,
   computeActionMenu,
   toShelvedPRRef,
-  formatBriefSummary,
-  formatSummary,
-  printDigest,
   CRITICAL_STATUSES,
 } from '../core/index.js';
+export { formatBriefSummary, formatSummary, printDigest } from './daily-render.js';
 
 // buildStarFilter moved to core/daily-logic.ts so the dashboard layer can
 // reuse it without crossing the commands → sibling-command boundary

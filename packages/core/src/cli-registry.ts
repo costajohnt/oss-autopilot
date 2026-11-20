@@ -137,6 +137,11 @@ function printRepos(repos: Record<string, { path: string; currentBranch: string 
   }
 }
 
+/** Print a deprecation note on stderr for commands kept only for semver (#1948); stdout and `--json` are untouched. */
+function warnDeprecatedCommand(name: string): void {
+  console.error(`Warning: \`${name}\` is deprecated and will be removed in the next major version.`);
+}
+
 export const commands: CLICommandDef[] = [
   // ── Manifest (#1190) ───────────────────────────────────────────────────
   // Exposes the registered commands for CLI/plugin contract checks —
@@ -1333,10 +1338,11 @@ export const commands: CLICommandDef[] = [
       program
         .command('orphan-files')
         .alias('check-integration')
-        .description('Detect new files on this branch that no other file references')
+        .description('(deprecated) Detect new files on this branch that no other file references')
         .option('--base <branch>', 'Base branch to compare against', 'main')
         .option('--json', 'Output as JSON')
         .action(async (options) => {
+          warnDeprecatedCommand('orphan-files');
           const { CheckIntegrationOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
@@ -1889,10 +1895,11 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('detect-formatters [repo-path]')
-        .description('Detect formatters and linters configured in a repository')
+        .description('(deprecated) Detect formatters and linters configured in a repository')
         .option('--ci-log <path>', 'Analyze CI log file for formatting failures')
         .option('--json', 'Output as JSON')
         .action(async (repoPath, options) => {
+          warnDeprecatedCommand('detect-formatters');
           const { DetectFormattersOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,

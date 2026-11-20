@@ -187,55 +187,6 @@ export const StoredClosedPRSchema = z
   })
   .passthrough();
 
-export const AnalyzedIssueConversationSchema = z.object({
-  url: z.string(),
-  repo: z.string(),
-  analyzedAt: z.string(),
-});
-
-/**
- * One entry in a PR's follow-up history (#1277). Tier matches the
- * cadence labels in `skills/pr-etiquette/SKILL.md` (light_check_in
- * for 7-13 days, direct_check_in for 14-29 days, final_check_in for
- * 30+ days). The `draftPath` is optional so an entry recorded from a
- * direct `gh pr comment` (no draft) still validates.
- */
-export const FollowUpEntrySchema = z.object({
-  tier: z.enum(['light_check_in', 'direct_check_in', 'final_check_in']),
-  timestamp: z.string().datetime(),
-  draftPath: z.string().optional(),
-});
-export type FollowUpEntry = z.infer<typeof FollowUpEntrySchema>;
-
-/**
- * Pause-point snapshot for resumable workflows (#1280). When the user
- * picks "Done for now" inside `draft-first-workflow.md`,
- * `work-through-issues.md`, or `pre-commit-review.md`, the workflow
- * records its position here. The next `/oss` run consults this state
- * and offers "Resume / Restart / Discard" instead of restarting from
- * the beginning.
- *
- * `stepData` is intentionally typed as `Record<string, unknown>` so
- * each workflow can persist whatever per-step context it needs to
- * resume cleanly (compliance-gap skip list, last review pass count,
- * etc.) without forcing a tagged-union schema in shared state.
- */
-export const WorkflowStateSchema = z.object({
-  workflowName: z.enum(['draft-first', 'work-through-issues', 'pre-commit-review']),
-  currentStep: z.string(),
-  branchName: z.string().optional(),
-  issueContext: z
-    .object({
-      title: z.string(),
-      url: z.string(),
-    })
-    .optional(),
-  completedSteps: z.array(z.string()).default([]),
-  stepData: z.record(z.string(), z.unknown()).default({}),
-  lastUpdatedAt: z.string().datetime(),
-});
-export type WorkflowState = z.infer<typeof WorkflowStateSchema>;
-
 // ── 3. Contribution schemas ──────────────────────────────────────────
 
 export const ContributionGuidelinesSchema = z.object({
@@ -446,20 +397,20 @@ export const AgentConfigSchema = z
     autoExtractLearnings: z.boolean().default(true),
 
     /**
-     * No effect since the hook was removed in #1642; kept for state-file
-     * compatibility.
+     * @deprecated Not read since the hook was removed in #1642; kept for
+     * state-file compatibility. Will be removed in the next major version.
      */
     autoFormatBeforePush: z.boolean().default(false),
 
     /**
-     * No effect since the hook was removed in #1642; kept for state-file
-     * compatibility.
+     * @deprecated Not read since the hook was removed in #1642; kept for
+     * state-file compatibility. Will be removed in the next major version.
      */
     trustOwnRepoWrites: z.boolean().default(false),
 
     /**
-     * No effect since the hook was removed in #1642; kept for state-file
-     * compatibility.
+     * @deprecated Not read since the hook was removed in #1642; kept for
+     * state-file compatibility. Will be removed in the next major version.
      */
     healthCheckFreshnessMinutes: z.number().int().positive().default(30),
 
@@ -771,6 +722,10 @@ export function malformedWorkClaimCount(raw: unknown, parsed: { workClaims: read
  * grow (closeReason, pick source) accept unknown strings via {@link openEnum}.
  * Inferred types drop the passthrough index signature ({@link KnownKeys}) so a
  * misspelled key still fails to compile.
+ *
+ * Retired root fields are dropped from the schema, not stripped: passthrough
+ * keeps an older client's `analyzedIssueConversations`, `prFollowUpHistory`
+ * and `workflowState` verbatim (#1948), so that client still parses its own data.
  */
 /** One user approval of a repo's stored guidelines text (#1929). */
 export const GuidelinesReviewSchema = z.object({
@@ -813,28 +768,7 @@ export const AgentStateSchema = z
     mergedPRs: z.array(StoredMergedPRSchema).optional(),
     closedPRs: z.array(StoredClosedPRSchema).optional(),
 
-    analyzedIssueConversations: z.array(AnalyzedIssueConversationSchema).optional(),
-
     activeIssues: z.array(TrackedIssueSchema).default([]),
-
-    /**
-     * Per-PR follow-up history (#1277). Keyed by PR URL. Each entry
-     * records a tier-bucketed follow-up that the user drafted (and
-     * presumably posted via `draft-review-post`). The dormant-pr
-     * workflow reads this before drafting to enforce the
-     * one-follow-up-per-timeframe rule documented in
-     * `skills/pr-etiquette/SKILL.md`.
-     */
-    prFollowUpHistory: z.record(z.string(), z.array(FollowUpEntrySchema)).optional(),
-
-    /**
-     * Pause-point snapshot for resumable workflows (#1280). Set when
-     * the user picks "Done for now" mid-workflow; cleared when the
-     * workflow completes or the user explicitly discards. The router
-     * reads this on every `/oss` invocation and offers Resume /
-     * Restart / Discard when present.
-     */
-    workflowState: WorkflowStateSchema.optional(),
 
     /**
      * Durable search seen-set for result rotation (#1528). Issue URLs surfaced
@@ -907,7 +841,6 @@ export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = KnownKeys<z.infer<typeof RepoScoreSchema>>;
 export type StoredMergedPR = KnownKeys<z.infer<typeof StoredMergedPRSchema>>;
 export type StoredClosedPR = KnownKeys<z.infer<typeof StoredClosedPRSchema>>;
-export type AnalyzedIssueConversation = z.infer<typeof AnalyzedIssueConversationSchema>;
 
 export type ContributionGuidelines = z.infer<typeof ContributionGuidelinesSchema>;
 export type IssueVettingResult = z.infer<typeof IssueVettingResultSchema>;

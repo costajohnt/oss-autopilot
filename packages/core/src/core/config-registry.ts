@@ -293,21 +293,21 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   {
     key: 'autoFormatBeforePush',
     description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'true|false',
   },
   {
     key: 'trustOwnRepoWrites',
     description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'true|false',
   },
   {
     key: 'healthCheckFreshnessMinutes',
     description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'positive integer',
   },

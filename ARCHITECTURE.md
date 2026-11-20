@@ -52,7 +52,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
 | `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue via `draft-review-post`; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
-| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify via comment-decision, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
+| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify the note, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
 | `review-follow-ups.md` | A PR the user reviewed (not authored) where the author pushed or replied since | Show the compare range since the review (or the commit list after a rebase), re-review via `review-panel`, answer the questions addressed to the user via `draft-review-post`; "skip" dismisses the PR URL (#1857) |
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
@@ -90,7 +90,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 25 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 26 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -138,13 +138,11 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
 | `parse-issue-list` | `parse-list.ts` | Parse a curated issue list file |
-| `orphan-files` (alias: `check-integration`) | `check-integration.ts` | Audit new files on this branch for cross-references |
 | `doctor` | `doctor.ts` | System-health diagnostic — token, bundle, state, scout, rate limit |
 | `cleanup` | `cleanup.ts` | List (and with `--apply` remove) stale overnight worktrees and rejected state copies under `~/.oss-autopilot` |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
 | `guidelines list/view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
-| `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
 | `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
 | `ledger-backfill` | `ledger-backfill.ts` | Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824) |
 | `eval` | `eval.ts` | Calibration and outcome report from the outcome ledger (#1825) |
@@ -235,7 +233,6 @@ ETag-based caching for GitHub API responses:
 | `machine-id.ts` | `getMachineId` — the random UUID in `~/.oss-autopilot/machine-id` (local only) that tells work claims which machine a worktree path is on (#1856) |
 | `local-config.ts` | `getMachinePath` / `setMachinePath` / `getMachineRepoCache` — per-machine settings in `~/.oss-autopilot/local-config.json` (local only): the curated list path, the skipped-issues path and the local repo cache (#1950) |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
-| `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
 | `pr-template.ts` | Fetch PR description templates from repositories |
 
@@ -302,10 +299,7 @@ interface AgentState {
   localRepoCache?: LocalRepoCache;  // Legacy: read once for adoption, never written (see Per-Machine Settings)
   mergedPRs?: StoredMergedPR[];     // Stored merged PR records
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
-  analyzedIssueConversations?: AnalyzedIssueConversation[];
   activeIssues: TrackedIssue[];     // Issues user has claimed
-  prFollowUpHistory?: Record<string, FollowUpEntry[]>; // Follow-ups drafted per PR URL (#1277)
-  workflowState?: WorkflowState;    // Pause-point snapshot for resumable workflows (#1280)
   searchSeen: SearchSeenEntry[];    // Issue URLs surfaced by recent searches, for result rotation (#1528)
   pickSnapshots: PickSnapshot[];    // Vet-time predictions keyed by issue URL (#1824)
   lastOvernight?: OvernightRecord;  // Latest overnight run (#1574)

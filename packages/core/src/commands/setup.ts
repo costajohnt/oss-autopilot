@@ -121,6 +121,11 @@ function isMachineLocalOnly(settings: string[]): boolean {
   return settings.every((setting) => localKeys.includes(setting.split('=', 1)[0]));
 }
 
+/** Warning for the config keys retired in #1948: still accepted and stored, never read. */
+function retiredKeyWarning(key: string): string {
+  return `${key} is retired and not read by oss-autopilot; it is kept for compatibility`;
+}
+
 /**
  * Interactive setup wizard or direct setting application.
  *
@@ -256,6 +261,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const enabled = value === 'true';
             stateManager.updateConfig({ autoFormatBeforePush: enabled });
             results[key] = String(enabled);
+            warnings.push(retiredKeyWarning(key));
             break;
           }
           case 'trustOwnRepoWrites': {
@@ -265,6 +271,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const trusted = value === 'true';
             stateManager.updateConfig({ trustOwnRepoWrites: trusted });
             results[key] = String(trusted);
+            warnings.push(retiredKeyWarning(key));
             break;
           }
           case 'includeDocIssues': {
@@ -458,6 +465,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const minutes = parsePositiveInt(value, 'healthCheckFreshnessMinutes');
             stateManager.updateConfig({ healthCheckFreshnessMinutes: minutes });
             results[key] = String(minutes);
+            warnings.push(retiredKeyWarning(key));
             break;
           }
           case 'reviewMaxPasses': {

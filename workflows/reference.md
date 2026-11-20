@@ -253,12 +253,6 @@ rejected with a did-you-mean suggestion.
 # command lists what failed and exits non-zero.
 <prefix> cleanup --json [--apply]
 
-# Audit new files on this branch for cross-references (old name: check-integration)
-<prefix> orphan-files --json [--base <branch>]
-
-# Detect formatters/linters configured in a repository
-<prefix> detect-formatters [<repo-path>] --json
-
 # Contribution statistics (merged/closed counts, merge rate)
 <prefix> stats --json
 
@@ -275,7 +269,6 @@ rejected with a did-you-mean suggestion.
 | `--port <n>` | `dashboard serve` | TCP port for the interactive SPA (default 3000). |
 | `--no-open` | `dashboard serve` | Skip auto-opening the dashboard in the default browser (auto-open is the default). |
 | `--bots` | `comments` | Include bot authors in the comment listing (default filters them out). |
-| `--base <branch>` | `orphan-files` | Base branch to diff against for new-file detection (default `main`). |
 | `--base <branch>` | `pr-preflight` | Branch the PR will target (default: the upstream default branch). |
 | `--fetch` | `pr-preflight` | Fetch the upstream target branch before measuring drift; without it a stale ref is reported, not refreshed. |
 | `--dir <path>` | `pr-preflight` | Clone or worktree to check (default: the current directory). |

@@ -416,6 +416,18 @@ describe('runSetup', () => {
     expect(result.settings).toMatchObject({ autoFormatBeforePush: 'true' });
   });
 
+  it.each(['autoFormatBeforePush=true', 'trustOwnRepoWrites=true', 'healthCheckFreshnessMinutes=45'])(
+    'stores the retired %s and warns that nothing reads it (#1948)',
+    async (pair) => {
+      const [key] = pair.split('=', 1);
+      const result = (await runSetup({ set: [pair] })) as SetupSetOutput;
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
+      expect(result.warnings).toContain(
+        `${key} is retired and not read by oss-autopilot; it is kept for compatibility`,
+      );
+    },
+  );
+
   it('should set autoFormatBeforePush to false', async () => {
     const result = (await runSetup({ set: ['autoFormatBeforePush=false'] })) as SetupSetOutput;
 
