@@ -399,6 +399,19 @@ describe('runLedgerBackfill closed history (#1925)', () => {
     expect(rerun.closedAdded).toBe(0);
   });
 
+  it('keeps the merged PRs it added when the closed walk then hits a rate limit', async () => {
+    const mergedHole = searchItem(HOLE, '2025-12-20T00:00:00Z');
+    mocks.search.mockImplementation(({ q }: { q: string }) =>
+      q.includes('is:unmerged')
+        ? Promise.reject(Object.assign(new Error('rate limited'), { status: 429 }))
+        : Promise.resolve({ data: { total_count: 1, items: [mergedHole] } }),
+    );
+
+    await expect(runLedgerBackfill()).rejects.toThrow('rate limited');
+
+    expect(sm.getMergedPRs().map((pr) => pr.url)).toEqual([MERGED, HOLE]);
+  });
+
   it('adds no closed PRs and warns when the closed walk fails', async () => {
     mocks.search.mockImplementation(({ q }: { q: string }) =>
       q.includes('is:unmerged')

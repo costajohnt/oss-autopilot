@@ -343,9 +343,12 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   // steps below enrich them in the same run.
   const octokit = getOctokit(requireGitHubToken());
   const { config } = stateManager.getState();
+  // Merged rows are stored before the closed walk starts, so a rate limit on
+  // that walk keeps them; storing them first also keeps a PR that has since
+  // merged out of the closed ledger.
   const history = await fetchHistory('merged', fetchMergedPRsSince, octokit, config, warnings);
-  const closedHistory = await fetchHistory('closed', fetchClosedPRsSince, octokit, config, warnings);
   const { added: mergedAdded } = stateManager.addMergedPRs(history);
+  const closedHistory = await fetchHistory('closed', fetchClosedPRsSince, octokit, config, warnings);
   const { added: closedAdded } = stateManager.addClosedPRs(closedHistory);
 
   // 1. GitHub: openedAt, closing issue, close reason, first response, for
