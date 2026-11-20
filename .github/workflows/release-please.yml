@@ -54,7 +54,7 @@ jobs:
 
       - name: Check out the release PR branch
         if: steps.release-pr.outputs.branch != ''
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.release-pr.outputs.branch }}
           token: ${{ secrets.RELEASE_TOKEN }}
@@ -127,7 +127,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout tagged release
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.core-tag }}
 
@@ -135,7 +135,7 @@ jobs:
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
@@ -150,7 +150,7 @@ jobs:
       # registered on npmjs.com (owner costajohnt, repo oss-autopilot, this
       # workflow file). Needs npm >= 11.5.1, newer than Node 22's bundled npm.
       - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@latest && npm --version
+        run: npm install -g npm@12.2.3 && npm --version
 
       - name: Build and pack @oss-autopilot/core
         run: |
@@ -181,7 +181,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout tagged release
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.mcp-tag }}
 
@@ -189,7 +189,7 @@ jobs:
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
@@ -201,7 +201,7 @@ jobs:
         run: pnpm --filter @oss-autopilot/core run build
 
       - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@latest && npm --version
+        run: npm install -g npm@12.2.3 && npm --version
 
       # `pnpm pack` rewrites the `workspace:^` dependency on core to the
       # released version; `npm publish <tarball>` then needs no pnpm at all.
@@ -232,7 +232,7 @@ jobs:
       MCP_PUBLISHER_VERSION: v1.8.7
     steps:
       - name: Checkout tagged release
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.mcp-tag }}
 
@@ -299,10 +299,10 @@ jobs:
     steps:
       # The release merge commit carries both packages' bumped versions.
       - name: Checkout release commit
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
