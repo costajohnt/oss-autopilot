@@ -22,6 +22,10 @@ function read(name: string): string {
   return fs.readFileSync(path.join(FIXTURES, `${name}.md`), 'utf8');
 }
 
+function policyOf(content: string): RepoPolicy {
+  return derivePolicy([{ file: 'CONTRIBUTING.md', content }]);
+}
+
 function gate(content: string): RepoPolicy['prGate'] {
   return derivePolicy([{ file: 'CONTRIBUTING.md', content }]).prGate;
 }
@@ -149,6 +153,15 @@ describe('derivePolicy: CLA and commit rules', () => {
       expect(derivePolicy([{ file: 'CONTRIBUTING.md', content: line }]).commitRules).toContain('dco-signoff');
     },
   );
+
+  it('a negated CLA or sign-off mention does not veto a positive one on the same line', () => {
+    expect(policyOf('No CLA for typo fixes; everything else needs a signed Contributor License Agreement.').cla).toBe(
+      'required',
+    );
+    expect(policyOf('Docs changes do not need a sign-off, but code commits need Signed-off-by.').commitRules).toContain(
+      'dco-signoff',
+    );
+  });
 
   it('a negated clause does not veto a positive claim phrase on the same line', () => {
     expect(gate('Comment on the issue and get assigned before opening a PR.')).toBe('claim-first');

@@ -65,6 +65,13 @@ export interface PolicySetOptions {
 }
 
 export interface PolicyWriteOutput extends PolicyGetOutput {
+  /**
+   * How `--ai-policy` changed `config.aiPolicyBlocklist`: `added` for banned
+   * (clients that predate policy records read only the blocklist), `removed`
+   * for any other value (the blocklist always bans, so it would override the
+   * record). Absent when the list did not change.
+   */
+  blocklistChange?: 'added' | 'removed';
   /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
   gistSyncWarning?: string;
 }
@@ -201,12 +208,41 @@ export async function runPolicySet(options: PolicySetOptions): Promise<PolicyWri
   };
   // Keep fields a newer release added; the known ones come from the merge.
   const next = { ...unknownFields(sm.getState(), options.repo), ...applySet(current, options, now) };
-  sm.setRepoPolicy(options.repo, next);
-  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setRepoPolicy(options.repo, next));
-  return { ...getOutput(options.repo), ...(gistSyncWarning && { gistSyncWarning }) };
+  const blocklist = blocklistUpdate(sm.getState().config.aiPolicyBlocklist ?? [], options);
+  const persist = (): void => {
+    sm.setRepoPolicy(options.repo, next);
+    if (blocklist) sm.updateConfig({ aiPolicyBlocklist: blocklist.list });
+  };
+  persist();
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE, persist);
+  return {
+    ...getOutput(options.repo),
+    ...(blocklist && { blocklistChange: blocklist.change }),
+    ...(gistSyncWarning && { gistSyncWarning }),
+  };
 }
 
-/** Delete the stored record for `repo`. Refused unattended: deleting a ban the user recorded relaxes it. */
+/**
+ * The blocklist after `--ai-policy`, or null when it does not change. Appends
+ * to the stored list (never replaces it); removal is case-insensitive. Without
+ * `--ai-policy` the list is left alone, and so does `policy reset`.
+ */
+function blocklistUpdate(
+  current: readonly string[],
+  options: PolicySetOptions,
+): { list: string[]; change: 'added' | 'removed' } | null {
+  if (options.aiPolicy === undefined) return null;
+  const lower = options.repo.toLowerCase();
+  const isListed = current.some((r) => r.toLowerCase() === lower);
+  if (options.aiPolicy === 'banned') return isListed ? null : { list: [...current, options.repo], change: 'added' };
+  if (!isListed) return null;
+  return { list: current.filter((r) => r.toLowerCase() !== lower), change: 'removed' };
+}
+
+/**
+ * Delete the stored record for `repo`. Refused unattended: deleting a ban the
+ * user recorded relaxes it. `config.aiPolicyBlocklist` is left as is.
+ */
 export async function runPolicyReset(options: { repo: string }): Promise<PolicyResetOutput> {
   validateRepoIdentifier(options.repo);
   assertAttended('reset a repo contribution policy');

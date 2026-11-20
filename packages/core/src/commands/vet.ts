@@ -126,12 +126,11 @@ async function policyFields(candidate: ScoutCandidate): Promise<Partial<VetOutpu
   if (derived) await recordVetPolicy(repo, derived);
   const policy = effectivePolicy(getStateManager().getState(), repo, derived ?? undefined);
   if (policy?.aiPolicy !== 'banned') return policyField(policy);
-  // Scout gives its own reason when its scan matched; still add ours when it says how to lift the ban.
+  // One ban reason: scout's when its scan matched (then ours only adds how to lift it), else ours.
   const note = banNote(policy, repo);
-  const reasonsToSkip =
-    note === '' && candidate.antiLLMPolicy?.matched
-      ? candidate.reasonsToSkip
-      : [...candidate.reasonsToSkip, BANNED_REASON + note];
+  let reason: string | null = BANNED_REASON + note;
+  if (candidate.antiLLMPolicy?.matched) reason = note === '' ? null : `repo policy${note}`;
+  const reasonsToSkip = reason === null ? candidate.reasonsToSkip : [...candidate.reasonsToSkip, reason];
   return { ...policyField(policy), recommendation: 'skip', reasonsToSkip };
 }
 

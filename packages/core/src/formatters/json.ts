@@ -795,6 +795,7 @@ export const PolicyGetOutputSchema = z.object({
     disclosureText: z.string().optional(),
     sources: z.string().optional(),
   }).nullable(),
+  blocklistChange: z.enum(['added', 'removed']).optional(),
   gistSyncWarning: z.string().optional(),
 });
 

@@ -2420,10 +2420,10 @@ Load it with:
             () => runPolicySet({ ...rest, maxOpenAiPRs: maxOpenAiPrs }),
             (data) => {
               printPolicy(data);
-              if (data.policy?.blocklisted && data.policy.aiPolicy === 'banned') {
-                console.log(
-                  '  Still banned: the repo is in aiPolicyBlocklist (remove it with setup --set aiPolicyBlocklist=...).',
-                );
+              const change = { added: `  Added ${data.repo} to`, removed: `  Removed ${data.repo} from` };
+              if (data.blocklistChange) console.log(`${change[data.blocklistChange]} aiPolicyBlocklist.`);
+              if (data.policy?.blocklisted && data.blocklistChange === undefined) {
+                console.log('  Banned by aiPolicyBlocklist; set --ai-policy to another value to take it off the list.');
               }
             },
             PolicyGetOutputSchema,

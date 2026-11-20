@@ -3412,8 +3412,21 @@ describe('policy subcommands', () => {
     );
     expect(consoleLogSpy).toHaveBeenCalledWith('  AI policy: banned (aiPolicyBlocklist)');
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      '  Still banned: the repo is in aiPolicyBlocklist (remove it with setup --set aiPolicyBlocklist=...).',
+      '  Banned by aiPolicyBlocklist; set --ai-policy to another value to take it off the list.',
     );
+  });
+
+  it('set says when it changed aiPolicyBlocklist', async () => {
+    mockPolicySet.mockResolvedValueOnce({
+      repo: REPO,
+      policy: { ...POLICY, aiPolicy: 'banned' },
+      blocklistChange: 'added',
+    });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--ai-policy', 'banned']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Added ${REPO} to aiPolicyBlocklist.`);
+    mockPolicySet.mockResolvedValueOnce({ repo: REPO, policy: POLICY, blocklistChange: 'removed' });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--ai-policy', 'allowed']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Removed ${REPO} from aiPolicyBlocklist.`);
   });
 
   it('set prints the record without the blocklist note when the repo is not listed', async () => {
@@ -3430,7 +3443,7 @@ describe('policy subcommands', () => {
     });
     await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--cla', 'none']);
     expect(consoleLogSpy).toHaveBeenCalledWith(`\n${REPO} (set by you, 2026-11-01)`);
-    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('Still banned'));
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('aiPolicyBlocklist'));
   });
 
   it('reset prints the deleted or nothing-stored line', async () => {

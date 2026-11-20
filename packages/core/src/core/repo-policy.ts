@@ -71,7 +71,12 @@ function negated(keyword: string): RegExp {
   return new RegExp(String.raw`(?:\bno|\bnot|n't)\s+(?:\w+\s+){0,3}?${keyword}`, 'gi');
 }
 
-/** `line` with the negated spans blanked, so a positive phrase elsewhere on the line still counts. */
+/**
+ * `line` with the negated spans blanked, so a positive phrase elsewhere on the
+ * line still counts. Known over-match: a negated mention plus a bare
+ * re-mention ("no CLA needed, see CLA.md") reads as positive. Accepted: the
+ * readings it feeds are unreviewed, and those only warn or need confirmation.
+ */
 function affirmed(line: string, none: RegExp | undefined): string {
   return none ? line.replaceAll(none, ' ') : line;
 }
@@ -304,7 +309,7 @@ const REPO_KEY = /^[^/\s]+\/[^/\s]+$/;
  */
 export function banNote(policy: RepoPolicy, repo: string): string {
   if (policy.source[0]?.file === BLOCKLIST_SOURCE) {
-    return ' (from aiPolicyBlocklist: remove it there with setup --set aiPolicyBlocklist=... if this is wrong)';
+    return ` (from aiPolicyBlocklist: run \`oss-autopilot policy set --repo ${repo} --ai-policy allowed\` to take it off the list if this is wrong)`;
   }
   if (policy.reviewedByUser) return '';
   return ` (read from the repo docs, not reviewed: run \`oss-autopilot policy set --repo ${repo} --ai-policy allowed\` if this is a misreading)`;

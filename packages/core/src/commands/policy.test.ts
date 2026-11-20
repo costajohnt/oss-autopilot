@@ -16,6 +16,9 @@ const fake = vi.hoisted(() => {
       getState: () => state,
       reloadIfChanged: () => false,
       isGistMode: () => false,
+      updateConfig: (patch: { aiPolicyBlocklist?: string[] }) => {
+        Object.assign(state.config, patch);
+      },
       setRepoPolicy: (repo: string, policy: unknown) => {
         const key = repo.toLowerCase();
         const rest = Object.fromEntries(Object.entries(state.repoPolicies).filter(([k]) => k !== key));
@@ -131,10 +134,38 @@ describe('policy set', () => {
     expect(fake.state.repoPolicies[REPO]).toMatchObject({ cla: 'required', futureField: { keep: true } });
   });
 
-  it('cannot lift a ban from aiPolicyBlocklist', async () => {
-    fake.state.config.aiPolicyBlocklist = ['up/proj'];
+  it('banned appends the repo to aiPolicyBlocklist and keeps every existing entry', async () => {
+    fake.state.config.aiPolicyBlocklist = ['matplotlib/matplotlib', 'other/repo'];
+    const out = await runPolicySet({ repo: REPO, aiPolicy: 'banned' });
+    expect(out.blocklistChange).toBe('added');
+    expect(fake.state.config.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib', 'other/repo', REPO]);
+    // Already listed: no change, no duplicate.
+    const again = await runPolicySet({ repo: 'UP/PROJ', aiPolicy: 'banned' });
+    expect(again.blocklistChange).toBeUndefined();
+    expect(fake.state.config.aiPolicyBlocklist).toHaveLength(3);
+  });
+
+  it('any other --ai-policy takes a case-variant entry off the blocklist, which would otherwise override it', async () => {
+    fake.state.config.aiPolicyBlocklist = ['matplotlib/matplotlib', 'Up/Proj'];
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'allowed' });
-    expect(out.policy).toMatchObject({ aiPolicy: 'banned', blocklisted: true, reviewedByUser: true });
+    expect(out.blocklistChange).toBe('removed');
+    expect(fake.state.config.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib']);
+    expect(out.policy).toMatchObject({ aiPolicy: 'allowed', blocklisted: false });
+  });
+
+  it('leaves the blocklist alone without --ai-policy, and on reset', async () => {
+    fake.state.config.aiPolicyBlocklist = ['up/proj'];
+    await runPolicySet({ repo: REPO, cla: 'required' });
+    await runPolicyReset({ repo: REPO });
+    expect(fake.state.config.aiPolicyBlocklist).toEqual(['up/proj']);
+  });
+
+  it('unattended, it writes neither the record nor the blocklist', async () => {
+    fake.state.config.aiPolicyBlocklist = ['matplotlib/matplotlib'];
+    vi.stubEnv(UNATTENDED_ENV, '1');
+    await expect(runPolicySet({ repo: REPO, aiPolicy: 'banned' })).rejects.toThrow(/unattended run/);
+    expect(fake.state.repoPolicies).toEqual({});
+    expect(fake.state.config.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib']);
   });
 });
 

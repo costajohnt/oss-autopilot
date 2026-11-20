@@ -101,6 +101,25 @@ describe('runVet: repo contribution policy (#1953)', () => {
     expect(result.recommendation).not.toBe('skip');
   });
 
+  it('with a scout match, keeps one ban reason and adds only how to lift the unreviewed ban', async () => {
+    mockGetState.mockReturnValue({ config: {} });
+    mockVetIssue.mockResolvedValue({
+      ...policyCandidate(BAN),
+      recommendation: 'skip' as const,
+      reasonsToSkip: ['anti-LLM policy'],
+      antiLLMPolicy: { matched: true, matchedKeywords: ['no AI-generated'], sourceFile: 'CONTRIBUTING.md' },
+    });
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.reasonsToSkip).toEqual([
+      'anti-LLM policy',
+      'repo policy (read from the repo docs, not reviewed: run `oss-autopilot policy set --repo owner/repo ' +
+        '--ai-policy allowed` if this is a misreading)',
+    ]);
+    expect(result.reasonsToSkip.filter((r) => r.includes('does not accept'))).toHaveLength(0);
+  });
+
   it('records nothing when scout returned no anti-LLM scan result', async () => {
     mockGetState.mockReturnValue({ config: {} });
     mockVetIssue.mockResolvedValue({ ...policyCandidate(BAN), antiLLMPolicy: undefined });
