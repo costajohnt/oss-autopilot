@@ -91,6 +91,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     }),
     getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
     ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
+    unknownPersistenceModeWarning: () => null,
     // Config-key registry access for the config tool's key enum (#1053).
     // Return a small known-set so the MCP schema validates against real keys.
     getSetupKeys: () => ['username', 'languages', 'minStars'],

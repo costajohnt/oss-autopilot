@@ -885,6 +885,14 @@ describe('applyStatusOverrides', () => {
     expect(result[0].waitReason).toBe('pending_review');
   });
 
+  it('ignores an override status a newer release added (#2005)', () => {
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing' })];
+    const override = { status: 'snoozed', setAt: '2026-01-01T00:00:00Z', lastActivityAt: '2025-06-15T00:00:00Z' };
+    const state = makeAgentState({ config: { statusOverrides: { [prs[0].url]: override } } });
+    mockGetStatusOverride.mockReturnValue(override);
+    expect(applyStatusOverrides(prs, state)[0]).toBe(prs[0]);
+  });
+
   it('should override waiting_on_maintainer → needs_addressing with correct reason fields', () => {
     const prUrl = 'https://github.com/owner/repo/pull/1';
     const prs = [

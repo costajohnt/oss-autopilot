@@ -380,7 +380,12 @@ export const commands: CLICommandDef[] = [
               options,
               async () => (await import('./commands/state-cmd.js')).runStateShow({ validate: !!options.validate }),
               (data) => {
-                console.log(`\nPersistence: ${data.persistence}`);
+                console.log(
+                  `\nPersistence: ${data.persistence}` +
+                    (data.storedPersistence
+                      ? ` (stored mode '${data.storedPersistence}' is from a newer release; upgrade oss-autopilot to sync)`
+                      : ''),
+                );
                 if (data.gistId) console.log(`Gist ID: ${data.gistId}`);
                 if (data.gistDegraded) console.log('Status: DEGRADED (using local cache)');
                 console.log(`Last run: ${data.lastRunAt ?? 'Never'}`);

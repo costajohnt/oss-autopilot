@@ -1675,6 +1675,15 @@ describe('state command', () => {
     expect(out).toContain(`[pr] ${PR_URL}  bad`);
   });
 
+  it('prints a mode a newer release added next to the local mode it runs in (#2005)', async () => {
+    mockRunStateShow.mockResolvedValue({ persistence: 'local', storedPersistence: 'gist-v2', lastRunAt: undefined });
+    const program = buildProgram('state');
+
+    await program.parseAsync(['node', 'cli', 'state']);
+
+    expect(logged()).toContain("Persistence: local (stored mode 'gist-v2' is from a newer release");
+  });
+
   it('reports a clean validation pass', async () => {
     mockRunStateShow.mockResolvedValue({ persistence: 'local', lastRunAt: '2026-01-01', invalidEntries: [] });
     const program = buildProgram('state');

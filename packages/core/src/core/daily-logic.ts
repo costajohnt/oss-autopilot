@@ -18,6 +18,7 @@ import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
 import { parseGitHubUrl, issueRefKey } from './urls.js';
 import { MAINTAINER_RESPONSE_RULE } from './review-analysis.js';
+import { FetchedPRStatusSchema, isKnownValue } from './state-schema.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
   FetchedPR,
@@ -116,8 +117,6 @@ export const STALE_STATUSES: ReadonlySet<StalenessTier> = new Set(['dormant', 'a
 // Status overrides
 // ---------------------------------------------------------------------------
 
-const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing', 'waiting_on_maintainer']);
-
 /**
  * Apply status overrides from state to the PR list.
  * Overrides are auto-cleared if the PR has new activity since the override was set.
@@ -165,7 +164,8 @@ export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentStat
         if (!override) {
           return pr;
         }
-        if (!VALID_OVERRIDE_STATUSES.has(override.status)) {
+        // A newer release may write a status this one does not know (#2005).
+        if (!isKnownValue(FetchedPRStatusSchema.options, override.status)) {
           warn('daily-logic', `Invalid override status "${override.status}" for ${pr.url} — ignoring`);
           return pr;
         }

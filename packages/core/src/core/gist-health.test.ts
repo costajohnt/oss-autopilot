@@ -7,7 +7,7 @@
  * bootstrapGistBestEffort, daily warnings) now shares.
  */
 import { describe, it, expect } from 'vitest';
-import { renderGistWarning, type GistWarningCause } from './gist-health.js';
+import { renderGistWarning, renderUnknownModeWarning, type GistWarningCause } from './gist-health.js';
 import { StateManager } from './state.js';
 import type { GistStateStore } from './gist-state-store.js';
 
@@ -40,6 +40,18 @@ describe('StateManager.getGistHealth() truth table (#1444)', () => {
     });
   });
 
+  it('local manager + a mode a newer release added: unknown-mode, not recoverable (#2005)', () => {
+    const sm = manager();
+    sm.updateConfig({ persistence: 'gist-v2' });
+    expect(sm.getGistHealth()).toEqual({
+      mode: 'local',
+      degraded: { cause: 'unknown-mode', mode: 'gist-v2', recoverable: false },
+    });
+    expect(renderUnknownModeWarning('gist-v2')).toBe(
+      "Persistence mode 'gist-v2' is from a newer release; this client runs LOCAL-ONLY and writes will not sync. Upgrade oss-autopilot.",
+    );
+  });
+
   it('gist-armed manager: healthy gist', () => {
     expect(manager({ persistence: 'gist', gist: 'armed' }).getGistHealth()).toEqual({ mode: 'gist', degraded: null });
   });
@@ -66,7 +78,7 @@ describe('StateManager.getGistHealth() truth table (#1444)', () => {
     await sm.refreshFromGist();
     const staleness = sm.getStateStaleness();
     expect(staleness).not.toBeNull();
-    expect(sm.getGistHealth().degraded?.since).toBe(staleness?.detectedAt);
+    expect(sm.getGistHealth().degraded).toMatchObject({ since: staleness?.detectedAt });
   });
 });
 

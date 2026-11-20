@@ -79,6 +79,20 @@ describe('runSetup', () => {
     );
   });
 
+  it('shows values a newer release added as stored, and an unknown persistence mode as local (#2005)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        config: { ...DEFAULT_CONFIG, persistence: 'gist-v2', scope: ['expert'], projectCategories: ['gaming'] },
+      }),
+    } as any);
+
+    const result = await runSetup({});
+
+    expect(result).toMatchObject({
+      config: { persistence: 'local', scope: ['expert'], projectCategories: ['gaming'] },
+    });
+  });
+
   it('should return setup prompts when setup is incomplete', async () => {
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),

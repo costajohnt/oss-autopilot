@@ -54,7 +54,7 @@ import * as guidelinesStoreModule from './guidelines-store.js';
 
 /** Gist file that carries the rendered overnight report across machines (#1698). */
 export const OVERNIGHT_REPORT_DOCUMENT = 'overnight-report.md';
-import { renderGistWarning, type GistHealth, type GistWarningCause } from './gist-health.js';
+import { renderGistWarning, renderUnknownModeWarning, type GistHealth, type GistWarningCause } from './gist-health.js';
 import { getStatePath, getStateCachePath, getGistIdPath } from './paths.js';
 import { parseGitHubUrl, issueRefKey, findRefKey } from './urls.js';
 
@@ -541,6 +541,8 @@ export class StateManager {
    * `isGistDegraded()` at each call site.
    *
    * Composes the same primitive fields those accessors expose:
+   * - no gist store + config names a mode this release does not know →
+   *   `unknown-mode` (#2005)
    * - no gist store + config asks for gist → `configured-but-local`
    * - gist store attached but disarmed (#1443) → `bootstrap-degraded`
    *   (`since` comes from the staleness marker the degraded bootstrap seeds)
@@ -548,6 +550,10 @@ export class StateManager {
    */
   getGistHealth(): GistHealth {
     if (this.gistStore === null) {
+      const mode = this.state.config.persistence;
+      if (mode !== 'local' && mode !== 'gist') {
+        return { mode: 'local', degraded: { mode, cause: 'unknown-mode', recoverable: false } };
+      }
       return {
         mode: 'local',
         degraded:
@@ -1933,6 +1939,35 @@ function peekGistArtifacts(): 'gist' | 'local' | 'unreadable' {
 }
 
 /**
+ * The warning for a persistence mode a newer release wrote (#2005), or null.
+ * {@link ensureGistPersistence} reads such a mode as `'local-mode'`, so entry
+ * points add this to their output: writes will not reach the Gist the newer
+ * client syncs through. Reads state.json, or the state cache when state.json
+ * is absent, as ensureGistPersistence does; any other read failure is that
+ * function's to report.
+ */
+export function unknownPersistenceModeWarning(): string | null {
+  for (const file of [getStatePath(), getStateCachePath()]) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch (err) {
+      if ((err as { code?: unknown }).code === 'ENOENT') continue;
+      return null;
+    }
+    let parsed: { config?: { persistence?: unknown } } | null;
+    try {
+      parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+      return null;
+    }
+    const mode = parsed?.config?.persistence;
+    return typeof mode === 'string' && mode !== 'local' && mode !== 'gist' ? renderUnknownModeWarning(mode) : null;
+  }
+  return null;
+}
+
+/**
  * Best-effort gist bootstrap for entry points WITHOUT the auth gate (#1431):
  * the CLI's localOnly commands (shelve/move/dismiss/override/config/setup/...)
  * skip token enforcement, but a gist-configured user's mutations must still
@@ -1976,7 +2011,8 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
     }
     cause = { reason };
   }
-  if (cause === null) return null;
+  // Local mode, or a mode a newer release added, which runs local (#2005).
+  if (cause === null) return unknownPersistenceModeWarning();
   return renderGistWarning(cause);
 }
 

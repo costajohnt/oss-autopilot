@@ -89,6 +89,17 @@ describe('runStateShow', () => {
     });
   });
 
+  it('shows a persistence mode a newer release added as local, the mode it runs in (#2005)', async () => {
+    mockGetStateManager.mockReturnValue({
+      ...makeStateManagerMock({ config: { persistence: 'gist-v2' } }),
+      isGistDegraded: vi.fn().mockReturnValue(false),
+    } as any);
+
+    const result = await runStateShow();
+    expect(result.persistence).toBe('local');
+    expect(result.storedPersistence).toBe('gist-v2');
+  });
+
   it('returns state data in local mode with null gistId', async () => {
     const sm = {
       ...makeStateManagerMock({ config: { persistence: 'local' } }),

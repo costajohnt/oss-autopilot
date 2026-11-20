@@ -55,6 +55,13 @@ describe('collectEngagedIssues', () => {
     ]);
   });
 
+  it('counts a claim whose status a newer release added (#2005)', () => {
+    const engaged = collectEngagedIssues(
+      input({ claims: [{ url: ISSUE, updatedAt: '2026-06-01T00:00:00Z', status: 'abandoned' }] }),
+    );
+    expect(engaged.has('org/repo#10')).toBe(true);
+  });
+
   it('does not count a candidate as a claim', () => {
     const engaged = collectEngagedIssues(
       input({

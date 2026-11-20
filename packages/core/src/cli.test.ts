@@ -23,6 +23,7 @@ vi.mock('./core/index.js', () => ({
   ensureGistPersistence: vi.fn(),
   renderGistWarning: vi.fn((cause: string) => `gist warning: ${cause}`),
   bootstrapGistBestEffort: vi.fn(),
+  unknownPersistenceModeWarning: vi.fn(),
 }));
 
 vi.mock('./core/errors.js', () => ({
@@ -42,6 +43,7 @@ import {
   debug,
   ensureGistPersistence,
   bootstrapGistBestEffort,
+  unknownPersistenceModeWarning,
 } from './core/index.js';
 import { outputJsonError, setEnvelopeGistWarning } from './formatters/json.js';
 import { installPreAction } from './cli-pre-action.js';
@@ -296,6 +298,17 @@ describe('preAction hook', () => {
     const program = buildTestProgram(localOnlySet);
 
     await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('gist is corrupt');
+  });
+
+  it('threads a persistence mode a newer release added into the JSON envelope (#2005)', async () => {
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
+    mockEnsureGistPersistence.mockResolvedValue('local-mode');
+    vi.mocked(unknownPersistenceModeWarning).mockReturnValue('newer mode');
+    const program = buildTestProgram(localOnlySet);
+
+    await program.parseAsync(['node', 'cli', 'daily']);
+
+    expect(mockSetEnvelopeGistWarning).toHaveBeenCalledWith('newer mode');
   });
 
   it('best-effort bootstraps Gist persistence for localOnly commands and surfaces the warning (#1431)', async () => {
