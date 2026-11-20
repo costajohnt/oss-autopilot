@@ -111,21 +111,24 @@ function isChangesAddressedByCommit(commitDate: string | undefined, changesReque
 }
 
 /**
- * Whether the approval settles the unanswered maintainer comment, so the PR is
+ * Whether approval settles every unanswered maintainer comment, so the PR is
  * just waiting to be merged (#1507): it is approved, CI is passing or unknown,
- * and the account that wrote the comment has a standing approval submitted at
- * or after it (the approving review's own note, or feedback its author then
- * approved). Someone else's approval never settles the comment, and neither
- * does the commenter's own earlier approval: both leave a question nobody
- * answered (#1920).
+ * and each comment's author has a standing approval submitted at or after that
+ * comment (the approving review's own note, or feedback its author then
+ * approved). Someone else's approval never settles a comment, and neither does
+ * the commenter's own earlier approval: both leave a question nobody answered
+ * (#1920).
  *
- * Fails closed (returns `false`) on a missing or unparseable date: the safe
- * direction is to surface the comment.
+ * Fails closed (returns `false`) when the comments are not listed or a date is
+ * missing or unparseable: the safe direction is to surface the comment.
  */
 function isCommentSettledByApproval(input: DetermineStatusInput): boolean {
-  const { reviewDecision, ciStatus, lastMaintainerCommentDate, commenterApprovalDate } = input;
+  const { reviewDecision, ciStatus, unansweredComments = [] } = input;
   if (reviewDecision !== 'approved' || (ciStatus !== 'passing' && ciStatus !== 'unknown')) return false;
-  return normalizeToEpochMs(lastMaintainerCommentDate) <= normalizeToEpochMs(commenterApprovalDate);
+  return (
+    unansweredComments.length > 0 &&
+    unansweredComments.every((c) => normalizeToEpochMs(c.createdAt) <= normalizeToEpochMs(c.authorApprovalDate))
+  );
 }
 
 /**
@@ -151,7 +154,7 @@ function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | 
   const commitDate = resolveContributorCommitDate(input);
   const reasons: ActionReason[] = [];
 
-  // An unresponded maintainer comment its author's approval settles needs no
+  // Unresponded maintainer comments their authors' approvals settle need no
   // contributor response: the PR is just awaiting merge (#1507, #1920).
   if (
     hasUnrespondedComment &&

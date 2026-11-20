@@ -241,6 +241,80 @@ describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () =
     expect(pr.actionReason).toBe('needs_response');
   });
 
+  it("one commenter's approval does not settle another commenter's earlier question", async () => {
+    const pr = await assembleFetchedPR(
+      signals({
+        reviews: [approvalBy('maintainer', 10)],
+        comments: [
+          { user: { login: 'other-maintainer' }, body: 'Does this handle Windows paths?', created_at: daysAgo(20) },
+          { ...question, created_at: daysAgo(15) },
+        ],
+      }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.lastMaintainerComment?.author).toBe('maintainer');
+    expect(pr.actionReason).toBe('needs_response');
+    expect(pr.actionReasons).toEqual(['needs_response']);
+  });
+
+  it('the commenter approving after two questions of their own settles both', async () => {
+    const pr = await assembleFetchedPR(
+      signals({
+        reviews: [approvalBy('maintainer', 10)],
+        comments: [
+          { ...question, created_at: daysAgo(20) },
+          { ...question, body: 'And one for the null case, if it is cheap.', created_at: daysAgo(15) },
+        ],
+      }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.hasUnrespondedComment).toBe(true);
+    expect(pr.waitReason).toBe('pending_merge');
+  });
+
+  it('a comment, then a changes request, then an approval, all by one reviewer, is settled', async () => {
+    const pr = await assembleFetchedPR(
+      signals({
+        reviews: [
+          { user: { login: 'maintainer' }, state: 'CHANGES_REQUESTED', body: '', submitted_at: daysAgo(15), id: 2 },
+          approvalBy('maintainer', 10),
+        ],
+        comments: [{ ...question, created_at: daysAgo(20) }],
+      }),
+      CONFIG,
+      { date: daysAgo(30), author: 'contributor' },
+    );
+    expect(pr.reviewDecision).toBe('approved');
+    expect(pr.hasUnrespondedComment).toBe(true);
+    expect(pr.waitReason).toBe('pending_merge');
+  });
+
+  it("an inline review-thread reply after the reviewer's approval needs a response", async () => {
+    const pr = await assembleFetchedPR(
+      signals({
+        reviews: [
+          approvalBy('maintainer', 10),
+          { user: { login: 'maintainer' }, state: 'COMMENTED', body: '', submitted_at: daysAgo(5), id: 3 },
+        ],
+        reviewComments: [
+          {
+            id: 31,
+            user: { login: 'maintainer' },
+            body: 'This branch still looks unreachable to me.',
+            created_at: daysAgo(5),
+            pull_request_review_id: 3,
+          },
+        ],
+      }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.reviewDecision).toBe('approved');
+    expect(pr.actionReason).toBe('needs_response');
+  });
+
   it.each(['Thanks!', 'LGTM'])('a pure acknowledgment after the approval (%s) stays pending_merge', async (body) => {
     const pr = await assembleFetchedPR(
       signals({

@@ -205,7 +205,12 @@ export function checkUnrespondedComments(
   }>,
   reviewComments: ReviewComment[],
   username: string,
-): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
+): {
+  hasUnrespondedComment: boolean;
+  lastMaintainerComment?: FetchedPR['lastMaintainerComment'];
+  /** Every unanswered maintainer item, oldest first; the last one is `lastMaintainerComment`. */
+  unrespondedComments: Array<{ author: string; createdAt: string }>;
+} {
   // Combine comments and reviews into a timeline
   const timeline: Array<{
     author: string;
@@ -275,6 +280,7 @@ export function checkUnrespondedComments(
 
   // Find maintainer comments after the user's last comment
   let lastMaintainerComment: FetchedPR['lastMaintainerComment'] | undefined;
+  const unrespondedComments: Array<{ author: string; createdAt: string }> = [];
 
   for (const item of timeline) {
     if (item.isUser) continue; // Skip user's own comments
@@ -289,6 +295,7 @@ export function checkUnrespondedComments(
 
     const itemTime = new Date(item.createdAt);
     if (!lastUserCommentTime || itemTime > lastUserCommentTime) {
+      unrespondedComments.push({ author: item.author, createdAt: item.createdAt });
       lastMaintainerComment = {
         author: item.author,
         body: item.body.slice(0, 200) + (item.body.length > 200 ? '...' : ''),
@@ -300,6 +307,7 @@ export function checkUnrespondedComments(
   return {
     hasUnrespondedComment: !!lastMaintainerComment,
     lastMaintainerComment,
+    unrespondedComments,
   };
 }
 
