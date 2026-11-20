@@ -2635,23 +2635,31 @@ describe('dashboard-server', () => {
       expect(JSON.parse(second.body).stats.availableIssues).toBe(1);
     });
 
-    it('runs the git foreign-checkout check once per list path across GET /api/data calls (#2012)', async () => {
+    it('runs the Git foreign-checkout check once per list path until the list or state changes (#2012)', async () => {
       const baseTime = Date.now();
       writeIssueList('## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n', baseTime);
+
+      await sendRequest('GET', '/api/data');
+      const afterFirst = gitCallsFor(issueListDir);
+      expect(afterFirst).toBeGreaterThan(0);
       await sendRequest('GET', '/api/data');
       await sendRequest('GET', '/api/data');
-      // An edit forces a rebuild, which re-reads the list: still no new Git call.
+      expect(gitCallsFor(issueListDir)).toBe(afterFirst);
+
+      // An edit to the list clears the verdicts, so the checkout is re-checked.
       writeIssueList(
         '## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n- [#2](https://github.com/o/r/issues/2) — Second\n',
         baseTime + 60_000,
       );
       const edited = await sendRequest('GET', '/api/data');
       expect(JSON.parse(edited.body).stats.availableIssues).toBe(2);
-      // tmpdir is not a checkout: one `git rev-parse` answers it, once.
-      expect(gitCallsFor(issueListDir)).toBe(1);
+      const afterEdit = gitCallsFor(issueListDir);
+      expect(afterEdit).toBeGreaterThan(afterFirst);
+      await sendRequest('GET', '/api/data');
+      expect(gitCallsFor(issueListDir)).toBe(afterEdit);
 
       // A newly configured path (as `setup --set` would write) is used on the
-      // next request, with its own single check.
+      // next request, and later requests do not re-check it.
       const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-issuelist-'));
       const otherPath = path.join(otherDir, 'potential-issue-list.md');
       fs.writeFileSync(
@@ -2668,11 +2676,44 @@ describe('dashboard-server', () => {
       try {
         const switched = await sendRequest('GET', '/api/data');
         expect(JSON.parse(switched.body).stats.availableIssues).toBe(3);
+        const afterSwitch = gitCallsFor(otherDir);
+        expect(afterSwitch).toBeGreaterThan(0);
         await sendRequest('GET', '/api/data');
-        expect(gitCallsFor(otherDir)).toBe(1);
+        expect(gitCallsFor(otherDir)).toBe(afterSwitch);
       } finally {
         fs.rmSync(otherDir, { recursive: true, force: true });
       }
+    });
+
+    it('re-checks a cached foreign verdict when the GitHub username changes (#2012)', async () => {
+      // The list's directory is a checkout whose remote belongs to alice.
+      const actualCp = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+      actualCp.execFileSync('git', ['init', '-q'], { cwd: issueListDir, stdio: 'ignore' });
+      actualCp.execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/alice/lists.git'], {
+        cwd: issueListDir,
+        stdio: 'ignore',
+      });
+      writeIssueList('## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n', Date.now());
+
+      // As bob the checkout is foreign: the list is ignored, and the verdict is cached.
+      mockStateManager.getState.mockReturnValue(
+        makeState({ lastDigest: makeDigest(), config: { githubUsername: 'bob', issueListPath } as any }),
+      );
+      const asBobResponse = await sendRequest('GET', '/api/data');
+      expect(JSON.parse(asBobResponse.body).vettedIssues).toBeNull();
+      const asBob = gitCallsFor(issueListDir);
+      expect(asBob).toBeGreaterThan(0);
+      await sendRequest('GET', '/api/data');
+      expect(gitCallsFor(issueListDir)).toBe(asBob);
+
+      // As alice the same checkout is hers: Git runs again and the list is used.
+      mockStateManager.getState.mockReturnValue(
+        makeState({ lastDigest: makeDigest(), config: { githubUsername: 'alice', issueListPath } as any }),
+      );
+      expect(gitCallsFor(issueListDir)).toBe(asBob);
+      const asAlice = await sendRequest('GET', '/api/data');
+      expect(gitCallsFor(issueListDir)).toBeGreaterThan(asBob);
+      expect(JSON.parse(asAlice.body).vettedIssues).not.toBeNull();
     });
 
     it('handles a missing issue-list file without crashing', async () => {

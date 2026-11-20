@@ -41,10 +41,15 @@ const MODULE = 'dashboard-server';
 // Foreign-checkout verdicts keyed by checkout dir + GitHub username (#2012).
 // The dashboard polls /api/data, and the check runs two synchronous `git`
 // calls; the configured path and its source are still read on every call, so
-// `setup --set issueListPath=...` takes effect on the next request.
-// ponytail: a remote added to or removed from the list's checkout while the
-// dashboard runs is seen after a restart; clear this on state reload if needed.
+// `setup --set issueListPath=...` takes effect on the next request. GET
+// /api/data clears these when state reloads or the list file changes, so a
+// remote change in the list's checkout is seen at the next such event.
 const foreignVerdicts = new Map<string, boolean>();
+
+/** Forget cached foreign-checkout verdicts so the next lookup re-runs Git. */
+export function clearForeignVerdicts(): void {
+  foreignVerdicts.clear();
+}
 
 function isForeignCheckoutCached(dir: string): boolean {
   const key = `${dir}\0${getStateManager().getState().config.githubUsername}`;
