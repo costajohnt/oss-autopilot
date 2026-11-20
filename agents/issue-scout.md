@@ -72,7 +72,7 @@ The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scout s
 
 **If matched:** (1) recommendation → `skip` with reason `"anti-LLM policy"`; (2) quote the matching language in the summary so the user can verify the match; (3) do NOT proceed even if score is high.
 
-**The ban is recorded, unreviewed.** `vet` stores what it read as the repo's contribution policy (`policy` on `vet --json`, `aiPolicy: "banned"` with `reviewedByUser: false`) and recommends `skip`. An unreviewed ban does NOT drop the repo from `search`: `search` leaves out only `aiPolicyBlocklist` and bans the user confirmed, and lists the rest in `policyBannedRepos` (candidates from those repos carry `policy`). False positives are possible, so present the match to the user and use AskUserQuestion with:
+**When `vet` returns `policy.aiPolicy === "banned"` with `policy.reviewedByUser: false`** (whether or not `antiLLMPolicy.matched`; the ban may come from CONTRIBUTING alone or from an earlier vet), **the ban is recorded, unreviewed.** `vet` stores what it read as the repo's contribution policy (`policy` on `vet --json`, `aiPolicy: "banned"` with `reviewedByUser: false`) and recommends `skip`. An unreviewed ban does NOT drop the repo from `search`: `search` leaves out only `aiPolicyBlocklist` and bans the user confirmed, and lists the rest in `policyBannedRepos` (candidates from those repos carry `policy`). False positives are possible, so present the match to the user and use AskUserQuestion with:
 - "Confirm the ban" — "Record it as reviewed; never surface issues from this repo again"
 - "Skip this issue but leave the repo searchable" — "Treat as one-off; leave the unreviewed record as is"
 - "Undo (false positive)" — "Record that the repo accepts AI-assisted contributions"
@@ -80,8 +80,12 @@ The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scout s
 Run the matching command for the first or last option (both are refused in unattended runs; there, leave the record as is):
 
 ```bash
-# Confirm the ban
+# Confirm the ban: record it, then add the repo to aiPolicyBlocklist so clients
+# that predate policy records honor it too (concatenate: --set replaces the whole value)
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy set --repo "{OWNER}/{REPO}" --ai-policy banned --json
+CURRENT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json | jq -r '.data.config.aiPolicyBlocklist // ""')
+NEW="${CURRENT:+$CURRENT,}{OWNER}/{REPO}"
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set aiPolicyBlocklist="$NEW"
 # Undo (false positive)
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy set --repo "{OWNER}/{REPO}" --ai-policy allowed --json
 ```

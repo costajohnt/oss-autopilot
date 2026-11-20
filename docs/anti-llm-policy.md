@@ -88,7 +88,7 @@ If the scan flagged a repo that actually welcomes AI help:
 
 ## Hidden / out-of-band signals
 
-Not every anti-LLM stance is scannable from document text. Maintainers sometimes hide AI-submitted PRs as spam, add comments on closed policy issues, or voice opposition in external channels. The scan cannot see any of that. If you observe such signals during vetting, record the ban with `oss-autopilot policy set --repo owner/repo --ai-policy banned --source "<what you saw>"` to exclude the repo from future searches and fail `pr-preflight` there.
+Not every anti-LLM stance is scannable from document text. Maintainers sometimes hide AI-submitted PRs as spam, add comments on closed policy issues, or voice opposition in external channels. The scan cannot see any of that. If you observe such signals during vetting, record the ban with `oss-autopilot policy set --repo owner/repo --ai-policy banned --source "<what you saw>"` to exclude the repo from future searches and fail `pr-preflight` there. Add the repo to `aiPolicyBlocklist` as well (`oss-autopilot setup --set aiPolicyBlocklist=...`, full list): clients that predate policy records read only the blocklist from the shared state.
 
 ## See also
 

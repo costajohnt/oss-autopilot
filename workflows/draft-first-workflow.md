@@ -99,13 +99,13 @@ Store the file content in session context as `contributingGuidelines` for reuse 
 
 #### 2. Extract actionable requirements
 
-When the repo has a recorded contribution policy, its AI policy, AI disclosure, CLA, the commit rules it lists and the gate before a PR (claim the issue first, wait for a maintainer label, collaborators only) are not extracted here: `vet` records them, and the `repo-policy` check of `pr-preflight` enforces them. Read the policy once:
+The AI policy, AI disclosure and the gate before a PR (claim the issue first, wait for a maintainer label, collaborators only) are not extracted here: `vet` records them as the repo's contribution policy, and the `repo-policy` check of `pr-preflight` enforces them. Read the policy once:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy get --repo "{upstream-owner}/{upstream-repo}" --json
 ```
 
-`data.policy.commitRules` lists ids (`conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`). When `data.policy` is null, or `data.policy.aiPolicy` is `unknown`, nothing usable was recorded: extract the **CLA/DCO** row below from the file too.
+`data.policy.commitRules` lists ids (`conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`); `data.policy` is null when nothing is recorded. Still extract the **CLA/DCO** and **Commit format** rows below from the file every time: the policy record, when it states one (`cla: "required"`, or a rule id in `commitRules`), takes precedence for that item, and the parser can miss what it does not state.
 
 Read the file and extract a checklist of the **actionable requirements**, things a contributor must do before submitting a PR. Typical categories:
 
@@ -115,8 +115,8 @@ Read the file and extract a checklist of the **actionable requirements**, things
 | **Documentation** | "Update the user manual", "Add JSDoc comments", "Update README" |
 | **Changelog** | "Add a CHANGELOG entry", "Update CHANGES.md" |
 | **Code style** | "Run `cargo fmt`", "Run `npm run lint`", "Follow the style guide" |
-| **Commit format** | Conventions `commitRules` does not cover: "Prefix the subject with the package name", "Sign your commits" (GPG/SSH signing), "Wrap the body at 72 columns" |
-| **CLA/DCO** | Only when no policy is recorded (above): "Sign the CLA", "Add a Signed-off-by line" |
+| **Commit format** | "Use conventional commits", "Prefix the subject with the package name", "Sign your commits" (GPG/SSH signing), "Wrap the body at 72 columns" |
+| **CLA/DCO** | "Sign the CLA", "Add a Signed-off-by line" |
 | **Branch** | "Branch from `develop`", "Target the `next` branch" |
 | **Scope** | "One feature per PR", "Keep PRs small" |
 
