@@ -52,7 +52,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
 | `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue via `draft-review-post`; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
-| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify via comment-decision, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
+| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify the note, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
 | `review-follow-ups.md` | A PR the user reviewed (not authored) where the author pushed or replied since | Show the compare range since the review (or the commit list after a rebase), re-review via `review-panel`, answer the questions addressed to the user via `draft-review-post`; "skip" dismisses the PR URL (#1857) |
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
@@ -302,10 +302,7 @@ interface AgentState {
   localRepoCache?: LocalRepoCache;  // Legacy: read once for adoption, never written (see Per-Machine Settings)
   mergedPRs?: StoredMergedPR[];     // Stored merged PR records
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
-  analyzedIssueConversations?: AnalyzedIssueConversation[];
   activeIssues: TrackedIssue[];     // Issues user has claimed
-  prFollowUpHistory?: Record<string, FollowUpEntry[]>; // Follow-ups drafted per PR URL (#1277)
-  workflowState?: WorkflowState;    // Pause-point snapshot for resumable workflows (#1280)
   searchSeen: SearchSeenEntry[];    // Issue URLs surfaced by recent searches, for result rotation (#1528)
   pickSnapshots: PickSnapshot[];    // Vet-time predictions keyed by issue URL (#1824)
   lastOvernight?: OvernightRecord;  // Latest overnight run (#1574)

@@ -34,7 +34,6 @@ export type {
   RepoScore,
   StoredMergedPR,
   StoredClosedPR,
-  AnalyzedIssueConversation,
   ContributionGuidelines,
   IssueVettingResult,
   TrackedIssue,

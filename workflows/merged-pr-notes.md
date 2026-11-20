@@ -28,7 +28,7 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
 
 1. **Read the PR thread.** Run `gh pr view {prUrl} --comments` and read the notes in context (the excerpts are truncated and fenced; use the live thread for the draft). When `maintainerCommits > 0`, also run `gh pr view {prUrl} --json commits --jq '.commits[] | [.authors[0].login, .messageHeadline] | @tsv'` and identify exactly what the maintainer changed. Confirm the user has not already replied (a comment posted seconds after the CLI's fetch would be missed); if they have, say so and skip to the next entry.
 
-2. **Classify each note** with the categories in `agents/pr-responder.md` ("Comment Decision Logic") and the rule in `packages/core/src/core/comment-decision.ts` (`shouldDraftResponse`):
+2. **Classify each note** with the categories in `agents/pr-responder.md` ("Comment Decision Logic"):
    - `appreciation` (thanks or praise and nothing else) → one-line acknowledgment. The CLI's `thanksOnly` is a keyword heuristic; confirm it against the thread before relying on it.
    - A commit pushed on top (`kind: "commit"`), a reworked API, or any note explaining what changed before merge → short reply that names the specific change ("the positional argument reads better than the flag, agreed") and, if the user disagrees or sees a problem, says so.
    - A note about what happens next (ships in the next release, follow-up issue opened) → brief acknowledgment that mentions the specific thing, or nothing if the user prefers; ask.

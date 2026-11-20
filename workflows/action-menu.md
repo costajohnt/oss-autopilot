@@ -85,9 +85,9 @@ Then show the enriched format using the resolved PR's fields:
 
 Such a PR is never re-dispatched by "Work through all issues" or a specific-PR selection without asking: offer "Leave it to session {claim.session}" (default) / "Take it over here" (re-claims it for this session with `work claim ... --takeover`; without the flag the CLI refuses a claim another session holds, and the other session sees the takeover on its next menu refresh). A claim by this session's own `sessionName` (a PR this session already started on) needs no line.
 
-**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. The label mapping for `pr.maintainerActionHints` lives at `packages/core/src/core/maintainer-hints.ts` (`MAINTAINER_HINT_LABELS` + `formatMaintainerHints`) — that file is the source of truth (#1264). Documented mappings: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
+**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. Label mapping for `pr.maintainerActionHints`: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
 
-**Effort estimate**: The truth table lives at `packages/core/src/core/issue-effort.ts` (`computeIssueEffort`) — that function is the source of truth (#1264). Reproduced here for the workflow's render template; edit the source first if the rules change.
+**Effort estimate**:
 
 | Effort | Condition |
 |--------|-----------|
