@@ -712,7 +712,7 @@ export function loadState(): LoadStateResult {
           return { state: restoredState, fileId: statFileIdentity(statePath), recovery };
         }
         warn(MODULE, 'No valid backup found, starting fresh');
-        return { state: createFreshState(), fileId, recovery: { source: 'fresh', rejectedPath, reason } };
+        return { fileId, state: createFreshState(), recovery: { source: 'fresh', rejectedPath, reason } };
       }
 
       // Save migrated state only after validation succeeds
@@ -753,7 +753,7 @@ export function loadState(): LoadStateResult {
       return { state: restoredState, fileId: statFileIdentity(statePath), recovery };
     }
     warn(MODULE, 'No valid backup found, starting fresh');
-    return { state: createFreshState(), fileId, recovery: { source: 'fresh', rejectedPath, reason } };
+    return { fileId, state: createFreshState(), recovery: { source: 'fresh', rejectedPath, reason } };
   }
 
   debug(MODULE, 'No existing state found, initializing...');
