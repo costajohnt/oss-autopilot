@@ -175,7 +175,8 @@ describe('settings an agent may not write through MCP (#1934)', () => {
 
 /** The path settings as this machine uses them. */
 async function paths() {
-  const { config: shown } = await runConfig({});
+  // With no key, runConfig returns the shown config.
+  const { config: shown } = (await runConfig({})) as { config: Record<string, unknown> };
   return { issueListPath: shown.issueListPath, skippedIssuesPath: shown.skippedIssuesPath };
 }
 

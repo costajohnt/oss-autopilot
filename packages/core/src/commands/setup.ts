@@ -98,6 +98,23 @@ function parseComplexIssues(value: string): 'off' | 'warm' {
   return value;
 }
 
+/**
+ * Refuse unknown keys, and path values with a shell metacharacter (#1934),
+ * before any pair is applied.
+ */
+function prevalidateSettings(settings: string[]): void {
+  const knownKeys = new Set(getSetupKeys());
+  for (const setting of settings) {
+    const [key] = setting.split('=', 1);
+    if (!knownKeys.has(key)) {
+      throw new ValidationError(formatUnknownKeyError(key, 'setup'));
+    }
+    if ((MACHINE_PATH_KEYS as readonly string[]).includes(key)) {
+      assertSafeMachinePath(key as MachinePathKey, setting.slice(key.length + 1));
+    }
+  }
+}
+
 /** True when every `key=value` names a path kept in this machine's local file. */
 function isMachineLocalOnly(settings: string[]): boolean {
   const localKeys: readonly string[] = MACHINE_PATH_KEYS;
@@ -131,16 +148,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // mid-loop would leave earlier successful updates applied in memory (a real
     // issue for long-running consumers like the MCP server and dashboard that
     // share the StateManager singleton across requests).
-    const knownKeys = new Set(getSetupKeys());
-    for (const setting of options.set) {
-      const [key] = setting.split('=', 1);
-      if (!knownKeys.has(key)) {
-        throw new ValidationError(formatUnknownKeyError(key, 'setup'));
-      }
-      if ((MACHINE_PATH_KEYS as readonly string[]).includes(key)) {
-        assertSafeMachinePath(key as MachinePathKey, setting.slice(key.length + 1));
-      }
-    }
+    prevalidateSettings(options.set);
 
     // Named so the Gist conflict path can re-apply the same settings on a
     // refreshed baseline (maybeCheckpoint below).

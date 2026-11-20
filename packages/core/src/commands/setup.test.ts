@@ -19,12 +19,15 @@ vi.mock('../core/index.js', async () => {
 const { setMachinePathSpy } = vi.hoisted(() => ({
   setMachinePathSpy: vi.fn((_key: string, value = '') => value),
 }));
-vi.mock('../core/local-config.js', async (importOriginal) => ({
-  MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
-  // Real check: a path with a shell metacharacter is refused before anything is set (#1934).
-  assertSafeMachinePath: (await importOriginal<typeof import('../core/local-config.js')>()).assertSafeMachinePath,
-  setMachinePath: setMachinePathSpy,
-}));
+vi.mock('../core/local-config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/local-config.js')>();
+  return {
+    MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
+    // Real check: a path with a shell metacharacter is refused before anything is set (#1934).
+    assertSafeMachinePath: actual.assertSafeMachinePath,
+    setMachinePath: setMachinePathSpy,
+  };
+});
 
 vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
