@@ -122,12 +122,6 @@ describe('AgentStateSchema', () => {
       expect(config.githubUsrname).toBeUndefined();
     });
 
-    it('keeps config keys removed in #1948 verbatim for older clients', () => {
-      const retired = { autoFormatBeforePush: true, trustOwnRepoWrites: true, healthCheckFreshnessMinutes: 45 };
-      const result = AgentStateSchema.parse({ version: 4, config: { githubUsername: '', ...retired } });
-      expect(result.config).toMatchObject(retired);
-    });
-
     it('still drops retired config keys', () => {
       const result = AgentStateSchema.parse({ version: 4, config: { githubUsername: '', snoozedPRs: { x: 'y' } } });
       expect(result.config).not.toHaveProperty('snoozedPRs');

@@ -258,6 +258,15 @@ describe('runSetup', () => {
     expect(mockUpdateConfig).not.toHaveBeenCalled();
   });
 
+  it('should handle healthCheckFreshnessMinutes setting', async () => {
+    await runSetup({ set: ['healthCheckFreshnessMinutes=45'] });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ healthCheckFreshnessMinutes: 45 });
+  });
+
+  it('should reject a non-positive healthCheckFreshnessMinutes', async () => {
+    await expect(runSetup({ set: ['healthCheckFreshnessMinutes=0'] })).rejects.toThrow(/positive integer/);
+  });
+
   it('should handle reviewMaxPasses setting', async () => {
     await runSetup({ set: ['reviewMaxPasses=4'] });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ reviewMaxPasses: 4 });
@@ -400,13 +409,35 @@ describe('runSetup', () => {
     await expect(runSetup({ set: ['autoExtractLearnings=maybe'] })).rejects.toThrow(/Must be "true" or "false"/);
   });
 
-  it.each(['autoFormatBeforePush', 'trustOwnRepoWrites', 'healthCheckFreshnessMinutes'])(
-    'rejects the removed %s setting (#1948)',
-    async (key) => {
-      await expect(runSetup({ set: [`${key}=true`] })).rejects.toThrow(/Unknown setting/);
-      expect(mockUpdateConfig).not.toHaveBeenCalled();
+  it('should set autoFormatBeforePush to true', async () => {
+    const result = (await runSetup({ set: ['autoFormatBeforePush=true'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ autoFormatBeforePush: true });
+    expect(result.settings).toMatchObject({ autoFormatBeforePush: 'true' });
+  });
+
+  it.each(['autoFormatBeforePush=true', 'trustOwnRepoWrites=true', 'healthCheckFreshnessMinutes=45'])(
+    'stores the retired %s and warns that nothing reads it (#1948)',
+    async (pair) => {
+      const key = pair.split('=')[0];
+      const result = (await runSetup({ set: [pair] })) as SetupSetOutput;
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
+      expect(result.warnings).toContain(
+        `${key} is retired and not read by oss-autopilot; it is kept for compatibility`,
+      );
     },
   );
+
+  it('should set autoFormatBeforePush to false', async () => {
+    const result = (await runSetup({ set: ['autoFormatBeforePush=false'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ autoFormatBeforePush: false });
+    expect(result.settings).toMatchObject({ autoFormatBeforePush: 'false' });
+  });
+
+  it('should reject non-boolean autoFormatBeforePush values', async () => {
+    await expect(runSetup({ set: ['autoFormatBeforePush=yes'] })).rejects.toThrow(/must be "true" or "false"/i);
+  });
 
   it('should not complete=true when value is not true', async () => {
     await runSetup({ set: ['complete=false'] });

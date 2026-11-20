@@ -291,6 +291,27 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'true|false',
   },
   {
+    key: 'autoFormatBeforePush',
+    description:
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
+    settableVia: 'setup',
+    valueHint: 'true|false',
+  },
+  {
+    key: 'trustOwnRepoWrites',
+    description:
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
+    settableVia: 'setup',
+    valueHint: 'true|false',
+  },
+  {
+    key: 'healthCheckFreshnessMinutes',
+    description:
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
+    settableVia: 'setup',
+    valueHint: 'positive integer',
+  },
+  {
     key: 'reviewMaxPasses',
     description:
       'Convergence cap for the multi-agent review loop in workflows/dispatch-review.md. Optional; falls back to per-mode defaults (5 for diff, 3 for plan) when unset (#1275).',

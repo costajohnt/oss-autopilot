@@ -397,6 +397,24 @@ export const AgentConfigSchema = z
     autoExtractLearnings: z.boolean().default(true),
 
     /**
+     * @deprecated Not read since the hook was removed in #1642; kept for
+     * state-file compatibility. Will be removed in the next major version.
+     */
+    autoFormatBeforePush: z.boolean().default(false),
+
+    /**
+     * @deprecated Not read since the hook was removed in #1642; kept for
+     * state-file compatibility. Will be removed in the next major version.
+     */
+    trustOwnRepoWrites: z.boolean().default(false),
+
+    /**
+     * @deprecated Not read since the hook was removed in #1642; kept for
+     * state-file compatibility. Will be removed in the next major version.
+     */
+    healthCheckFreshnessMinutes: z.number().int().positive().default(30),
+
+    /**
      * Convergence cap for the multi-agent review loop in
      * `workflows/dispatch-review.md` (#1275). When unset, the workflow
      * falls back to per-mode defaults (5 for diff, 3 for plan). Lower
