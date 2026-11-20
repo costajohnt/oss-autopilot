@@ -11,7 +11,7 @@
  *   2. A tool that writes to GitHub under the user's identity asks the user
  *      through the host (MCP elicitation) before it runs.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createRequestStateCodec, inputRequired, inputResponse } from '@modelcontextprotocol/server';
 import type { ClientCapabilities, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
@@ -111,15 +111,55 @@ export function framed(label: string, text: string): string {
 }
 
 /**
+ * How long the user has to answer an approval form, and how long the signed
+ * state sent with it stays valid.
+ */
+export const APPROVAL_TIMEOUT_MS = 120_000;
+
+interface ApprovalState {
+  /** {@link approvedArgs} of what the form showed. */
+  args: string;
+  /** One per form, so an answer can be used once. */
+  id: string;
+}
+
+/**
  * Signs the `requestState` an approval form travels with (#2015). The key is
  * per process and module-level, so every server instance in the process
  * shares it: the HTTP transport builds a fresh server for each POST, and the
  * follow-up call that carries the answer is a different POST. Pass
- * {@link approvalStateVerify} as `ServerOptions.requestState.verify`; the SDK
- * then refuses a forged, altered or expired state before the tool runs.
+ * {@link approvalStateVerify} as `ServerOptions.requestState.verify`.
  */
-const approvalState = createRequestStateCodec<{ args: string }>({ key: randomBytes(32) });
-export const approvalStateVerify = (state: string, ctx: ServerContext) => approvalState.verify(state, ctx);
+const approvalState = createRequestStateCodec<ApprovalState>({
+  key: randomBytes(32),
+  ttlSeconds: APPROVAL_TIMEOUT_MS / 1000,
+});
+/**
+ * A state that fails verification (forged, altered, expired) resolves to
+ * null instead of throwing, so the call is not answered with the SDK's
+ * protocol error: the SDK hands the tool null as its state, which
+ * {@link requireApproval} refuses with the same in-band message as a missing
+ * state, and nothing runs.
+ */
+export async function approvalStateVerify(state: string, ctx: ServerContext): Promise<ApprovalState | null> {
+  try {
+    return await approvalState.verify(state, ctx);
+  } catch {
+    return null;
+  }
+}
+
+/** Ids of approvals already used, with when they stop mattering (their state has expired by then). */
+const usedApprovals = new Map<string, number>();
+
+/** Record `id` as used; false when it already was. */
+function isFirstUse(id: string): boolean {
+  const now = Date.now();
+  for (const [used, expiresAt] of usedApprovals) if (expiresAt <= now) usedApprovals.delete(used);
+  if (usedApprovals.has(id)) return false;
+  usedApprovals.set(id, now + APPROVAL_TIMEOUT_MS);
+  return true;
+}
 
 /**
  * What an approval is for: the action and the exact arguments, hashed. The
@@ -133,12 +173,14 @@ function approvedArgs(action: string, args: unknown): string {
 }
 
 /**
- * True when the verified `requestState` is the one minted for these
- * arguments. The SDK has already checked the signature, so a decoded state is
- * one this process minted; a raw string (no verify hook) or none at all fails.
+ * The approval's id when the verified `requestState` was minted for these
+ * arguments. The SDK has already run {@link approvalStateVerify}, so a decoded
+ * state is one this process minted; null (failed verification), a raw string
+ * (no verify hook) or none at all gives undefined.
  */
-function isApprovedArgs(action: string, args: unknown, ctx: ServerContext): boolean {
-  return ctx.mcpReq.requestState<{ args?: string } | undefined>()?.args === approvedArgs(action, args);
+function approvedId(action: string, args: unknown, ctx: ServerContext): string | undefined {
+  const state = ctx.mcpReq.requestState<Partial<ApprovalState> | undefined>();
+  return state?.args === approvedArgs(action, args) ? state.id : undefined;
 }
 
 function refusal(text: string) {
@@ -205,19 +247,22 @@ export function requireApproval<A, R>(
         inputRequests: {
           [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema }),
         },
-        requestState: await approvalState.mint({ args: approvedArgs(action, args) }),
+        requestState: await approvalState.mint({ args: approvedArgs(action, args), id: randomUUID() }),
       });
     }
     if (answer.kind !== 'elicit' || answer.action !== 'accept' || answer.content?.approve !== true) {
       return refusal(`The user did not approve: refusing to ${action}. Do not retry unless the user asks for it.`);
     }
     // The approval covers the arguments the form showed, not whatever arrives with the answer (#2015).
-    if (!isApprovedArgs(action, args, ctx)) {
+    const id = approvedId(action, args, ctx);
+    if (id === undefined) {
       return refusal(
         `Refusing to ${action}: the approval does not match these arguments (they changed after the user saw them, ` +
           'or the approval came without the state the form was sent with). Nothing was sent.',
       );
     }
+    // Checked and recorded synchronously before the handler, so a re-sent answer cannot run twice.
+    if (!isFirstUse(id)) return refusal(`Refusing to ${action}: this approval was already used. Nothing was sent.`);
     return handler(args);
   };
 }

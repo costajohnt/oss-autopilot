@@ -11,7 +11,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { registerTools } from './tools.js';
 import { registerResources } from './resources.js';
 import { registerPrompts } from './prompts.js';
-import { approvalStateVerify } from './trust-boundary.js';
+import { APPROVAL_TIMEOUT_MS, approvalStateVerify } from './trust-boundary.js';
 
 const version: string = (() => {
   try {
@@ -25,9 +25,6 @@ const version: string = (() => {
     return '0.0.0';
   }
 })();
-
-/** How long the user has to answer an approval form (trust-boundary.ts). */
-export const APPROVAL_TIMEOUT_MS = 120_000;
 
 /**
  * Create a fully configured MCP server with all tools, resources, and prompts registered.

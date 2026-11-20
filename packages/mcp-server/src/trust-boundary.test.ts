@@ -26,9 +26,10 @@ vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
 
 import { getStateManager } from '@oss-autopilot/core';
 import { runConfig, runSetup } from '@oss-autopilot/core/commands';
-import { APPROVAL_TIMEOUT_MS, createServer } from './server.js';
+import { createServer } from './server.js';
 import {
   ALLOW_UNCONFIRMED_ENV as ALLOW_UNCONFIRMED,
+  APPROVAL_TIMEOUT_MS,
   assertMcpSettable,
   assertMcpSettablePairs,
   mcpSettableKeys,
@@ -593,15 +594,41 @@ describe('an approval covers only the arguments the user saw (#2015)', () => {
   });
 
   it.each([
-    ['altered', (state: string) => `${state.slice(0, -2)}AA`],
+    ['altered', (state: string) => state.slice(0, -1) + (state.endsWith('A') ? 'E' : 'A')],
     ['re-signed by someone else', (state: string) => `${state.slice(0, state.lastIndexOf('.'))}.${'A'.repeat(43)}`],
     ['not one of ours', () => 'v1.e30.AAAA'],
   ])('refuses a requestState that was %s', async (_label, tamper) => {
     const client = await connectModern();
     const requestState = tamper(await askFirst(client));
-    await expect(call(client, ARGS, { inputResponses: ACCEPTED, requestState })).rejects.toThrow(
-      /Invalid or expired requestState/,
-    );
+    const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/approval does not match these arguments/);
     expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('refuses the same answer re-sent, so one approval posts once', async () => {
+    const client = await connectModern();
+    const requestState = await askFirst(client);
+    const first = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(first.isError).toBeFalsy();
+    const again = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(again.isError).toBe(true);
+    expect(text(again)).toMatch(/this approval was already used/);
+    expect(mockRunPost).toHaveBeenCalledOnce();
+  });
+
+  it('refuses an answer that comes back after the approval timeout', async () => {
+    const client = await connectModern();
+    const requestState = await askFirst(client);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + APPROVAL_TIMEOUT_MS + 2000);
+      const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toMatch(/approval does not match these arguments/);
+      expect(mockRunPost).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
