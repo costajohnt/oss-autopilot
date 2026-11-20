@@ -61,6 +61,9 @@ jobs:
             repo=$(echo "$pr" | jq -r '.repository.nameWithOwner')
             number=$(echo "$pr" | jq -r '.number')
             title=$(echo "$pr" | jq -r '.title')
+            # The report is expanded with printf '%b' below; keep backslashes in
+            # a PR title literal so they are not read as escape sequences.
+            title=${title//\\/\\\\}
             url=$(echo "$pr" | jq -r '.url')
 
             echo "Processing $repo#$number: $title"
