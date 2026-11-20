@@ -68,13 +68,22 @@ const approvalSchema = z.object({
 /**
  * Characters a form cannot show faithfully: every format character (\p{Cf}:
  * bidi controls, zero-width characters, word joiner, soft hyphen, tag
- * characters), private-use and unassigned code points, and C0/C1 controls
- * other than tab, newline and carriage return. Stripping them would post text
- * other than what the user approved, so a preview containing one is refused
- * instead. Variation selectors (U+FE0F) are not format characters and pass.
+ * characters), default-ignorable code points (variation selectors, combining
+ * grapheme joiner, Hangul fillers), line and paragraph separators,
+ * private-use and unassigned code points, and C0/C1 controls other than tab,
+ * newline and carriage return. Stripping them would post text other than what
+ * the user approved, so a preview containing one is refused instead.
  * Ceiling: \p{Cf} includes U+200D, so emoji ZWJ sequences are refused too.
  */
-const HIDDEN_CHARACTERS = /[\p{Cf}\p{Co}\p{Cn}\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/u;
+const HIDDEN_CHARACTERS =
+  /[\p{Cf}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/u;
+/** The one variation selector allowed: a single U+FE0E or U+FE0F right after a pictograph (as in ❤️). */
+const EMOJI_PRESENTATION = /(\p{Extended_Pictographic})[\uFE0E\uFE0F]/gu;
+
+/** The first character {@link HIDDEN_CHARACTERS} refuses, checked on a copy without the allowed emoji selectors. */
+function firstHiddenCharacter(text: string): string | undefined {
+  return HIDDEN_CHARACTERS.exec(text.replace(EMOJI_PRESENTATION, '$1'))?.[0];
+}
 
 /** "N characters", counted in code points, for an approval preview header. */
 export function characterCount(text: string): string {
@@ -123,9 +132,9 @@ export function requireApproval<A, R>(
       return refusal(errorMessage(e));
     }
     const shown = preview(args);
-    const hidden = HIDDEN_CHARACTERS.exec(shown);
-    if (hidden) {
-      const code = hidden[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0');
+    const hidden = firstHiddenCharacter(shown);
+    if (hidden !== undefined) {
+      const code = hidden.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0');
       return refusal(
         `Refusing to ${action}: the text contains invisible formatting characters (first: U+${code}), ` +
           'so the user could not see exactly what would be sent. This includes the joiner inside some emoji. ' +

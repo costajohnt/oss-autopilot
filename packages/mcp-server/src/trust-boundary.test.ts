@@ -242,6 +242,12 @@ describe('user approval before a GitHub write (#1936)', () => {
     '\u{E0041}',
     '\u0007',
     '\u{F0000}',
+    '\u{E0100}',
+    '\uFE0F',
+    'a\uFE0F',
+    '\u2764\uFE0F\uFE0F',
+    '\u3164',
+    '\u2028',
   ];
   const hiddenCases = HIDDEN.flatMap((char) => [
     ['post', { url: ISSUE, message: `fine${char}text` }, mockRunPost, char] as const,
@@ -255,7 +261,8 @@ describe('user approval before a GitHub write (#1936)', () => {
   ]);
 
   it.each(hiddenCases)('%s refuses text with invisible formatting characters (%#)', async (name, args, run, char) => {
-    const code = `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
+    const first = [...char].find((c) => !/[a\u2764]/u.test(c)) ?? char;
+    const code = `U+${first.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
     for (const [capabilities, optIn] of [
       [FORM_HOST, ''],
       [{}, '1'],
