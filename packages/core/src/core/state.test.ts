@@ -1434,10 +1434,10 @@ describe('StateManager merged PRs', () => {
       expect(stateManager.getGuidelinesReview('bad/entry')).toBeUndefined();
       expect(stateManager.getGuidelinesReview('owner/repo')?.sha256).toBe('aa');
       stateManager.markGuidelinesReviewed('other/repo', 'bb', '2026-11-19T11:00:00.000Z');
-      expect(Object.keys(stateManager.getState().guidelinesReviews ?? {}).sort()).toEqual([
+      expect(Object.keys(stateManager.getState().guidelinesReviews ?? {})).toEqual([
+        'owner/repo',
         'bad/entry',
         'other/repo',
-        'owner/repo',
       ]);
     });
   });
