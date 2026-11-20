@@ -394,8 +394,10 @@ When user selects "Done for now":
    **Stranded local runs (#1856).** Then run `work list --json` and, for each `implementation` claim with `status: "running"`, a `worktree` and this session's `sessionName`, check the worktree (the agent may have finished without running `work finish`, died, or still be running: background agents end with this session):
 
    ```bash
-   git -C "{claim.worktree}" log --oneline "{upstreamRemote}/{upstreamDefault}..HEAD"
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-preflight "{claim.url}" --dir "{claim.worktree}" --json
    ```
+
+   Read the `ahead` field of its output: the number of commits the worktree's branch has on top of the upstream default branch ("commits listed" below means `ahead` is 1 or more; "no commits" means 0, `null`, or the command failed because the worktree is gone). Its `checks` are not acted on here.
 
    - Commits listed and the agent's report said the branch is ready (its `work finish` did not record, e.g. it returned a `null` claim) → run `work finish "{claim.url}" --session "{sessionName}" --json` so it is offered as "Collect finished implementations" next time.
    - Commits listed otherwise (the agent is still running, so this session's end stops it, or it stopped without reporting the branch ready) → the run is partial. Do not mark it finished (`finished` means the agent declared the branch ready). Leave the claim `running` and record it in the summary as `agent stopped, may be incomplete`; the next session's "Collecting a Finished Implementation" entry offers it as a `running` claim with commits from another session and says so when collecting. The claim keeps its running TTL (24 h by default), so say when it expires.

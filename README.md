@@ -240,7 +240,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `languages` | (chosen at setup) | Languages for issue search |
 | `labels` | (chosen at setup) | Issue labels for issue search |
 | `squashByDefault` | `true` | Squash commits before merge (`true`, `false`, or `"ask"`) |
-| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push repo-cap check warns before opening a new one |
+| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push `pr-preflight` gate (its `repo-cap` check) warns before opening a new one |
 | `excludeOrgs` | `[]` | Orgs to leave out of issue discovery. PRs already open there are still tracked |
 | `untrackedOrgs` | `[]` | Orgs whose PRs are not tracked at all (for example, your employer). Discovery is unaffected |
 | `avoidRepos` | `[]` | Repos to rank lower in search without excluding them |

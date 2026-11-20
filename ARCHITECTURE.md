@@ -90,7 +90,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 23 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 25 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -149,6 +149,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `ledger-backfill` | `ledger-backfill.ts` | Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824) |
 | `eval` | `eval.ts` | Calibration and outcome report from the outcome ledger (#1825) |
 | `repo-cap` | `repo-cap.ts` | Check `owner/repo` against the per-repo open-PR cap (live open-PR count from GitHub) and `excludeRepos` |
+| `pr-preflight` | `pr-preflight.ts` | Gate before a PR is opened: upstream drift, base and head branch, working tree, competing work on the issue, repo cap. One `checks` entry per check plus a `verdict`; exits 1 on `fail`. Reads only (`--fetch` refreshes the remote-tracking ref) |
 | `overnight run` / `record` / `implement-blocked` / `report` / `push-prep` / `schedule` | `overnight.ts`, `overnight-push-prep.ts` | Overnight prepare-and-queue run: daily check, morning report, no external side effects (#1574) |
 
 ### Build

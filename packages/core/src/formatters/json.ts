@@ -828,6 +828,28 @@ export const RepoCapStatusSchema = z.object({
   reason: z.string().optional(),
 });
 
+const PrPreflightCheckSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pass', 'warn', 'fail', 'skipped']),
+  summary: z.string(),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** `pr-preflight` (#1952). A later check is one more `checks` entry, so the shape does not change. */
+export const PrPreflightOutputSchema = z.object({
+  verdict: z.enum(['pass', 'warn', 'fail']),
+  dir: z.string(),
+  repo: z.string().nullable(),
+  issueUrl: z.string().nullable(),
+  branch: z.string().nullable(),
+  remote: z.string().nullable(),
+  base: z.string().nullable(),
+  mergeBase: z.string().nullable(),
+  ahead: z.number().int().nonnegative().nullable(),
+  behind: z.number().int().nonnegative().nullable(),
+  checks: z.array(PrPreflightCheckSchema),
+});
+
 export const SearchOutputSchema = z.object({
   candidates: z.array(SearchCandidateSchema),
   excludedRepos: z.array(z.string()),

@@ -27,6 +27,7 @@
     "overnight",
     "parse-issue-list",
     "post",
+    "pr-preflight",
     "pr-template",
     "repo-cap",
     "repo-vet",
