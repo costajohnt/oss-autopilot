@@ -519,18 +519,21 @@ export interface LoadRecoveryInfo {
  * Where the file system synthesizes or reuses inode numbers (FAT/vfat, cifs
  * with noserverino, FUSE without use_ino, ext4 reusing a freed inode), or
  * reports `ino` as 0 on both sides, the check degrades to mtime + size.
+ * `ino` is the decimal string of a bigint stat: a 64-bit NTFS file ID does
+ * not fit a double, and two IDs that round to the same number would match.
  */
 export interface StateFileIdentity {
   mtimeMs: number;
-  ino: number;
+  ino: string;
   size: number;
 }
 
 /** A stat that failed. NaN never compares equal, so it always reads as "changed". */
-const UNKNOWN_FILE_IDENTITY: StateFileIdentity = { mtimeMs: NaN, ino: NaN, size: NaN };
+const UNKNOWN_FILE_IDENTITY: StateFileIdentity = { mtimeMs: NaN, ino: '', size: NaN };
 
-function identityOf(stats: fs.Stats): StateFileIdentity {
-  return { mtimeMs: stats.mtimeMs, ino: stats.ino, size: stats.size };
+function statIdentitySync(filePath: string): StateFileIdentity {
+  const stats = fs.statSync(filePath, { bigint: true });
+  return { mtimeMs: Number(stats.mtimeNs) / 1e6, ino: stats.ino.toString(), size: Number(stats.size) };
 }
 
 function isSameIdentity(a: StateFileIdentity, b: StateFileIdentity): boolean {
@@ -761,7 +764,7 @@ export function loadState(): LoadStateResult {
  */
 function statFileIdentity(filePath: string): StateFileIdentity {
   try {
-    return identityOf(fs.statSync(filePath));
+    return statIdentitySync(filePath);
   } catch (error) {
     debug(MODULE, `Could not stat state file (treating it as changed): ${errorMessage(error)}`);
     return UNKNOWN_FILE_IDENTITY;
@@ -899,7 +902,7 @@ export function reloadStateIfChanged(lastLoaded: StateFileIdentity | null): Load
   const statePath = getStatePath();
   let current: StateFileIdentity;
   try {
-    current = identityOf(fs.statSync(statePath));
+    current = statIdentitySync(statePath);
   } catch (error) {
     if (errnoCode(error) !== 'ENOENT') throw error;
     // File deleted: benign, keep the current in-memory state.

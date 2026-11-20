@@ -113,7 +113,7 @@ describe('saveState compare-and-swap uses file identity (#2006)', () => {
     // In place (same inode), mtime pinned back: only the size differs.
     fs.writeFileSync(stateFile(), serializeState(withUsername('bob-longer-name')));
     fs.utimesSync(stateFile(), seconds, seconds);
-    expect(fs.statSync(stateFile()).ino).toBe(loaded.fileId?.ino);
+    expect(fs.statSync(stateFile(), { bigint: true }).ino.toString()).toBe(loaded.fileId?.ino);
 
     expect(() => saveState(loaded.state, loaded.fileId)).toThrow(ConcurrencyError);
     expect(diskUsername()).toBe('bob-longer-name');
