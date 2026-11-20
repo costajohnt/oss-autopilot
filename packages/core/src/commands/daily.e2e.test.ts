@@ -133,14 +133,13 @@ describe.skipIf(!BUNDLE_EXISTS)('daily --json E2E', () => {
     // makes the run reach its success path instead of the CONFIGURATION error
     // envelope a fresh HOME would otherwise produce.
     let sharedJson: any;
-    let sharedDurationMs = 0;
+    let sharedStderr = '';
 
     beforeAll(async () => {
       await seedUsername();
-      const start = Date.now();
-      const { json } = await runDaily();
-      sharedDurationMs = Date.now() - start;
+      const { json, stderr } = await runDaily();
       sharedJson = json;
+      sharedStderr = stderr;
     }, EXEC_TIMEOUT_MS);
 
     it('should output valid JSON', () => {
@@ -206,11 +205,21 @@ describe.skipIf(!BUNDLE_EXISTS)('daily --json E2E', () => {
       expect(Array.isArray(sharedJson.data.failures)).toBe(true);
     });
 
-    it('should complete within the live-API time budget', () => {
-      // Ceiling raised from the old 30s to the live-API budget (#1452): a real
-      // multi-phase daily fetch with a transient backoff legitimately exceeds
-      // 30s. This guards against pathological hangs, not normal latency.
-      expect(sharedDurationMs).toBeLessThan(EXEC_TIMEOUT_MS);
+    // #1941: a batch query GitHub rejects (a renamed field, a syntax slip) is
+    // absorbed by the per-PR REST fallback, so the envelope above looks the
+    // same and only the REST budget suffers. The fallback always logs a
+    // "falling back to REST" warning on stderr (pr-graphql.ts, pr-monitor.ts);
+    // a clean run has none. A PR past a connection cap goes to REST without
+    // that warning, so this does not fire on a legitimately large PR.
+    it('should enrich PRs through the GraphQL batch, not the REST fallback', () => {
+      expect(sharedJson, 'CLI should return parseable JSON output').not.toBeNull();
+      const fallbackLines = sharedStderr.split('\n').filter((line) => line.includes('falling back to REST'));
+      expect(fallbackLines, 'the batched GraphQL query failed and daily fell back to REST').toEqual([]);
+    });
+
+    it('should report no fetch failures', () => {
+      expect(sharedJson, 'CLI should return parseable JSON output').not.toBeNull();
+      expect(sharedJson.data.failures).toEqual([]);
     });
   });
 });
