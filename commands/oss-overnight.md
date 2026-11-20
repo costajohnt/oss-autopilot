@@ -182,12 +182,18 @@ What it does, for each entry recorded with a `--worktree`:
    skipped with a reason.
 2. Refuses unless that repo is a fork (`fork: true` on the repo) that the login
    owns, so your own source repos never get `prep/*` branches.
-3. Copies the recorded branch into a temporary bare repository (`git fetch`
-   from the worktree's path) and pushes from there to the remote's URL, so
-   nothing the tick could have written in the worktree is read by the push:
-   no credential helper, hook, ssh command or URL rewrite of its making
-   (#1937). The temporary repository is removed afterwards. Only the remote
-   list is read from the worktree, to find the URL.
+3. Requires the remote it picked to name the repository GitHub says the
+   branch belongs on: the PR's head repository, or `<login>/<repo>` for an
+   issue. That repository must also be a fork of the PR's (or issue's)
+   repository. A remote that names anything else is skipped with the reason.
+   The worktree's remote list is still read, and its config can rewrite what
+   that list shows (`pushurl`, `pushInsteadOf`), so the list is only compared
+   against GitHub's answer, never pushed to. Then copies the recorded branch
+   into a temporary bare repository (`git fetch` from the worktree's path)
+   and pushes from there to `https://github.com/<owner>/<repo>.git`, built
+   from that answer. The push itself reads no config, hook, credential helper
+   or ssh command from the worktree (#1937), and goes over https whatever the
+   remote's own URL was. The temporary repository is removed afterwards.
    Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
    head branch, never `--force`, never tags; a non-fast-forward is a skip with
    a reason.
@@ -284,18 +290,22 @@ write, `gh issue view`, `gh run rerun`, `gh api`, the npm/pnpm registry writes
 (`publish`/`unpublish`/`deprecate`), the direct shell escapes inside the
 allowed programs (`npm exec`/`npm x`, `pnpm dlx`/`pnpm exec`, `node
 -e`/`--eval`/`-p`/`--print`), and `AskUserQuestion`. Since #1937 it also names
-the git option forms that run a program or inject config (`-c name=value`,
+git option forms that run a program or inject config, for example `-c name=value`,
 `--config`/`--config-env`, `--exec-path`, `--exec`/`-x`, `--upload-pack`/`clone -u`,
 `--receive-pack`, `--template`, `--ext-diff`, `--output`, the `ext::` transport,
 with the abbreviations git accepts such as `--upl` and a value attached to a
-short option such as `-x<cmd>`), push by another name (`send-pack`,
+short option such as `-x<cmd>`; push by another name (`send-pack`,
 `http-push`), `git credential`, `gh auth`, `security`, and reads of the
 credential files (`~/.config/gh`, `~/.ssh`, `~/.npmrc`, `~/.netrc`,
 `~/.git-credentials`). Those `Read(~/...)` rules are documented syntax and
 best effort: they cover the file tools and the file commands Bash recognises,
 and a subprocess can still read the files. These rules match text anywhere in
 a command, a quoted commit message included, which is why the preparer
-commits with `git commit -F <file>` and never `-m`. An option with quotes
+commits with `git commit -F <file>` and never `-m` (it Reads the message file
+first when one is left from an earlier night, since Write will not overwrite
+an unread file; `cleanup` removes the file with its worktree). The list is
+not complete: other subcommands that run a program, such as `difftool
+--extcmd` or `bisect run`, pass through the `git -C <dir>` pattern. An option with quotes
 inside it (`--up"load-pack"`), or a short option bundled behind another
 (`-qu`), is not matched.
 

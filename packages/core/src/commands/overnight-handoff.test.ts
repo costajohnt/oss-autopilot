@@ -349,4 +349,27 @@ describe('push-prep without the handoff (#1937)', () => {
     expect(run(['for-each-ref'], evilFork)).toBe('');
     expect(fs.existsSync(marker)).toBe(false);
   });
+
+  it('skips a worktree whose push URL was pointed at another repository of the login', async () => {
+    const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+    fs.mkdirSync(root, { recursive: true });
+    const { dir } = tickClone(fs.mkdtempSync(path.join(root, 'facebook-react-')));
+    run(['remote', 'add', 'origin', 'https://example.invalid/octocat/react.git'], dir);
+    run(['config', 'remote.origin.pushurl', 'https://github.com/octocat/other.git'], dir);
+    delete process.env[HANDOFF_ENV];
+    const reportPath = path.join(tmp, 'reports', 'overnight-2026-09-22.md');
+    const sm = fakeStateManager({ ...handoffRecord({ worktree: dir }), reportPath });
+    vi.mocked(getStateManager).mockReturnValue(sm as never);
+    fakeOctokit();
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    expect(out.results[0]).toMatchObject({
+      status: 'skipped',
+      reason: 'remote origin points at octocat/other, not octocat/react',
+    });
+    expect(run(['for-each-ref'], fork)).toBe('');
+    expect(fs.existsSync(marker)).toBe(false);
+  });
 });

@@ -34,8 +34,26 @@ vi.mock('../core/index.js', async () => {
     }),
     getOctokit: () => ({
       users: { getAuthenticated: async () => ({ data: { login: 'octocat' } }) },
-      repos: { get: async () => ({ data: { fork: true, owner: { login: 'octocat' }, full_name: 'octocat/widget' } }) },
-      pulls: { get: async () => ({ data: { head: { ref: 'fix-lint' } } }) },
+      repos: {
+        get: async () => ({
+          data: {
+            fork: true,
+            owner: { login: 'octocat' },
+            full_name: 'octocat/widget',
+            parent: { full_name: 'upstream-org/widget' },
+          },
+        }),
+      },
+      pulls: {
+        get: async () => ({
+          data: {
+            head: {
+              ref: 'fix-lint',
+              repo: { name: 'widget', full_name: 'octocat/widget', owner: { login: 'octocat' } },
+            },
+          },
+        }),
+      },
     }),
     requireGitHubToken: () => 'tok',
     maybeCheckpoint: async () => 'Gist checkpoint push failed after retry',

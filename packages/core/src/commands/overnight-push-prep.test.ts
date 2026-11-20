@@ -58,6 +58,9 @@ function fakeStateManager(initial: OvernightRecord | undefined, githubUsername =
   } as unknown as ReturnType<typeof getStateManager> & { setLastOvernight: ReturnType<typeof vi.fn> };
 }
 
+/** The PR's head repository as the API names it: the login's fork, which is where the push must go (#1937). */
+const HEAD_REPO = { name: 'react', full_name: 'OctoCat/react', owner: { login: 'OctoCat' } };
+
 function fakeOctokit(opts: { login?: string; fork?: boolean; head?: string; repoError?: Error } = {}) {
   const octokit = {
     users: { getAuthenticated: vi.fn().mockResolvedValue({ data: { login: opts.login ?? 'octocat' } }) },
@@ -65,10 +68,15 @@ function fakeOctokit(opts: { login?: string; fork?: boolean; head?: string; repo
       get: opts.repoError
         ? vi.fn().mockRejectedValue(opts.repoError)
         : vi.fn().mockResolvedValue({
-            data: { fork: opts.fork ?? true, owner: { login: opts.login ?? 'octocat' }, full_name: 'octocat/react' },
+            data: {
+              fork: opts.fork ?? true,
+              owner: { login: opts.login ?? 'octocat' },
+              full_name: 'octocat/react',
+              parent: { full_name: 'facebook/react' },
+            },
           }),
     },
-    pulls: { get: vi.fn().mockResolvedValue({ data: { head: { ref: opts.head ?? 'fix-lint' } } }) },
+    pulls: { get: vi.fn().mockResolvedValue({ data: { head: { ref: opts.head ?? 'fix-lint', repo: HEAD_REPO } } }) },
   };
   mockGetOctokit.mockReturnValue(octokit as never);
   return octokit;
@@ -478,6 +486,66 @@ describe('runOvernightPushPrep', () => {
     expect(pushCalls()).toEqual([]);
   });
 
+  it.each([
+    ['a pushInsteadOf or pushurl naming another repo the login owns', 'https://github.com/octocat/other.git'],
+    ['a rewrite to a repo with a similar name', 'git@github.com:octocat/react-private.git'],
+  ])('skips when the remote disagrees with the PR head repo: %s (#1937)', async (_case, pushLine) => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    // What `git remote -v` prints after the worktree's own config rewrote the push URL.
+    fakeGit(`origin\thttps://github.com/octocat/react.git (fetch)\norigin\t${pushLine} (push)\n`);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('skipped');
+    expect(out.results[0].reason).toMatch(/^remote origin points at octocat\/\S+, not OctoCat\/react$/);
+    expect(octokit.repos.get).not.toHaveBeenCalled();
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['plain http', 'https://github.com/octocat/react.git'.replace('https', 'http')],
+    ['userinfo in the URL', 'https://someone:secret@github.com/octocat/react.git'],
+    ['ssh', 'git@github.com:OctoCat/react.git'],
+  ])('pushes to the URL built from the PR head repo, never the remote string: %s (#1937)', async (_case, url) => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    fakeGit(`origin\t${url} (fetch)\norigin\t${url} (push)\n`);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('pushed');
+    expect(pushCalls()).toHaveLength(1);
+    expect(pushCalls()[0][5]).toBe('https://github.com/OctoCat/react.git');
+    expect(pushCalls()[0].join(' ')).not.toContain(url);
+    // The fork check now also requires the fork's parent to be the PR's repo.
+    expect(octokit.repos.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a fork of some other repository, and a PR whose head repo cannot be read (#1937)', async () => {
+    const prepared = [entry({ branch: 'a' }), entry({ branch: 'b', url: 'https://github.com/facebook/react/pull/43' })];
+    const sm = fakeStateManager(record(prepared));
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    octokit.repos.get.mockResolvedValue({
+      data: { fork: true, owner: { login: 'octocat' }, full_name: 'octocat/react', parent: { full_name: 'x/react' } },
+    });
+    octokit.pulls.get
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint', repo: HEAD_REPO } } })
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint', repo: null } } });
+    fakeGit(forkRemotes);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results.map((r) => r.reason)).toEqual([
+      'octocat/react is not a fork of facebook/react',
+      'could not read the head repository of https://github.com/facebook/react/pull/43',
+    ]);
+    expect(pushCalls()).toEqual([]);
+  });
+
   it('a non-fast-forward is a skip with a reason, never a retry with --force', async () => {
     mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
     fakeOctokit();
@@ -573,7 +641,7 @@ describe('runOvernightPushPrep', () => {
     const octokit = fakeOctokit();
     // entry b is the first to need a second PR-head lookup: make that one hit the limit
     octokit.pulls.get
-      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint' } } })
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint', repo: HEAD_REPO } } })
       .mockRejectedValueOnce(Object.assign(new Error('API rate limit exceeded'), { status: 403 }));
     fakeGit(forkRemotes);
 

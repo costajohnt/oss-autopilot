@@ -236,8 +236,10 @@ export function importHandoffBundle(dir: string, branch: string): PrivateRepo {
 /**
  * A worktree's branch as a private repo, for a box without the handoff
  * (#1937). The push then never runs in the worktree, whose config the tick
- * could have written (a credential helper, a pre-push hook, an SSH command,
- * a URL rewrite). `worktree` must be an absolute path.
+ * could have written (a credential helper, a pre-push hook, an SSH command).
+ * Where the push goes is the caller's business: a URL rewrite in the worktree
+ * can still change what its remote list shows. `worktree` must be an
+ * absolute path.
  */
 export function importWorktreeBranch(worktree: string, branch: string): PrivateRepo {
   return importBranch(branch, () => worktree);

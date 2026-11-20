@@ -278,6 +278,9 @@ const ADMITTED_BY_DESIGN = [
   // An alias planted in the worktree's .git/config with Write.
   'git -C /wt p origin log',
   'git -C /wt config core.hooksPath /tmp/hooks status',
+  // Any other subcommand that runs a program rides the same pattern.
+  'git -C /wt difftool --extcmd=sh status',
+  'git -C /wt bisect run /tmp/evil status',
   'git -C /wt "-c" alias.p=push p origin log',
   // Quotes inside an option, and a short option bundled behind another.
   'git -C /wt fetch --up"load-pack"=evil origin',

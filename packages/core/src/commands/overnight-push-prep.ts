@@ -8,19 +8,21 @@
  * thing in the overnight pipeline that pushes. Three gates, all enforced in
  * code rather than by convention:
  *
- * 1. The push target is resolved from the worktree's actual remotes: the one
- *    whose parsed URL owner equals the authenticated login. Remote names are
- *    never trusted.
- * 2. That repo must be a fork (`GET /repos/{owner}/{repo}` says `fork: true`),
- *    so the user's own source repos never grow `prep/*` branches.
+ * 1. The push target is the repository GitHub names: the PR's head repo, or
+ *    `<login>/<repo>` for an issue. The worktree must hold a remote whose
+ *    parsed URL names that same repo; remote names are never trusted, and
+ *    neither is the remote's URL, which the worktree's config can rewrite
+ *    (#1937). The push goes to an HTTPS URL built from GitHub's answer.
+ * 2. That repo must be a fork (`GET /repos/{owner}/{repo}` says `fork: true`)
+ *    of the PR's repo, so the user's own source repos never grow `prep/*`
+ *    branches.
  * 3. The ref is always `refs/heads/prep/<branch>` and never `--force`; a
  *    non-fast-forward is a skip with a reason.
  *
  * With `OSS_AUTOPILOT_HANDOFF_DIR` set the tick ran as another user, and the
  * branches arrive as bundles (overnight-handoff.ts). Then there is no
- * worktree to read remotes from: the target is the PR's head repo (or
- * `<login>/<repo>` for an issue), which must also be a fork of the PR's repo,
- * and the push goes out of a private repo filled from the bundle.
+ * worktree, so no remote to compare. Either way the push goes out of a
+ * private repo, filled from the bundle or from the worktree's branch.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -232,13 +234,23 @@ function isPreparerWorktree(worktree: string): boolean {
 
 /**
  * The private repo the push runs from: filled from the bundle (handoff) or
- * from the worktree's branch, never anything the tick can write. The
- * worktree's own config, hooks and URL rewrites are not read (#1937).
+ * from the worktree's branch, never anything the tick can write, so the push
+ * reads none of the worktree's config or hooks (#1937). The worktree's remote
+ * list is read before this, and its config can rewrite what that list shows;
+ * the caller only compares it with the target GitHub names.
  */
 function importBranchToPush(dropDir: string | null, entry: OvernightPrepared): { repo: string; cleanup: () => void } {
   return dropDir
     ? importHandoffBundle(dropDir, entry.branch)
     : importWorktreeBranch(fs.realpathSync(entry.worktree!), entry.branch);
+}
+
+/** Skip reason when the worktree's remote is not the repo the push must go to; null when it is. */
+function remoteMismatch(found: PushTarget, expected: RemoteOwnerRepo): string | null {
+  const [actual, wanted] = [`${found.owner}/${found.repo}`, `${expected.owner}/${expected.repo}`];
+  return actual.toLowerCase() === wanted.toLowerCase()
+    ? null
+    : `remote ${found.remote} points at ${actual}, not ${wanted}`;
 }
 
 function outsideRoot(worktree: string): string {
@@ -369,8 +381,8 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     return pending;
   }
 
-  /** Handoff mode: push to the PR's head repo, or `<login>/<repo>` for an issue; a string is a skip reason. */
-  async function handoffTarget(url: string): Promise<{ target: PushTarget; upstream: string } | string> {
+  /** Where a branch for `url` must go: the PR's head repo, or `<login>/<repo>` for an issue; a string is a skip reason. */
+  async function expectedTarget(url: string): Promise<{ target: PushTarget; upstream: string } | string> {
     const parsed = parseGitHubUrl(url);
     if (!parsed) return `${url} is not a GitHub PR or issue URL`;
     const upstream = `${parsed.owner}/${parsed.repo}`;
@@ -388,25 +400,25 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
   }
 
   async function pushOne(entry: OvernightPrepared): Promise<PushPrepResult> {
-    let target: PushTarget;
-    let upstream: string | undefined;
-    // Where the push goes: always a URL, never a remote name a repository's config would resolve.
-    let pushUrl: string;
-    if (dropDir) {
-      const resolved = await handoffTarget(entry.url);
-      if (typeof resolved === 'string') return skip(entry, resolved);
-      ({ target, upstream } = resolved);
-      pushUrl = target.remote;
-    } else {
+    // Without the handoff, the worktree must hold a remote owned by the login.
+    let found: PushTarget | undefined;
+    if (!dropDir) {
       if (!entry.worktree) return skip(entry, 'no worktree recorded');
       if (!fs.existsSync(entry.worktree)) return skip(entry, `worktree ${entry.worktree} does not exist`);
       if (!isPreparerWorktree(entry.worktree)) return skip(entry, outsideRoot(entry.worktree));
-      const remotes = parseRemotesOutput(git(entry.worktree, ['remote', '-v']));
-      const found = resolvePushRemote(remotes, login);
+      found = resolvePushRemote(parseRemotesOutput(git(entry.worktree, ['remote', '-v'])), login) ?? undefined;
       if (!found) return skip(entry, `no remote in ${entry.worktree} is owned by ${login}`);
-      target = found;
-      pushUrl = remotes.find((r) => r.name === found.remote)?.url ?? found.remote;
     }
+    // That remote's URL is the worktree's word (a `pushurl` or `pushInsteadOf`
+    // there can name any repo the login owns), so it only has to agree with
+    // the target GitHub names; the push goes to the URL built from that.
+    const expected = await expectedTarget(entry.url);
+    if (typeof expected === 'string') return skip(entry, expected, found);
+    const mismatch = found && remoteMismatch(found, expected.target);
+    if (mismatch) return skip(entry, mismatch, found);
+    const { upstream } = expected;
+    const target = found ?? expected.target;
+    const pushUrl = expected.target.remote;
 
     const notFork = await forkSkipReason(target, upstream);
     if (notFork) return skip(entry, notFork, target);
