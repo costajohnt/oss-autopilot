@@ -343,7 +343,7 @@ On "Done for now":
 - **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
 - **Never post without explicit, unambiguous user approval.**
 
-> **Other comment-posting paths also have safeguards.** The `pr-responder` agent defaults to saving drafts to a temp file (user posts manually) and only posts when explicitly requested. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
+> **Other comment-posting paths also have safeguards.** The `pr-responder` agent saves its draft in the tool's draft directory ("Draft Files" in `workflows/reference.md`) and posts it with `post --body-file ... --expect-sha256` only when the user explicitly asks; the replies drafted in `review-issue-replies.md`, `closed-pr-status-update.md`, `merged-pr-notes.md`, `dormant-pr-follow-up.md` and `review-follow-ups.md` use the same flow with the "Approval to post" rules. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
 
 **If the push was in response to maintainer feedback:**
 

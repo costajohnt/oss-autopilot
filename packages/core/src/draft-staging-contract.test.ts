@@ -119,9 +119,16 @@ describe('prompt files use no other shared temp location (#1930)', () => {
 });
 
 describe('prompt files do not hand drafts to an external skill (#2009)', () => {
+  /** The skill's name, also spelled with spaces or underscores, any case. */
+  const SKILL_NAME = /draft[\s_-]?review[\s_-]?post/gi;
+
+  it('the name pattern matches the usual spellings', () => {
+    expect('draft-review-post Draft Review Post draft_review_post draftreviewpost'.match(SKILL_NAME)).toHaveLength(4);
+  });
+
   it('no prompt file names the draft-review-post skill', () => {
     expect(
-      findInPrompts(/draft-review-post/g),
+      findInPrompts(SKILL_NAME),
       'Stage the text with `draft path` / `draft show` and post it with `--body-file` and `--expect-sha256` ' +
         '(see "Draft Files" in workflows/reference.md)',
     ).toEqual([]);

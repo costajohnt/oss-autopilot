@@ -41,7 +41,7 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
    - **Skip, don't ask again** — run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss {prUrl} --json` for each PR in the group (`dismiss` accepts PR URLs and re-stamps a PR that was dismissed before, so a skip after a newer note moves the cutoff forward). The dismiss timestamp lands after the newest note, which is exactly what the daily run checks, so the entry does not return unless a newer note lands. Move to the next entry.
    - **Defer** — leave everything as is; the entry returns next session until the user comments on the PR, dismisses it, or the PR leaves the recently-merged window. Move to the next entry.
 
-4. **Draft the reply.** One to three sentences. An acknowledgment is one specific line (what the user is glad landed, or a reply to what the maintainer said); a reply to a change names the change. Tone constraints (mirror `agents/pr-responder.md` "Avoid AI tells"): no formulaic "Thanks for the review!" opener, no restating the PR, no AI attribution (see `skills/contribution-ethics/SKILL.md`).
+4. **Draft the reply.** Apply "Before drafting a comment" (`workflows/reference.md`) for the PR's repo first: when it says hand off, draft nothing for this entry, tell the user why, and move on. One to three sentences. An acknowledgment is one specific line (what the user is glad landed, or a reply to what the maintainer said); a reply to a change names the change. Tone constraints (mirror `agents/pr-responder.md` "Avoid AI tells"): no formulaic "Thanks for the review!" opener, no restating the PR, no AI attribution (see `skills/contribution-ethics/SKILL.md`).
 
 5. **Stage the draft and post only after approval** (the flow in "Draft Files", `workflows/reference.md`; never under `/tmp`, never as a shell argument):
    1. Get a draft path (`<unix-ts>` from `date +%s`) and save the comment to the printed path **with the Write tool** (use the path literally and quoted):
@@ -52,8 +52,8 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
       ```bash
       node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
       ```
-      Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval of that exact text. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
-   3. Only after the user explicitly approves, post it:
+      Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/reference.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+   3. Only on a "Post this comment" answer that passes those rules, post it:
       ```bash
       GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {prUrl} --body-file "<draft-path>" --expect-sha256 <sha256> --json
       ```
@@ -72,4 +72,4 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
 
 **Error handling:** If a `gh` read fails, show the error and offer to skip the entry. If `dismiss` returns `{ success: false }`, show the `error` field; the entry will simply come back next session. If `post` returns `{ success: false }`, show the `error` field and keep the draft; a hash mismatch means the file changed since the user saw it, so go back to `draft show`. Once the comment is posted, the entry drops out of the next daily run on its own.
 
-**Return:** Core router (`commands/oss.md`) — **After Each Action** section (Tier 2: a comment was drafted; no Tier 1 actions were taken).
+**Return:** Core router (`commands/oss.md`) — **After Each Action** section (Tier 2: a comment was drafted or posted; no Tier 1 actions were taken).

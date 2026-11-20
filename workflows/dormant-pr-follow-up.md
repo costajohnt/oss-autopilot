@@ -68,6 +68,8 @@ If the user picks **"Draft a follow-up for one"**, ask which PR (text response w
 
 ## 4. Draft the Follow-Up
 
+Apply "Before drafting a comment" (`workflows/reference.md`) for the PR's repo first: when it says hand off, draft nothing for this PR, tell the user why, and move on.
+
 Select the tier-specific template based on the PR's bucket and paraphrase — don't post the exact template text verbatim, since maintainers notice formulaic openings.
 
 | Tier | Tone | Starting point |
@@ -77,7 +79,7 @@ Select the tier-specific template based on the PR's bucket and paraphrase — do
 | 30+ days | Final check | "Totally understand if priorities shifted. Let me know if this is still on the table or if I should close it out." |
 | Close candidate | Close with offer to reopen | "Closing this to keep your queue tidy since it hasn't been picked up. Happy to reopen and rebase if it's still wanted." |
 
-For a close candidate, offer the close-with-offer-to-reopen draft by default instead of another ping. The draft is a comment only: the user closes the PR themselves (`gh pr close <url>`) after posting. Never close the PR on their behalf.
+For a close candidate, offer the close-with-offer-to-reopen draft by default instead of another ping. The draft is a comment only: the plugin posts it after approval, and the user closes the PR themselves with a plain `gh pr close <url>` once it is posted. Do not use `gh pr close --comment`: it takes the text as a string, so the approved file and its hash pin are skipped. Never close the PR on their behalf.
 
 **Every draft MUST:**
 - Be short (1–2 sentences).
@@ -98,13 +100,13 @@ Follow "Draft Files" in `workflows/reference.md` (never under `/tmp`, never as a
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
    ```
-   Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval of that exact text. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
-3. Only after the user explicitly approves, post it:
+   Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/reference.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. For a close candidate, say in the same message, before asking: "Posting does not close the PR; after it posts, close it yourself with `gh pr close <url>`." After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+3. Only on a "Post this comment" answer that passes those rules, post it:
    ```bash
    GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {url} --body-file "<draft-path>" --expect-sha256 <sha256> --json
    ```
    If it returns `{ success: false }`, show the `error` field and keep the draft; a hash mismatch means the file changed since the user saw it, so go back to step 2.
-4. On `success: true`, delete the draft (`rm -- "<draft-path>"`). Delete it too when the user decides not to post. For a close candidate, remind the user that closing the PR is theirs to do (`gh pr close <url>`).
+4. On `success: true`, delete the draft (`rm -- "<draft-path>"`). Delete it too when the user decides not to post. For a close candidate, repeat the `gh pr close <url>` command for the user to run.
 
 Return to the router.
 

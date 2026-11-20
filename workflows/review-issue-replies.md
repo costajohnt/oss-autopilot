@@ -57,7 +57,7 @@ For each issue, use AskUserQuestion to offer actions:
 When the user picks "Reply with a question":
 
 1. **Surface context first.** Re-display the user's original comment and the maintainer's reply (the `userLastCommentBody` / `lastResponseBody` already shown above) so the user has both visible while composing the question.
-2. **Prompt for the question text.** Use a free-form input ("What do you want to ask?"). Keep it short — clarifying questions are typically 1–2 sentences. Discourage rehashing the original comment; the maintainer can scroll up.
+2. **Prompt for the question text.** Apply "Before drafting a comment" (`workflows/reference.md`) for the issue's repo first: when it says hand off, draft nothing for this issue, tell the user why, and move on. Otherwise use a free-form input ("What do you want to ask?"). Keep it short — clarifying questions are typically 1–2 sentences. Discourage rehashing the original comment; the maintainer can scroll up.
 3. **Stage the draft and post only after approval** (the flow in "Draft Files", `workflows/reference.md`; never under `/tmp`, never as a shell argument):
    1. Get a draft path (`<unix-ts>` from `date +%s`) and save the question to the printed path **with the Write tool** (use the path literally and quoted):
       ```bash
@@ -67,8 +67,8 @@ When the user picks "Reply with a question":
       ```bash
       node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
       ```
-      Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval of that exact text. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
-   3. Only after the user explicitly approves, post it:
+      Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/reference.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+   3. Only on a "Post this comment" answer that passes those rules, post it:
       ```bash
       GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {issue.url} --body-file "<draft-path>" --expect-sha256 <sha256> --json
       ```
@@ -83,6 +83,6 @@ When the user picks "Reply with a question":
 - No restating what the maintainer already said.
 - No AI attribution.
 
-**Error handling:** If any CLI command (`dismiss`) returns `{ success: false }`, show the `error` field to the user and skip the remaining steps for that issue. Offer to retry or skip to the next issue.
+**Error handling:** If any CLI command (`dismiss`, `post`) returns `{ success: false }`, show the `error` field to the user and skip the remaining steps for that issue (keep a draft that failed to post; a hash mismatch means it changed since the user saw it, so go back to `draft show`). Offer to retry or skip to the next issue.
 
 **Return:** Core router (`commands/oss.md`) — **After Each Action** section (which will return to Action Menu since no Tier 1/2 actions were taken).
