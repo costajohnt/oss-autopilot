@@ -149,7 +149,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `ledger-backfill` | `ledger-backfill.ts` | Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824) |
 | `eval` | `eval.ts` | Calibration and outcome report from the outcome ledger (#1825) |
 | `repo-cap` | `repo-cap.ts` | Check `owner/repo` against the per-repo open-PR cap (live open-PR count from GitHub) and `excludeRepos` |
-| `pr-preflight` | `pr-preflight.ts` | Gate before a PR is opened: upstream drift, base and head branch, working tree, competing work on the issue, repo cap. One `checks` entry per check plus a `verdict`; exits 1 on `fail`. Reads only (`--fetch` refreshes the remote-tracking ref) |
+| `pr-preflight` | `pr-preflight.ts` | Gate before a PR is opened: upstream drift, base and head branch, working tree, competing work on the issue, repo cap. One `checks` entry per check plus a `verdict`; exits 1 on `fail`. Reads only (`--fetch` refreshes the remote-tracking ref; `--local` makes no GitHub call) |
 | `overnight run` / `record` / `implement-blocked` / `report` / `push-prep` / `schedule` | `overnight.ts`, `overnight-push-prep.ts` | Overnight prepare-and-queue run: daily check, morning report, no external side effects (#1574) |
 
 ### Build

@@ -10,6 +10,7 @@
 
 import type { IssueAvailabilityVerdict, IssueVerification } from './issue-verification.js';
 import type { RepoCapStatus } from './repo-cap.js';
+import { wrapUntrustedContent } from './untrusted-content.js';
 import { isOwnRepo, splitRepo } from './urls.js';
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -20,7 +21,7 @@ export interface PreflightCheck {
   status: PreflightStatus;
   /** One line a user can read. */
   summary: string;
-  /** The facts behind the status. Commit subjects in it are untrusted text. */
+  /** The facts behind the status. Commit subjects in it arrive inside a `<github-content>` fence. */
   details?: Record<string, unknown>;
 }
 
@@ -64,8 +65,12 @@ export interface PreflightFacts {
   /** Remote whose URL owner is `login`. */
   pushRemote: string | null;
   issueUrl: string | null;
-  /** Why GitHub was not consulted; null when it was. */
+  /** Why GitHub was not consulted at all (`--local`, no token, no GitHub remote); null when it was. */
   networkSkip: string | null;
+  /** Why one GitHub read failed; that check degrades and the others still run. */
+  githubError: string | null;
+  issueError: string | null;
+  capError: string | null;
   github: PreflightGitHubFacts | null;
   issue: IssueVerification | null;
   cap: RepoCapStatus | null;
@@ -81,6 +86,12 @@ function check(
   details?: Record<string, unknown>,
 ): PreflightCheck {
   return details ? { id, status, summary, details } : { id, status, summary };
+}
+
+/** Why a network check has nothing to judge: GitHub was not consulted, or the read failed. */
+function skipReason(facts: PreflightFacts, error: string | null, fallback: string): string {
+  if (facts.networkSkip !== null) return facts.networkSkip;
+  return error === null ? fallback : `GitHub request failed: ${error}`;
 }
 
 function driftSummary(facts: PreflightFacts, ref: string, behind: number): Pick<PreflightCheck, 'status' | 'summary'> {
@@ -105,30 +116,53 @@ function driftSummary(facts: PreflightFacts, ref: string, behind: number): Pick<
   }
   const unverified = facts.github
     ? ''
-    : ` (freshness of ${ref} not verified: ${facts.networkSkip ?? 'no GitHub data'})`;
+    : ` (freshness of ${ref} not verified: ${skipReason(facts, facts.githubError, 'no GitHub data')})`;
   const position =
     behind === 0 ? `up to date with ${ref}` : `${behind} commit(s) behind ${ref}, none touching this branch's files`;
   return { status: 'pass', summary: position + unverified };
 }
 
-/** Commits on the upstream target branch that this branch does not have. Never fetches: a stale ref is reported. */
+/** The measurements, or undefined when the ref is not fetched. Commit subjects are third-party text, so they are fenced. */
+function driftDetails(facts: PreflightFacts, ref: string): Record<string, unknown> | undefined {
+  if (facts.remoteRefSha === null || facts.behind === null) return undefined;
+  const subjects = facts.overlappingCommits;
+  const measured = { ref, behind: facts.behind, ahead: facts.ahead, mergeBase: facts.mergeBase };
+  if (subjects.length === 0) return { ...measured, overlapCount: 0 };
+  return {
+    ...measured,
+    overlapCount: subjects.length,
+    overlappingCommits: wrapUntrustedContent(subjects.join('\n'), 'commit-subjects'),
+  };
+}
+
+/**
+ * Commits on the upstream target branch that this branch does not have. Never fetches: a stale ref is reported.
+ * The local ref is compared with GitHub only when its remote points at the upstream repository; in a
+ * fork-only clone the two are different branches, and "stale, fetch again" would never clear.
+ */
 export function checkDrift(facts: PreflightFacts): PreflightCheck {
   const id = 'upstream-drift';
   if (!facts.remote) return check(id, 'warn', 'no git remote to compare against');
   if (!facts.base) return check(id, 'warn', 'could not determine the default branch; pass --base <branch>');
   const ref = `${facts.remote}/${facts.base}`;
-  if (facts.remoteRefSha === null || facts.behind === null) {
+  const details = driftDetails(facts, ref);
+  if (facts.repo !== null && !isSameRepo(facts.remoteRepo, facts.repo)) {
+    const measured = details
+      ? `drift was measured against ${ref} instead (${facts.behind} behind)`
+      : 'drift was not measured';
+    return check(
+      id,
+      'warn',
+      `no remote points at ${facts.repo}, so ${measured}; add a remote for ${facts.repo}`,
+      details,
+    );
+  }
+  if (!details || facts.behind === null) {
     const why = facts.fetchError === null ? '' : ` (git fetch failed: ${facts.fetchError})`;
     return check(id, 'warn', `${ref} is not fetched locally${why}; run again with --fetch`);
   }
   const { status, summary } = driftSummary(facts, ref, facts.behind);
-  return check(id, status, summary, {
-    ref,
-    behind: facts.behind,
-    ahead: facts.ahead,
-    mergeBase: facts.mergeBase,
-    overlappingCommits: facts.overlappingCommits,
-  });
+  return check(id, status, summary, details);
 }
 
 function isSameRepo(a: string | null, b: string | null): boolean {
@@ -150,15 +184,12 @@ function baseTargetProblem(repo: string, base: string, github: PreflightGitHubFa
   };
 }
 
-/** The clone does not line up with the upstream repository: wrong repository, wrong remote, renamed default branch. */
+/** The clone does not line up with the upstream repository: wrong repository, renamed default branch. */
 function baseCloneProblem(facts: PreflightFacts, repo: string, github: PreflightGitHubFacts): string | null {
   if (github.parent && !facts.issueUrl) {
     return `${repo} is a fork of ${github.parent}; add a remote for the parent or pass the issue URL so the checks run against it`;
   }
   const remote = facts.remote ?? '(none)';
-  if (!isSameRepo(facts.remoteRepo, repo)) {
-    return `remote ${remote} does not point at ${repo}, so drift was not measured against it; add a remote for ${repo}`;
-  }
   if (facts.localDefault !== null && facts.localDefault !== github.defaultBranch) {
     return `${repo} now defaults to ${github.defaultBranch} but the clone records ${facts.localDefault}; run git remote set-head ${remote} -a`;
   }
@@ -171,7 +202,7 @@ export function checkBaseBranch(facts: PreflightFacts): PreflightCheck {
   const { github, repo, base } = facts;
   if (!github || !repo || !base) {
     const guess = base ? `; local guess: ${base}` : '';
-    return check(id, 'skipped', `${facts.networkSkip ?? 'no upstream repository'}${guess}`);
+    return check(id, 'skipped', skipReason(facts, facts.githubError, 'no upstream repository') + guess);
   }
   const details = { repo, base, defaultBranch: github.defaultBranch };
   const target = baseTargetProblem(repo, base, github);
@@ -186,9 +217,11 @@ export function checkHeadBranch(facts: PreflightFacts): PreflightCheck {
   const id = 'head-branch';
   const { branch, repo, login } = facts;
   if (branch === null) return check(id, 'fail', 'detached HEAD: check out a feature branch before opening a PR');
-  const defaultBranch = facts.github?.defaultBranch ?? facts.localDefault;
-  if ([facts.base, defaultBranch].includes(branch)) {
+  if (branch === facts.base) {
     return check(id, 'fail', `on ${branch}, the branch the PR would target; create a feature branch`);
+  }
+  if (branch === (facts.github?.defaultBranch ?? facts.localDefault)) {
+    return check(id, 'warn', `on ${branch}, the default branch; a PR is normally opened from a feature branch`);
   }
   if (!login) {
     return check(id, 'warn', 'githubUsername is not configured, so no fork remote could be confirmed; run setup');
@@ -223,6 +256,10 @@ export function checkCompetingWork(facts: PreflightFacts): PreflightCheck {
   const id = 'competing-work';
   if (!facts.issueUrl) return check(id, 'skipped', 'no issue given');
   const { issue } = facts;
+  if (!issue && facts.issueError !== null) {
+    // The duplicate-PR guard did not run: a warn, so nobody pushes on a skipped check.
+    return check(id, 'warn', `could not verify the issue (${facts.issueError}); check it for competing work by hand`);
+  }
   if (!issue) return check(id, 'skipped', facts.networkSkip ?? 'the issue was not verified');
   const openPRs = issue.linkedPRs
     .filter((pr) => pr.state === 'open')
@@ -237,11 +274,16 @@ export function checkCompetingWork(facts: PreflightFacts): PreflightCheck {
   });
 }
 
-/** The user's own open-PR cap and `excludeRepos`, as `repo-cap` reports them. */
+function capSkipReason(facts: PreflightFacts): string {
+  if (!facts.issueUrl) return 'no issue given (the cap gates a new PR)';
+  return skipReason(facts, facts.capError, 'githubUsername is not configured; run setup');
+}
+
+/** The user's own open-PR cap and `excludeRepos`, as `repo-cap` reports them. Runs only for an issue: it gates a new PR. */
 export function checkRepoCap(facts: PreflightFacts): PreflightCheck {
   const id = 'repo-cap';
   const { cap } = facts;
-  if (!cap) return check(id, 'skipped', facts.networkSkip ?? 'githubUsername is not configured; run setup');
+  if (!cap) return check(id, 'skipped', capSkipReason(facts));
   const details = { ...cap };
   if (cap.reason) return check(id, 'warn', cap.reason, details);
   const limit = cap.cap > 0 ? `of ${cap.cap} allowed` : '(no cap set)';

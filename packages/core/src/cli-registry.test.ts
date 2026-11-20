@@ -2309,6 +2309,7 @@ describe('pr-preflight command (#1952)', () => {
       dir: undefined,
       base: undefined,
       fetch: false,
+      local: false,
     });
     expect(mockPrintPrPreflight).toHaveBeenCalledWith(data);
     expect(mockOutputJsonValidated).not.toHaveBeenCalled();
@@ -2332,10 +2333,24 @@ describe('pr-preflight command (#1952)', () => {
       '--json',
     ]);
 
-    expect(mockRunPrPreflight).toHaveBeenCalledWith({ issue, dir: '/work/wt', base: 'develop', fetch: true });
+    expect(mockRunPrPreflight).toHaveBeenCalledWith({
+      issue,
+      dir: '/work/wt',
+      base: 'develop',
+      fetch: true,
+      local: false,
+    });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, data);
     expect(mockPrintPrPreflight).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--local is passed through', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--local']);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith(expect.objectContaining({ local: true, fetch: false }));
   });
 
   it('exits non-zero on a fail verdict and still emits the output', async () => {

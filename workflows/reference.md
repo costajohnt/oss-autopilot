@@ -163,8 +163,9 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # Gate before a PR is opened, run in the clone or worktree (or with --dir): upstream drift, base and
 # head branch, working tree, competing work on the issue, repo cap. The verdict is pass | warn | fail
 # (exit 1 on fail); each checks[] entry has id, status (pass | warn | fail | skipped), summary, details.
-# Reads only; --fetch refreshes <remote>/<base> first. No token: network checks come back skipped.
-<prefix> pr-preflight [issue-url-or-number] [--dir <path>] [--base <branch>] [--fetch] --json
+# Reads only; --fetch refreshes <remote>/<base> first. No token, or --local: network checks come back
+# skipped. Exit 1 with success: true is a fail verdict; success: false means the gate did not run.
+<prefix> pr-preflight [issue-url-or-number] [--dir <path>] [--base <branch>] [--fetch] [--local] --json
 
 # Compute the fresh repo health rubric (1–10 rubricScore + verdict) for owner/repo;
 # includes the cached historyScore when one exists (#1271, #1465 — docs/repo-scores.md)
@@ -250,6 +251,7 @@ rejected with a did-you-mean suggestion.
 | `--base <branch>` | `pr-preflight` | Branch the PR will target (default: the upstream default branch). |
 | `--fetch` | `pr-preflight` | Fetch the upstream target branch before measuring drift; without it a stale ref is reported, not refreshed. |
 | `--dir <path>` | `pr-preflight` | Clone or worktree to check (default: the current directory). |
+| `--local` | `pr-preflight` | Make no GitHub call: local checks and numbers (`ahead`, `behind`, `mergeBase`) only. |
 | `--reset` | `setup` | Re-run the setup wizard even if already complete. |
 | `--set key=value` | `setup` | Apply settings non-interactively. Repeatable. Unknown keys are rejected with a did-you-mean suggestion. |
 | `--list-keys` | `config` | Dump every known config key with descriptions (alternative to `--json`). |

@@ -102,10 +102,10 @@ Once the clone is located:
 cd /path/to/repo
 git checkout <pr-branch>
 git remote add upstream https://github.com/<upstream-owner>/<repo>.git 2>/dev/null
-node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-preflight --fetch --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-preflight --local --fetch --base <main-branch> --json
 ```
 
-Read `data.behind`: the number of commits the branch is behind `data.remote`/`data.base` after a fetch (`null` means the ref could not be fetched; the `upstream-drift` entry's `summary` says why). Ignore the other `data.checks` entries here: they gate a new PR, and `repo-cap` counts this PR itself.
+`--local` makes no GitHub call and `<main-branch>` is the PR's base branch. Read `data.behind`: the number of commits the branch is behind `data.remote`/`data.base` after a fetch (`null` means the ref could not be fetched; the `upstream-drift` entry's `summary` says why). Ignore the other `data.checks` entries and the exit code here: they gate a new PR. `success: false` means the command did not run; report the error instead of a count.
 
 If behind, check review state first via `gh pr view NUMBER --repo OWNER/REPO --json reviewDecision,reviews`:
 

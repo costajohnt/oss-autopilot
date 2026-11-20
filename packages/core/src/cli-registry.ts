@@ -29,6 +29,7 @@ interface PrPreflightCliOptions {
   dir?: string;
   base?: string;
   fetch?: boolean;
+  local?: boolean;
 }
 
 interface CLICommandDef {
@@ -1812,6 +1813,7 @@ export const commands: CLICommandDef[] = [
         .option('--dir <path>', 'Local clone or worktree to check (default: current directory)')
         .option('--base <branch>', 'Branch the PR will target (default: the upstream default branch)')
         .option('--fetch', 'Fetch the upstream target branch first instead of reporting a stale ref')
+        .option('--local', 'Skip every GitHub read: local checks and numbers only')
         .option('--json', 'Output as JSON')
         .action(async (issue: string | undefined, options: PrPreflightCliOptions) => {
           const { PrPreflightOutputSchema } = await import('./formatters/json.js');
@@ -1822,6 +1824,7 @@ export const commands: CLICommandDef[] = [
               dir: options.dir,
               base: options.base,
               fetch: options.fetch === true,
+              local: options.local === true,
             });
             // A caller that only sees the exit code still stops on a failed gate; the output prints in full.
             if (data.verdict === 'fail') process.exitCode = 1;

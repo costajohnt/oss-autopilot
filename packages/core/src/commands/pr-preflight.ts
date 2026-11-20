@@ -5,8 +5,9 @@
  * upstream drift, base branch, head branch, working tree, competing work on
  * the issue, and the per-repo open-PR cap.
  *
- * It only reads, so it runs in unattended mode. Without a GitHub token the
- * local checks still run and the network checks come back `skipped`. The one
+ * It only reads, so it runs in unattended mode. Without a GitHub token, or
+ * with `--local`, the local checks still run and the network checks come back
+ * `skipped`; a GitHub read that fails degrades its own check only. The one
  * thing it can change is remote-tracking refs, and only when `--fetch` is
  * passed; without it a stale `<remote>/<base>` is reported, not refreshed.
  */
@@ -21,6 +22,7 @@ import {
   getStateManager,
   parseGitHubUrl,
   splitRepo,
+  type IssueVerification,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import {
@@ -31,6 +33,7 @@ import {
   type PreflightVerdict,
 } from '../core/pr-preflight.js';
 import { git, parseRemoteOwner, parseRemotesOutput, resolvePushRemote, type GitRemote } from './overnight-push-prep.js';
+import type { RepoCapStatus } from '../core/repo-cap.js';
 import { runRepoCap } from './repo-cap.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
@@ -43,6 +46,8 @@ export interface PrPreflightOptions {
   base?: string;
   /** Run `git fetch <remote> <base>` before measuring drift. */
   fetch: boolean;
+  /** Skip every GitHub read; for callers that only want the local numbers. */
+  local: boolean;
 }
 
 export interface PrPreflightOutput {
@@ -138,28 +143,59 @@ async function fetchGitHubFacts(
 }
 
 type TargetFacts = Pick<PreflightFacts, 'repo' | 'remote' | 'remoteRepo' | 'issueUrl'>;
-type NetworkFacts = Pick<PreflightFacts, 'networkSkip' | 'github' | 'issue' | 'cap'>;
+type NetworkFacts = Pick<
+  PreflightFacts,
+  'networkSkip' | 'github' | 'issue' | 'cap' | 'githubError' | 'issueError' | 'capError'
+>;
 
 function offline(networkSkip: string): NetworkFacts {
-  return { networkSkip, github: null, issue: null, cap: null };
+  return { networkSkip, github: null, issue: null, cap: null, githubError: null, issueError: null, capError: null };
+}
+
+interface Attempt<T> {
+  value: T | null;
+  error: string | null;
+}
+
+const NOT_RUN = { value: null, error: null };
+
+/** One GitHub read. A failure is recorded for its check; bad input (an issue that does not exist) still throws. */
+async function attempt<T>(read: () => Promise<T>): Promise<Attempt<T>> {
+  try {
+    return { value: await read(), error: null };
+  } catch (err) {
+    if (err instanceof ValidationError) throw err;
+    return { value: null, error: errorMessage(err).split('\n', 1)[0] };
+  }
 }
 
 async function gatherNetworkFacts(
   target: TargetFacts,
-  base: string | undefined,
+  options: PrPreflightOptions,
   login: string | null,
 ): Promise<NetworkFacts> {
   const { repo, issueUrl } = target;
+  if (options.local) return offline('local mode (--local)');
   if (!repo) return offline('no remote points at a GitHub repository');
   const token = await getGitHubTokenAsync();
   if (!token) return offline('no GitHub token (run gh auth login or set GITHUB_TOKEN)');
   const octokit = getOctokit(token);
-  const github = await fetchGitHubFacts(octokit, repo, base);
   const parsed = issueUrl ? parseGitHubUrl(issueUrl) : null;
-  const issue = parsed ? await fetchIssueVerification(octokit, parsed) : null;
-  // `repo-cap` needs the username for its search; without one the check is skipped, not the whole gate.
-  const cap = login ? await runRepoCap({ repo }) : null;
-  return { github, issue, cap, networkSkip: null };
+  const github = await attempt(() => fetchGitHubFacts(octokit, repo, options.base));
+  const issue: Attempt<IssueVerification> = parsed
+    ? await attempt(() => fetchIssueVerification(octokit, parsed))
+    : NOT_RUN;
+  // The cap gates a new PR, so it runs only for an issue; its search needs the username.
+  const cap: Attempt<RepoCapStatus> = parsed && login ? await attempt(() => runRepoCap({ repo })) : NOT_RUN;
+  return {
+    networkSkip: null,
+    github: github.value,
+    githubError: github.error,
+    issue: issue.value,
+    issueError: issue.error,
+    cap: cap.value,
+    capError: cap.error,
+  };
 }
 
 /** `git log --oneline` lines for commits in `mergeBase..upstream` touching files changed in `mergeBase..HEAD`. */
@@ -214,10 +250,18 @@ function gatherDriftFacts(dir: string, remote: string | null, base: string | nul
   };
 }
 
+/**
+ * The default branch the clone records for the remote. A remote added by hand has no `HEAD`, so
+ * `origin`'s is the fallback: a fork almost always keeps its parent's default branch name.
+ */
 function localDefaultBranch(dir: string, remote: string | null): string | null {
   if (!remote) return null;
-  const head = tryGit(dir, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`]);
-  return head ? head.slice(remote.length + 1) : null;
+  const names = new Set([remote, 'origin']);
+  for (const name of names) {
+    const head = tryGit(dir, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${name}/HEAD`]);
+    if (head) return head.slice(name.length + 1);
+  }
+  return null;
 }
 
 function repoRoot(dir: string): string {
@@ -257,7 +301,7 @@ export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPre
   const remotes = parseRemotesOutput(git(dir, ['remote', '-v']));
   const target = resolveTarget(remotes, options.issue);
   const login = getStateManager().getState().config.githubUsername || null;
-  const network = await gatherNetworkFacts(target, options.base, login);
+  const network = await gatherNetworkFacts(target, options, login);
   const localDefault = localDefaultBranch(dir, target.remote);
   const base = options.base ?? network.github?.defaultBranch ?? localDefault;
   const facts: PreflightFacts = {
