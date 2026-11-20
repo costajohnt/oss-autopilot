@@ -47,7 +47,7 @@ All data lives under `~/.oss-autopilot/`.
 ### Network Security
 
 - **HTTPS only.** API calls go to `api.github.com` over HTTPS. One other GitHub host is used: with Gist sync on, a state file too large for the Gist API to return inline is read from its `raw_url`, and the request is refused unless that URL is HTTPS on `gist.githubusercontent.com`.
-- **No third-party services contacted, apart from the npm registry.** The CLI communicates exclusively with GitHub. The plugin's build check (`scripts/build-cli-if-stale.sh`) installs dependencies from the npm registry when it builds, and at most once a day runs `npm view` to see whether a newer `@oss-scout/core` is published.
+- **No third-party services contacted, apart from the npm registry.** The CLI communicates exclusively with GitHub. A marketplace install of the plugin ships the CLI prebuilt and installs nothing on first run. In a source checkout, the plugin's build check (`scripts/build-cli-if-stale.sh`) installs dependencies from the npm registry when it builds, only at the versions pinned in `pnpm-lock.yaml` (`pnpm install --frozen-lockfile --ignore-scripts`), and fails instead of installing when pnpm or the lockfile is missing. The plugin's MCP server is started with `npx` at a pinned version, which downloads that package and its dependencies from the npm registry.
 - **Rate limit handling.** The Octokit client uses `@octokit/plugin-throttling` to respect API rate limits rather than hammering endpoints on failure.
 
 ### Plugin Security

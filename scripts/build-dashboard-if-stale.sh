@@ -98,10 +98,10 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 2
 fi
 
-remediation="cd ${PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build"
+remediation="cd ${PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build"
 if (
   cd "${PLUGIN_ROOT}" &&
-    pnpm install --silent &&
+    pnpm install --silent --frozen-lockfile --ignore-scripts &&
     pnpm --silent --filter @oss-autopilot/core run build &&
     pnpm --silent --filter @oss-autopilot/dashboard run build
 ) >&2; then

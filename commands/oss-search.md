@@ -38,7 +38,7 @@ Route based on choice:
 
 ### Pre-Search: Ensure the CLI bundle is current
 
-The plugin ships **no** prebuilt bundle (`packages/*/dist/` is gitignored), so a stale or missing `cli.bundle.cjs` from a previous version can persist in the plugin cache after an update. `/oss` rebuilds on startup, but this command runs the bundle directly — so rebuild it here first, or a freshly-updated plugin would run old code (e.g. the pre-1-10 grade or pre-skip-list-fix behavior). Run the canonical helper before any bundle invocation:
+Marketplace installs ship `cli.bundle.cjs` prebuilt and the helper below is a no-op there. In a source checkout (`claude --plugin-dir .`) the bundle is gitignored and can be stale or missing, and this command runs the bundle directly, so run the canonical helper before any bundle invocation:
 
 ```bash
 CLI_BUILD_RC=0
@@ -48,7 +48,7 @@ if [ "$CLI_BUILD_RC" = "2" ]; then
 fi
 ```
 
-If the output contains `CLI_BUILD_FAILED` (helper exit code 2), the bundle is stale and could not be rebuilt — **stop**, show the build error, and suggest `cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install && npm run bundle`. Do NOT run the search against a stale bundle. Exit codes 0 (current) and 1 (rebuilt) are both fine — proceed.
+If the output contains `CLI_BUILD_FAILED` (helper exit code 2), the bundle is missing or stale and could not be rebuilt — **stop** and show the build error, whose `BUILD_FAILED:` line states the fix (reinstall the plugin for a marketplace install; `cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle` for a source checkout). Do NOT run the search against a stale bundle. Exit codes 0 (current) and 1 (rebuilt) are both fine — proceed.
 
 ### Dispatch Scout Search
 

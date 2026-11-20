@@ -46,8 +46,9 @@ After the bash call completes, jump straight to displaying the brief summary and
 Run **everything** in a single bash call. The CLI's `startup` command handles auth, setup, daily fetch, interactive dashboard launch, version detection, and issue list detection internally. The output is a single JSON envelope.
 
 ```bash
-# Rebuild CLI bundle if stale (#1292). Helper checks src/, package.json, and
-# tsconfig.json against dist/cli.bundle.cjs and exits 0/1/2/3.
+# Ensure the CLI bundle is current (#1292). Marketplace installs ship it
+# prebuilt (exit 0, nothing installed). A source checkout rebuilds a stale
+# bundle from pnpm-lock.yaml only (#1935). Exits 0/1/2/3.
 CLI_HELPER_RC=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-startup-cli-build.log 2>&1 || CLI_HELPER_RC=$?
 if [ "$CLI_HELPER_RC" = "2" ]; then
@@ -119,7 +120,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 ```
 Warning: Dashboard build {failed|requires pnpm} — `/oss-dashboard` may show stale data until rebuilt.
   {data.dashboardBuildErrorTail}
-  Rebuild: cd ${CLAUDE_PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/dashboard run build
+  Rebuild: cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build
 ```
 
 Skip the warning when `data.dashboardBuildStatus` is `'fresh'`, `'rebuilt'`, or absent (CLI invoked outside the plugin workflow).
@@ -130,9 +131,9 @@ Skip the warning when `data.dashboardBuildStatus` is `'fresh'`, `'rebuilt'`, or 
 
 Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
 
-- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`. Common causes: missing Node.js 22+, stale `node_modules` (delete and reinstall), npm permission issues.
+- **Build failure** (BUILD_FAILED sentinel): the `BUILD_FAILED:` line states the fix. Marketplace install with a missing prebuilt bundle: reinstall the plugin. Source checkout: install pnpm, then `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle`. Never suggest an install that ignores the lockfile.
 - **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
 - **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 22+).
-- **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `/tmp/oss-dashboard-build.log` for build errors. Rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT}/packages/dashboard && npm install && npm run build`.
+- **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `/tmp/oss-dashboard-build.log` for build errors. Marketplace installs ship the dashboard prebuilt next to the CLI bundle. In a source checkout, rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build`.
 
 **Return:** Core router (`commands/oss.md`) — **Summary** section with the parsed startup data.

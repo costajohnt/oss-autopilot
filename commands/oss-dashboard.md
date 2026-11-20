@@ -21,23 +21,15 @@ Then run everything in a single bash call:
 ```bash
 CLI_BUNDLE="${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
 
-# Rebuild CLI if needed
-if [ ! -f "${CLI_BUNDLE}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/core/src" "${CLAUDE_PLUGIN_ROOT}/packages/core/package.json" "${CLAUDE_PLUGIN_ROOT}/packages/core/tsconfig.json" -newer "${CLI_BUNDLE}" -print -quit 2>/dev/null)" ]; then
-  if ! BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install --silent 2>&1 && npm run bundle --silent 2>&1); then
-    echo '{"error":"CLI build failed","details":"'"$(echo "$BUILD_LOG" | tail -5 | tr '\n' ' ')"'"}'; exit 1
-  fi
+# Marketplace installs ship the CLI and dashboard prebuilt, so both helpers
+# are no-ops there. In a source checkout they rebuild stale output from
+# pnpm-lock.yaml only (frozen install, #1935).
+CLI_HELPER_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-dashboard-cli-build.log 2>&1 || CLI_HELPER_RC=$?
+if [ "$CLI_HELPER_RC" = "2" ]; then
+  echo '{"error":"CLI build failed","details":"'"$(tail -5 /tmp/oss-dashboard-cli-build.log | tr '\n' ' ')"'"}'; exit 1
 fi
-
-# Build dashboard SPA if missing or stale
-DASHBOARD_INDEX="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/dist/index.html"
-DASHBOARD_PKG="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/package.json"
-if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
-  if command -v pnpm &>/dev/null; then
-    (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent && pnpm --silent --filter @oss-autopilot/core run build && pnpm --silent --filter @oss-autopilot/dashboard run build) >/tmp/oss-dashboard-build.log 2>&1 || true
-  else
-    (cd "${CLAUDE_PLUGIN_ROOT}/packages/dashboard" && npm install --silent && npm run build) >/tmp/oss-dashboard-build.log 2>&1 || true
-  fi
-fi
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-dashboard-build.log 2>&1 || true
 
 # Pick a platform-appropriate browser opener. $BROWSER wins when set.
 open_url() {
@@ -106,4 +98,4 @@ Parse the JSON output:
 
 - If `status` is `"already_running"`: Show `Dashboard: <url>` (already open in browser). If the system didn't have a usable browser opener, tell the user to open the URL manually.
 - If `status` is `"launched"`: Show `Dashboard opened: <url>`. Same caveat for headless systems.
-- If `error` is present: Show the error message, plus `Logs: <logFile>` when the field is set so the user can inspect the dashboard server output. If the error is a build failure, suggest running `cd packages/core && npm run bundle` and `cd packages/dashboard && npm run build` manually.
+- If `error` is present: Show the error message, plus `Logs: <logFile>` when the field is set so the user can inspect the dashboard server output. If the error is a build failure, show the `BUILD_FAILED` line from the details: it carries the fix (reinstall the plugin for a marketplace install; `pnpm install --frozen-lockfile --ignore-scripts` plus a rebuild for a source checkout). Never suggest an install that ignores the lockfile.

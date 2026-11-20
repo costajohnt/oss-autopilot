@@ -27,6 +27,8 @@ pnpm run build
 pnpm test
 ```
 
+To try your checkout as the plugin, run `claude --plugin-dir .`. Marketplace installs get a prebuilt tree (the `directory` branch), but a checkout builds its own CLI bundle: `scripts/build-cli-if-stale.sh` rebuilds it when sources or `pnpm-lock.yaml` change, using `pnpm install --frozen-lockfile --ignore-scripts`. It needs pnpm on `PATH` and never falls back to `npm install`. If you change dependencies, run `pnpm install` yourself and commit the updated `pnpm-lock.yaml`.
+
 ### Project Structure
 
 ```

@@ -3,9 +3,11 @@
 #
 # Exercises the staleness-detection paths (missing bundle, src newer, swap-file
 # excluded, fully-current). Build-success and build-failure paths are NOT
-# exercised end-to-end because that requires a real pnpm/npm install which
-# is expensive and brittle in CI; those paths get a tightly-scoped fake-PATH
-# unit test instead. Run with:
+# exercised end-to-end because that requires a real pnpm install which is
+# expensive and brittle in CI; those paths run against stub pnpm/npm on PATH
+# that record their arguments, which also pins the #1935 contract: the only
+# install the helper can run is `pnpm install --frozen-lockfile
+# --ignore-scripts`, and npm is never invoked. Run with:
 #   bash scripts/build-cli-if-stale.test.sh
 # Exits 0 on all-pass, 1 on first failure.
 
@@ -33,7 +35,8 @@ pass() {
     PASS=$((PASS + 1))
 }
 
-# Build a fake plugin tree: <root>/packages/core/{src,package.json,tsconfig.json,dist/cli.bundle.cjs,node_modules/@oss-scout/core}.
+# Build a fake source checkout: <root>/pnpm-lock.yaml plus
+# <root>/packages/core/{src,package.json,tsconfig.json,dist/cli.bundle.cjs,node_modules/@oss-scout/core}.
 # All freshness checks operate on file mtimes within this tree.
 setup() {
     WORK=$(mktemp -d)
@@ -50,6 +53,7 @@ EOF
     echo "{}" >"${PLUGIN}/packages/core/tsconfig.json"
     mkdir -p "${PLUGIN}/scripts"
     echo "// bundle script stub" >"${PLUGIN}/scripts/bundle.mjs"
+    echo "lockfileVersion: '9.0'" >"${PLUGIN}/pnpm-lock.yaml"
     echo "// existing bundle" >"${PLUGIN}/packages/core/dist/cli.bundle.cjs"
     echo "export const x = 1;" >"${PLUGIN}/packages/core/src/index.ts"
     cat >"${PLUGIN}/packages/core/node_modules/@oss-scout/core/package.json" <<'EOF'
@@ -58,11 +62,6 @@ EOF
   "version": "1.3.0"
 }
 EOF
-    # Default fixture: dependency already matches the latest in range and
-    # was "checked" today, so unrelated test cases never hit the (fake or
-    # real) registry.
-    date +%Y-%m-%d >"${PLUGIN}/packages/core/dist/.dep-freshness-checked" 2>/dev/null
-
     # Make sure the bundle starts as the most-recent file so a later
     # `touch` of a source file unambiguously beats it.
     sleep 1
@@ -237,21 +236,21 @@ EOF
     [ "$rc" = 1 ] && pass || fail "expected exit 1 when scripts/bundle.mjs is newer, got $rc"
 }
 
-case_dep_missing_triggers_install() {
-    # @oss-scout/core isn't installed at all -> needs install regardless of
-    # the daily stamp throttle (no comparison possible, no network needed).
-    rm -rf "${PLUGIN}/packages/core/node_modules/@oss-scout/core"
-
+# Stub pnpm and npm that append their arguments to ${WORK}/calls.log, one
+# invocation per line, prefixed with the tool name. Sets $fake_bin.
+recording_stubs() {
     fake_bin=$(mktemp -d)
-    cat >"${fake_bin}/pnpm" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-    cat >"${fake_bin}/npm" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-    chmod +x "${fake_bin}/pnpm" "${fake_bin}/npm"
+    for tool in pnpm npm; do
+        printf '#!/usr/bin/env bash\necho "%s $*" >>"%s"\nexit 0\n' "$tool" "${WORK}/calls.log" >"${fake_bin}/${tool}"
+        chmod +x "${fake_bin}/${tool}"
+    done
+}
+
+case_dep_missing_triggers_install() {
+    # @oss-scout/core isn't installed at all -> the bundle on disk was not
+    # built from this checkout's lockfile, so it is rebuilt.
+    rm -rf "${PLUGIN}/packages/core/node_modules/@oss-scout/core"
+    recording_stubs
 
     PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
     rc=$?
@@ -259,162 +258,103 @@ EOF
     [ "$rc" = 1 ] && pass || fail "expected exit 1 (rebuilt) when @oss-scout/core isn't installed, got $rc"
 }
 
-case_dep_stamp_fresh_skips_check() {
-    # Installed version looks stale, but the daily stamp (set by setup() to
-    # today) means the registry must NOT be queried this run.
-    cat >"${PLUGIN}/packages/core/node_modules/@oss-scout/core/package.json" <<'EOF'
-{"name": "@oss-scout/core", "version": "1.2.4"}
-EOF
-
-    marker="${WORK}/npm-view-called"
-    fake_bin=$(mktemp -d)
-    cat >"${fake_bin}/npm" <<EOF
-#!/usr/bin/env bash
-if [ "\$1" = "view" ]; then
-  touch "${marker}"
-fi
-exit 0
-EOF
-    cat >"${fake_bin}/pnpm" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-    chmod +x "${fake_bin}/npm" "${fake_bin}/pnpm"
+case_lockfile_newer_triggers_rebuild() {
+    # A pulled lockfile change (new resolved versions) must rebuild even
+    # when src/ and package.json are untouched.
+    sleep 1
+    touch "${PLUGIN}/pnpm-lock.yaml"
+    recording_stubs
 
     PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
     rc=$?
-    called=false
-    [ -f "$marker" ] && called=true
     rm -rf "$fake_bin"
-
-    if [ "$rc" != 0 ]; then
-        fail "expected exit 0 (stamp fresh, no rebuild) got $rc"
-        return
-    fi
-    if [ "$called" = true ]; then
-        fail "npm view was invoked despite a fresh (today) freshness stamp"
-        return
-    fi
-    pass
+    [ "$rc" = 1 ] && pass || fail "expected exit 1 when pnpm-lock.yaml is newer, got $rc"
 }
 
-case_dep_versions_match_no_rebuild() {
-    # Stamp is stale (absent) so the check runs; the registry reports the
-    # installed version is already the newest in range -> no rebuild, but
-    # the stamp still advances to today.
-    rm -f "${PLUGIN}/packages/core/dist/.dep-freshness-checked"
-
-    fake_bin=$(mktemp -d)
-    cat >"${fake_bin}/npm" <<'EOF'
-#!/usr/bin/env bash
-if [ "$1" = "view" ]; then
-  echo "1.3.0"
-  exit 0
-fi
-exit 0
-EOF
-    cat >"${fake_bin}/pnpm" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-    chmod +x "${fake_bin}/npm" "${fake_bin}/pnpm"
+case_rebuild_installs_only_from_frozen_lockfile() {
+    # #1935: the rebuild runs exactly one install, from the lockfile, with
+    # dependency lifecycle scripts off; it never re-resolves a dependency
+    # (`update`/`add`) and never calls npm.
+    rm "${PLUGIN}/packages/core/dist/cli.bundle.cjs"
+    rm -rf "${PLUGIN}/packages/core/node_modules/@oss-scout/core"
+    recording_stubs
 
     PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
     rc=$?
-    stamp_after=""
-    [ -f "${PLUGIN}/packages/core/dist/.dep-freshness-checked" ] &&
-        stamp_after=$(cat "${PLUGIN}/packages/core/dist/.dep-freshness-checked")
+    calls=$(cat "${WORK}/calls.log" 2>/dev/null)
     rm -rf "$fake_bin"
 
-    if [ "$rc" != 0 ]; then
-        fail "expected exit 0 when installed version already matches latest in range, got $rc"
-        return
-    fi
-    if [ -z "$stamp_after" ]; then
-        fail "expected freshness stamp to be written after a successful registry check"
-        return
-    fi
-    pass
-}
-
-case_dep_stale_version_triggers_refresh() {
-    # Stamp is stale and the registry reports a newer version than what's
-    # installed -> rebuild triggered purely by the dependency check (bundle
-    # is otherwise current per mtime).
-    rm -f "${PLUGIN}/packages/core/dist/.dep-freshness-checked"
-    cat >"${PLUGIN}/packages/core/node_modules/@oss-scout/core/package.json" <<'EOF'
-{"name": "@oss-scout/core", "version": "1.2.4"}
-EOF
-
-    fake_bin=$(mktemp -d)
-    cat >"${fake_bin}/npm" <<'EOF'
-#!/usr/bin/env bash
-if [ "$1" = "view" ]; then
-  echo "1.3.0"
-  exit 0
-fi
-exit 0
-EOF
-    cat >"${fake_bin}/pnpm" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-    chmod +x "${fake_bin}/npm" "${fake_bin}/pnpm"
-
-    out=$(PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" 2>&1 >/dev/null)
-    rc=$?
-    rm -rf "$fake_bin"
-
+    expected="pnpm install --silent --frozen-lockfile --ignore-scripts
+pnpm --silent --filter @oss-autopilot/core run bundle"
     if [ "$rc" != 1 ]; then
-        fail "expected exit 1 (rebuilt) when installed dep is behind latest in range, got $rc"
+        fail "expected exit 1 (rebuilt), got $rc"
         return
     fi
-    if ! echo "$out" | grep -q "refreshing"; then
-        fail "expected a stderr log line about refreshing the stale dependency, got '$out'"
+    if [ "$calls" != "$expected" ]; then
+        fail "unexpected package-manager calls: '$calls'"
         return
     fi
     pass
 }
 
-case_dep_registry_error_skips_gracefully() {
-    # npm view fails (offline/registry down) -> the check must be skipped
-    # silently, must NOT fail the build, and must leave the stamp untouched
-    # so the next run retries.
-    rm -f "${PLUGIN}/packages/core/dist/.dep-freshness-checked"
-    cat >"${PLUGIN}/packages/core/node_modules/@oss-scout/core/package.json" <<'EOF'
-{"name": "@oss-scout/core", "version": "1.2.4"}
-EOF
+case_no_pnpm_fails_closed_without_npm() {
+    # Stale source checkout, pnpm absent, npm present: the helper must NOT
+    # fall back to an unlocked npm install. Exit 2 with an actionable hint.
+    rm "${PLUGIN}/packages/core/dist/cli.bundle.cjs"
+    recording_stubs
+    rm "${fake_bin}/pnpm"
 
-    fake_bin=$(mktemp -d)
-    cat >"${fake_bin}/npm" <<'EOF'
-#!/usr/bin/env bash
-if [ "$1" = "view" ]; then
-  exit 1
-fi
-exit 0
-EOF
-    cat >"${fake_bin}/pnpm" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-    chmod +x "${fake_bin}/npm" "${fake_bin}/pnpm"
-
-    PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
+    out=$(PATH="${fake_bin}:/usr/bin:/bin" "$SUBJECT" "$PLUGIN" 2>/dev/null)
     rc=$?
-    stamp_after=""
-    [ -f "${PLUGIN}/packages/core/dist/.dep-freshness-checked" ] &&
-        stamp_after=$(cat "${PLUGIN}/packages/core/dist/.dep-freshness-checked")
+    calls=$(cat "${WORK}/calls.log" 2>/dev/null)
     rm -rf "$fake_bin"
 
-    if [ "$rc" != 0 ]; then
-        fail "expected exit 0 (registry error tolerated, no rebuild) got $rc"
+    if [ "$rc" != 2 ]; then
+        fail "expected exit 2 when pnpm is missing, got $rc"
         return
     fi
-    if [ -n "$stamp_after" ]; then
-        fail "expected freshness stamp to remain unwritten after a registry error, got '$stamp_after'"
+    if [ -n "$calls" ]; then
+        fail "npm must not be invoked when pnpm is missing, got '$calls'"
+        return
+    fi
+    if ! echo "$out" | grep -q "^BUILD_FAILED: .*pnpm is not on PATH.*--frozen-lockfile"; then
+        fail "expected a BUILD_FAILED hint naming pnpm and the frozen install, got '$out'"
         return
     fi
     pass
+}
+
+case_missing_lockfile_fails_closed() {
+    # No pnpm-lock.yaml -> nothing pins versions -> no install at all.
+    rm "${PLUGIN}/packages/core/dist/cli.bundle.cjs" "${PLUGIN}/pnpm-lock.yaml"
+    recording_stubs
+
+    out=$(PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" 2>/dev/null)
+    rc=$?
+    calls=$(cat "${WORK}/calls.log" 2>/dev/null)
+    rm -rf "$fake_bin"
+
+    if [ "$rc" != 2 ] || [ -n "$calls" ]; then
+        fail "expected exit 2 and no package-manager call without a lockfile, got $rc '$calls'"
+        return
+    fi
+    if ! echo "$out" | grep -q "^BUILD_FAILED: .*pnpm-lock.yaml is missing"; then
+        fail "expected a BUILD_FAILED hint naming the missing lockfile, got '$out'"
+        return
+    fi
+    pass
+}
+
+case_current_bundle_never_touches_registry() {
+    # Bundle current: no package-manager process at all (the old daily
+    # `npm view` + `update` refresh is gone).
+    recording_stubs
+
+    PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
+    rc=$?
+    calls=$(cat "${WORK}/calls.log" 2>/dev/null)
+    rm -rf "$fake_bin"
+    [ "$rc" = 0 ] && [ -z "$calls" ] && pass || fail "expected exit 0 and no package-manager call, got $rc '$calls'"
 }
 
 case_prebuilt_layout_returns_0() {
@@ -426,6 +366,30 @@ case_prebuilt_layout_returns_0() {
     out=$(PATH="/usr/bin:/bin" "$SUBJECT" "$PLUGIN" 2>/dev/null)
     rc=$?
     [ "$rc" = 0 ] && [ -z "$out" ] && pass || fail "expected exit 0 and no stdout for a prebuilt layout, got $rc '$out'"
+}
+
+case_prebuilt_layout_missing_bundle_fails_without_install() {
+    # A prebuilt install whose bundle is gone has nothing to build from. It
+    # must fail with a reinstall hint and run no package manager.
+    rm -rf "${PLUGIN}/packages/core/src" "${PLUGIN}/packages/core/package.json" \
+        "${PLUGIN}/packages/core/tsconfig.json" "${PLUGIN}/packages/core/node_modules" \
+        "${PLUGIN}/packages/core/dist/cli.bundle.cjs"
+    recording_stubs
+
+    out=$(PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" 2>/dev/null)
+    rc=$?
+    calls=$(cat "${WORK}/calls.log" 2>/dev/null)
+    rm -rf "$fake_bin"
+
+    if [ "$rc" != 2 ] || [ -n "$calls" ]; then
+        fail "expected exit 2 and no package-manager call, got $rc '$calls'"
+        return
+    fi
+    if ! echo "$out" | grep -q "^BUILD_FAILED: .*Reinstall the oss-autopilot plugin"; then
+        fail "expected a BUILD_FAILED reinstall hint, got '$out'"
+        return
+    fi
+    pass
 }
 
 # --- Driver ----------------------------------------------------------------
@@ -441,11 +405,13 @@ run case_build_failure_returns_2          case_build_failure_returns_2
 run case_package_json_newer_triggers_rebuild case_package_json_newer_triggers_rebuild
 run case_bundle_script_newer_triggers_rebuild case_bundle_script_newer_triggers_rebuild
 run case_dep_missing_triggers_install         case_dep_missing_triggers_install
-run case_dep_stamp_fresh_skips_check          case_dep_stamp_fresh_skips_check
-run case_dep_versions_match_no_rebuild        case_dep_versions_match_no_rebuild
-run case_dep_stale_version_triggers_refresh   case_dep_stale_version_triggers_refresh
-run case_dep_registry_error_skips_gracefully  case_dep_registry_error_skips_gracefully
+run case_lockfile_newer_triggers_rebuild      case_lockfile_newer_triggers_rebuild
+run case_rebuild_installs_only_from_frozen_lockfile case_rebuild_installs_only_from_frozen_lockfile
+run case_no_pnpm_fails_closed_without_npm     case_no_pnpm_fails_closed_without_npm
+run case_missing_lockfile_fails_closed        case_missing_lockfile_fails_closed
+run case_current_bundle_never_touches_registry case_current_bundle_never_touches_registry
 run case_prebuilt_layout_returns_0           case_prebuilt_layout_returns_0
+run case_prebuilt_layout_missing_bundle_fails_without_install case_prebuilt_layout_missing_bundle_fails_without_install
 
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed."

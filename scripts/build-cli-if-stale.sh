@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# Rebuild the @oss-autopilot/core CLI bundle if it's stale relative to source.
+# Make sure the @oss-autopilot/core CLI bundle is present and current.
 #
-# A bundle is "stale" when it's missing OR when any of the following are
-# newer than the built artifact:
-#   packages/core/src/**         (source files)
-#   packages/core/package.json   (dep changes)
-#   scripts/bundle.mjs           (the esbuild build script)
-#   packages/core/tsconfig.json  (compiler config changes)
+# Two layouts reach this script:
 #
-# It is also considered stale when the installed @oss-scout/core dependency
-# is behind the newest version published within its declared semver range.
-# Local file mtimes never move when a dependency publishes a new version, so
-# without this check an installed plugin would run a stale @oss-scout/core
-# forever even though nothing in the plugin's own source changed. This check
-# hits the npm registry, so it's throttled to once per day via a stamp file
-# and is fully failure-tolerant: any network/registry error just skips the
-# check for this run (the stamp is left untouched so it retries next time).
+# 1. Prebuilt install (what the marketplace serves: the `directory` branch
+#    assembled by scripts/build-directory-branch.sh). The bundle ships built,
+#    with no package.json or src/ beside it. Nothing is ever installed or
+#    built here: the bundle is current by definition, and a missing bundle is
+#    an error with a reinstall hint.
+#
+# 2. Source checkout (contributors, `claude --plugin-dir .`). The bundle is
+#    "stale" when it's missing, when @oss-scout/core is not installed, OR
+#    when any of the following are newer than the built artifact:
+#      packages/core/src/**         (source files)
+#      packages/core/package.json   (dep changes)
+#      packages/core/tsconfig.json  (compiler config changes)
+#      scripts/bundle.mjs           (the esbuild build script)
+#      pnpm-lock.yaml               (resolved dependency versions)
+#    A stale bundle is rebuilt only from the committed lockfile:
+#    `pnpm install --frozen-lockfile --ignore-scripts`, then the bundle
+#    script. There is no npm fallback and no dependency re-resolution (#1935):
+#    without pnpm or pnpm-lock.yaml the script fails closed with exit 2
+#    instead of installing whatever the registry serves that day.
 #
 # Editor swap files (.DS_Store, *~, *.swp, *.swo, .#*) and node_modules / .git
 # trees are excluded so an editor leaving a temp file alongside src/ does not
@@ -34,7 +40,7 @@
 # Or, equivalently, with $CLAUDE_PLUGIN_ROOT exported:
 #   build-cli-if-stale.sh
 #
-# All build noise (npm/pnpm install + bundle output) is sent to stderr so
+# All build noise (install + bundle output) is sent to stderr so
 # stdout stays clean for the caller (the BUILD_FAILED hint, if emitted, is
 # the only stdout output).
 
@@ -53,12 +59,13 @@ fi
 CLI_BUNDLE="${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
 
 # --- Prebuilt layout --------------------------------------------------------
-# The `directory` branch (scripts/build-directory-branch.sh) ships the bundle
-# from the published npm tarball with no package.json or src/ beside it.
-# There is nothing to rebuild from, and the bundle is self-contained, so it
-# is current by definition.
-if [ -f "${CLI_BUNDLE}" ] && [ ! -f "${PLUGIN_ROOT}/packages/core/package.json" ]; then
-  exit 0
+# No package.json beside the bundle means there is nothing to rebuild from.
+if [ ! -f "${PLUGIN_ROOT}/packages/core/package.json" ]; then
+  if [ -f "${CLI_BUNDLE}" ]; then
+    exit 0
+  fi
+  echo "BUILD_FAILED: the prebuilt CLI bundle is missing from ${PLUGIN_ROOT}/packages/core/dist and this install has no source to build from. Reinstall the oss-autopilot plugin from the marketplace."
+  exit 2
 fi
 
 # --- Staleness check ------------------------------------------------------
@@ -73,6 +80,7 @@ else
     "${PLUGIN_ROOT}/packages/core/package.json" \
     "${PLUGIN_ROOT}/packages/core/tsconfig.json" \
     "${PLUGIN_ROOT}/scripts/bundle.mjs" \
+    "${PLUGIN_ROOT}/pnpm-lock.yaml" \
     -type f \
     ! -path '*/node_modules/*' \
     ! -path '*/.git/*' \
@@ -87,59 +95,9 @@ else
   fi
 fi
 
-# --- Dependency-freshness check -------------------------------------------
-# Catches the case where @oss-scout/core has published a new version that
-# satisfies the range already declared in packages/core/package.json. The
-# mtime-based check above can't see this: nothing local changed.
-CORE_PKG_JSON="${PLUGIN_ROOT}/packages/core/package.json"
-INSTALLED_PKG_JSON="${PLUGIN_ROOT}/packages/core/node_modules/@oss-scout/core/package.json"
-# Lives under dist/, which is already gitignored wholesale, so the stamp
-# never shows up as an untracked file in a contributor's working tree.
-FRESHNESS_STAMP="${PLUGIN_ROOT}/packages/core/dist/.dep-freshness-checked"
-
-dep_refresh_needed=false
-dep_installed_version=""
-dep_latest_version=""
-
-if [ ! -f "${INSTALLED_PKG_JSON}" ]; then
-  # Not installed at all yet: needs an install regardless of the daily
-  # throttle below (there's nothing to compare against, and no network
-  # round-trip is needed to know this).
-  dep_refresh_needed=true
-else
-  dep_installed_version=$(grep -m1 '"version"[[:space:]]*:' "${INSTALLED_PKG_JSON}" 2>/dev/null |
-    sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
-
-  today="$(date +%Y-%m-%d 2>/dev/null || true)"
-  last_checked=""
-  [ -f "${FRESHNESS_STAMP}" ] && last_checked=$(cat "${FRESHNESS_STAMP}" 2>/dev/null || true)
-
-  if [ -n "$today" ] && [ "$last_checked" != "$today" ] && [ -f "${CORE_PKG_JSON}" ] && command -v npm >/dev/null 2>&1; then
-    dep_range=$(grep -m1 '"@oss-scout/core"[[:space:]]*:' "${CORE_PKG_JSON}" 2>/dev/null |
-      sed -E 's/.*"@oss-scout\/core"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
-
-    if [ -n "$dep_range" ]; then
-      # `npm view pkg@range version` resolves the highest version in the
-      # registry that satisfies the range directly, no manual semver compare
-      # needed. Any failure here (offline, registry down, range unparsable)
-      # is swallowed: the check is best-effort and must never fail the build.
-      dep_latest_version=$(npm view "@oss-scout/core@${dep_range}" version 2>/dev/null)
-      if [ -n "$dep_latest_version" ]; then
-        # Registry was reachable: record today's date so we don't hit it
-        # again until tomorrow, whether or not a refresh is needed. mkdir
-        # covers the first-ever run, before dist/ exists.
-        mkdir -p "${PLUGIN_ROOT}/packages/core/dist" 2>/dev/null || true
-        echo "$today" >"${FRESHNESS_STAMP}" 2>/dev/null || true
-        if [ "$dep_latest_version" != "$dep_installed_version" ]; then
-          dep_refresh_needed=true
-        fi
-      fi
-    fi
-  fi
-fi
-
-if [ "$dep_refresh_needed" = true ]; then
-  echo "build-cli-if-stale.sh: @oss-scout/core is stale (installed ${dep_installed_version:-none}, latest in range ${dep_latest_version:-unknown}); refreshing" >&2
+# Dependencies never installed: the bundle on disk was not built from this
+# checkout's lockfile, so rebuild it.
+if [ ! -f "${PLUGIN_ROOT}/packages/core/node_modules/@oss-scout/core/package.json" ]; then
   needs_rebuild=true
 fi
 
@@ -147,39 +105,26 @@ if [ "$needs_rebuild" = false ]; then
   exit 0
 fi
 
-# --- Rebuild --------------------------------------------------------------
-# Prefer pnpm: this is a pnpm workspace, and running `npm install` from
-# packages/core/ would generate a stray package-lock.json next to
-# pnpm-lock.yaml. Fall back to npm only when pnpm isn't installed (works
-# today because @oss-autopilot/core has no workspace:* deps).
-#
-# When a dependency refresh is needed, an `install`/`pnpm install` alone
-# isn't enough: both tools honor the checked-in lockfile by default and will
-# happily keep resolving the already-locked (stale) version even though a
-# newer one now satisfies the declared range. `update` re-resolves that one
-# package against the range and rewrites the lockfile; a plain install after
-# it is then a no-op for that package but still catches everything else.
-remediation=""
-if command -v pnpm >/dev/null 2>&1; then
-  remediation="cd ${PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/core run bundle"
-  if (
-    cd "${PLUGIN_ROOT}" &&
-      { [ "$dep_refresh_needed" = false ] || pnpm --silent --filter @oss-autopilot/core update @oss-scout/core; } &&
-      pnpm install --silent &&
-      pnpm --silent --filter @oss-autopilot/core run bundle
-  ) >&2; then
-    exit 1
-  fi
-else
-  remediation="cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
-  if (
-    cd "${PLUGIN_ROOT}/packages/core" &&
-      { [ "$dep_refresh_needed" = false ] || npm update @oss-scout/core --silent; } &&
-      npm install --silent &&
-      npm run bundle --silent
-  ) >&2; then
-    exit 1
-  fi
+# --- Rebuild (source checkout only) ----------------------------------------
+# Frozen lockfile: exactly the versions pnpm-lock.yaml pins, or a failure.
+# --ignore-scripts: no dependency lifecycle script runs during the install
+# (esbuild resolves its platform binary without its postinstall).
+remediation="cd ${PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle"
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "BUILD_FAILED: the CLI bundle in this source checkout is stale and pnpm is not on PATH. Dependencies are only installed from pnpm-lock.yaml, so there is no npm fallback. Install pnpm (npm install -g pnpm), then: ${remediation}. Not developing the plugin? Install it from the marketplace, which ships a prebuilt bundle."
+  exit 2
+fi
+if [ ! -f "${PLUGIN_ROOT}/pnpm-lock.yaml" ]; then
+  echo "BUILD_FAILED: ${PLUGIN_ROOT}/pnpm-lock.yaml is missing, so dependencies cannot be installed reproducibly. Restore it (git checkout pnpm-lock.yaml), then: ${remediation}"
+  exit 2
+fi
+
+if (
+  cd "${PLUGIN_ROOT}" &&
+    pnpm install --silent --frozen-lockfile --ignore-scripts &&
+    pnpm --silent --filter @oss-autopilot/core run bundle
+) >&2; then
+  exit 1
 fi
 
 echo "BUILD_FAILED: ${remediation}"
