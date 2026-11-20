@@ -22,8 +22,9 @@
  *
  * A second gate (#1936) covers the MCP tools: a tool that reaches a command
  * guarded this way must ask the user through `requireApproval`, or be exempt
- * by name. Same limit: it reads `tools.ts` as text, one `registerTool` call at
- * a time, and only sees commands named there.
+ * by name. It parses `tools.ts`, requires the handler argument of each
+ * `registerTool` call to be the `requireApproval(...)` call itself, and only
+ * sees commands named inside that `registerTool` call.
  *
  * `packages/dashboard` is not scanned: it is a browser SPA with no GitHub
  * client; its POSTs go to the local dashboard server, whose handlers are in core.
@@ -32,6 +33,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import path from 'node:path';
+import * as ts from 'typescript';
 
 const PACKAGES_DIR = path.resolve(__dirname, '../..');
 const SCAN_ROOTS = ['core/src', 'mcp-server/src'];
@@ -158,16 +160,28 @@ function attendedOnlyFunctions(raw: string): string[] {
   });
 }
 
-/** The attended-only commands each `server.registerTool(...)` call references without the approval gate. */
+/**
+ * The attended-only commands each `server.registerTool(...)` call references
+ * when its handler argument is not itself a `requireApproval(...)` call. A
+ * gate nested deeper, or mentioned only in a comment, does not count.
+ */
 function ungatedToolCommands(toolsSource: string, attendedOnly: string[]): string[] {
-  return toolsSource
-    .split('server.registerTool(')
-    .slice(1)
-    .filter((registration) => !registration.includes('requireApproval('))
-    .flatMap((registration) => {
-      const words = new Set(registration.match(/\w+/g));
-      return attendedOnly.filter((name) => words.has(name));
-    });
+  const file = ts.createSourceFile('tools.ts', toolsSource, ts.ScriptTarget.Latest, true);
+  const ungated: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === 'server.registerTool') {
+      const handler = node.arguments[2];
+      const gated =
+        handler !== undefined && ts.isCallExpression(handler) && handler.expression.getText(file) === 'requireApproval';
+      if (!gated) {
+        const words = new Set(node.getText(file).match(/\w+/g));
+        ungated.push(...attendedOnly.filter((name) => words.has(name)));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return ungated;
 }
 
 const COMMANDS_DIR = path.join(PACKAGES_DIR, 'core/src/commands');
@@ -239,6 +253,20 @@ describe('unattended write guard (#1945)', () => {
       expect(attendedOnlyFunctions(source)).toEqual(['runMerge']);
       expect(ungatedToolCommands(bare, ['runMerge'])).toEqual(['runMerge']);
       expect(ungatedToolCommands(gated, ['runMerge'])).toEqual([]);
+    });
+
+    it.each([
+      ['named only in a comment', "server.registerTool('merge', {}, /* requireApproval( */ wrapTool(runMerge));"],
+      [
+        'wrapped inside another call',
+        "server.registerTool('merge', {}, wrapTool(requireApproval(server, 'merge', p, runMerge)));",
+      ],
+      [
+        'in the options instead of the handler',
+        "server.registerTool('merge', { x: requireApproval(a) }, wrapTool(runMerge));",
+      ],
+    ])('does not count the gate %s', (_label, source) => {
+      expect(ungatedToolCommands(source, ['runMerge'])).toEqual(['runMerge']);
     });
   });
 
