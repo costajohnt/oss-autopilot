@@ -261,8 +261,8 @@ describe('PRMonitor CI status deduplication', () => {
   });
 });
 
-// Two `build` check runs in different check suites. The failing one started
-// first, so a bare-name dedupe would discard it (#1917).
+// Two `build` check runs in different check suites (1 and 2). The failing one
+// started first, so a bare-name dedupe would discard it (#1917).
 const SAME_NAME_CHECK_RUNS = [
   {
     name: 'build',
@@ -279,56 +279,105 @@ const SAME_NAME_CHECK_RUNS = [
     check_suite: { id: 2 },
   },
 ];
+const CANCELLED_THEN_PASSED_CHECK_RUNS = [
+  { ...SAME_NAME_CHECK_RUNS[0], conclusion: 'cancelled' },
+  SAME_NAME_CHECK_RUNS[1],
+];
 
-/** Workflow runs for suites 1 and 2: suite 1 ran workflow 100, suite 2 the given one. */
-const workflowRunsResponse = (secondWorkflowId: number) => ({
-  data: {
-    workflow_runs: [
-      { check_suite_id: 1, workflow_id: 100, event: 'pull_request' },
-      { check_suite_id: 2, workflow_id: secondWorkflowId, event: 'pull_request' },
-    ],
-  },
+const workflowRun = (checkSuiteId: number, workflowId: number, event: string) => ({
+  event,
+  check_suite_id: checkSuiteId,
+  workflow_id: workflowId,
 });
 
-const sameNameOctokit = (listWorkflowRunsForRepo: ReturnType<typeof vi.fn>): typeof mockOctokitInstance => {
+const sameNameOctokit = (
+  workflowRuns: unknown[],
+  checkRuns: unknown[] = SAME_NAME_CHECK_RUNS,
+): typeof mockOctokitInstance => {
   const combinedStatus = { data: { state: 'success', statuses: [] } };
   return {
     repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(combinedStatus) },
-    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: SAME_NAME_CHECK_RUNS } }) },
-    actions: { listWorkflowRunsForRepo },
+    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: checkRuns } }) },
+    actions: { listWorkflowRunsForRepo: vi.fn().mockResolvedValue({ data: { workflow_runs: workflowRuns } }) },
   };
 };
 
 describe('getCIStatus same-named jobs across workflows (#1917)', () => {
   it('keeps a failing job when a same-named job in another workflow passes later', async () => {
-    const listWorkflowRunsForRepo = vi.fn().mockResolvedValue(workflowRunsResponse(200));
-    const result = await getCIStatus(sameNameOctokit(listWorkflowRunsForRepo), 'owner', 'repo', 'abc123');
+    const octokit = sameNameOctokit([workflowRun(1, 100, 'pull_request'), workflowRun(2, 200, 'pull_request')]);
+
+    const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['build']);
-    expect(listWorkflowRunsForRepo).toHaveBeenCalledWith(expect.objectContaining({ head_sha: 'abc123' }));
+    expect(octokit.actions.listWorkflowRunsForRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ head_sha: 'abc123' }),
+    );
   });
 
   it('drops a superseded run when the same workflow was re-triggered into a new check suite', async () => {
-    const octokit = sameNameOctokit(vi.fn().mockResolvedValue(workflowRunsResponse(100)));
+    const octokit = sameNameOctokit([workflowRun(1, 100, 'pull_request'), workflowRun(2, 100, 'pull_request')]);
 
     const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+  });
+
+  it('collapses a cancelled push run and a later passing pull_request run of one workflow', async () => {
+    const octokit = sameNameOctokit(
+      [workflowRun(1, 100, 'push'), workflowRun(2, 100, 'pull_request')],
+      CANCELLED_THEN_PASSED_CHECK_RUNS,
+    );
+
+    const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+  });
+
+  it('keeps a check run whose suite has no workflow run apart from a same-named Actions job', async () => {
+    // Suite 1 is missing from the workflow map (e.g. a third-party app's suite).
+    const octokit = sameNameOctokit([workflowRun(2, 100, 'pull_request')]);
+
+    const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['build']);
+  });
+
+  it('dedupes by name alone when no suite maps to a workflow run', async () => {
+    const result = await getCIStatus(sameNameOctokit([]), 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('passing');
   });
 
   it('falls back to name-only dedupe when the workflow-run lookup fails', async () => {
-    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
-    const octokit = sameNameOctokit(vi.fn().mockRejectedValue(notFound));
+    const octokit = sameNameOctokit([]);
+    octokit.actions.listWorkflowRunsForRepo.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
 
     const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('passing');
   });
 
+  it('warns that dedupe fell back to job name when the lookup fails with a non-404 error', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const octokit = sameNameOctokit([]);
+    octokit.actions.listWorkflowRunsForRepo.mockRejectedValue(
+      Object.assign(new Error('Server Error'), { status: 500 }),
+    );
+
+    const result = await getCIStatus(octokit, 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('deduping check runs by job name only'));
+    errorSpy.mockRestore();
+  });
+
   it('propagates a rate limit from the workflow-run lookup', async () => {
-    const rateLimited = Object.assign(new Error('Too Many Requests'), { status: 429 });
-    const octokit = sameNameOctokit(vi.fn().mockRejectedValue(rateLimited));
+    const octokit = sameNameOctokit([]);
+    octokit.actions.listWorkflowRunsForRepo.mockRejectedValue(
+      Object.assign(new Error('Too Many Requests'), { status: 429 }),
+    );
 
     await expect(getCIStatus(octokit, 'owner', 'repo', 'abc123')).rejects.toMatchObject({ status: 429 });
   });
@@ -2360,11 +2409,12 @@ describe('getCIStatus error handling (#182)', () => {
     return Object.assign(new Error(message), { status });
   }
 
-  /** Build a mockOctokitInstance where both API methods reject with the same error */
+  /** Build a mockOctokitInstance where every CI API method rejects with the same error */
   function mockBothEndpointsRejecting(error: Error): void {
     mockOctokitInstance = {
       repos: { getCombinedStatusForRef: vi.fn().mockRejectedValue(error) },
       checks: { listForRef: vi.fn().mockRejectedValue(error) },
+      actions: { listWorkflowRunsForRepo: vi.fn().mockRejectedValue(error) },
     };
   }
 
@@ -2464,6 +2514,7 @@ describe('getCIStatus error handling (#182)', () => {
     mockOctokitInstance = {
       repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
       checks: { listForRef: vi.fn().mockRejectedValue(httpError('Not Found', 404)) },
+      actions: { listWorkflowRunsForRepo: vi.fn().mockResolvedValue({ data: { workflow_runs: [] } }) },
     };
 
     const result = await callGetCIStatus();

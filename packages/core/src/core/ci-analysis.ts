@@ -377,10 +377,11 @@ export interface RawCheckRun {
   status: string;
   /** ISO timestamp used to pick the most recent run when a name repeats. */
   started_at?: string | null;
-  /** Identity of the workflow (plus trigger event) that produced the run. Two
-   *  runs are the same check only when both this and `name` match; absent for
-   *  non-Actions check runs, which fall back to name alone (#1917). */
-  workflow?: string | null;
+  /** Id of the Actions workflow that produced the run (REST `workflow_id`,
+   *  GraphQL `Workflow.databaseId`). Two runs are the same check only when both
+   *  this and `name` match; absent for non-Actions check runs, which fall back
+   *  to name alone (#1917). */
+  workflowId?: number | null;
 }
 
 /** Minimal combined-status shape consumed by {@link computeCIStatus} — mirrors
@@ -398,8 +399,8 @@ export interface RawCombinedStatus {
  * only difference between the two is where the raw check-run / combined-status
  * data comes from, guaranteeing CI-status parity by construction.
  *
- * Deduplicates check runs by workflow + name (keeping the most recent run per
- * pair), then merges the check-run and combined-status analyses.
+ * Deduplicates check runs by workflow id + job name (keeping the most recent
+ * run per pair), then merges the check-run and combined-status analyses.
  */
 export function computeCIStatus(checkRuns: RawCheckRun[], combinedStatus: RawCombinedStatus): CIStatusResult {
   // Deduplicate check runs, keeping only the most recent run per workflow + name.
@@ -409,7 +410,7 @@ export function computeCIStatus(checkRuns: RawCheckRun[], combinedStatus: RawCom
   // job: keyed on the bare name, a later pass in one hides a failure in the other (#1917).
   const latestCheckRunsByName = new Map<string, RawCheckRun>();
   for (const check of checkRuns) {
-    const key = `${check.workflow ?? ''}\n${check.name}`;
+    const key = `${check.workflowId ?? ''}\n${check.name}`;
     const existing = latestCheckRunsByName.get(key);
     if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
       latestCheckRunsByName.set(key, check);
@@ -424,38 +425,40 @@ export function computeCIStatus(checkRuns: RawCheckRun[], combinedStatus: RawCom
 }
 
 /**
- * Map each check suite on a commit to the workflow (plus trigger event) that ran it.
+ * Map each check suite on a commit to the id of the workflow that ran it.
  *
  * A REST check run names its check suite but not its workflow, and a re-triggered
  * workflow gets a new suite, so the suite id alone cannot tell "re-run of the same
- * job" from "same-named job in another workflow" (#1917). If the lookup fails the
- * map is empty and dedupe degrades to name alone rather than losing the CI status.
+ * job" from "same-named job in another workflow" (#1917). The trigger event is
+ * deliberately not part of the identity: a `push` and a `pull_request` run of one
+ * workflow collapse to the latest, so a run cancelled by a shared concurrency
+ * group does not read as a failure. If the lookup fails the map is empty and
+ * dedupe degrades to name alone rather than losing the CI status.
  */
 async function fetchWorkflowBySuite(
   octokit: Octokit,
   owner: string,
   repo: string,
   sha: string,
-): Promise<Map<number | undefined, string>> {
+): Promise<Map<number | undefined, number>> {
   const fetchPage = async (page: number) => {
     const res = await octokit.actions.listWorkflowRunsForRepo({ owner, repo, page, head_sha: sha, per_page: 100 });
     return { data: res.data.workflow_runs };
   };
-  const workflowBySuite = new Map<number | undefined, string>();
+  const workflowBySuite = new Map<number | undefined, number>();
   let runs: Awaited<ReturnType<typeof fetchPage>>['data'];
   try {
     runs = await paginateAll(fetchPage);
   } catch (err) {
     if (isRateLimitOrAuthError(err)) throw err;
-    const reason = errorMessage(err);
-    debug(
-      'pr-monitor',
-      `Workflow runs unavailable for ${owner}/${repo}@${sha.slice(0, 7)}; deduping by name: ${reason}`,
-    );
+    const message = `Workflow runs unavailable for ${owner}/${repo}@${sha.slice(0, 7)}; deduping check runs by job name only: ${errorMessage(err)}`;
+    // 404 is expected where Actions is not in use; anything else is worth surfacing.
+    const log = getHttpStatusCode(err) === 404 ? debug : warn;
+    log('pr-monitor', message);
     return workflowBySuite;
   }
   for (const run of runs) {
-    workflowBySuite.set(run.check_suite_id, `${run.workflow_id}/${run.event}`);
+    workflowBySuite.set(run.check_suite_id, run.workflow_id);
   }
   return workflowBySuite;
 }
@@ -504,7 +507,7 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
     const combinedStatus = statusResponse.data;
     const allCheckRuns = (checkRuns ?? []).map((run) => ({
       ...run,
-      workflow: workflowBySuite.get(run.check_suite?.id),
+      workflowId: workflowBySuite.get(run.check_suite?.id),
     }));
 
     return computeCIStatus(allCheckRuns, combinedStatus);
