@@ -291,27 +291,6 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'true|false',
   },
   {
-    key: 'autoFormatBeforePush',
-    description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
-    settableVia: 'setup',
-    valueHint: 'true|false',
-  },
-  {
-    key: 'trustOwnRepoWrites',
-    description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
-    settableVia: 'setup',
-    valueHint: 'true|false',
-  },
-  {
-    key: 'healthCheckFreshnessMinutes',
-    description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
-    settableVia: 'setup',
-    valueHint: 'positive integer',
-  },
-  {
     key: 'reviewMaxPasses',
     description:
       'Convergence cap for the multi-agent review loop in workflows/dispatch-review.md. Optional; falls back to per-mode defaults (5 for diff, 3 for plan) when unset (#1275).',

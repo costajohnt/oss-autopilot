@@ -247,26 +247,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(enabled);
             break;
           }
-          case 'autoFormatBeforePush': {
-            if (value !== 'true' && value !== 'false') {
-              throw new ValidationError(
-                `Invalid value for autoFormatBeforePush: "${value}". Must be "true" or "false".`,
-              );
-            }
-            const enabled = value === 'true';
-            stateManager.updateConfig({ autoFormatBeforePush: enabled });
-            results[key] = String(enabled);
-            break;
-          }
-          case 'trustOwnRepoWrites': {
-            if (value !== 'true' && value !== 'false') {
-              throw new ValidationError(`Invalid value for trustOwnRepoWrites: "${value}". Must be "true" or "false".`);
-            }
-            const trusted = value === 'true';
-            stateManager.updateConfig({ trustOwnRepoWrites: trusted });
-            results[key] = String(trusted);
-            break;
-          }
           case 'includeDocIssues': {
             stateManager.updateConfig({ includeDocIssues: value === 'true' });
             results[key] = value === 'true' ? 'true' : 'false';
@@ -452,12 +432,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const mode = parseComplexIssues(value);
             stateManager.updateConfig({ complexIssues: mode });
             results[key] = mode;
-            break;
-          }
-          case 'healthCheckFreshnessMinutes': {
-            const minutes = parsePositiveInt(value, 'healthCheckFreshnessMinutes');
-            stateManager.updateConfig({ healthCheckFreshnessMinutes: minutes });
-            results[key] = String(minutes);
             break;
           }
           case 'reviewMaxPasses': {
