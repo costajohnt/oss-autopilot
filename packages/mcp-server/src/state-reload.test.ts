@@ -101,6 +101,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
 
 vi.mock('@oss-autopilot/core', () => ({
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  fenceTitlesDeep: (value: unknown) => value,
   getStateManager: vi.fn(() => mockStateManager),
   getGitHubTokenAsync: mockGetGitHubTokenAsync,
   ensureGistPersistence: mockEnsureGistPersistence,

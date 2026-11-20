@@ -56,6 +56,7 @@ export {
   wrapUntrustedContent,
   fenceFetchedPR,
   fenceFetchedPRTitles,
+  fenceTitlesDeep,
   labelGuidelinesContent,
   GUIDELINES_PROVENANCE_NOTE,
   extractFromFence,

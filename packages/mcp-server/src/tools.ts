@@ -48,6 +48,7 @@ import {
 } from '@oss-autopilot/core/commands';
 import {
   errorMessage,
+  fenceTitlesDeep,
   getSetupKeys,
   getConfigKeys,
   getStateManager,
@@ -340,6 +341,11 @@ function wrapTool<A>(
         await reloadExternalState({ force: true });
         data = await runBody(() => fn(args));
       }
+      // PR/issue titles and branch-ref names are written by strangers, and
+      // an arbitrary MCP host never sees the plugin's injection-awareness
+      // block: fence them in every tool result (#1931), as resources.ts and
+      // prompts.ts already do (#1455).
+      data = fenceTitlesDeep(data);
       // Degraded gist mode is surfaced IN the response (#1415), not just on
       // stderr — the consuming agent must see that this mutation/read ran
       // against local-only state. The cause snapshot from THIS call's init
