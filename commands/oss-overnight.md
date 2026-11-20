@@ -95,7 +95,14 @@ OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number
 
 The issue title is left out on purpose. Anyone can write it, and this line is
 an instruction to an agent that runs unattended with Bash and Write. The
-preparer reads the issue itself, through the fenced `gh issue view` path.
+preparer reads the issue itself with the CLI's `issue-thread <url> --json`,
+which returns the title, body and every comment inside a `<github-content>`
+fence with author and author association (#1932). Raw `gh issue view` output
+is not fenced, so the scheduled run's allowlist no longer includes it and its
+deny list names it. The
+fence marks stranger-written text as data; it does not stop an agent that
+obeys it anyway, so the split-user handoff below stays the real boundary for
+implement mode.
 
 After it returns:
 
@@ -230,6 +237,11 @@ The CLI renders the launchd job:
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight schedule --hour 2 --claude-path "$(command -v claude)" --install
 ```
 
+Run it again after upgrading the plugin: the allowlist is baked into the
+plist when it is written, so a schedule installed before a change to the list
+(such as `gh issue view` leaving it, #1932) keeps the old one until this
+command rewrites it.
+
 It writes `~/Library/LaunchAgents/com.oss-autopilot.overnight.plist`, a
 settings file `~/.oss-autopilot/reports/overnight-settings.json` that enables
 only this plugin, and prints the `launchctl bootstrap` command to load it. The
@@ -245,10 +257,11 @@ fails, so the plist pre-approves exactly the tools this command uses and
 nothing that mutates remote state: file tools, Task, git subcommands except
 `push` (in both the bare and the `git -C <dir>` form, since a preparer's
 worktree is never its cwd and `cd <dir> && git` is denied), the read side of `gh` (`pr view/checks/diff/list`, `run view/list`,
-`issue view`, `repo view`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
+`repo view`; no `gh issue view`, whose raw output is unfenced: issue threads
+are read with the CLI's `issue-thread`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
 and test suites. No `bash`, `sh`, or `npx`. A deny list (`--disallowedTools`,
 deny beats allow) additionally names `git push` and `git -C <dir> push`, every `gh pr`/`gh issue`
-write, `gh run rerun`, `gh api`, the npm/pnpm registry writes
+write, `gh issue view`, `gh run rerun`, `gh api`, the npm/pnpm registry writes
 (`publish`/`unpublish`/`deprecate`), the direct shell escapes inside the
 allowed programs (`npm exec`/`npm x`, `pnpm dlx`/`pnpm exec`, `node
 -e`/`--eval`/`-p`/`--print`), and `AskUserQuestion`. The one escape tool rules

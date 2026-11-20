@@ -949,6 +949,32 @@ export const VerifyIssueOutputSchema = z.object({
   userLogin: z.string(),
 });
 
+// issue-thread (#1932): one issue's title, body and comments. `title`,
+// `body` and every `comments[].body` are `<github-content>`-fenced strings.
+const IssueThreadCommentSchema = z.object({
+  author: z.string().nullable(),
+  authorAssociation: z.string().nullable(),
+  createdAt: z.string(),
+  body: z.string(),
+});
+
+export const IssueThreadOutputSchema = z.object({
+  url: z.string(),
+  owner: z.string(),
+  repo: z.string(),
+  number: z.number().int().positive(),
+  state: z.string(),
+  title: z.string(),
+  author: z.string().nullable(),
+  authorAssociation: z.string().nullable(),
+  createdAt: z.string(),
+  body: z.string(),
+  comments: z.array(IssueThreadCommentSchema),
+  warnings: z.array(DailyWarningSchema).optional(),
+});
+
+export type IssueThreadOutput = z.infer<typeof IssueThreadOutputSchema>;
+
 // ── #1155: Zod coverage for remaining CLI commands ───────────────────
 
 export const PostOutputSchema = z.object({

@@ -38,6 +38,8 @@ export { runFeatures, MAX_FEATURES_RESULTS } from './features.js';
 export { runVet } from './vet.js';
 /** Deterministic availability check: state/stateReason + linked-PR classification (#1353, #1354). */
 export { runVerifyIssue, type VerifyIssueOptions } from './verify-issue.js';
+/** Read one issue's title, body and comments, each fenced as untrusted content (#1932). */
+export { runIssueThread, type IssueThreadOptions } from './issue-thread.js';
 /** Re-vet all available issues in a curated issue list for freshness. */
 export { runVetList } from './vet-list.js';
 export { runEval, type EvalOutput } from './eval.js';

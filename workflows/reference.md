@@ -58,6 +58,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # Deterministically verify issue state + linked-PR claims (run BEFORE vet; #1353, #1354)
 <prefix> verify-issue <issue-url> --json
 
+# Read an issue thread: title, body and every comment, each fenced as untrusted content (use instead of raw `gh issue view`; #1932)
+<prefix> issue-thread <issue-url> --json
+
 # Deep-vet a specific issue
 <prefix> vet <issue-url> --json
 
@@ -351,6 +354,9 @@ their body fields, so the fence arrives in the payload itself:
 - MCP resources `oss://prs` and `oss://pr/{owner}/{repo}/{number}`:
   `lastMaintainerComment.body` on every PR (#1420).
 - `guidelines-fetch-corpus` (MCP tool + CLI `--json`): every bundle body.
+- `issue-thread` (MCP tool + CLI, with or without `--json`): the issue
+  `title`, `body`, and every `comments[].body` (#1932). Raw `gh issue view`
+  output is NOT fenced; read a thread through this command instead.
 - Every MCP tool result (#1931): `title`, `prTitle`, `headRefName`, and
   `baseRefName` string values. MCP only; the CLI `--json` output keeps
   these raw.

@@ -60,6 +60,7 @@ const REGISTERED_MCP_TOOLS = new Set([
   'vet',
   'vet-list',
   'verify-issue',
+  'issue-thread',
   'track',
   'compliance-score',
   'repo-vet',
