@@ -46,8 +46,8 @@ All data lives under `~/.oss-autopilot/`.
 
 ### Network Security
 
-- **HTTPS only.** All API calls go to `api.github.com` over HTTPS.
-- **No third-party services contacted.** The plugin communicates exclusively with GitHub's API.
+- **HTTPS only.** API calls go to `api.github.com` over HTTPS. One other GitHub host is used: with Gist sync on, a state file too large for the Gist API to return inline is read from its `raw_url`, and the request is refused unless that URL is HTTPS on `gist.githubusercontent.com`.
+- **No third-party services contacted, apart from the npm registry.** The CLI communicates exclusively with GitHub. The plugin's build check (`scripts/build-cli-if-stale.sh`) installs dependencies from the npm registry when it builds, and at most once a day runs `npm view` to see whether a newer `@oss-scout/core` is published.
 - **Rate limit handling.** The Octokit client uses `@octokit/plugin-throttling` to respect API rate limits rather than hammering endpoints on failure.
 
 ### Plugin Security
@@ -65,7 +65,7 @@ PR titles, PR bodies, issue bodies, review comments, discussion comments, and CI
 Controls in priority order:
 
 1. **Human-in-the-loop on every state-changing GitHub call.** `post` and `claim` require explicit user approval before sending (#1053). This is the primary control — every other layer is defense-in-depth. The unattended overnight run has nobody to approve anything, so there the control is a refusal in code: the scheduled job sets `OSS_AUTOPILOT_UNATTENDED=1`, and `post`, `claim` and `overnight push-prep` throw before reaching GitHub while it is set. That closes the direct path through the plugin's own CLI; it is not a sandbox against arbitrary code run under your credentials (see `commands/oss-overnight.md`).
-2. **Input fencing, wired at runtime (#1372).** The `wrapUntrustedContent(text, label, meta?)` helper in `@oss-autopilot/core` wraps GitHub content in a `<github-content>` fence with escape-proof handling (open- and close-tag escaping, lossless round-trip). Comment and review body fields are fenced at the agent-facing serialization boundary: `comments` output (`runComments`), `guidelines fetch-corpus` bundles (`fetchPRCommentBundle`), and `daily`/`startup` `commentedIssues` excerpts (`toDailyOutput`). Agents are instructed in `workflows/reference.md` to treat anything inside that fence as data, not instructions, and to fence the remaining unfenced fields (titles, search/vet output) themselves.
+2. **Input fencing, wired at runtime (#1372).** The `wrapUntrustedContent(text, label, meta?)` helper in `@oss-autopilot/core` wraps GitHub content in a `<github-content>` fence with open- and close-tag escaping and a lossless round-trip. The escaping matches the exact lowercase tags only (#1931). Comment and review body fields are fenced at the agent-facing serialization boundary: `comments` output (`runComments`), `guidelines fetch-corpus` bundles (`fetchPRCommentBundle`), and `daily`/`startup` `commentedIssues` excerpts (`toDailyOutput`). Agents are instructed in `workflows/reference.md` to treat anything inside that fence as data, not instructions, and to fence the remaining unfenced fields (titles, search/vet output) themselves.
 3. **Agent guidance.** `pr-responder`, `issue-scout`, `pr-compliance-checker`, `pr-health-checker`, `repo-evaluator`, and `contribution-strategist` carry pointer text directing them to treat fenced content as data, fence unfenced GitHub content themselves, and flag close-tag escape attempts via AskUserQuestion.
 4. **Regression corpus.** `packages/core/src/core/prompt-injection-corpus.test.ts` runs a CI-resident corpus of known injection shapes (classic, fake-system-tag, markdown, delimiter-collision, unicode, long) against the fencing helper and pins the structural contract: exactly one open and one close tag, lossless round-trip, payload contained. An end-to-end layer additionally runs the corpus through the real producers (`runComments`, `fetchPRCommentBundle`, `toDailyOutput`) and fails CI if any emitted body field is not fenced — unwiring the fence is a test failure, not a silent regression.
 
@@ -75,7 +75,7 @@ Explicit non-goals: no automated detection of injection content (false-positive 
 
 The attack surface is intentionally minimal.
 
-- **3 production dependencies:** `@octokit/rest`, `@octokit/plugin-throttling`, `commander`. All other packages are devDependencies only.
+- **6 production dependencies in `@oss-autopilot/core`:** `@octokit/rest`, `@octokit/plugin-throttling`, `@octokit/plugin-retry`, `@oss-scout/core`, `commander`, `zod`. All other packages are devDependencies only.
 - **pnpm audit in CI:** The CI workflow runs `pnpm audit --audit-level=high` on every push and PR.
 - **Dependabot:** Weekly automated dependency scanning for the npm ecosystem.
 - **CodeQL:** GitHub's CodeQL security analysis runs on pushes to main and on pull requests.

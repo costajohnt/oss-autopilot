@@ -54,7 +54,7 @@ The system has three layers:
    - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2→v3→v4 migration and auto-backups
    - `pr-monitor.ts` — `PRMonitor` class. Fetches open PRs from GitHub Search API, enriches each with CI status, review decision, merge conflicts, maintainer comments, and computes `FetchedPRStatus`
    - `github.ts` — Shared Octokit instance with `@octokit/plugin-throttling` for rate limit handling
-   - `utils.ts` — GitHub URL parsing, date helpers, token detection (tries `$GITHUB_TOKEN` then `gh auth token`)
+   - `urls.ts`, `dates.ts`, `auth.ts` — GitHub URL parsing, date helpers, token detection (tries `$GITHUB_TOKEN` then `gh auth token`)
    - Issue discovery and vetting are delegated to `@oss-scout/core` via `commands/scout-bridge.ts`
 
 ### Key Design Decisions
