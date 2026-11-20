@@ -85,10 +85,19 @@ function firstHiddenCharacter(text: string): string | undefined {
   return HIDDEN_CHARACTERS.exec(text.replaceAll(EMOJI_PRESENTATION, '$1'))?.[0];
 }
 
-/** "N characters", counted in code points, for an approval preview header. */
-export function characterCount(text: string): string {
+/** "N characters", counted in code points. */
+function characterCount(text: string): string {
   const count = [...text].length;
   return `${count} character${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * Text for an approval form, between start and end markers so the user sees
+ * exactly where it begins and ends: `--- comment start (N characters) ---`,
+ * the text, `--- comment end ---`.
+ */
+export function framed(label: string, text: string): string {
+  return `--- ${label} start (${characterCount(text)}) ---\n${text}\n--- ${label} end ---`;
 }
 
 function refusal(text: string) {

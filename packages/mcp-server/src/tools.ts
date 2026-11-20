@@ -67,7 +67,7 @@ import {
 import {
   assertMcpSettable,
   assertMcpSettablePairs,
-  characterCount,
+  framed,
   mcpSettableKeys,
   requireApproval,
 } from './trust-boundary.js';
@@ -701,7 +701,7 @@ export function registerTools(server: McpServer): void {
       'post a comment',
       'oss-autopilot post <url> "<message>"',
       (args: Parameters<typeof runPost>[0]) =>
-        `Post this comment (${characterCount(args.message)}) on ${args.url} under your GitHub account?\n\n${args.message}`,
+        `Post this comment on ${args.url} under your GitHub account?\n\n${framed('comment', args.message)}`,
       wrapTool(runPost),
     ),
   );
@@ -725,7 +725,7 @@ export function registerTools(server: McpServer): void {
       (args: Parameters<typeof runClaim>[0]) => {
         // The literal text runClaim will post, default included.
         const message = args.message || DEFAULT_CLAIM_MESSAGE;
-        return `Claim ${args.issueUrl} by posting this comment (${characterCount(message)}) under your GitHub account?\n\n${message}`;
+        return `Claim ${args.issueUrl} by posting this comment under your GitHub account?\n\n${framed('comment', message)}`;
       },
       wrapTool(runClaim),
     ),
@@ -1106,7 +1106,7 @@ export function registerTools(server: McpServer): void {
       'store guidelines',
       'oss-autopilot guidelines store --repo <owner/repo> --reviewed (content on stdin)',
       (args: { repo: string; content: string }) =>
-        `Store these guidelines (${characterCount(args.content)}) for ${args.repo}, replacing any it has now?\n\n${args.content}`,
+        `Store these guidelines for ${args.repo}, replacing any it has now?\n\n${framed('guidelines', args.content)}`,
       wrapTool((args: { repo: string; content: string; reviewed: boolean }) =>
         runGuidelinesStore({ repo: args.repo, content: args.content, reviewed: args.reviewed }),
       ),

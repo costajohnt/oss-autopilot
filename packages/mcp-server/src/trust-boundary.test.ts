@@ -402,13 +402,21 @@ describe('user approval before a GitHub write (#1936)', () => {
 
 describe('what the approval form shows (#1936)', () => {
   it.each([
-    ['post', { url: ISSUE, message: 'héllo 👋' }, '(7 characters)'],
-    ['claim', { issueUrl: ISSUE, message: 'mine' }, '(4 characters)'],
-    ['guidelines-store', { repo: 'owner/repo', content: 'x', reviewed: true }, '(1 character)'],
-  ])('%s shows the length in the header', async (name, args, count) => {
+    [
+      'post',
+      { url: ISSUE, message: 'héllo 👋' },
+      '--- comment start (7 characters) ---\nhéllo 👋\n--- comment end ---',
+    ],
+    ['claim', { issueUrl: ISSUE, message: 'mine' }, '--- comment start (4 characters) ---\nmine\n--- comment end ---'],
+    [
+      'guidelines-store',
+      { repo: 'owner/repo', content: 'x\n', reviewed: true },
+      '--- guidelines start (2 characters) ---\nx\n\n--- guidelines end ---',
+    ],
+  ])('%s shows the text between start and end markers, with its length', async (name, args, framedText) => {
     const { client, asked } = await connect(FORM_HOST, APPROVED);
     await client.callTool({ name, arguments: args });
-    expect(asked[0].message.split('\n', 1)[0]).toContain(count);
+    expect(asked[0].message.endsWith(framedText)).toBe(true);
   });
 
   const HIDDEN = [
