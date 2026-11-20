@@ -137,7 +137,7 @@ function printRepos(repos: Record<string, { path: string; currentBranch: string 
   }
 }
 
-/** Stderr note for commands kept only for semver (#1948); stdout, and so `--json`, is untouched. */
+/** Print a deprecation note on stderr for commands kept only for semver (#1948); stdout and `--json` are untouched. */
 function warnDeprecatedCommand(name: string): void {
   console.error(`Warning: \`${name}\` is deprecated and will be removed in the next major version.`);
 }

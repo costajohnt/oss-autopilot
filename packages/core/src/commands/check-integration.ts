@@ -79,7 +79,6 @@ function suggestEntryPoints(newFile: string, existingFiles: string[]): string[] 
   return [...new Set(suggestions)];
 }
 
-/** @deprecated Since #1948; will be removed in the next major version. */
 export async function runCheckIntegration(options: CheckIntegrationOptions): Promise<CheckIntegrationOutput> {
   const base = options.base;
 

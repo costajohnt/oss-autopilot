@@ -10,7 +10,6 @@ import type { DetectFormattersOutput } from '../formatters/json.js';
 import { detectFormatters, diagnoseCIFormatterFailure } from '../core/formatter-detection.js';
 import { errorMessage } from '../core/errors.js';
 
-/** @deprecated Since #1948; will be removed in the next major version. */
 export async function runDetectFormatters(options: {
   repoPath?: string;
   ciLog?: string;

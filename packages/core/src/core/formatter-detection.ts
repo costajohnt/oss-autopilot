@@ -11,11 +11,9 @@ import { debug } from './logger.js';
 
 const MODULE = 'formatter-detection';
 
-/** @deprecated Since #1948; will be removed in the next major version. */
 export type FormatterName =
   'prettier' | 'eslint' | 'biome' | 'black' | 'ruff' | 'rustfmt' | 'gofmt' | 'clang-format' | 'rubocop';
 
-/** @deprecated Since #1948; will be removed in the next major version. */
 export interface DetectedFormatter {
   name: FormatterName;
   /** Relative to repo root */
@@ -28,14 +26,12 @@ export interface DetectedFormatter {
   supportsFileArgs: boolean;
 }
 
-/** @deprecated Since #1948; will be removed in the next major version. */
 export interface FormatterDetectionResult {
   formatters: DetectedFormatter[];
   packageJsonScripts: { name: string; command: string }[];
   repoPath: string;
 }
 
-/** @deprecated Since #1948; will be removed in the next major version. */
 export interface CIFormatterDiagnosis {
   isFormattingFailure: boolean;
   formatter?: FormatterName;
@@ -212,8 +208,6 @@ function tomlHasSection(repoPath: string, fileName: string, sectionPattern: stri
  * @param repoPath - Absolute path to the repository root directory
  * @returns Detection result with formatters ordered by priority and extracted package.json scripts
  * @throws {Error} If repoPath does not exist or is not a directory
- *
- * @deprecated Since #1948; will be removed in the next major version.
  */
 export function detectFormatters(repoPath: string): FormatterDetectionResult {
   if (!fs.existsSync(repoPath) || !fs.statSync(repoPath).isDirectory()) {
@@ -356,8 +350,6 @@ export function detectFormatters(repoPath: string): FormatterDetectionResult {
  * @param logOutput - Raw CI log output to analyze
  * @param repoPath - Optional repo path for cross-referencing with local formatter config
  * @returns Diagnosis with matched formatter, fix command, and evidence strings
- *
- * @deprecated Since #1948; will be removed in the next major version.
  */
 export function diagnoseCIFormatterFailure(logOutput: string, repoPath?: string): CIFormatterDiagnosis {
   if (!logOutput.trim()) {
@@ -426,8 +418,6 @@ export function diagnoseCIFormatterFailure(logOutput: string, repoPath?: string)
  *
  * @param result - Detection result from {@link detectFormatters}
  * @returns The highest-priority formatter, or undefined if none detected
- *
- * @deprecated Since #1948; will be removed in the next major version.
  */
 export function getPreferredFormatter(result: FormatterDetectionResult): DetectedFormatter | undefined {
   return result.formatters[0];

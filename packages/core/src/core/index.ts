@@ -221,6 +221,7 @@ export {
   type AntiLLMMatch,
   type AntiLLMScanResult,
 } from './anti-llm-policy.js';
+/** Formatter detection behind the deprecated detect-formatters command. @deprecated Since #1948; will be removed in the next major version. */
 export {
   detectFormatters,
   diagnoseCIFormatterFailure,

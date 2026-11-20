@@ -419,7 +419,7 @@ describe('runSetup', () => {
   it.each(['autoFormatBeforePush=true', 'trustOwnRepoWrites=true', 'healthCheckFreshnessMinutes=45'])(
     'stores the retired %s and warns that nothing reads it (#1948)',
     async (pair) => {
-      const key = pair.split('=')[0];
+      const [key] = pair.split('=', 1);
       const result = (await runSetup({ set: [pair] })) as SetupSetOutput;
       expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
       expect(result.warnings).toContain(

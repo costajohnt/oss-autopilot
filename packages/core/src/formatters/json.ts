@@ -1642,11 +1642,7 @@ export interface NewFileInfo {
   suggestedEntryPoints?: string[];
 }
 
-/**
- * Output of the check-integration command (#83)
- *
- * @deprecated Since #1948; will be removed in the next major version.
- */
+/** Output of the check-integration command (#83) */
 export interface CheckIntegrationOutput {
   newFiles: NewFileInfo[];
   unreferencedCount: number;
@@ -1871,11 +1867,7 @@ export interface LocalReposOutput {
   fromCache: boolean;
 }
 
-/**
- * Output of the detect-formatters command. Extends FormatterDetectionResult with optional CI diagnosis.
- *
- * @deprecated Since #1948; will be removed in the next major version.
- */
+/** Output of the detect-formatters command. Extends FormatterDetectionResult with optional CI diagnosis. */
 export interface DetectFormattersOutput extends FormatterDetectionResult {
   ciDiagnosis?: CIFormatterDiagnosis;
 }
