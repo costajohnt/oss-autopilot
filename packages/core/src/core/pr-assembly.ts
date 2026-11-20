@@ -17,6 +17,7 @@ import {
   type ReviewComment,
   determineReviewDecision,
   getLatestChangesRequestedDate,
+  getLatestApprovalDate,
   checkUnrespondedComments,
   getFirstMaintainerResponseAt,
   getLastMaintainerActivity,
@@ -191,6 +192,7 @@ export async function assembleFetchedPR(
     contributorUsername: config.githubUsername,
     lastMaintainerCommentDate: lastMaintainerComment?.createdAt,
     latestChangesRequestedDate,
+    latestApprovalDate: getLatestApprovalDate(reviews),
     hasActionableCIFailure,
   });
 

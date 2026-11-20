@@ -163,6 +163,12 @@ export interface DetermineStatusInput {
   contributorUsername?: string;
   lastMaintainerCommentDate?: string;
   latestChangesRequestedDate?: string;
+  /**
+   * When the latest standing approval was submitted. An unanswered maintainer
+   * comment newer than this (or with this missing) still needs a response on an
+   * approved PR (#1920).
+   */
+  latestApprovalDate?: string;
   /** True if at least one failing CI check is classified as 'actionable'. */
   hasActionableCIFailure?: boolean;
 }

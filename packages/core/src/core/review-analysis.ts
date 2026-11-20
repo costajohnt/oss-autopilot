@@ -23,10 +23,16 @@ function isBotReview(review: { user?: { login?: string; type?: string | null } |
   return isBotAuthor(review.user?.login ?? '', review.user?.type);
 }
 
+/** The review fields the verdict helpers read. */
+type VerdictReview = {
+  state?: string | null;
+  submitted_at?: string | null;
+  user?: { login?: string; type?: string | null } | null;
+};
+
 /**
- * Determine review decision from reviews list.
- * Groups reviews by user, keeping each user's latest verdict, then checks
- * for CHANGES_REQUESTED or APPROVED states.
+ * Each human reviewer's standing verdict: their latest APPROVED or
+ * CHANGES_REQUESTED review, dropped again by a later DISMISSED one.
  *
  * Only APPROVED, CHANGES_REQUESTED and DISMISSED change a reviewer's standing
  * verdict on GitHub. COMMENTED is also what GitHub records for every inline
@@ -35,15 +41,8 @@ function isBotReview(review: { user?: { login?: string; type?: string | null } |
  * Bot-authored reviews (e.g. an AI review bot posting APPROVE) are ignored so a
  * bot alone never reads as maintainer approval or a changes request (#1840).
  */
-export function determineReviewDecision(
-  reviews: Array<{ state?: string | null; user?: { login?: string; type?: string | null } | null }>,
-): ReviewDecision {
-  if (reviews.length === 0) {
-    return 'review_required';
-  }
-
-  // Group reviews by user, keeping each user's latest verdict
-  const latestByUser = new Map<string, string>();
+function standingVerdicts(reviews: VerdictReview[]): VerdictReview[] {
+  const latestByUser = new Map<string, VerdictReview>();
   for (const review of reviews) {
     const login = review.user?.login;
     const state = review.state;
@@ -51,11 +50,19 @@ export function determineReviewDecision(
     if (state === 'DISMISSED') {
       latestByUser.delete(login);
     } else if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {
-      latestByUser.set(login, state);
+      latestByUser.set(login, review);
     }
   }
+  return Array.from(latestByUser.values());
+}
 
-  const states = Array.from(latestByUser.values());
+/**
+ * Determine review decision from reviews list: changes requested when any
+ * reviewer's standing verdict ({@link standingVerdicts}) is CHANGES_REQUESTED,
+ * otherwise approved when any is APPROVED.
+ */
+export function determineReviewDecision(reviews: VerdictReview[]): ReviewDecision {
+  const states = standingVerdicts(reviews).map((review) => review.state);
 
   if (states.includes('CHANGES_REQUESTED')) {
     return 'changes_requested';
@@ -66,6 +73,22 @@ export function determineReviewDecision(
   }
 
   return 'review_required';
+}
+
+/**
+ * Date of the latest approval that still stands (see {@link standingVerdicts}),
+ * or undefined when nobody's standing verdict is APPROVED. A maintainer comment
+ * newer than this was written after the PR was approved, so the approval does
+ * not answer it (#1920).
+ */
+export function getLatestApprovalDate(reviews: VerdictReview[]): string | undefined {
+  let latest: string | undefined;
+  for (const review of standingVerdicts(reviews)) {
+    const at = review.submitted_at;
+    if (review.state !== 'APPROVED' || !at) continue;
+    if (!latest || Date.parse(at) > Date.parse(latest)) latest = at;
+  }
+  return latest;
 }
 
 /**
