@@ -378,14 +378,15 @@ describe('checkStaleData', () => {
   });
 
   it('warns with the file system error instead of crashing on an unreadable data directory', () => {
-    const notADir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-')), 'file');
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
+    const notADir = path.join(parent, 'file');
     fs.writeFileSync(notADir, '');
 
     const result = checkStaleData(notADir);
 
     expect(result.status).toBe('warning');
     expect(result.message).toContain(`Could not read ${notADir}`);
-    fs.rmSync(path.dirname(notADir), { recursive: true, force: true });
+    fs.rmSync(parent, { recursive: true, force: true });
   });
 
   it('warns and points at cleanup when rejected copies are past retention', () => {
