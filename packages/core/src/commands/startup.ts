@@ -18,14 +18,9 @@ import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.js';
 import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
-import { detectIssueListPath, persistConfigPath } from './locate-issue-list.js';
+import { detectIssueListPath, persistConfigPath, suggestIssueListPath } from './locate-issue-list.js';
 import { getMachinePath, setMachinePath } from '../core/local-config.js';
 import { overnightFreshness } from './overnight.js';
-
-// Path detection moved to locate-issue-list.ts (#1463) so the daily
-// merge-loop can use it without an import cycle through this module.
-// Re-exported here for back-compat with existing consumers/tests.
-export { parseIssueListPathFromConfig } from './locate-issue-list.js';
 
 /**
  * Count available and completed items in an issue list file.
@@ -46,13 +41,79 @@ export function countIssueListItems(content: string): {
 }
 
 /**
- * Detect an issue list file from config or known paths.
+ * The skipped-issues file for a configured list: the configured path (a
+ * relative one anchored to the list's directory), else `skipped-issues.md`
+ * next to the list, saved for this machine when found.
+ */
+function detectSkippedIssuesPath(issueListPath: string): string | undefined {
+  let skippedIssuesPath: string | undefined;
+
+  // Check config first. A relative skippedIssuesPath is anchored to the issue
+  // list's (now absolute) directory — a stable base — not CWD, and upgraded to
+  // absolute in config so the skip list isn't silently dropped when /oss runs
+  // from a different directory (#1577). Anchoring to the list dir (rather than
+  // CWD) avoids baking in a coincidentally-named skipped-issues.md from an
+  // unrelated working directory. A multi-segment relative that doesn't resolve
+  // here safely falls through to the list-dir default probe below.
+  try {
+    const configuredSkipPath = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
+    if (configuredSkipPath) {
+      const resolvedSkip = path.isAbsolute(configuredSkipPath)
+        ? configuredSkipPath
+        : path.resolve(path.dirname(issueListPath), configuredSkipPath);
+      if (fs.existsSync(resolvedSkip)) {
+        skippedIssuesPath = resolvedSkip;
+        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip);
+      }
+    }
+  } catch (err) {
+    // State access can fail on a degraded state file (corrupt JSON, EACCES).
+    // Default-path probe below still runs; warn so the underlying cause is visible (#994).
+    // Matches the sibling warn at line 64 for `issueListPath` read failures.
+    warn('startup', `Could not read skippedIssuesPath from state: ${errorMessage(err)}`);
+  }
+
+  // Probe default path: same directory as issue list, named skipped-issues.md.
+  // When found, also persist to state.config so downstream commands
+  // (`skip-add`, `scout search`'s skip-list filter) read the same path
+  // instead of silently no-opping with "No skipped-issues path configured"
+  // (#1330). Without persistence, the auto-detect printed the path on
+  // every startup but nothing else honored it — search would re-surface
+  // already-skipped candidates round after round.
+  if (!skippedIssuesPath) {
+    const defaultSkipPath = path.join(path.dirname(issueListPath), 'skipped-issues.md');
+    if (fs.existsSync(defaultSkipPath)) {
+      skippedIssuesPath = defaultSkipPath;
+      try {
+        // Only write when no path is configured: re-running startup
+        // shouldn't rewrite the value on every run if it is already there.
+        // The write goes to this machine's local settings (#1950).
+        const current = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
+        if (!current) {
+          setMachinePath('skippedIssuesPath', defaultSkipPath, 'probe');
+        }
+      } catch (err) {
+        // Persistence is best-effort — startup still surfaces the path
+        // in its return value so the current run benefits, but the next
+        // run won't. Log so the failure is debuggable.
+        warn('startup', `Could not persist auto-detected skippedIssuesPath: ${errorMessage(err)}`);
+      }
+    }
+  }
+
+  return skippedIssuesPath;
+}
+
+/**
+ * Detect the configured issue list file.
+ * @param shouldSuggest - With no configured list, return a list found in
+ *   the current directory as `source: 'auto-detected'` for the user to confirm
+ *   (#1933). Only `/oss` startup asks; nothing about it is saved.
  * @returns Issue list info with path and item counts, or undefined if not found
  */
-export function detectIssueList(): IssueListInfo | undefined {
-  // Steps 1-3 (state config → legacy config.md → known-path probes) live in
-  // locate-issue-list.ts (#1463), shared with the daily merge-loop.
-  const located = detectIssueListPath();
+export function detectIssueList(shouldSuggest = false): IssueListInfo | undefined {
+  // Path lookup lives in locate-issue-list.ts (#1463), shared with the daily merge-loop.
+  const located = detectIssueListPath() ?? (shouldSuggest ? suggestIssueListPath() : undefined);
   if (!located) return undefined;
   const issueListPath = located.path;
   const source: IssueListInfo['source'] = located.source;
@@ -73,61 +134,9 @@ export function detectIssueList(): IssueListInfo | undefined {
     console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, readError);
   }
 
-  // 5. Detect skipped issues file
-  let skippedIssuesPath: string | undefined;
-
-  // Check config first. A relative skippedIssuesPath is anchored to the issue
-  // list's (now absolute) directory — a stable base — not CWD, and upgraded to
-  // absolute in config so the skip list isn't silently dropped when /oss runs
-  // from a different directory (#1577). Anchoring to the list dir (rather than
-  // CWD) avoids baking in a coincidentally-named skipped-issues.md from an
-  // unrelated working directory. A multi-segment relative that doesn't resolve
-  // here safely falls through to the list-dir default probe below.
-  try {
-    const configuredSkipPath = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
-    if (configuredSkipPath) {
-      const resolvedSkip = path.isAbsolute(configuredSkipPath)
-        ? configuredSkipPath
-        : path.resolve(path.dirname(issueListPath), configuredSkipPath);
-      if (fs.existsSync(resolvedSkip)) {
-        skippedIssuesPath = resolvedSkip;
-        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip, 'configured');
-      }
-    }
-  } catch (err) {
-    // State access can fail on a degraded state file (corrupt JSON, EACCES).
-    // Default-path probe below still runs; warn so the underlying cause is visible (#994).
-    // Matches the sibling warn at line 64 for `issueListPath` read failures.
-    warn('startup', `Could not read skippedIssuesPath from state: ${errorMessage(err)}`);
-  }
-
-  // Probe default path: same directory as issue list, named skipped-issues.md.
-  // When found, also persist to state.config so downstream commands
-  // (`skip-add`, `scout search`'s skip-list filter) read the same path
-  // instead of silently no-opping with "No skipped-issues path configured"
-  // (#1330). Without persistence, the auto-detect printed the path on
-  // every startup but nothing else honored it — search would re-surface
-  // already-skipped candidates round after round.
-  if (!skippedIssuesPath && issueListPath) {
-    const defaultSkipPath = path.join(path.dirname(issueListPath), 'skipped-issues.md');
-    if (fs.existsSync(defaultSkipPath)) {
-      skippedIssuesPath = defaultSkipPath;
-      try {
-        // Only write when no path is configured: re-running startup
-        // shouldn't rewrite the value on every run if it is already there.
-        // The write goes to this machine's local settings (#1950).
-        const current = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
-        if (!current) {
-          setMachinePath('skippedIssuesPath', defaultSkipPath, 'probe');
-        }
-      } catch (err) {
-        // Persistence is best-effort — startup still surfaces the path
-        // in its return value so the current run benefits, but the next
-        // run won't. Log so the failure is debuggable.
-        warn('startup', `Could not persist auto-detected skippedIssuesPath: ${errorMessage(err)}`);
-      }
-    }
-  }
+  // 5. Detect skipped issues file. A suggested list is not confirmed yet
+  // (#1933), so its directory is not searched for one.
+  const skippedIssuesPath = source === 'configured' ? detectSkippedIssuesPath(issueListPath) : undefined;
 
   return {
     path: issueListPath,
@@ -356,7 +365,7 @@ export async function runStartup(): Promise<StartupOutput> {
   }
 
   // 5. Detect issue list
-  const issueList = detectIssueList();
+  const issueList = detectIssueList(true);
 
   // 6. Pass through dashboard-build status set by the workflow shell (#1293).
   // The workflow runs the SPA build BEFORE invoking startup, so the status

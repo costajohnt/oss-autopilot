@@ -153,22 +153,44 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
     });
   });
 
-  it('a list auto-detected in the current directory is kept locally, not pushed', async () => {
+  it('a list found in the current directory is only suggested; nothing is saved until the user sets it (#1933)', async () => {
     seedGist(noSyncedPaths);
     const vault = makeVault(machineA);
+    const localFile = path.join(machineA, '.oss-autopilot', 'local-config.json');
 
     await switchTo(machineA);
     process.chdir(path.join(machineA, 'vault'));
-    const found = detectIssueList();
+    expect(detectIssueList()).toBeUndefined();
+    expect(detectIssueList(true)).toMatchObject({ path: fs.realpathSync(vault.list), source: 'auto-detected' });
     await getStateManager().checkpoint();
-
-    expect(found).toMatchObject({ path: fs.realpathSync(vault.list), source: 'auto-detected' });
     expect(gist.content).not.toContain('potential-issue-list.md');
-    const local = fs.readFileSync(path.join(machineA, '.oss-autopilot', 'local-config.json'), 'utf8');
-    expect(JSON.parse(local)).toEqual({
-      issueListPath: { path: fs.realpathSync(vault.list), source: 'probe' },
-      skippedIssuesPath: { path: fs.realpathSync(vault.skip), source: 'probe' },
-    });
+    expect(fs.existsSync(localFile)).toBe(false);
+
+    // The user says yes: the prompt layer stores it with `setup --set`.
+    await runSetup({ set: [`issueListPath=${fs.realpathSync(vault.list)}`] });
+    expect(detectIssueList()).toMatchObject({ path: fs.realpathSync(vault.list), source: 'configured' });
+  });
+
+  it('setup --set stores a relative list path as absolute, so it works from any directory (#1933)', async () => {
+    seedGist(noSyncedPaths);
+    const vault = makeVault(machineA);
+    await switchTo(machineA);
+    process.chdir(path.join(machineA, 'vault'));
+    await runSetup({ set: ['issueListPath=open-source/potential-issue-list.md'] });
+    process.chdir(testHome);
+    expect(detectIssueList()).toMatchObject({ path: fs.realpathSync(vault.list), source: 'configured' });
+  });
+
+  it('a probe hit saved by an earlier build is not trusted as configured (#1933)', async () => {
+    seedGist(noSyncedPaths);
+    const vault = makeVault(machineA);
+    await switchTo(machineA);
+    fs.writeFileSync(
+      path.join(machineA, '.oss-autopilot', 'local-config.json'),
+      JSON.stringify({ issueListPath: { path: vault.list, source: 'probe' } }),
+    );
+
+    expect(detectIssueList()).toBeUndefined();
   });
 
   it('an old-shaped synced state still loads, keeps its keys, and a machine without those paths does not adopt them', async () => {

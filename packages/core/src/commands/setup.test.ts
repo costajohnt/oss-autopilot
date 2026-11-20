@@ -16,7 +16,9 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
-const { setMachinePathSpy } = vi.hoisted(() => ({ setMachinePathSpy: vi.fn() }));
+const { setMachinePathSpy } = vi.hoisted(() => ({
+  setMachinePathSpy: vi.fn((_key: string, value = '') => value),
+}));
 vi.mock('../core/local-config.js', () => ({
   MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
   setMachinePath: setMachinePathSpy,
