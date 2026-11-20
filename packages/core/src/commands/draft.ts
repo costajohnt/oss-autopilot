@@ -25,6 +25,10 @@ export const MAX_DRAFT_BYTES = 64 * 1024;
 /** A bare file name: no separators, no leading dot or dash. */
 const SAFE_NAME = /^\w[\w.-]{0,199}$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/i;
+/** Drafts the user never posted or discarded are removed after this long. */
+export const MAX_DRAFT_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 export interface DraftPathOutput {
   /** Absolute path for the draft. The file is not created. */
@@ -75,21 +79,51 @@ function isOwnedBySomeoneElse(stat: fs.Stats): boolean {
   return uid !== undefined && stat.uid !== uid;
 }
 
+/** Create the directory if needed and stat it without following a symlink. Null when something is in the way. */
+function makeAndStatDir(dir: string): fs.Stats | null {
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return fs.lstatSync(dir);
+  } catch {
+    return null;
+  }
+}
+
+function removeStaleDrafts(dir: string): void {
+  const cutoff = Date.now() - MAX_DRAFT_AGE_MS;
+  for (const name of fs.readdirSync(dir)) {
+    const file = path.join(dir, name);
+    const stat = fs.lstatSync(file);
+    if (stat.isFile() && !isOwnedBySomeoneElse(stat) && stat.mtimeMs < cutoff) fs.unlinkSync(file);
+  }
+}
+
 /**
  * The draft directory, `~/.oss-autopilot/tmp`, created owner-only. An existing
  * directory with looser permissions (made by `mkdir -p` under a 022 umask) is
- * tightened; a symlink, or a directory owned by someone else, is refused.
- * Returns the real path so callers can compare against it.
+ * tightened; a symlink, a file in the way, or a directory owned by someone
+ * else is refused. Returns the real path so callers can compare against it.
+ *
+ * Also unlinks the user's own regular files in it older than
+ * {@link MAX_DRAFT_AGE_MS}, so abandoned drafts do not pile up. Best effort.
  */
 export function getDraftsDir(): string {
   const dir = path.join(getDataDir(), 'tmp');
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const stat = fs.lstatSync(dir);
-  if (!stat.isDirectory() || isOwnedBySomeoneElse(stat)) {
-    throw new ValidationError(`Draft directory ${dir} is not a directory owned by the current user`);
+  const stat = makeAndStatDir(dir);
+  if (!stat?.isDirectory() || isOwnedBySomeoneElse(stat)) {
+    throw new ValidationError(
+      `Draft directory ${dir} must be a real directory owned by the current user, not a symlink or a file. ` +
+        `Remove or rename ${dir} and rerun.`,
+    );
   }
   if ((stat.mode & 0o077) !== 0) fs.chmodSync(dir, 0o700);
-  return fs.realpathSync(dir);
+  const real = fs.realpathSync(dir);
+  try {
+    removeStaleDrafts(real);
+  } catch {
+    // Cleanup only: a file that vanished or cannot be removed must not fail the command.
+  }
+  return real;
 }
 
 /** `draft path <name>`: where to write a draft. Deterministic, so a later session can find a waiting proposal. */
@@ -111,19 +145,44 @@ function realDirOf(file: string): string | null {
   }
 }
 
+/** Read at most the cap plus one byte, so an oversized or growing file is never read to its end. */
+function readCapped(fd: number): Buffer {
+  const buffer = Buffer.alloc(MAX_DRAFT_BYTES + 1);
+  let length = 0;
+  let read = -1;
+  while (read !== 0 && length < buffer.length) {
+    read = fs.readSync(fd, buffer, length, buffer.length - length, null);
+    length += read;
+  }
+  return buffer.subarray(0, length);
+}
+
+function decodeUtf8(bytes: Buffer, target: string): string {
+  if (bytes.subarray(0, 3).equals(UTF8_BOM)) {
+    throw new ValidationError(`Refusing to read ${target}: it starts with a byte order mark; save it as plain UTF-8`);
+  }
+  try {
+    return STRICT_UTF8.decode(bytes);
+  } catch {
+    throw new ValidationError(`Refusing to read ${target}: it is not valid UTF-8`);
+  }
+}
+
 /** Check the opened file (not the path, which could have been swapped since) and read it once. */
 function readOpenDraft(fd: number, target: string): DraftContent {
   const stat = fs.fstatSync(fd);
-  if (!stat.isFile() || isOwnedBySomeoneElse(stat) || (stat.mode & 0o022) !== 0) {
+  // Group-writable is allowed: a 002 umask writes 0664, and the directory is
+  // owner-only, so group members cannot reach the file through this path.
+  if (!stat.isFile() || isOwnedBySomeoneElse(stat) || (stat.mode & 0o002) !== 0 || stat.nlink !== 1) {
     throw new ValidationError(
-      `Refusing to read ${target}: it must be a regular file owned by the current user and not group- or world-writable`,
+      `Refusing to read ${target}: it must be a regular file owned by the current user, not world-writable, with no other hard link`,
     );
   }
-  const bytes = stat.size > MAX_DRAFT_BYTES ? null : fs.readFileSync(fd);
-  if (bytes === null || bytes.length > MAX_DRAFT_BYTES) {
+  const bytes = readCapped(fd);
+  if (bytes.length > MAX_DRAFT_BYTES) {
     throw new ValidationError(`Refusing to read ${target}: larger than ${MAX_DRAFT_BYTES} bytes`);
   }
-  const content = bytes.toString('utf8');
+  const content = decodeUtf8(bytes, target);
   return { content, path: target, sha256: sha256Hex(content), byteSize: bytes.length };
 }
 
@@ -131,9 +190,10 @@ function readOpenDraft(fd: number, target: string): DraftContent {
  * Read a draft once and return its text with the hash of that text.
  *
  * Refuses a file that is not directly inside the draft directory, a symlink
- * or other non-regular file, a file owned by another user, a group- or
- * world-writable file, and anything over {@link MAX_DRAFT_BYTES}. A bare name
- * or relative path resolves against the draft directory, never the cwd.
+ * or other non-regular file, a file owned by another user, a world-writable
+ * or hard-linked file, invalid UTF-8, a byte order mark, and anything over
+ * {@link MAX_DRAFT_BYTES}. A bare name or relative path resolves against the
+ * draft directory, never the cwd.
  */
 export function readDraft(file: string): DraftContent {
   const dir = getDraftsDir();
@@ -142,7 +202,11 @@ export function readDraft(file: string): DraftContent {
     throw new ValidationError(`Refusing to read ${requested}: drafts must be files directly inside ${dir}`);
   }
   const target = path.join(dir, path.basename(requested));
-  if (!fs.lstatSync(target).isFile()) {
+  const found = fs.lstatSync(target, { throwIfNoEntry: false });
+  if (!found) {
+    throw new ValidationError(`No draft at ${target}: write it first (see \`draft path\`)`);
+  }
+  if (!found.isFile()) {
     throw new ValidationError(`Refusing to read ${target}: not a regular file (symlinks are not followed)`);
   }
   // O_NOFOLLOW closes the gap between the lstat above and the open; the
@@ -153,6 +217,39 @@ export function readDraft(file: string): DraftContent {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** What a command was given alongside `--body-file` / `--from-file`. */
+export interface ApprovedDraftRequest {
+  file: string;
+  flag: '--body-file' | '--from-file';
+  expectSha256: string | undefined;
+  /** The text was also supplied another way (`--stdin`, positional words, `--content`). */
+  hasOtherInput: boolean;
+}
+
+/**
+ * The text of a draft a command is about to post or store. The file is the
+ * only source (no silent winner among several), the caller must say which
+ * text the user approved, and an empty file never falls back to a default.
+ * The hash itself is checked by the command, next to its other gates.
+ */
+export function readApprovedDraft(request: ApprovedDraftRequest): string {
+  const { flag } = request;
+  if (request.hasOtherInput) {
+    throw new ValidationError(
+      `${flag} cannot be combined with another source of the text (--stdin, positional words or --content)`,
+    );
+  }
+  if (request.expectSha256 === undefined) {
+    throw new ValidationError(
+      `${flag} requires --expect-sha256: run \`draft show\` on the file, show the user its content, ` +
+        'and pass the sha256 it returned',
+    );
+  }
+  const { content } = readDraft(request.file);
+  if (content.trim() === '') throw new ValidationError('draft file is empty');
+  return content;
 }
 
 /**

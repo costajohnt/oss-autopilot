@@ -74,8 +74,9 @@ gh pr view OWNER/REPO#NUMBER --json comments,reviews
 
 **Posting** (only when user explicitly requests it — e.g., "go ahead and post it"), from the draft file saved in step 7 and with the hash of the text the user saw:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post <pr-url> --body-file <draft-path> --expect-sha256 <sha256> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post <pr-url> --body-file "<draft-path>" --expect-sha256 <sha256> --json
 ```
+On `success: true`, delete the draft (`rm -- "<draft-path>"`). Delete it too when the user decides not to post.
 Never pass the message as a shell argument: replies to code review contain backtick code spans, and the shell runs those inside double quotes (#1930).
 
 ## Analysis Process
@@ -193,21 +194,24 @@ Stage the draft in the tool's own owner-only draft directory, never under `/tmp`
 2. Save the drafted response to that path **with the Write tool** (not `echo`, not a heredoc).
 3. Read it back once. `data.content` is what you show the user; `data.sha256` is the hash of exactly that text:
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show <draft-path> --json
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
    ```
    No `--untrusted`: this is a reply you drafted for the user, not text taken from someone else.
 
-Tell the user:
-```
+Tell the user, with `data.content` complete and inside a code fence longer than any run of backticks in it:
+
+````
 **Draft saved to:** `<draft-path>`
 
-<data.content, complete>
-
-Review and edit, then approve to post. The post command is:
-post <pr-url> --body-file <draft-path> --expect-sha256 <data.sha256>
+```
+<data.content>
 ```
 
-After any edit, save the file again and repeat step 3: the old hash no longer matches, and `post` refuses a file that differs from the text the user last saw.
+Review and edit, then approve to post. The post command is:
+post <pr-url> --body-file "<draft-path>" --expect-sha256 <data.sha256>
+````
+
+After an edit, repeat step 3: the old hash no longer matches, and `post` refuses a file that differs from the text the user last saw. If the user edited the file on disk, do not write it again, just rerun `draft show`. Write the file only when the user dictated the change in chat.
 
 ### 8. Pre-push review
 

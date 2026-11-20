@@ -9,8 +9,12 @@ lines of code exist.
 ## When this fires
 
 Auto-dispatched by `draft-first-workflow.md` after the investigation
-step completes and a plan artifact has been written to
-`/tmp/oss-autopilot-plans/<repo>-<issue-number>.md`. Implementation
+step completes and a plan artifact has been written, with the Write
+tool, to the path printed by
+`node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path plan-<repo>-<issue-number>.md`
+(the tool's own owner-only draft directory, never `/tmp`: the plan is
+implemented once it converges, so it must not sit at a predictable path
+in a shared directory, #1930). Implementation
 does not begin until this loop returns `READY TO IMPLEMENT`.
 
 Can also be invoked manually via `/plan-ready` — same convergence
@@ -99,8 +103,8 @@ The two loops complement each other; they do not replace each other.
   several forms (Plan subagent, `superpowers:writing-plans` skill,
   manual user-authored plans).
 - Persisting the converged plan into project history. The artifact
-  lives at `/tmp/oss-autopilot-plans/...` for the duration of the
-  session and is regenerated each time. PR descriptions reproduce the
+  lives in the draft directory (`draft path plan-<repo>-<issue-number>.md`)
+  for the duration of the session and is regenerated each time. PR descriptions reproduce the
   relevant portions in their own format.
 
 ## Why now

@@ -75,7 +75,7 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 
 # Claim an issue with the default message, or with an approved draft (see "Draft Files" below)
 <prefix> claim <issue-url> --json
-<prefix> claim <issue-url> --body-file <draft-path> --expect-sha256 <sha256> --json
+<prefix> claim <issue-url> --body-file "<draft-path>" --expect-sha256 <sha256> --json
 
 # Parse an issue list from a file
 <prefix> parse-issue-list <path> --json
@@ -102,7 +102,7 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 # Persist guidelines the user has read and approved, from a draft file (see "Draft Files" below).
 # --reviewed is required and asserts that approval; refused in an unattended run (#1929).
 # --expect-sha256 fails the store unless the file still holds the text the user saw (#1930).
-<prefix> guidelines store --repo <owner/repo> --from-file <draft-path> --expect-sha256 <sha256> --reviewed --json
+<prefix> guidelines store --repo <owner/repo> --from-file "<draft-path>" --expect-sha256 <sha256> --reviewed --json
 
 # Tombstone the guidelines file
 <prefix> guidelines reset --repo <owner/repo> --json
@@ -128,17 +128,18 @@ Text that will be posted or stored under the user's name (a comment, a PR body, 
 # Read a draft once: data.content is the text to show the user, data.sha256 is its hash.
 # Add --untrusted when the text was distilled from other people's writing (guideline proposals):
 # content then comes back inside a <github-content> fence, with & and < written as &amp; and &lt;.
-<prefix> draft show <draft-path> [--untrusted] --json
+<prefix> draft show "<draft-path>" [--untrusted] --json
 ```
 
 The flow, every time:
 
-1. Get the path from `draft path <name>` and write the text there **with the Write tool** (not `echo`, not a heredoc).
-2. Run `draft show <draft-path> --json` and show the user `data.content`, complete. What you show comes from that output, not from your memory of what you wrote.
+1. Run `draft path <name>` on its own, read the path it prints, and write the text there **with the Write tool** (not `echo`, not a heredoc). Use the printed path literally and quoted (a home directory can contain spaces); a shell variable does not survive to the next tool call.
+2. Run `draft show "<draft-path>" --json` and show the user `data.content`, complete, inside a code fence longer than any run of backticks in it. What you show comes from that output, not from your memory of what you wrote.
 3. After the user approves, run the command with `--body-file` (or `--from-file`) and `--expect-sha256 <data.sha256>`. If the file changed since step 2, the command fails before posting or storing anything: go back to step 2.
-4. After an edit, write the file again and repeat from step 2. Delete the draft once the command succeeds (`rm -- "<draft-path>"`, that exact path).
+4. After an edit, repeat from step 2. Write the file again only when the user dictated the change; if they edited the file on disk, just rerun `draft show`.
+5. Delete the draft (`rm -- "<draft-path>"`, that exact path) once the command succeeds, and when the user abandons it. Drafts left behind are removed after 30 days.
 
-`--body-file` and `--from-file` only read regular files directly inside the draft directory that you own and that are not group- or world-writable; symlinks are refused.
+`--body-file` and `--from-file` require `--expect-sha256`, cannot be combined with another source of the text (`--stdin`, positional words, `--content`), and refuse an empty file. They only read regular files directly inside the draft directory that you own, that are not world-writable and have no other hard link, in valid UTF-8 without a byte order mark; symlinks are refused.
 
 ### PR Management
 
@@ -152,9 +153,9 @@ The flow, every time:
 # View comments on a PR
 <prefix> comments <pr-url> --json [--bots]
 
-# Post a comment to an issue or PR, from an approved draft file (see "Draft Files" below).
+# Post a comment to an issue or PR, from an approved draft file (see "Draft Files" above).
 # Never pass the message as a shell argument: backticks and $(...) in it would run as commands (#1930).
-<prefix> post <url> --body-file <draft-path> --expect-sha256 <sha256> --json
+<prefix> post <url> --body-file "<draft-path>" --expect-sha256 <sha256> --json
 
 # Move a PR between states (attention/waiting set a status override until
 # cleared; shelved hides it from the digest; auto clears back to computed)

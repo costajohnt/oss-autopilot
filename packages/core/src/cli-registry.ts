@@ -2265,7 +2265,10 @@ Load it with:
           'Persist per-repo guidelines (overwrites). Reads markdown content from --from-file, --content or stdin.',
         )
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
-        .option('--from-file <path>', 'Read the markdown from a draft file (see `draft path`). Wins over --content.')
+        .option(
+          '--from-file <path>',
+          'Read the markdown from a draft file (see `draft path`). Needs --expect-sha256; not with --content.',
+        )
         .option('--content <markdown>', 'Markdown content. If omitted, reads from stdin.')
         .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
         .option('--reviewed', 'Assert the user saw this exact text and approved it. Required; refused when unattended.')
@@ -2349,7 +2352,8 @@ Load it with:
   },
 ];
 
-const BODY_FILE_HELP = 'Read the message from a draft file (see `draft path`). Wins over --stdin and positional words.';
+const BODY_FILE_HELP =
+  'Read the message from a draft file (see `draft path`). Needs --expect-sha256; not with --stdin or positional words.';
 const EXPECT_SHA256_HELP = 'Fail before doing anything unless the text hashes to this SHA-256 (from `draft show`)';
 
 /** Options of the commands that post a message (`post`, `claim`). */
@@ -2369,15 +2373,17 @@ interface GuidelinesStoreCliOptions {
   expectSha256?: string;
 }
 
-/** A draft file's text, exactly as stored: the hash the user approved is of this text (#1930). */
-async function readDraftText(file: string): Promise<string> {
-  const { readDraft } = await import('./commands/draft.js');
-  return readDraft(file).content;
-}
-
-/** The message for `post` / `claim`: a draft file, stdin (trimmed), or the positional words. */
+/** The message for `post` / `claim`: an approved draft file, stdin (trimmed), or the positional words. */
 async function readMessage(options: MessageCliOptions, parts: string[]): Promise<string> {
-  if (options.bodyFile !== undefined) return readDraftText(options.bodyFile);
+  if (options.bodyFile !== undefined) {
+    const { readApprovedDraft } = await import('./commands/draft.js');
+    return readApprovedDraft({
+      file: options.bodyFile,
+      flag: '--body-file',
+      expectSha256: options.expectSha256,
+      hasOtherInput: options.stdin === true || parts.length > 0,
+    });
+  }
   if (options.stdin) {
     const chunks: Buffer[] = [];
     for await (const chunk of process.stdin) {
@@ -2389,7 +2395,15 @@ async function readMessage(options: MessageCliOptions, parts: string[]): Promise
 }
 
 async function readGuidelinesContent(options: GuidelinesStoreCliOptions): Promise<string> {
-  if (options.fromFile !== undefined) return readDraftText(options.fromFile);
+  if (options.fromFile !== undefined) {
+    const { readApprovedDraft } = await import('./commands/draft.js');
+    return readApprovedDraft({
+      file: options.fromFile,
+      flag: '--from-file',
+      expectSha256: options.expectSha256,
+      hasOtherInput: options.content !== undefined,
+    });
+  }
   return options.content ?? readStdin();
 }
 

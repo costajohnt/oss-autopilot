@@ -463,10 +463,10 @@ Options:
    git tag -d oss-autopilot-pre-squash 2>/dev/null  # cleanup stale tag
    git tag oss-autopilot-pre-squash                  # safety tag — MUST succeed
    git reset --soft "$mergeBase"
-   git commit -F "$commitMsgFile"                    # message saved with the Write tool, see below
+   git commit -F "<commit-message-path>"             # message saved with the Write tool, see below
    git tag -d oss-autopilot-pre-squash               # cleanup after success
    ```
-   Before running the block, get the message path, `commitMsgFile=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path oss-{owner}-{repo}-{issue-number}-commit.txt)`, and save the approved message there **with the Write tool**. The path is in the tool's own owner-only draft directory, never `/tmp`, where another local user could swap the file before `git commit` reads it (#1930). The name carries the repo and issue number so two sessions cannot swap messages. Do not pass it with `-m "..."`: a message that quotes code in backticks or mentions `$(...)` would be executed by the shell inside double quotes.
+   Before running the block, run `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path oss-{owner}-{repo}-{issue-number}-commit.txt` on its own. It prints the path (`<commit-message-path>` above), in the tool's own owner-only draft directory, never `/tmp`, where another local user could swap the file before `git commit` reads it (#1930). Save the approved message there **with the Write tool**, and put the printed path, quoted, in the `git commit -F` line: a shell variable would be gone by the next tool call. Delete the file after the commit succeeds (`rm -- "<commit-message-path>"`). The name carries the repo and issue number so two sessions cannot swap messages. Do not pass it with `-m "..."`: a message that quotes code in backticks or mentions `$(...)` would be executed by the shell inside double quotes.
 
    **CRITICAL: If the safety tag creation fails, do NOT proceed with the squash.** Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
    On any other failure: automatically recover via `git reset --hard oss-autopilot-pre-squash` (restores pre-squash commit history), report error, offer "Retry squash" / "Skip squash — proceed with multiple commits" / "Done for now".
@@ -596,23 +596,23 @@ Generate the PR title and body following the target repo's conventions (check `C
 - Reference to the issue being fixed (e.g., "Fixes #123")
 - Brief description of the approach
 
-Get two paths in the tool's own owner-only draft directory (never `/tmp`, where another local user could swap a file between the user's approval and `gh` reading it, #1930):
+Get two paths in the tool's own owner-only draft directory (never `/tmp`, where another local user could swap a file between the user's approval and `gh` reading it, #1930). Run each command on its own; each prints one path:
 
 ```bash
-prTitleFile=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path oss-{owner}-{repo}-{issue-number}-pr-title.txt)
-prBodyFile=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path oss-{owner}-{repo}-{issue-number}-pr-body.md)
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path oss-{owner}-{repo}-{issue-number}-pr-title.txt
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path oss-{owner}-{repo}-{issue-number}-pr-body.md
 ```
 
-Save the title (one line) to the first and the body to the second **with the Write tool**. Shell variables do not survive between tool calls: if they are gone when you run `gh pr create`, put the two printed paths in their place. Never place either inside a quoted shell argument: the body is built from the target repo's PR template and the issue text, both written by other people, and backticks or `$(...)` inside double quotes run as commands. `--body-file` reads the file directly, and the output of `$(cat ...)` is not evaluated again.
+Save the title (one line) to the first printed path (`<pr-title-path>` below) and the body to the second (`<pr-body-path>`) **with the Write tool**. Use the printed paths literally, quoted, in the commands below: a shell variable would be gone by the next tool call. Delete both files once the PR is created (`rm -- "<pr-title-path>" "<pr-body-path>"`). Never place either inside a quoted shell argument: the body is built from the target repo's PR template and the issue text, both written by other people, and backticks or `$(...)` inside double quotes run as commands. `--body-file` reads the file directly, and the output of `$(cat ...)` is not evaluated again.
 
 **If user chose "Create as ready for review":**
 ```bash
-gh pr create --title "$(cat "$prTitleFile")" --body-file "$prBodyFile" --repo {upstream-repo} --head "$forkOwner:$branch"
+gh pr create --title "$(cat "<pr-title-path>")" --body-file "<pr-body-path>" --repo {upstream-repo} --head "$forkOwner:$branch"
 ```
 
 **If user chose "Create as draft":**
 ```bash
-gh pr create --draft --title "$(cat "$prTitleFile")" --body-file "$prBodyFile" --repo {upstream-repo} --head "$forkOwner:$branch"
+gh pr create --draft --title "$(cat "<pr-title-path>")" --body-file "<pr-body-path>" --repo {upstream-repo} --head "$forkOwner:$branch"
 ```
 
 **If `gh pr create` succeeds**, store in session context:

@@ -58,7 +58,8 @@ workflow is the lightweight load → edit → store path.
    - "Paste replacement here" — accept the new markdown via
      `AskUserQuestion`'s textarea. Use this when the user has an
      edited copy on the clipboard already.
-   - "Cancel" — exit without saving.
+   - "Cancel" — delete the draft (`rm -- "<draft-path>"`) and exit
+     without saving.
 
 4. **Validate the edited content** before storing:
    - Non-empty (a zero-length file is treated as "I want to delete";
@@ -69,10 +70,10 @@ workflow is the lightweight load → edit → store path.
 
 5. **Store via the CLI.** If the user pasted a replacement, write it
    to the draft path with the Write tool first. Run
-   `cli.bundle.cjs draft show <draft-path> --json`, show the user
+   `cli.bundle.cjs draft show "<draft-path>" --json`, show the user
    `data.content` as the text about to be stored, and on their
    confirmation run
-   `cli.bundle.cjs guidelines store --repo OWNER/REPO --from-file <draft-path> --expect-sha256 <data.sha256> --reviewed`.
+   `cli.bundle.cjs guidelines store --repo OWNER/REPO --from-file "<draft-path>" --expect-sha256 <data.sha256> --reviewed`.
    `--reviewed` states that the user saw and approved this exact text
    (#1929); `--expect-sha256` makes the store fail if the file changed
    after that display (#1930). No `--untrusted` here: this workflow
@@ -85,9 +86,9 @@ workflow is the lightweight load → edit → store path.
      for later, or cancel.
 
 6. **Show a diff summary** between the prior content and the stored
-   content for the user's audit trail. The draft path stays around
-   until the user runs `/oss-guidelines` again (or manually deletes
-   it).
+   content for the user's audit trail. Then delete the draft
+   (`rm -- "<draft-path>"`); keep it only when the store failed and
+   the user chose to save the draft for later.
 
 ## What this workflow does NOT do
 

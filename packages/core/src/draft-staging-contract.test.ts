@@ -11,8 +11,13 @@
  * A `/tmp/` path in a prompt file fails unless it is on the allowlist below
  * with the reason it carries no text that is later posted, stored or committed.
  *
- * Limit: a text scan. It does not see a path built from variables (`$TMPDIR`,
- * `mktemp`), or a draft staged outside `/tmp` in some other shared directory.
+ * Limit: a text scan. `mktemp`, `$TMPDIR`, `/var/tmp` and `/private/tmp` fail
+ * too, but a draft staged in some other shared directory is not seen.
+ *
+ * Known gap: the workflows that post through the external `draft-review-post`
+ * skill (review-issue-replies, closed-pr-status-update, merged-pr-notes,
+ * dormant-pr-follow-up, review-follow-ups) stage wherever that skill does; it
+ * is not part of this repository, so nothing here checks it.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -34,11 +39,6 @@ const ALLOWED_TMP: Record<string, string> = {
     'baseline diff compared against after a formatter run; never posted, stored or committed',
   'agents/pr-health-checker.md /tmp/my-changes.patch':
     "backup of the user's own diff, re-applied by hand; never posted or stored",
-  'commands/plan-ready.md /tmp/oss-autopilot-plans/':
-    'implementation plan the review loop reads; guides local work, not fed to a posting or storing command',
-  'commands/plan-ready.md /tmp/some-plan.md': 'example of a user-supplied plan path',
-  'workflows/plan-review.md /tmp/oss-autopilot-plans/':
-    'implementation plan the review loop reads; guides local work, not fed to a posting or storing command',
 };
 
 /** A `/tmp/...` path, but not the `tmp` directory of some other path (`~/.oss-autopilot/tmp/x`). */
@@ -100,6 +100,44 @@ describe('prompt files do not stage drafts under /tmp (#1930)', () => {
       return !readPrompt(file).includes(prefix);
     });
     expect(stale, 'Remove these entries from ALLOWED_TMP').toEqual([]);
+  });
+});
+
+describe('prompt files use no other shared temp location (#1930)', () => {
+  const OTHER_SHARED_TEMP = /\bmktemp\b|\$\{?TMPDIR\b|\/(?:var|private)\/tmp\b/g;
+
+  it('the pattern matches mktemp, $TMPDIR and the other system temp directories', () => {
+    // Joined from parts: a literal system temp path here trips the linter's own shared-directory rule.
+    const systemTemp = ['var', 'private'].map((top) => ['', top, 'tmp', 'x'].join('/'));
+    const sample = ['f=$(mktemp)', '"$TMPDIR/x"', '${TMPDIR:-x}', ...systemTemp].join(' ');
+    expect(sample.match(OTHER_SHARED_TEMP)).toHaveLength(5);
+  });
+
+  it('no prompt file uses mktemp, $TMPDIR, /var/tmp or /private/tmp', () => {
+    expect(findInPrompts(OTHER_SHARED_TEMP), 'Use `draft path` instead of a shared temp location').toEqual([]);
+  });
+});
+
+describe('a file handed to post, claim or guidelines store is pinned to the approved text (#1930)', () => {
+  const FILE_FLAG = /--(?:body|from)-file\b/;
+  /** `post <url>` / `claim <url>` with a placeholder or real URL, or `guidelines store`; not `draft-review-post`. */
+  const INVOCATION = /(?<![\w-])(?:post|claim)\s+(?:[<{]|https:)|guidelines store\b/;
+
+  const fileInvocations = PROMPT_FILES.flatMap((file) =>
+    readPrompt(file)
+      .split('\n')
+      .filter((line) => FILE_FLAG.test(line) && INVOCATION.test(line))
+      .map((line) => `${file}: ${line.trim()}`),
+  );
+
+  it('sanity: the scan finds the documented invocations', () => {
+    expect(fileInvocations.length).toBeGreaterThanOrEqual(5);
+    expect(INVOCATION.test('Route through `draft-review-post`. Never post directly')).toBe(false);
+  });
+
+  it('every such line also carries --expect-sha256', () => {
+    const unpinned = fileInvocations.filter((line) => !line.includes('--expect-sha256'));
+    expect(unpinned, 'Add --expect-sha256 <data.sha256> from `draft show`').toEqual([]);
   });
 });
 
