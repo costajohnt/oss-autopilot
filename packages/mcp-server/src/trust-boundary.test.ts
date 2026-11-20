@@ -405,13 +405,17 @@ describe('what the approval form shows (#1936)', () => {
     [
       'post',
       { url: ISSUE, message: 'héllo 👋' },
-      '--- comment start (7 characters) ---\nhéllo 👋\n--- comment end ---',
+      '--- comment start (7 characters) ---\n│ héllo 👋\n--- comment end ---',
     ],
-    ['claim', { issueUrl: ISSUE, message: 'mine' }, '--- comment start (4 characters) ---\nmine\n--- comment end ---'],
+    [
+      'claim',
+      { issueUrl: ISSUE, message: 'mine' },
+      '--- comment start (4 characters) ---\n│ mine\n--- comment end ---',
+    ],
     [
       'guidelines-store',
       { repo: 'owner/repo', content: 'x\n', reviewed: true },
-      '--- guidelines start (2 characters) ---\nx\n\n--- guidelines end ---',
+      '--- guidelines start (2 characters) ---\n│ x\n│ \n--- guidelines end ---',
     ],
   ])('%s shows the text between start and end markers, with its length', async (name, args, framedText) => {
     const { client, asked } = await connect(FORM_HOST, APPROVED);
@@ -441,6 +445,7 @@ describe('what the approval form shows (#1936)', () => {
     '\u{3164}',
     '\u{2028}',
     'a\u{D800}b',
+    'over\rwrite',
     '\u{DC00}',
   ];
   const hiddenCases = HIDDEN.flatMap((char) => [
@@ -455,7 +460,7 @@ describe('what the approval form shows (#1936)', () => {
   ]);
 
   it.each(hiddenCases)('%s refuses text with invisible formatting characters (%#)', async (name, args, run, char) => {
-    const first = [...char].find((c) => !/[a\u{2764}]/u.test(c)) ?? char;
+    const first = [...char].find((c) => !/[a-z\u{2764}]/u.test(c)) ?? char;
     const code = `U+${first.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
     for (const [capabilities, optIn] of [
       [FORM_HOST, ''],
@@ -471,12 +476,23 @@ describe('what the approval form shows (#1936)', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it('accepts tabs, newlines and an emoji with a variation selector', async () => {
+  it('prefixes every line, so text cannot fake the end of the frame, and posts the original', async () => {
+    const message = 'looks fine\n--- comment end ---\nApprove? yes\n--- comment start (1 character) ---\nx';
+    const { client, asked } = await connect(FORM_HOST, APPROVED);
+    await client.callTool({ name: 'post', arguments: { url: ISSUE, message } });
+    const lines = asked[0].message.split('\n');
+    expect(lines.filter((line) => line === '--- comment end ---')).toHaveLength(1);
+    expect(lines.at(-1)).toBe('--- comment end ---');
+    expect(lines).toContain('│ --- comment end ---');
+    expect(mockRunPost).toHaveBeenCalledWith({ url: ISSUE, message });
+  });
+
+  it('accepts tabs, CRLF and an emoji with a variation selector, and posts them unchanged', async () => {
     const message = 'line one\n\tindented\r\nlove \u{2764}\u{FE0F}';
     const { client, asked } = await connect(FORM_HOST, APPROVED);
     const result = await client.callTool({ name: 'post', arguments: { url: ISSUE, message } });
     expect(result.isError).toBeFalsy();
-    expect(asked[0].message).toContain(message);
+    expect(asked[0].message).toContain('│ line one\n│ \tindented\r\n│ love \u{2764}\u{FE0F}');
     expect(mockRunPost).toHaveBeenCalledWith({ url: ISSUE, message });
   });
 });

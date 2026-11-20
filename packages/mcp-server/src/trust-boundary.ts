@@ -72,11 +72,14 @@ const approvalSchema = z.object({
  * grapheme joiner, Hangul fillers), line and paragraph separators,
  * private-use and unassigned code points, lone surrogates (\p{Cs}: the
  * target is ES2022, where String#isWellFormed is not typed), and C0/C1
- * controls other than tab, newline and carriage return. Stripping them would post text other than what
- * the user approved, so a preview containing one is refused instead.
+ * controls other than tab, newline and a carriage return that starts a CRLF
+ * (a bare CR can overwrite a line on screen). Stripping them would post text
+ * other than what the user approved, so a preview containing one is refused
+ * instead.
  * Ceiling: \p{Cf} includes U+200D, so emoji ZWJ sequences are refused too.
  */
-const HIDDEN_CHARACTERS = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/u;
+const HIDDEN_CHARACTERS =
+  /(?![\t\n]|\r\n)[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/u;
 /** The one variation selector allowed: a single U+FE0E or U+FE0F right after a pictograph (as in ❤️). */
 const EMOJI_PRESENTATION = /(\p{Extended_Pictographic})[\u{FE0E}\u{FE0F}]/gu;
 
@@ -94,10 +97,16 @@ function characterCount(text: string): string {
 /**
  * Text for an approval form, between start and end markers so the user sees
  * exactly where it begins and ends: `--- comment start (N characters) ---`,
- * the text, `--- comment end ---`.
+ * the text, `--- comment end ---`. Every line of the text is shown after
+ * "│ ", so text that contains its own end marker cannot fake the frame. Only
+ * the form is prefixed; the text posted is the original.
  */
 export function framed(label: string, text: string): string {
-  return `--- ${label} start (${characterCount(text)}) ---\n${text}\n--- ${label} end ---`;
+  const body = text
+    .split('\n')
+    .map((line) => `│ ${line}`)
+    .join('\n');
+  return `--- ${label} start (${characterCount(text)}) ---\n${body}\n--- ${label} end ---`;
 }
 
 function refusal(text: string) {
