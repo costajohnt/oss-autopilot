@@ -12,7 +12,13 @@ import {
   type StateManager,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
-import { MACHINE_PATH_KEYS, getMachinePath, getMachinePathSource, setMachinePath } from '../core/local-config.js';
+import {
+  MACHINE_PATH_KEYS,
+  getMachinePath,
+  getMachinePathSource,
+  getMachineScanPaths,
+  setMachinePath,
+} from '../core/local-config.js';
 import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
@@ -51,6 +57,8 @@ function validateScope(value: string): IssueScope {
  * effect here (local file first, synced value as fallback), not whatever
  * another machine last synced (#1950). `machinePathSources` says where each
  * shown path comes from and is omitted when neither is configured.
+ * `localRepoScanPaths` shows this machine's scan roots, and is omitted when
+ * the defaults are in use (#2010).
  */
 function showConfig(config: ConfigOutput['config']): ConfigOutput {
   const shown = { ...config };
@@ -62,6 +70,9 @@ function showConfig(config: ConfigOutput['config']): ConfigOutput {
     const source = getMachinePathSource(key, config);
     if (source) sources[key] = source;
   }
+  const scanPaths = getMachineScanPaths(config.localRepoScanPaths);
+  if (scanPaths) shown.localRepoScanPaths = scanPaths;
+  else delete shown.localRepoScanPaths;
   return { config: shown, ...(Object.keys(sources).length > 0 && { machinePathSources: sources }) };
 }
 

@@ -18,6 +18,9 @@ vi.mock('../core/index.js', () => ({
 import { scanForRepos, runLocalRepos } from './local-repos.js';
 import { getStateManager } from '../core/index.js';
 import * as fs from 'node:fs';
+import { getLocalConfigPath } from '../core/paths.js';
+
+const actualFs = await vi.importActual<typeof fs>('fs');
 
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof fs>('fs');
@@ -396,6 +399,25 @@ describe('runLocalRepos', () => {
     const result = await runLocalRepos({ scan: true, paths: ['/nonexistent'] });
 
     expect(result).toEqual(expect.objectContaining({ fromCache: false }));
+  });
+
+  it('scans the local scan roots, not the synced ones (#2010)', async () => {
+    const localConfigPath = getLocalConfigPath();
+    actualFs.mkdirSync(path.dirname(localConfigPath), { recursive: true });
+    actualFs.writeFileSync(localConfigPath, JSON.stringify({ localRepoScanPaths: ['/here/dev'] }));
+    mockExistsSync.mockImplementation((p) => p === localConfigPath);
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { localRepoScanPaths: ['/other-machine/dev'] } }),
+      clearSyncedLocalRepoCache: mockClearSyncedCache,
+      save: mockSave,
+    } as any);
+
+    try {
+      const result = await runLocalRepos({ scan: true });
+      expect(result.scanPaths).toEqual(['/here/dev']);
+    } finally {
+      actualFs.rmSync(localConfigPath, { force: true });
+    }
   });
 
   it('should handle cache save failure gracefully', async () => {

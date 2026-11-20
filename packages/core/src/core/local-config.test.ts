@@ -12,6 +12,7 @@ import {
   getMachinePath,
   getMachinePathSource,
   getMachineRepoCache,
+  getMachineScanPaths,
   MACHINE_PATH_KEYS,
   setMachinePath,
   setMachineRepoCache,
@@ -248,5 +249,54 @@ describe('getMachineRepoCache / setMachineRepoCache', () => {
 
   it('adopts an empty synced cache as an empty cache', () => {
     expect(getMachineRepoCache(cacheOf({}))).toEqual(cacheOf({}));
+  });
+});
+
+/** A real directory under the temp home. */
+function existingDir(name: string): string {
+  const dir = path.join(os.homedir(), name);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function storeLocal(paths: string[]): void {
+  fs.mkdirSync(path.dirname(getLocalConfigPath()), { recursive: true });
+  fs.writeFileSync(getLocalConfigPath(), JSON.stringify({ localRepoScanPaths: paths }));
+}
+
+describe('getMachineScanPaths (#2010)', () => {
+  it('returns undefined with no local and no synced value, and writes nothing', () => {
+    expect(getMachineScanPaths(undefined)).toBeUndefined();
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
+  });
+
+  it('prefers the local value over the synced one', () => {
+    storeLocal(['/here/dev']);
+
+    expect(getMachineScanPaths([existingDir('theirs')])).toEqual(['/here/dev']);
+  });
+
+  it('adopts a synced list once when every entry is a directory here', () => {
+    const synced = [existingDir('dev'), existingDir('oss')];
+
+    expect(getMachineScanPaths(synced)).toEqual(synced);
+    expect(readStored()).toEqual({ localRepoScanPaths: synced });
+  });
+
+  it('ignores a synced list with any entry missing here: another machine wrote it', () => {
+    expect(getMachineScanPaths([existingDir('dev'), '/other-machine/dev'])).toBeUndefined();
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
+  });
+
+  it('ignores relative, file and shell-unsafe synced entries even when they exist', () => {
+    const unsafe = existingDir('a$(x)');
+    for (const synced of [['dev'], [existingFile('plain.md')], [unsafe], [`${existingDir('dev')}\0`]]) {
+      expect(getMachineScanPaths(synced)).toBeUndefined();
+    }
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
+  });
+
+  it('ignores an empty synced list', () => {
+    expect(getMachineScanPaths([])).toBeUndefined();
   });
 });

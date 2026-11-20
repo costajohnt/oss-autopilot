@@ -3,14 +3,15 @@
  *
  * The synced state document is shared by every machine through the Gist, so a
  * filesystem path stored there is overwritten by whichever machine wrote
- * last. The curated list path, the skipped-issues path and the local repo
- * cache live here instead. Like `machine-id`, the file is outside
- * `state.json`, so no sync path ever carries it.
+ * last. The curated list path, the skipped-issues path, the local repo scan
+ * roots (#2010) and the local repo cache live here instead. Like
+ * `machine-id`, the file is outside `state.json`, so no sync path ever
+ * carries it.
  *
  * Transition: the synced keys (`config.issueListPath`,
- * `config.skippedIssuesPath`, `localRepoCache`) stay in the schema and are
- * still read as a fallback, so a machine that has not set a local value
- * behaves as before. New clients write path settings here only; a synced
+ * `config.skippedIssuesPath`, `config.localRepoScanPaths`, `localRepoCache`)
+ * stay in the schema and are still read as a fallback, so a machine that has
+ * not set a local value behaves as before. New clients write path settings here only; a synced
  * value is copied here the first time it is read and found on this machine's
  * disk, and is never adopted when it is not.
  */
@@ -52,6 +53,7 @@ const StoredPathSchema = z.union([
 const LocalConfigSchema = z.looseObject({
   issueListPath: StoredPathSchema.optional(),
   skippedIssuesPath: StoredPathSchema.optional(),
+  localRepoScanPaths: z.array(z.string()).optional(),
   localRepoCache: LocalRepoCacheSchema.optional(),
 });
 
@@ -177,6 +179,32 @@ export function setMachinePath(key: MachinePathKey, value = '', source: MachineP
   const stored = value && path.resolve(value);
   updateLocalConfig({ [key]: { path: stored, source } });
   return stored;
+}
+
+/** True for an absolute, shell-safe path to a directory on this machine's disk. */
+function isSafeDirHere(candidate: string): boolean {
+  return (
+    path.isAbsolute(candidate) &&
+    !SHELL_UNSAFE_PATH.test(candidate) &&
+    !candidate.includes('\0') &&
+    fs.statSync(candidate, { throwIfNoEntry: false })?.isDirectory() === true
+  );
+}
+
+/**
+ * This machine's repo scan roots (#2010), or undefined to use the defaults.
+ *
+ * The local value wins. With none, a synced list is adopted (copied to the
+ * local file and returned) only when every entry is an absolute, shell-safe
+ * directory here; otherwise it was written for another machine and is
+ * ignored. There is no setter: edit `local-config.json` to change it.
+ */
+export function getMachineScanPaths(synced: string[] | undefined): string[] | undefined {
+  const local = readLocalConfig().localRepoScanPaths;
+  if (local) return local;
+  if (!synced?.length || synced.some((entry) => !isSafeDirHere(entry))) return undefined;
+  adopt({ localRepoScanPaths: synced });
+  return synced;
 }
 
 /** The cache with only the repos whose checkout is on this machine's disk. */
