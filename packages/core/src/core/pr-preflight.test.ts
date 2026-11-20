@@ -580,10 +580,25 @@ describe('checkRepoPolicy (#1953)', () => {
     expect(checkRepoPolicy({ ...READY, policy: policy({ prGate: 'maintainer-label' }) }).status).toBe('warn');
   });
 
-  it('fails collaborators-only unless the user can push', () => {
+  it('only warns for an unreviewed collaborators-only reading: the heuristic may have misread the docs', () => {
     const facts = { ...READY, policy: policy({ prGate: 'collaborators-only' }) };
+    const result = checkRepoPolicy(facts);
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('policy set --repo up/proj');
+    expect(checkRepoPolicy({ ...facts, github: { ...GITHUB, canPush: true } }).status).toBe('pass');
+  });
+
+  it('fails a reviewed collaborators-only rule when push access is known to be missing', () => {
+    const facts = { ...READY, policy: policy({ prGate: 'collaborators-only', reviewedByUser: true }) };
     expect(checkRepoPolicy(facts).status).toBe('fail');
     expect(checkRepoPolicy({ ...facts, github: { ...GITHUB, canPush: true } }).status).toBe('pass');
+  });
+
+  it('warns, not fails, when push access could not be checked (--local, offline, read failed)', () => {
+    const facts = { ...OFFLINE, policy: policy({ prGate: 'collaborators-only', reviewedByUser: true }) };
+    const result = checkRepoPolicy(facts);
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('push access could not be checked');
   });
 
   it('fails at the max open AI-assisted PRs, warns when the count is unknown', () => {

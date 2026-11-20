@@ -318,6 +318,7 @@ function policyAsks(facts: PreflightFacts, policy: RepoPolicy, repo: string): st
       `${repo} wants a maintainer to accept the issue first: confirm it carries their approval label`,
     ],
     [isFirst && policy.cla === 'required', `${repo} requires a signed CLA: sign it when the CLA bot asks on the PR`],
+    [policy.prGate === 'collaborators-only' && facts.github?.canPush !== true, collaboratorsAsk(facts, policy, repo)],
     [
       !facts.cap && policy.maxOpenAiPRs !== undefined,
       `${repo} allows ${policy.maxOpenAiPRs} open AI-assisted PR(s): count yours there before opening another`,
@@ -326,10 +327,20 @@ function policyAsks(facts: PreflightFacts, policy: RepoPolicy, repo: string): st
   return rules.filter(([applies]) => applies).map(([, ask]) => ask);
 }
 
+/** The warn for `collaborators-only` when it cannot fail: push access unknown, or the rule not reviewed. */
+function collaboratorsAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string): string {
+  if (!facts.github) {
+    return `${repo} only takes PRs from collaborators and push access could not be checked: confirm you are one before opening the PR`;
+  }
+  const record = policy.reviewedByUser ? '' : `, or record it with policy set --repo ${repo} if the docs were misread`;
+  return `${repo}'s docs read as collaborators-only and you cannot push there: check the rule${record}`;
+}
+
 /** What the policy forbids outright; null when nothing does. */
 function policyStop(facts: PreflightFacts, policy: RepoPolicy, repo: string): string | null {
   if (policy.aiPolicy === 'banned') return `${repo} does not accept AI-assisted contributions: do not open this PR`;
-  if (policy.prGate === 'collaborators-only' && facts.github?.canPush !== true) {
+  // Only a rule the user confirmed, checked against known push access, stops the PR.
+  if (policy.prGate === 'collaborators-only' && policy.reviewedByUser && facts.github?.canPush === false) {
     return `${repo} only takes PRs from collaborators: do not open this PR`;
   }
   const max = policy.maxOpenAiPRs;
