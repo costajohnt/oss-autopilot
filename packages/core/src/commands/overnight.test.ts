@@ -589,6 +589,8 @@ describe('schedule', () => {
       'Bash(git * push *)',
       'Bash(gh pr merge *)',
       'Bash(gh pr comment *)',
+      'Bash(gh issue view)',
+      'Bash(gh issue view *)',
       'Bash(gh api *)',
       'Bash(npm publish)',
       'Bash(npm publish *)',

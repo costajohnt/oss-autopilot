@@ -706,6 +706,10 @@ export const OVERNIGHT_DISALLOWED_TOOLS = [
   'Bash(gh issue create *)',
   'Bash(gh issue comment *)',
   'Bash(gh issue close *)',
+  // A read, denied anyway: its raw output is unfenced stranger text. Issue
+  // threads are read with the `issue-thread` CLI command (#1932).
+  'Bash(gh issue view)',
+  'Bash(gh issue view *)',
   'Bash(gh run rerun *)',
   'Bash(gh api *)',
   // `npm`/`pnpm` are allowed for builds and tests, but a token in ~/.npmrc
