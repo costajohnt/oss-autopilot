@@ -1,3 +1,5 @@
+import { isRateLimitOrAuthError } from './errors.js';
+
 /** Maximum pages to fetch to prevent runaway pagination */
 const MAX_PAGES = 10;
 
@@ -59,56 +61,95 @@ export async function paginateAll<T>(
   return items;
 }
 
-/** The part of a Search API response {@link paginateSearch} reads. */
+/** The part of a Search API response {@link searchAllPages} reads. */
 export interface SearchPage<T> {
   total_count: number;
   incomplete_results?: boolean;
   items: T[];
 }
 
-/** Result of {@link paginateSearch}. */
-export interface PaginateSearchResult<T> {
+/** Result of {@link searchAllPages}. */
+export interface SearchPagesResult<T> {
+  /** The items of every page read, unique by `html_url`, in the order first seen. */
   items: T[];
-  /** `total_count` from the last page read. */
+  /** `total_count` from the last page read; 0 when none was. */
   totalCount: number;
+  /** Pages read successfully. */
+  pagesRead: number;
+  /** GitHub flagged a page `incomplete_results` (the search timed out server-side and returned what it had). */
+  incomplete: boolean;
+  /** The page after the first whose request failed, with the error; the pages before it were kept. */
+  failure?: { page: number; error: unknown };
   /**
-   * True when the items are not the whole result: the page cap was reached
-   * with more results left, or GitHub flagged a page `incomplete_results`
-   * (the search timed out server-side). Callers must surface this and must
-   * not read "absent from the items" as "does not exist" (#1928).
+   * True when `items` is not the whole result: a later page failed, GitHub
+   * flagged a page incomplete, or fewer unique items were read than
+   * `totalCount` (the page cap, or the list shifted between page requests
+   * and an item was skipped). Callers must surface this and must not read
+   * "absent from the items" as "does not exist" (#1928).
    */
   truncated: boolean;
 }
 
 /**
- * Page cap for {@link paginateSearch}. The Search API gets unreliable at deep
- * pages and allows 30 requests a minute, so callers narrow the query rather
- * than raise this.
+ * Page cap for {@link searchAllPages}. The Search API gets unreliable (500s,
+ * ECONNRESET) past page 3 and allows 30 requests a minute, so callers narrow
+ * the query rather than raise this.
  */
 export const SEARCH_MAX_PAGES = 3;
 
+/** One page, or the error of a later page the search can go on without. */
+async function readSearchPage<T>(
+  fetchPage: (page: number) => Promise<{ data: SearchPage<T> }>,
+  page: number,
+): Promise<{ data: SearchPage<T> } | { error: unknown }> {
+  try {
+    return await fetchPage(page);
+  } catch (error) {
+    if (page === 1 || isRateLimitOrAuthError(error)) throw error;
+    return { error };
+  }
+}
+
 /**
  * Read a Search API query page by page until every result is read or the
- * page cap is reached. Errors from `fetchPage` propagate unchanged.
+ * page cap is reached. The search is sorted by update time, so an item
+ * updated between two page requests can come back on the next page too:
+ * items are deduplicated by `html_url`.
+ *
+ * A page after the first that fails ends the search with the items read so
+ * far, `failure` set and `truncated` true; the caller reports it.
  *
  * @param fetchPage Function that fetches a single page given a page number
  * @param maxPages Maximum pages to fetch (default {@link SEARCH_MAX_PAGES})
  * @param perPage Items per page (default 100)
+ * @throws Any error from page 1, and a rate-limit or auth error from any page, unchanged
  */
-export async function paginateSearch<T>(
+export async function searchAllPages<T extends { html_url: string }>(
   fetchPage: (page: number) => Promise<{ data: SearchPage<T> }>,
   maxPages = SEARCH_MAX_PAGES,
   perPage = 100,
-): Promise<PaginateSearchResult<T>> {
-  const items: T[] = [];
-  let totalCount = 0;
-  let isIncomplete = false;
-  for (let page = 1; page <= maxPages; page++) {
-    const { data } = await fetchPage(page);
-    items.push(...data.items);
-    totalCount = data.total_count;
-    if (data.incomplete_results) isIncomplete = true;
-    if (data.items.length < perPage || items.length >= totalCount) break;
+): Promise<SearchPagesResult<T>> {
+  const seen = new Set<string>();
+  const result: SearchPagesResult<T> = { items: [], totalCount: 0, pagesRead: 0, incomplete: false, truncated: false };
+  let fetched = 0;
+  for (let page = 1, hasMore = true; hasMore && page <= maxPages; page++) {
+    const outcome = await readSearchPage(fetchPage, page);
+    if ('error' in outcome) {
+      result.failure = { page, error: outcome.error };
+      break;
+    }
+    const { data } = outcome;
+    result.pagesRead = page;
+    result.totalCount = data.total_count;
+    if (data.incomplete_results) result.incomplete = true;
+    for (const item of data.items) {
+      if (seen.has(item.html_url)) continue;
+      seen.add(item.html_url);
+      result.items.push(item);
+    }
+    fetched += data.items.length;
+    hasMore = data.items.length >= perPage && fetched < result.totalCount;
   }
-  return { items, totalCount, truncated: isIncomplete || items.length < totalCount };
+  result.truncated = result.failure !== undefined || result.incomplete || result.items.length < result.totalCount;
+  return result;
 }

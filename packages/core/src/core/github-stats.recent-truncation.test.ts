@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { fetchRecentlyClosedPRs, fetchRecentlyMergedPRs } from './github-stats.js';
+import { fetchRecentlyClosedPRs, fetchRecentlyMergedPRs, type RecentListTruncation } from './github-stats.js';
 
 const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 const RECENT = twoDaysAgo.toISOString();
@@ -29,11 +29,15 @@ interface Page {
   items: unknown[];
 }
 
+function octokitFor(search: unknown) {
+  return { search: { issuesAndPullRequests: search } } as never;
+}
+
 /** An Octokit whose search answers with `pages` in order. */
 function octokitWithPages(pages: Page[]) {
   const search = vi.fn();
   for (const data of pages) search.mockResolvedValueOnce({ data });
-  return { search, octokit: { search: { issuesAndPullRequests: search } } as never };
+  return { search, octokit: octokitFor(search) };
 }
 
 const config = { githubUsername: 'testuser' };
@@ -43,7 +47,7 @@ describe('recent-PR fetchers on partial search results (#1928)', () => {
     const { search, octokit } = octokitWithPages([
       { total_count: 2, incomplete_results: false, items: mergedItems(2) },
     ]);
-    const truncations: string[] = [];
+    const truncations: RecentListTruncation[] = [];
 
     const result = await fetchRecentlyMergedPRs(octokit, config, 7, truncations);
 
@@ -57,7 +61,7 @@ describe('recent-PR fetchers on partial search results (#1928)', () => {
       { total_count: 130, items: mergedItems(100) },
       { total_count: 130, items: mergedItems(30, 100) },
     ]);
-    const truncations: string[] = [];
+    const truncations: RecentListTruncation[] = [];
 
     const result = await fetchRecentlyMergedPRs(octokit, config, 7, truncations);
 
@@ -74,26 +78,30 @@ describe('recent-PR fetchers on partial search results (#1928)', () => {
       { total_count: 450, items: mergedItems(100, 200) },
       { total_count: 450, items: mergedItems(100, 300) },
     ]);
-    const truncations: string[] = [];
+    const truncations: RecentListTruncation[] = [];
 
     const result = await fetchRecentlyMergedPRs(octokit, config, 7, truncations);
 
     expect(search).toHaveBeenCalledTimes(3);
     expect(result).toHaveLength(300);
     expect(truncations).toEqual([
-      'Recently merged PR search is partial: read the 300 most recently updated of 450 result(s). Some recently merged PRs may be missing this run.',
+      {
+        label: 'recently merged PR search truncated (300 of 450)',
+        message:
+          'Recently merged PR search is partial: read the 300 most recently updated of 450 result(s). Some recently merged PRs may be missing this run.',
+      },
     ]);
   });
 
   it('reports incomplete_results as partial even when the counts match', async () => {
     const { octokit } = octokitWithPages([{ total_count: 1, incomplete_results: true, items: mergedItems(1) }]);
-    const truncations: string[] = [];
+    const truncations: RecentListTruncation[] = [];
 
     const result = await fetchRecentlyClosedPRs(octokit, config, 7, truncations);
 
     expect(result).toHaveLength(1);
     expect(truncations).toHaveLength(1);
-    expect(truncations[0]).toContain('Recently closed PR search is partial');
+    expect(truncations[0].label).toBe('recently closed PR search truncated (1 of 1)');
   });
 
   it('still returns the partial list when the caller passes no collector', async () => {
@@ -117,15 +125,52 @@ describe('recent-PR fetchers on partial search results (#1928)', () => {
     );
   });
 
-  it('propagates a rate-limit error from a later page', async () => {
+  it('returns each PR once when an update moved it onto the next page as well', async () => {
+    const { octokit } = octokitWithPages([
+      { total_count: 120, items: mergedItems(100) },
+      { total_count: 120, items: mergedItems(21, 99) },
+    ]);
+    const truncations: RecentListTruncation[] = [];
+
+    const result = await fetchRecentlyMergedPRs(octokit, config, 7, truncations);
+
+    expect(result.map((pr) => pr.number)).toEqual(Array.from({ length: 120 }, (_, i) => i + 1));
+    expect(truncations).toEqual([]);
+  });
+
+  it('keeps the first page and reports the list as partial when a later page fails', async () => {
+    const search = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { total_count: 200, items: mergedItems(100) } })
+      .mockRejectedValueOnce(Object.assign(new Error('Bad Gateway'), { status: 502 }));
+    const truncations: RecentListTruncation[] = [];
+
+    const result = await fetchRecentlyMergedPRs(octokitFor(search), config, 7, truncations);
+
+    expect(result).toHaveLength(100);
+    expect(truncations).toEqual([
+      {
+        label: 'recently merged PR search failed on page 2 (100 read)',
+        message:
+          'Recently merged PR search failed on page 2 (HTTP 502: Bad Gateway); only the 100 result(s) from the page(s) before it were read. Some recently merged PRs may be missing this run.',
+      },
+    ]);
+  });
+
+  it('rethrows a first-page error', async () => {
+    const error = new Error('socket hang up');
+    const search = vi.fn().mockRejectedValue(error);
+
+    await expect(fetchRecentlyMergedPRs(octokitFor(search), config)).rejects.toBe(error);
+  });
+
+  it('rethrows a rate-limit error from a later page', async () => {
     const error = Object.assign(new Error('API rate limit exceeded'), { status: 429 });
     const search = vi
       .fn()
       .mockResolvedValueOnce({ data: { total_count: 200, items: mergedItems(100) } })
       .mockRejectedValueOnce(error);
 
-    await expect(fetchRecentlyMergedPRs({ search: { issuesAndPullRequests: search } } as never, config)).rejects.toBe(
-      error,
-    );
+    await expect(fetchRecentlyMergedPRs(octokitFor(search), config)).rejects.toBe(error);
   });
 });

@@ -54,6 +54,7 @@ import {
 } from './pr-graphql.js';
 import {
   type PRCountsResult,
+  type RecentListTruncation,
   fetchUserMergedPRCounts as fetchUserMergedPRCountsImpl,
   fetchUserClosedPRCounts as fetchUserClosedPRCountsImpl,
   fetchRecentlyClosedPRs as fetchRecentlyClosedPRsImpl,
@@ -725,10 +726,10 @@ export class PRMonitor {
   /**
    * Fetch PRs closed without merge in the last N days.
    * @param days - Lookback window in days (default: 7)
-   * @param truncations - Receives a message when the search returned a partial list (#1928)
+   * @param truncations - Receives the recent-list truncation when the search returned a partial list (#1928)
    * @returns Recently closed PRs
    */
-  async fetchRecentlyClosedPRs(days: number = 7, truncations?: string[]): Promise<ClosedPR[]> {
+  async fetchRecentlyClosedPRs(days: number = 7, truncations?: RecentListTruncation[]): Promise<ClosedPR[]> {
     const config = this.stateManager.getState().config;
     return fetchRecentlyClosedPRsImpl(this.octokit, config, days, truncations);
   }
@@ -759,10 +760,10 @@ export class PRMonitor {
   /**
    * Fetch PRs merged in the last N days.
    * @param days - Lookback window in days (default: 7)
-   * @param truncations - Receives a message when the search returned a partial list (#1928)
+   * @param truncations - Receives the recent-list truncation when the search returned a partial list (#1928)
    * @returns Recently merged PRs
    */
-  async fetchRecentlyMergedPRs(days: number = 7, truncations?: string[]): Promise<MergedPR[]> {
+  async fetchRecentlyMergedPRs(days: number = 7, truncations?: RecentListTruncation[]): Promise<MergedPR[]> {
     const config = this.stateManager.getState().config;
     return fetchRecentlyMergedPRsImpl(this.octokit, config, days, truncations);
   }

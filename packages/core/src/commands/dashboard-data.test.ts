@@ -1117,15 +1117,20 @@ describe('fetchDashboardData', () => {
   });
 
   it('puts a partial recent-PR search in the partial-data banner (#1928)', async () => {
-    const message = 'Recently closed PR search is partial: read the 300 most recently updated of 450 result(s).';
-    mockFetchRecentlyClosedPRs.mockImplementation((_days: number, truncations: string[]) => {
-      truncations.push(message);
-      return Promise.resolve([]);
-    });
+    const label = 'recently closed PR search truncated (300 of 450)';
+    mockFetchRecentlyClosedPRs.mockImplementation(
+      (_days: number, truncations: Array<{ label: string; message: string }>) => {
+        truncations.push({
+          label,
+          message: 'Recently closed PR search is partial: read the 300 most recently updated.',
+        });
+        return Promise.resolve([]);
+      },
+    );
 
     const result = await fetchDashboardData('test-token');
 
-    expect(result.partialFailures).toEqual([message]);
+    expect(result.partialFailures).toEqual([label]);
   });
 
   it('degrades gracefully when fetchRecentlyMergedPRs fails', async () => {
@@ -1295,6 +1300,34 @@ describe('fetchDashboardData', () => {
       const result = await fetchDashboardData('test-token');
 
       expect(result.partialFailures).toEqual(['look up engaged issues']);
+    });
+
+    it('names a partial commented-issue search in the banner on its own, not as an engaged scan (#1928)', async () => {
+      mockFetchCommentedIssues.mockResolvedValue({
+        issues: [],
+        failures: [],
+        lookupFailures: 0,
+        warnings: ['Commented-issue search is partial: read the 300 most recently updated of 420 result(s).'],
+        searchTruncation: 'commented-issue search truncated (300 of 420)',
+      });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(result.partialFailures).toEqual(['commented-issue search truncated (300 of 420)']);
+    });
+
+    it('keeps the engaged-scan label next to the truncation when the monitor had other warnings too', async () => {
+      mockFetchCommentedIssues.mockResolvedValue({
+        issues: [],
+        failures: [],
+        lookupFailures: 0,
+        warnings: ['Commented-issue search is partial.', 'https://github.com/o/r/issues/6: comment thread too long'],
+        searchTruncation: 'commented-issue search truncated (300 of 420)',
+      });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(result.partialFailures).toEqual(['commented-issue search truncated (300 of 420)', 'scan engaged issues']);
     });
 
     it('adds no banner entry when the issue monitor has nothing to report', async () => {

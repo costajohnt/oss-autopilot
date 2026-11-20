@@ -89,14 +89,53 @@ describe('fetchCommentedIssues on partial search results (#1928)', () => {
     expect(search.mock.calls.map(([params]) => params.page)).toEqual([1, 2]);
     expect(result.issues).toHaveLength(105);
     expect(result.warnings).toEqual([]);
+    expect(result.searchTruncation).toBeUndefined();
+  });
+
+  it('analyses an issue once when an update moved it onto the next page as well', async () => {
+    search
+      .mockResolvedValueOnce({ data: { total_count: 104, items: issueItems(100) } })
+      .mockResolvedValueOnce({ data: { total_count: 104, items: issueItems(5, 99) } });
+
+    const result = await fetchCommentedIssues();
+
+    expect(result.issues).toHaveLength(104);
+    expect(listComments).toHaveBeenCalledTimes(104);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('keeps the first page and warns when a later page fails', async () => {
+    search
+      .mockResolvedValueOnce({ data: { total_count: 180, items: issueItems(100) } })
+      .mockRejectedValueOnce(Object.assign(new Error('Bad Gateway'), { status: 502 }));
+
+    const result = await fetchCommentedIssues();
+
+    expect(result.issues).toHaveLength(100);
+    expect(result.searchTruncation).toBe('commented-issue search failed on page 2 (100 read)');
+    expect(result.warnings).toEqual([
+      'Commented-issue search failed on page 2 (HTTP 502: Bad Gateway); only the 100 result(s) from the page(s) before it were read. Replies on the other issues you commented on are not checked this run.',
+    ]);
+  });
+
+  it('rethrows a rate-limit error from a later page', async () => {
+    const rateLimited = Object.assign(new Error('API rate limit exceeded'), { status: 429 });
+    search
+      .mockResolvedValueOnce({ data: { total_count: 180, items: issueItems(100) } })
+      .mockRejectedValueOnce(rateLimited);
+
+    await expect(fetchCommentedIssues()).rejects.toBe(rateLimited);
   });
 
   it('stops at three pages and returns a truncation warning', async () => {
-    search.mockResolvedValue({ data: { total_count: 420, items: issueItems(100) } });
+    search.mockImplementation(({ page }: { page: number }) =>
+      Promise.resolve({ data: { total_count: 420, items: issueItems(100, (page - 1) * 100) } }),
+    );
 
     const result = await fetchCommentedIssues();
 
     expect(search).toHaveBeenCalledTimes(3);
+    expect(result.searchTruncation).toBe('commented-issue search truncated (300 of 420)');
     expect(result.warnings).toEqual([
       'Commented-issue search is partial: read the 300 most recently updated of 420 result(s). Replies on the other issues you commented on are not checked this run.',
     ]);

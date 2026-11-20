@@ -159,17 +159,19 @@ describe('fetchReviewedOpenPRs (#1857)', () => {
   });
 
   it('reads at most the page cap per search and warns once per truncated search, naming it', async () => {
-    const fullPage = Array.from({ length: 100 }, (_, i) => searchItem(`https://github.com/a/b/pull/${i}`));
+    // Each page holds different PRs: the shared pager drops repeats of a URL (#1928).
+    const fullPage = (page: number) =>
+      Array.from({ length: 100 }, (_, i) => searchItem(`https://github.com/a/b/pull/${page * 100 + i}`));
     octokit.search.issuesAndPullRequests = searchResponses({
-      'reviewed-by': Array.from({ length: REVIEWED_PR_SEARCH_MAX_PAGES + 1 }, () => ({
+      'reviewed-by': Array.from({ length: REVIEWED_PR_SEARCH_MAX_PAGES + 1 }, (_, page) => ({
         total_count: 1500,
-        items: fullPage,
+        items: fullPage(page),
       })),
       commenter: [{ total_count: 1, items: [searchItem('https://github.com/c/d/pull/9')] }],
     });
     const result = await fetchReviewedOpenPRs(octokit as unknown as Octokit, config);
     expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(REVIEWED_PR_SEARCH_MAX_PAGES + 1);
-    expect(result.prs).toHaveLength(101);
+    expect(result.prs).toHaveLength(REVIEWED_PR_SEARCH_MAX_PAGES * 100 + 1);
     expect(result.warnings).toEqual([
       `GitHub Search API reports 1500 open PRs you reviewed (not authored), but only the ${REVIEWED_PR_SEARCH_MAX_PAGES * 100} most recently updated were read (${REVIEWED_PR_SEARCH_MAX_PAGES} page(s) of 100). Older reviewed PRs are not checked this run.`,
     ]);

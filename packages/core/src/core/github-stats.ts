@@ -7,8 +7,9 @@ import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo, isUntrackedOrg } from './urls.js';
 import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
+import { describeError } from './errors.js';
 import { getHttpCache } from './http-cache.js';
-import { paginateSearch } from './pagination.js';
+import { searchAllPages, type SearchPagesResult } from './pagination.js';
 
 const MODULE = 'github-stats';
 
@@ -356,6 +357,34 @@ export function fetchUserClosedPRCounts(
 }
 
 /**
+ * A recently merged or recently closed PR list that is missing entries
+ * (#1928): the recent-list truncation. Not the count-search truncation of
+ * the all-time merged and closed counts (`PRCountsResult.truncated`).
+ */
+export interface RecentListTruncation {
+  /** Short form for lists of degraded operations, e.g. `recently merged PR search truncated (300 of 450)`. */
+  label: string;
+  /** Full sentence for logs and the daily warnings. */
+  message: string;
+}
+
+/** Word a partial recent-PR search: a failed later page, else the counts read. */
+function describeRecentListTruncation(label: string, search: SearchPagesResult<unknown>): RecentListTruncation {
+  const read = search.items.length;
+  if (search.failure) {
+    const cause = describeError(search.failure.error);
+    return {
+      label: `recently ${label} PR search failed on page ${search.failure.page} (${read} read)`,
+      message: `Recently ${label} PR search failed on page ${search.failure.page} (${cause}); only the ${read} result(s) from the page(s) before it were read. Some recently ${label} PRs may be missing this run.`,
+    };
+  }
+  return {
+    label: `recently ${label} PR search truncated (${read} of ${search.totalCount})`,
+    message: `Recently ${label} PR search is partial: read the ${read} most recently updated of ${search.totalCount} result(s). Some recently ${label} PRs may be missing this run.`,
+  };
+}
+
+/**
  * Shared helper: search for recent PRs and filter out own repos.
  *
  * Callers pass an `updated:>={since}` query rather than `closed:`/`merged:`.
@@ -366,10 +395,12 @@ export function fetchUserClosedPRCounts(
  * `closed_at`. `updated` is the sort key, so it is always indexed. We narrow to
  * the real window here with `dateOf`.
  *
- * Reads up to `SEARCH_MAX_PAGES` pages. When the list is still partial (more
- * results than were read, or GitHub flagged the search incomplete), the
- * message is logged and pushed to `truncations`, so the caller can report it
- * and hold back anything that reads "not in this list" as a fact (#1928).
+ * Reads up to `SEARCH_MAX_PAGES` pages (`searchAllPages`). When the list is
+ * still partial (more results than were read, a later page failed, or GitHub
+ * flagged the search incomplete), what was read is returned and the
+ * recent-list truncation is logged and pushed to `truncations`, so the caller
+ * can report it and hold back anything that reads "not in this list" as a
+ * fact (#1928).
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
@@ -392,7 +423,7 @@ async function fetchRecentPRs<T>(
     closed_at: string | null;
     pull_request?: { merged_at?: string | null };
   }) => string | null | undefined,
-  truncations?: string[],
+  truncations?: RecentListTruncation[],
 ): Promise<T[]> {
   if (!config.githubUsername) {
     warn(MODULE, `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
@@ -405,7 +436,8 @@ async function fetchRecentPRs<T>(
 
   debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
-  const { items, totalCount, truncated } = await paginateSearch((page) =>
+  // Untracked orgs are still filtered below, after the page cap, so their PRs use page slots.
+  const search = await searchAllPages((page) =>
     octokit.search.issuesAndPullRequests({
       page,
       q: query.replaceAll('{username}', config.githubUsername).replace('{since}', since),
@@ -414,10 +446,11 @@ async function fetchRecentPRs<T>(
       per_page: 100,
     }),
   );
-  if (truncated) {
-    const message = `Recently ${label} PR search is partial: read the ${items.length} most recently updated of ${totalCount} result(s). Some recently ${label} PRs may be missing this run.`;
-    warn(MODULE, message);
-    truncations?.push(message);
+  const { items } = search;
+  if (search.truncated) {
+    const truncation = describeRecentListTruncation(label, search);
+    warn(MODULE, truncation.message);
+    truncations?.push(truncation);
   }
 
   const results: T[] = [];
@@ -454,7 +487,7 @@ export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
   config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
-  truncations?: string[],
+  truncations?: RecentListTruncation[],
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
     octokit,
@@ -485,7 +518,7 @@ export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
   config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
-  truncations?: string[],
+  truncations?: RecentListTruncation[],
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(
     octokit,

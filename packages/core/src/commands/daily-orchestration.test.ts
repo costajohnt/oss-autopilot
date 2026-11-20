@@ -1946,10 +1946,12 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): guards', () 
 
   it('warns, and withholds release and nudge, when the recently-merged search returned a partial list (#1928)', async () => {
     const message = 'Recently merged PR search is partial: read the 300 most recently updated of 450 result(s).';
-    mockFetchRecentlyMergedPRs.mockImplementation((_days: number, truncations: string[]) => {
-      truncations.push(message);
-      return Promise.resolve([]);
-    });
+    mockFetchRecentlyMergedPRs.mockImplementation(
+      (_days: number, truncations: Array<{ label: string; message: string }>) => {
+        truncations.push({ message, label: 'recently merged PR search truncated (300 of 450)' });
+        return Promise.resolve([]);
+      },
+    );
     mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
 
     const result = await executeDailyCheck('test-token');
@@ -1958,7 +1960,9 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): guards', () 
     expect(result.closedPRStatusUpdates).toBeUndefined();
     expect(result.warnings).toContainEqual({ message, phase: 'fetch', operation: 'fetch recent PRs (truncated)' });
     expect(statusWarnings(result)).toHaveLength(1);
-    expect(statusWarnings(result)[0].message).toContain(`${closedPR.url} (the recently-merged search was truncated)`);
+    expect(statusWarnings(result)[0].message).toContain(
+      `${closedPR.url} (the recently-merged list was truncated; release the claim by hand if no PR replaced this one, the automatic release stays off while the list is over the page cap)`,
+    );
   });
 
   it.each([
