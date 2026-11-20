@@ -41,8 +41,10 @@ vi.mock('./dashboard-process.js', () => ({
 const { setMachinePathSpy } = vi.hoisted(() => ({ setMachinePathSpy: vi.fn() }));
 vi.mock('../core/local-config.js', () => ({
   getMachinePath: (key: string, synced: Record<string, string | undefined>) => synced[key],
-  getMachinePathSource: (key: string, synced: Record<string, string | undefined>) =>
-    synced[key] ? 'synced' : undefined,
+  getMachinePathSource: (key: string, synced: Record<string, string | undefined>) => {
+    const value = synced[key];
+    return value ? 'synced' : undefined;
+  },
   setMachinePath: setMachinePathSpy,
 }));
 

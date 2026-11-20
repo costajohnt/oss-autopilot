@@ -99,7 +99,7 @@ function parseComplexIssues(value: string): 'off' | 'warm' {
 }
 
 /** True when every `key=value` names a path kept in this machine's local file. */
-function setsOnlyMachinePaths(settings: string[]): boolean {
+function isMachineLocalOnly(settings: string[]): boolean {
   const localKeys: readonly string[] = MACHINE_PATH_KEYS;
   return settings.every((setting) => localKeys.includes(setting.split('=', 1)[0]));
 }
@@ -477,7 +477,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // bootstrap reverts it from the Gist (#1440).
     // Path settings are written to this machine's local file only (#1950), so
     // a call that sets nothing else has nothing to push.
-    const gistSyncWarning = setsOnlyMachinePaths(options.set)
+    const gistSyncWarning = isMachineLocalOnly(options.set)
       ? null
       : await maybeCheckpoint(stateManager, MODULE, () => stateManager.batch(applySettings));
     return {
