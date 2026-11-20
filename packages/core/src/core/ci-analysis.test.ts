@@ -293,9 +293,9 @@ describe('mergeStatuses', () => {
   });
 
   it('should return unknown when no checks and no statuses found at all', () => {
-    // When effectiveCombinedState is not success/failure/pending and there are no check runs,
-    // the result is unknown. Note: in practice analyzeCombinedStatus returns 'success' for
-    // empty statuses, so this tests the fallback path with a non-standard state.
+    // Empty statuses with zero check runs return unknown through the no-checks
+    // branch, whatever effectiveCombinedState says (analyzeCombinedStatus reports
+    // 'success' for an empty status list).
     const result = mergeStatuses(
       {
         hasFailingChecks: false,
@@ -522,6 +522,7 @@ type RestCheckRun = { name: string; conclusion: string | null; status: string };
 
 const TRAVIS_PASSED: RestStatus = { state: 'success', context: 'ci/travis', description: 'passed' };
 const TRAVIS_FAILED: RestStatus = { state: 'failure', context: 'ci/travis', description: 'failed' };
+const TRAVIS_RUNNING: RestStatus = { state: 'pending', context: 'ci/travis', description: 'running' };
 const BUILD_PASSED: RestCheckRun = { name: 'build', conclusion: 'success', status: 'completed' };
 const LINT_FAILED: RestCheckRun = { name: 'lint', conclusion: 'failure', status: 'completed' };
 const LINT_RUNNING: RestCheckRun = { name: 'lint', conclusion: null, status: 'in_progress' };
@@ -573,6 +574,14 @@ describe('getCIStatus with no checks or unreadable check runs (#1918)', () => {
 
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['ci/travis']);
+  });
+
+  it('keeps a pending status when the check-runs fetch fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await getCIStatus(ciOctokit(checkRunsFailing(500), [TRAVIS_RUNNING]), 'owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('pending');
   });
 
   it('still propagates a rate-limited check-runs fetch', async () => {
