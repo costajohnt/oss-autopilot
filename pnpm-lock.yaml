@@ -158,7 +158,10 @@ importers:
         version: 5.0.0(@edge-runtime/vm@3.2.0)(@types/node@26.5.1)(@vitest/coverage-v8@5.0.0)(jsdom@30.0.1)(vite@8.2.4(@types/node@26.5.1)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.1))
 
   packages/mcp-server:
-    dependencies:
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@modelcontextprotocol/node':
         specifier: ^2.1.2
         version: 2.1.2(@modelcontextprotocol/server@2.4.0)
@@ -168,13 +171,6 @@ importers:
       '@oss-autopilot/core':
         specifier: workspace:^
         version: link:../core
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-    devDependencies:
-      '@modelcontextprotocol/client':
-        specifier: ^2.4.0
-        version: 2.4.0
       '@types/node':
         specifier: ^26.4.1
         version: 26.5.1
@@ -193,6 +189,9 @@ importers:
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@edge-runtime/vm@3.2.0)(@types/node@26.5.1)(@vitest/coverage-v8@5.0.0)(jsdom@30.0.1)(vite@8.2.4(@types/node@26.5.1)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.1))
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
 packages:
 

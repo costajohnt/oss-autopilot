@@ -7,9 +7,7 @@
 # Catches what a workspace build cannot: a `files` or `bin` mistake, a
 # `workspace:` dependency that `pnpm pack` did not rewrite to something npm
 # can resolve, or a bundle that only starts next to the workspace's
-# node_modules. Tarballs given together are installed together, so a packed
-# @oss-autopilot/core satisfies the packed MCP server's dependency on it even
-# when that core version is not on npm yet (the release PR).
+# node_modules. Tarballs given together are installed together.
 #
 # `--ignore-scripts`: release-please.yml runs this in the publish jobs, which
 # can mint an npm publish credential. The dependencies come from the registry
@@ -38,8 +36,7 @@ cd "$PREFIX"
 # Own package.json so npm cannot pick a parent directory as the install root.
 echo '{"private":true}' > package.json
 
-# Retry: in a combined release the MCP tarball depends on a core version that
-# was published a minute ago, and npm can take a while to serve it.
+# Retry: core's runtime dependencies come from the registry, which can flake.
 for attempt in 1 2 3 4 5 6; do
   if npm install --ignore-scripts --no-audit --no-fund "${TARBALLS[@]}"; then
     break
@@ -69,6 +66,22 @@ for name in $(node -p 'Object.keys(require("./package.json").dependencies).join(
       exit 1
       ;;
   esac
+  if [ "$name" = "@oss-autopilot/mcp" ]; then
+    # The package declares no dependencies (#2007), so the bundle may require
+    # only node builtins. The ajv paths are code strings for ajv's standalone
+    # codegen, never executed. An `external` in scripts/bundle.mjs fails here.
+    node -e '
+      const { builtinModules } = require("node:module");
+      const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+      const bad = [...new Set([...src.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1]))].filter(
+        (id) => !id.startsWith("node:") && !builtinModules.includes(id) && !/^ajv(-formats)?\/dist\//.test(id),
+      );
+      if (bad.length > 0) {
+        console.error(`::error::mcp-server.bundle.cjs requires non-builtin modules: ${bad.join(", ")}`);
+        process.exit(1);
+      }
+    ' "$PREFIX/node_modules/$name/dist/mcp-server.bundle.cjs"
+  fi
   expected=$(node -p 'require(process.argv[1]).version' "$PREFIX/node_modules/$name/package.json")
   actual=$(run_bin "$bin" --version)
   if [ "$actual" != "$expected" ]; then
