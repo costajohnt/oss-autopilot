@@ -40,6 +40,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runComments: vi.fn(),
   runPost: vi.fn(),
   runClaim: vi.fn(),
+  DEFAULT_CLAIM_MESSAGE: 'default claim text',
   runConfig: vi.fn(),
   runInit: vi.fn(),
   runSetup: vi.fn(),

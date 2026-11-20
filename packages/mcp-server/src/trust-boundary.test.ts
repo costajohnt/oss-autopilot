@@ -223,7 +223,7 @@ describe('user approval before a GitHub write (#1936)', () => {
     claim: {
       args: { issueUrl: ISSUE },
       run: mockRunClaim,
-      shows: [ISSUE, 'the default message'],
+      shows: [ISSUE, "Hi! I'd like to work on this issue. Could you assign it to me?"],
       cli: 'oss-autopilot claim ',
     },
     'guidelines-store': {

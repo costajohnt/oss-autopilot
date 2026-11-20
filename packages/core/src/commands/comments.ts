@@ -243,6 +243,9 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
   };
 }
 
+/** The comment `claim` posts when no message is given; the MCP approval form shows this exact text. */
+export const DEFAULT_CLAIM_MESSAGE = "Hi! I'd like to work on this issue. Could you assign it to me?";
+
 /**
  * Post a claim comment on a GitHub issue and track it locally.
  *
@@ -259,8 +262,7 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
 
   const token = requireGitHubToken();
 
-  // Default claim message or custom
-  const message = options.message || "Hi! I'd like to work on this issue. Could you assign it to me?";
+  const message = options.message || DEFAULT_CLAIM_MESSAGE;
 
   validateMessage(message);
   assertSha256(message, options.expectSha256);

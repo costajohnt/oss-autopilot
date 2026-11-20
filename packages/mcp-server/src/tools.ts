@@ -26,6 +26,7 @@ import {
   runComments,
   runPost,
   runClaim,
+  DEFAULT_CLAIM_MESSAGE,
   runConfig,
   runInit,
   runSetup,
@@ -721,11 +722,11 @@ export function registerTools(server: McpServer): void {
       hostCapabilities,
       'claim an issue',
       'oss-autopilot claim <issue-url> ["<message>"]',
-      (args: Parameters<typeof runClaim>[0]) =>
-        args.message
-          ? `Claim ${args.issueUrl} by posting this comment (${characterCount(args.message)}) under your GitHub account?\n\n${args.message}`
-          : `Claim ${args.issueUrl} by posting the default message under your GitHub account?\n\n` +
-            '(the default message, which asks the maintainers to assign the issue to you)',
+      (args: Parameters<typeof runClaim>[0]) => {
+        // The literal text runClaim will post, default included.
+        const message = args.message || DEFAULT_CLAIM_MESSAGE;
+        return `Claim ${args.issueUrl} by posting this comment (${characterCount(message)}) under your GitHub account?\n\n${message}`;
+      },
       wrapTool(runClaim),
     ),
   );
