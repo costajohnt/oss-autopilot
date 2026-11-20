@@ -68,7 +68,7 @@ import {
   ensureGistPersistence,
   bootstrapGistBestEffort,
 } from './state.js';
-import { GistFileSizeError, GistPermissionError } from './errors.js';
+import { GistDiscoveryError, GistFileSizeError, GistPermissionError } from './errors.js';
 
 function writeGistConfiguredState(): void {
   fs.writeFileSync(
@@ -320,6 +320,15 @@ describe('bootstrapGistBestEffort — localOnly CLI entry points (#1431)', () =>
     fs.writeFileSync(path.join(mockTmpDir, 'state.json'), '{ not json', 'utf8');
     const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
     expect(warning).toMatch(/state file could not be read/);
+  });
+
+  it('GistDiscoveryError: the warning carries its own remedy, not the token scope hint (#1926)', async () => {
+    writeGistConfiguredState();
+    createWithGistSpy.mockRejectedValueOnce(new GistDiscoveryError('write the Gist ID to the gist-id file'));
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toMatch(/LOCAL-ONLY/);
+    expect(warning).toContain('write the Gist ID to the gist-id file');
+    expect(warning).not.toMatch(/gist scope/);
   });
 
   it('GistFileSizeError: the repair guidance is about state size, not the token scope', async () => {

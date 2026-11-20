@@ -518,6 +518,47 @@ describe('normalizePRNode same-named jobs across workflows (#1917)', () => {
   });
 });
 
+const lintRun = (conclusion: string | null, status: string) => ({
+  ...buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z'),
+  conclusion,
+  status,
+  name: 'lint',
+});
+
+describe('normalizePRNode CI status with no checks (#1918)', () => {
+  it('reads unknown, not passing, when the commit has no check runs and no statuses', () => {
+    expect(ciStatusForRollup([]).status).toBe('unknown');
+  });
+
+  it('reads unknown when the commit has no rollup at all', () => {
+    const outcome = normalizePRNode(makeNode());
+    if (outcome.kind !== 'ok') throw new Error('expected ok');
+    expect(outcome.data.ciStatus.status).toBe('unknown');
+  });
+
+  it('still reads passing when every check passed', () => {
+    const ciStatus = ciStatusForRollup([buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z')]);
+    expect(ciStatus.status).toBe('passing');
+  });
+
+  it('still reads failing for a mix of passing and failing checks', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z'),
+      lintRun('FAILURE', 'COMPLETED'),
+    ]);
+    expect(ciStatus.status).toBe('failing');
+    expect(ciStatus.failingCheckNames).toEqual(['lint']);
+  });
+
+  it('still reads pending for a mix of passing and running checks', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:00:00Z'),
+      lintRun(null, 'IN_PROGRESS'),
+    ]);
+    expect(ciStatus.status).toBe('pending');
+  });
+});
+
 describe('batchFetchPRDetails', () => {
   it('routes every PR to REST when the client has no graphql method', async () => {
     const octokit = {} as any;
@@ -999,6 +1040,35 @@ describe('GraphQL vs REST status parity: bot reviews', () => {
 
     expect(prGraphql.waitReason).toBe('changes_addressed');
     expect(prRest.waitReason).toBe('changes_addressed');
+  });
+});
+
+// #1919: amend and rebase keep the author date; only the committer date moves.
+describe('amended HEAD commit (author date before the review, committer date after)', () => {
+  it('counts as addressing the changes request', async () => {
+    const review = {
+      author: { login: 'maintainer' },
+      body: 'please fix',
+      databaseId: 6,
+      state: 'CHANGES_REQUESTED',
+      submittedAt: '2026-02-03T00:00:00Z',
+    };
+    const amended = {
+      commit: {
+        author: { user: { login: 'contributor' } },
+        authoredDate: '2026-02-02T00:00:00Z',
+        committedDate: '2026-02-04T00:00:00Z',
+        committer: { user: { login: 'contributor' } },
+        oid: 'amended1',
+        status: null,
+        statusCheckRollup: null,
+      },
+    };
+    const node = makeNode({ commits: { nodes: [amended] }, reviews: { nodes: [review], totalCount: 1 } });
+    const pr = await assembleFromGraphQL(node);
+
+    expect(pr.latestCommitDate).toBe('2026-02-04T00:00:00Z');
+    expect(pr.waitReason).toBe('changes_addressed');
   });
 });
 

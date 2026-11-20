@@ -122,7 +122,7 @@ Read `pr.ciCategorization.category` (#1272) — five mutually-exclusive states p
 | `all_passing` | Every reported check is green | None |
 | `failing` | At least one actionable failure (tests/lint/build) | Tier 2: investigate + recommend |
 | `blocked` | Checks pending; often awaiting maintainer trigger | Suggest asking for rerun |
-| `not_running` | No checks reported | Investigate workflows / fork-actions |
+| `not_running` | No checks reported | None if the repo has no `.github/workflows` (no CI configured). Otherwise checks may not be registered yet or could not be read: investigate workflows / fork-actions |
 | `fork_limitation` | Failures exist but ALL are fork-perm / auth-gate | Informational, not actionable |
 
 `pr.ciCategorization.summary` is a short pre-rendered description; render it verbatim if displaying inline. Do NOT re-derive the category from `failingCheckNames` + `classifiedChecks` — the typed function is the canonical source.

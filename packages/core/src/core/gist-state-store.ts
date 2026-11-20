@@ -8,9 +8,15 @@
  * Bootstrap flow:
  *  1. Check for locally stored Gist ID file (`~/.oss-autopilot/gist-id`)
  *  2. If found, fetch that Gist directly via `GET /gists/:id`
- *  3. If not found locally, search the user's Gists for description `oss-autopilot-state`
+ *  3. If there is no local ID, or that Gist is gone (404), search the user's
+ *     Gists for a private one with description `oss-autopilot-state`
  *  4. If found via search, store the ID locally and fetch it
- *  5. If not found anywhere, create a new private Gist with seed files and store the ID
+ *  5. Only when the search ran to the end of the list (a page with no
+ *     `rel="next"` link) and found nothing, create a new private Gist with seed
+ *     files and store the ID. A failed search degrades to the local cache; an
+ *     unfinished or ambiguous one (list longer than the search window, or only
+ *     a public match) throws
+ *     {@link GistDiscoveryError}. Neither creates a Gist (#1926).
  *  6. Cache all Gist file contents in memory for session-scoped reads
  *  7. Write state to a local cache file for fallback
  *
@@ -65,7 +71,9 @@ import {
   GistPermissionError,
   GistConcurrencyError,
   GistCorruptError,
+  GistDiscoveryError,
   GistFileSizeError,
+  getHttpStatusCode,
   isRateLimitError,
   isTransientNetworkError,
   errorMessage,
@@ -144,7 +152,10 @@ export interface OctokitLike {
     get: (params: {
       gist_id: string;
     }) => Promise<{ data: GistResponseData; headers?: Record<string, string | undefined> }>;
-    list: (params: { per_page: number; page: number }) => Promise<{ data: GistListItem[] }>;
+    list: (params: {
+      per_page: number;
+      page: number;
+    }) => Promise<{ data: GistListItem[]; headers?: Record<string, string | undefined> }>;
     create: (params: {
       description: string;
       public: boolean;
@@ -167,6 +178,8 @@ export interface OctokitLike {
 interface GistListItem {
   id: string;
   description: string | null;
+  public: boolean;
+  created_at: string;
 }
 
 /** Shape of a full Gist response (subset). */
@@ -252,13 +265,14 @@ export class GistStateStore {
           const state = await this.fetchAndCache(localId);
           return { gistId: localId, state, created: false };
         } catch (err) {
-          // A corrupt or permission-broken Gist must surface immediately
-          // (#1367): falling through to search would either re-find the same
-          // corrupt Gist or silently abandon it and create a fresh one.
-          if (err instanceof ConfigurationError) throw err;
-          if (isRateLimitError(err)) throw err;
-          warn(MODULE, `Failed to fetch Gist ${localId}, will search/create`, err);
-          // Fall through to search
+          // Only a 404 (the saved Gist is gone) falls through to search.
+          // Anything else goes to the outer catch: corrupt, permission and
+          // rate-limit errors surface (#1367), and a transient failure
+          // degrades. Searching after a transient failure could end in
+          // creating a Gist and overwriting the saved ID (#1926).
+          if (getHttpStatusCode(err) !== 404) throw err;
+          this.gistId = null;
+          warn(MODULE, `Saved Gist ${localId} no longer exists, searching for the state Gist`, err);
         }
       }
 
@@ -288,12 +302,12 @@ export class GistStateStore {
       if (err instanceof ConfigurationError) throw err;
       if (isRateLimitError(err)) throw err;
 
-      // All API paths failed — enter degraded mode. Disarm the remote write
+      // The Gist could not be reached: enter degraded mode. Disarm the remote write
       // path first: a degraded store never verified its Gist, so it must
       // never be able to push to one (#1367).
       this.gistId = null;
       this.lastFetchedEtag = null;
-      warn(MODULE, 'All Gist API paths failed, entering degraded mode', err);
+      warn(MODULE, 'Gist bootstrap failed, entering degraded mode', err);
 
       // Try reading from local cache file
       const cachePath = getStateCachePath();
@@ -359,12 +373,10 @@ export class GistStateStore {
           const state = await this.fetchAndCache(localId);
           return { gistId: localId, state, created: false, migrated: false };
         } catch (err) {
-          // See bootstrap(): corrupt/permission/rate-limit errors surface
-          // immediately rather than falling through (#1367).
-          if (err instanceof ConfigurationError) throw err;
-          if (isRateLimitError(err)) throw err;
-          warn(MODULE, `bootstrapWithMigration: failed to fetch Gist ${localId}, will search/create`, err);
-          // Fall through to search
+          // See bootstrap(): only a 404 falls through to search (#1367, #1926).
+          if (getHttpStatusCode(err) !== 404) throw err;
+          this.gistId = null;
+          warn(MODULE, `bootstrapWithMigration: saved Gist ${localId} no longer exists, searching`, err);
         }
       }
 
@@ -389,11 +401,11 @@ export class GistStateStore {
       if (err instanceof ConfigurationError) throw err;
       if (isRateLimitError(err)) throw err;
 
-      // All API paths failed — enter degraded mode with the push path
-      // disarmed (see bootstrap()).
+      // The Gist could not be reached: enter degraded mode with the push
+      // path disarmed (see bootstrap()).
       this.gistId = null;
       this.lastFetchedEtag = null;
-      warn(MODULE, 'bootstrapWithMigration: all Gist API paths failed, entering degraded mode', err);
+      warn(MODULE, 'bootstrapWithMigration: Gist bootstrap failed, entering degraded mode', err);
 
       // Try reading from local cache file
       const cachePath = getStateCachePath();
@@ -900,28 +912,65 @@ export class GistStateStore {
   }
 
   /**
-   * Search the authenticated user's Gists for one with the well-known description.
-   * Pages through up to 10 pages (100 Gists per page) to find it.
+   * Search the authenticated user's Gists for the private one with the
+   * well-known description. Pages through up to 10 pages (100 Gists per page).
+   * The list has ended when a response carries no `rel="next"` Link header;
+   * page length is not used, since a short page need not be the last.
+   *
+   * Returns `null` only when the search ran to the end of the list and found
+   * no Gist with the description. The callers create a new Gist on `null`, so
+   * anything short of that must not read as "no Gist exists" or this machine
+   * forks onto an empty one (#1926): API errors propagate, and a list longer
+   * than the search window or a public-only match throws
+   * {@link GistDiscoveryError}.
    */
   private async searchForGist(): Promise<string | null> {
-    try {
-      const maxPages = 10;
-      for (let page = 1; page <= maxPages; page++) {
-        const { data: gists } = await this.octokit.gists.list({ per_page: 100, page });
-        if (gists.length === 0) break;
-
-        const match = gists.find((g) => g.description === GIST_DESCRIPTION);
-        if (match) {
-          return match.id;
-        }
-      }
-    } catch (err) {
-      // A rate-limited search must not read as "no Gist found" — bootstrap
-      // would proceed to create a duplicate Gist while throttled (#1367).
-      if (isRateLimitError(err)) throw err;
-      warn(MODULE, 'Failed to search Gists by description', err);
+    const maxPages = 10;
+    const perPage = 100;
+    let publicId: string | undefined;
+    let hasReachedEnd = false;
+    for (let page = 1; !hasReachedEnd && page <= maxPages; page++) {
+      const { data: gists, headers } = await this.octokit.gists.list({ per_page: perPage, page });
+      const matches = gists.filter((g) => g.description === GIST_DESCRIPTION);
+      const [first, ...rest] = matches.filter((g) => !g.public);
+      if (first) return this.pickStateGist(first, rest);
+      publicId ??= matches[0]?.id;
+      hasReachedEnd = !headers?.link?.includes('rel="next"');
     }
-    return null;
+    if (hasReachedEnd && !publicId) return null;
+    const idHint = `to ${getGistIdPath()}`;
+    if (hasReachedEnd) {
+      throw new GistDiscoveryError(
+        `Found a public Gist (${publicId}) with the "${GIST_DESCRIPTION}" description. A public Gist is not ` +
+          `adopted automatically. To keep using it, write its ID ${idHint}; to start fresh, delete that Gist.`,
+      );
+    }
+    const publicNote = publicId
+      ? ` A public Gist with that description (${publicId}) was seen; it is not adopted automatically, ` +
+        `but writing its ID there keeps using it.`
+      : '';
+    throw new GistDiscoveryError(
+      `Searched the first ${maxPages * perPage} Gists without finding a private "${GIST_DESCRIPTION}" Gist or ` +
+        `reaching the end of the list, so no new Gist was created. Write the state Gist's ID (the last path ` +
+        `segment of its URL) ${idHint}.${publicNote}`,
+    );
+  }
+
+  /** Pick the oldest of the private state Gists found on a page, warning when there are several. */
+  private pickStateGist(first: GistListItem, rest: GistListItem[]): string {
+    let chosen = first;
+    for (const g of rest) {
+      if (Date.parse(g.created_at) < Date.parse(chosen.created_at)) chosen = g;
+    }
+    if (rest.length > 0) {
+      const others = [first, ...rest].filter((g) => g !== chosen).map((g) => g.id);
+      warn(
+        MODULE,
+        `Found ${others.length + 1} private "${GIST_DESCRIPTION}" Gists. Using the oldest, ${chosen.id}; ` +
+          `ignoring ${others.join(', ')}. Delete the others, or write ${chosen.id} to ${getGistIdPath()}.`,
+      );
+    }
+    return chosen.id;
   }
 
   /**

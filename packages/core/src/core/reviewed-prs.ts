@@ -30,6 +30,7 @@
  * dismiss check and the warnings live in commands/daily-reviewed-prs.ts.
  */
 
+import { commitDateOf } from './commit-date.js';
 import { isBotAuthor, isQuoteReplyTo, isReactionOnlyComment, proseWithoutCode } from './comment-utils.js';
 import { debug } from './logger.js';
 
@@ -353,21 +354,6 @@ function scanUser(entries: readonly ThreadEntry[], usernameLower: string): UserA
   return user;
 }
 
-/**
- * The date a commit was pushed under: the committer date when the author
- * also committed it (their own amend or rebase moved it, which is the
- * force-push case this feature exists for), the author date when someone
- * else rewrote it (a maintainer's rebase does not make the author's old
- * work new). Either falls back to the other when missing.
- */
-function commitDateOf(entry: ReviewedPRActivity['commits'][number]): string | null | undefined {
-  const authorDate = entry.commit.author?.date;
-  const committerDate = entry.commit.committer?.date;
-  const login = entry.author?.login?.toLowerCase();
-  const isOwnRewrite = login !== undefined && entry.committer?.login?.toLowerCase() === login;
-  return isOwnRewrite ? (committerDate ?? authorDate) : (authorDate ?? committerDate);
-}
-
 interface DatedCommit extends ReviewedPRCommit {
   atMs: number;
   isUser: boolean;
@@ -384,7 +370,13 @@ function isMergeCommit(entry: CommitEntry): boolean {
 /** A dated non-merge commit, or undefined for a merge commit or one without a usable date. */
 function toDatedCommit(entry: CommitEntry, usernameLower: string): DatedCommit | undefined {
   if (isMergeCommit(entry)) return undefined;
-  const date = commitDateOf(entry);
+  // Committer date only for the author's own amend or rebase (the force-push case this feature exists for).
+  const date = commitDateOf({
+    authorDate: entry.commit.author?.date,
+    committerDate: entry.commit.committer?.date,
+    authorLogin: entry.author?.login,
+    committerLogin: entry.committer?.login,
+  });
   const atMs = parseMs(date);
   if (!date || atMs === undefined) return undefined;
   const login = entry.author?.login;
