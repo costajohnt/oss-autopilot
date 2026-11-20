@@ -55,7 +55,9 @@ const IS_NIGHTLY = process.env.OSS_AUTOPILOT_NIGHTLY === '1';
 //      return the (error) envelope; the gap closes that window.
 //   3. Tolerate a rate-limited / timed-out run in the assertions — see
 //      isLiveApiUnavailable. Throttling is an infra condition, not a contract
-//      regression, so it must not redden the nightly job.
+//      regression, so it must not redden the nightly job. The affected tests
+//      report as SKIPPED, not passed (#1942), so the nightly workflow can see
+//      that the run verified nothing.
 const EXEC_TIMEOUT_MS = 150_000;
 // Strictly greater than EXEC_TIMEOUT_MS so a SIGTERM-and-return (or a run that
 // completes right at the exec deadline) finishes inside the vitest deadline
@@ -122,7 +124,7 @@ async function runSearch(args: string[] = [], env?: Record<string, string>): Pro
  *     return EMPTY instead of throwing a 403, every phase yields no candidates and
  *     the command reports a generic "no candidates across all phases" UNKNOWN
  *     error — so the errorCode alone can't be trusted; the stderr tell can.
- * Such runs soft-pass the happy-path assertions. A failure with NO throttle
+ * Such runs skip the happy-path assertions (THROTTLED_NOTE). A failure with NO throttle
  * evidence (a genuine crash, or a non-throttle error like NETWORK) does NOT match
  * and still fails loudly, so the contract check keeps its teeth.
  */
@@ -136,6 +138,11 @@ function isLiveApiUnavailable(result: RunSearchResult, durationMs: number): bool
   }
   return false;
 }
+
+/* eslint-disable vitest/no-disabled-tests -- runtime ctx.skip on a throttled live API is the point (#1942), not a parked test */
+// Skip note for a throttled run. Skipped, not passed: an early `return` counted
+// as green, so a throttled night was indistinguishable from a verified one (#1942).
+const THROTTLED_NOTE = 'live GitHub search was rate-limited or timed out; nothing verified';
 
 describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
   beforeAll(() => {
@@ -178,8 +185,8 @@ describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
     // shared runs, not all seven assertions.
     let sharedResult: RunSearchResult;
     let sharedDurationMs = 0;
-    // When GitHub throttled the shared run, the happy-path assertions soft-pass
-    // (#1452). Computed once in beforeAll so every dependent test reads the same
+    // When GitHub throttled the shared run, the happy-path assertions are
+    // skipped (#1452, #1942). Computed once in beforeAll so every dependent test reads the same
     // verdict. See isLiveApiUnavailable for the precise classification.
     let sharedUnavailable = false;
 
@@ -193,35 +200,35 @@ describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
           `[E2E] Live search was rate-limited or timed out ` +
             `(exitCode=${sharedResult.exitCode}, signal=${sharedResult.signal ?? 'none'}, ` +
             `errorCode=${sharedResult.json?.errorCode ?? 'none'}, ${Math.round(sharedDurationMs / 1000)}s); ` +
-            'soft-passing the happy-path assertions. This is GitHub throttling, not a contract regression.',
+            'skipping the happy-path assertions. This is GitHub throttling, not a contract regression.',
         );
       }
     }, HOOK_TIMEOUT_MS);
 
-    it('should output valid JSON', () => {
-      if (sharedUnavailable) return;
+    it('should output valid JSON', (ctx) => {
+      ctx.skip(sharedUnavailable, THROTTLED_NOTE);
       expect(sharedResult.json, 'CLI should return parseable JSON output').not.toBeNull();
       expect(typeof sharedResult.json).toBe('object');
     });
 
-    it('should include success and data fields in the envelope', () => {
-      if (sharedUnavailable) return;
+    it('should include success and data fields in the envelope', (ctx) => {
+      ctx.skip(sharedUnavailable, THROTTLED_NOTE);
       expect(sharedResult.json, 'CLI should return parseable JSON output').not.toBeNull();
       expect(sharedResult.json).toHaveProperty('success', true);
       expect(sharedResult.json).toHaveProperty('data');
       expect(sharedResult.json).toHaveProperty('timestamp');
     });
 
-    it('should include candidates and excludedRepos in data', () => {
-      if (sharedUnavailable) return;
+    it('should include candidates and excludedRepos in data', (ctx) => {
+      ctx.skip(sharedUnavailable, THROTTLED_NOTE);
       const data = sharedResult.json.data;
       expect(Array.isArray(data.candidates)).toBe(true);
       expect(Array.isArray(data.excludedRepos)).toBe(true);
       expect(Array.isArray(data.aiPolicyBlocklist)).toBe(true);
     });
 
-    it('should return candidates with expected structure when results exist', () => {
-      if (sharedUnavailable) return;
+    it('should return candidates with expected structure when results exist', (ctx) => {
+      ctx.skip(sharedUnavailable, THROTTLED_NOTE);
       const { candidates } = sharedResult.json.data;
       // May be empty if no issues match the configured languages/labels, so only validate structure if non-empty
       if (candidates.length > 0) {
@@ -242,15 +249,12 @@ describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
 
     it(
       'should respect the count argument',
-      async () => {
+      async (ctx) => {
         // Distinct live invocation, so classify it on its own (the shared
-        // verdict does not apply): a throttled second call soft-passes too.
+        // verdict does not apply): a throttled second call is skipped too.
         const start = Date.now();
         const result = await runSearch(['2']);
-        if (isLiveApiUnavailable(result, Date.now() - start)) {
-          console.warn('[E2E] count-argument run was rate-limited/timed out; soft-passing (#1452).');
-          return;
-        }
+        ctx.skip(isLiveApiUnavailable(result, Date.now() - start), THROTTLED_NOTE);
         expect(result.json, 'CLI should return parseable JSON output').not.toBeNull();
         expect(result.json).toHaveProperty('success', true);
         expect(result.json.data.candidates.length).toBeLessThanOrEqual(2);
@@ -258,12 +262,12 @@ describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
       HOOK_TIMEOUT_MS,
     );
 
-    it('should complete within the live-API time budget', () => {
+    it('should complete within the live-API time budget', (ctx) => {
       // Guards against pathological hangs, not normal latency. Skipped when the
       // run was throttled/timed out — that case is already handled by the
-      // soft-pass above and would otherwise false-fail here (a SIGTERM'd run
+      // skips above and would otherwise false-fail here (a SIGTERM'd run
       // legitimately consumes ~EXEC_TIMEOUT_MS).
-      if (sharedUnavailable) return;
+      ctx.skip(sharedUnavailable, THROTTLED_NOTE);
       expect(sharedDurationMs).toBeLessThan(EXEC_TIMEOUT_MS);
     });
   });

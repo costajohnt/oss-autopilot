@@ -9,8 +9,10 @@ name: Nightly E2E (live GitHub API)
 #
 # These suites are READ-ONLY against GitHub: `search` calls /search/issues +
 # repos.get, `daily` calls issues.listForRepo / PR reads via the bundled CLI.
-# Nothing posts, comments, or mutates, so the job-level `contents: read`
-# permission (which is what scopes the ambient GITHUB_TOKEN) is sufficient.
+# Nothing in the `e2e` job posts, comments, or mutates, so `contents: read`
+# (which is what scopes the ambient GITHUB_TOKEN) is sufficient for it. The
+# only write in this workflow is the separate `report-failure` job, which
+# holds `issues: write` to open or update the tracking issue (#1942).
 on:
   schedule:
     # 07:00 UTC daily — off-peak for the Americas (late night) so a transient
@@ -18,8 +20,9 @@ on:
     - cron: '0 7 * * *'
   workflow_dispatch: {}
 
-# Read-only token is all these tests need (see header). This also scopes the
-# ambient GITHUB_TOKEN the test step receives.
+# Read-only token is all the `e2e` job needs (see header). This also scopes
+# the ambient GITHUB_TOKEN the test step receives. `report-failure` widens it
+# for itself only.
 permissions:
   contents: read
 
@@ -33,6 +36,11 @@ jobs:
   e2e:
     name: Live-API e2e (Node 22 / ubuntu-latest)
     runs-on: ubuntu-latest
+    # Typical run is about 2 minutes, slowest recent one 7 (throttle backoffs).
+    # A hung run ends as `cancelled`, which report-failure also reports.
+    timeout-minutes: 15
+    outputs:
+      skipped: ${{ steps.skipped.outputs.count }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,12 +74,40 @@ jobs:
           # skipping the tests this workflow exists to run (#1452).
           OSS_AUTOPILOT_NIGHTLY: '1'
         # --no-file-parallelism runs the two suites sequentially so they don't
-        # compound each other's /search/issues rate-limit pressure.
+        # compound each other's /search/issues rate-limit pressure. The JSON
+        # report feeds the skipped-test check below; the other two reporters
+        # are what vitest uses on Actions when none is named.
         run: >-
           pnpm --filter @oss-autopilot/core exec vitest run
           src/commands/search.e2e.test.ts
           src/commands/daily.e2e.test.ts
           --no-file-parallelism
+          --reporter=default
+          --reporter=github-actions
+          --reporter=json
+          --outputFile.json="$RUNNER_TEMP/e2e-results.json"
+
+      # A throttled live search skips its assertions instead of failing (#1452),
+      # and here the token and bundle are always present, so any skipped test
+      # means part of the suite verified nothing. That happened on about half
+      # of the nights, so it stays green (failing would be red every other day)
+      # but is surfaced: a warning on the run, and report-failure opens the
+      # tracking issue if none is open (#1942).
+      - name: Flag skipped e2e tests (throttled, nothing verified)
+        id: skipped
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/e2e-results.json"
+          count=$(jq '.numPendingTests + .numTodoTests' "$report")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -gt 0 ]; then
+            total=$(jq '.numTotalTests' "$report")
+            echo "::warning title=Nightly e2e throttled::$count of $total e2e tests were skipped, so they verified nothing."
+            {
+              echo "### Skipped e2e tests ($count of $total)"
+              jq -r '.testResults[].assertionResults[] | select(.status != "passed" and .status != "failed") | "- \(.fullName)"' "$report"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # Nothing else watches this workflow (no PR gates on it, release does not
   # depend on it), so a red nightly was invisible (#1942). A separate job keeps
@@ -81,7 +117,12 @@ jobs:
     name: Report nightly failure
     needs: e2e
     # Scheduled runs only: whoever dispatches manually is watching the run.
-    if: failure() && github.event_name == 'schedule'
+    # `always()` is required for the expression to be evaluated after a
+    # non-success; a timed-out or cancelled `e2e` has result `cancelled`.
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      (needs.e2e.result == 'failure' || needs.e2e.result == 'cancelled' ||
+      (needs.e2e.outputs.skipped != '' && needs.e2e.outputs.skipped != '0'))
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -90,19 +131,25 @@ jobs:
       - name: Open or update the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          SKIPPED: ${{ needs.e2e.outputs.skipped }}
         shell: bash
         run: |
           set -euo pipefail
 
-          title="Nightly E2E (live GitHub API) is failing"
+          title="Nightly E2E (live GitHub API) is not verifying"
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
           # Best effort: the alert still goes out without the step names.
           failed_steps=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
             --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join(", ")' || true)
 
-          body="Scheduled nightly e2e run failed: $run_url"
-          body+=$'\n\n'"Failed step(s): ${failed_steps:-unknown, see the run}"
+          if [ "$E2E_RESULT" = success ]; then
+            body="Scheduled nightly e2e run was throttled, nothing verified for $SKIPPED skipped test(s): $run_url"
+          else
+            body="Scheduled nightly e2e run ended as $E2E_RESULT: $run_url"
+            body+=$'\n\n'"Failed step(s): ${failed_steps:-none recorded, see the run}"
+          fi
 
           # Search matches loosely, so pin the exact title. A failed lookup
           # aborts here (set -e) instead of opening a duplicate.
@@ -110,9 +157,12 @@ jobs:
             --search "\"$title\" in:title" --json number,title \
             | jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')
 
-          if [ -n "$existing" ]; then
+          if [ -n "$existing" ] && [ "$E2E_RESULT" = success ]; then
+            # Throttling is frequent: one open issue is enough, no nightly comment.
+            echo "Throttled run; tracking issue #$existing is already open, not commenting."
+          elif [ -n "$existing" ]; then
             gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
-            body+=$'\n\n'"Later failures are added as comments while this issue stays open. Close it once the nightly is green again."
+            body+=$'\n\n'"Later failed or timed-out runs are added as comments while this issue stays open; throttled runs are not. Close it once the nightly runs green with no skipped tests."
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
           fi
