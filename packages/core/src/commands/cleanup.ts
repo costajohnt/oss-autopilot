@@ -4,36 +4,56 @@
  *
  * Overnight worktrees (`worktrees/<owner>-<repo>-<n>`) are created by the
  * overnight-preparer agent, not by this CLI, and nothing recorded their
- * removal. A worktree is removed only when every check below passes; a check
- * that fails or errors keeps it, with the reason in the output:
+ * removal. A worktree is removed only when every check below passes, in this
+ * order; a check that fails or errors keeps it, with the reason in the output:
  *
  * 1. it is a direct child of `worktrees/`, a real directory (not a symlink)
  *    with a name the preparer creates, and it resolves inside the data dir;
  * 2. it is the root of a linked Git worktree (`.git` is a file);
- * 3. `git status --porcelain` is empty (no modified or untracked files);
+ * 3. `git status --porcelain --untracked-files=all` is empty: no modified and
+ *    no untracked files, whatever `status.showUntrackedFiles` says;
  * 4. HEAD is contained in a remote-tracking ref, so no commit lives only here;
- * 5. nothing touched it for {@link WORKTREE_MIN_AGE_DAYS} days.
+ * 5. no rebase, merge, cherry-pick, revert or bisect is in progress;
+ * 6. every ignored file sits under a build-output directory
+ *    ({@link BUILD_OUTPUT}); an ignored `.env` keeps the worktree;
+ * 7. no file is flagged skip-worktree or assume-unchanged, which would hide
+ *    an edit from 3;
+ * 8. every commit in this worktree's HEAD reflog is reachable from a branch,
+ *    a remote-tracking ref or a tag;
+ * 9. nothing touched it for {@link WORKTREE_MIN_AGE_DAYS} days.
  *
  * Removal is `git worktree remove` without `--force`, which re-checks 3
  * itself and leaves the branch in the clone. No network access, no `rm`.
- * ponytail: PR merged/closed is not checked (that needs the network); a
- * clean, pushed, idle worktree of an open PR is removed too, and the
- * preparer recreates it on demand.
+ * `--apply` refuses during an unattended run.
+ *
+ * Two deliberate differences from the issue text:
+ * - PR merged/closed is not checked (that needs the network). A clean,
+ *   pushed, idle worktree of a still-open PR is removed too; the preparer
+ *   recreates it on demand.
+ * - `doctor` reports counts only, not sizes or ages; the detail is here.
  */
 
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { errorMessage } from '../core/errors.js';
+import { assertAttended, errorMessage } from '../core/errors.js';
 import { resolveDataDir } from '../core/paths.js';
 import { DAY_MS, isInside, pruneRejectedCopies, staleRejectedCopies } from '../core/stale-data.js';
+import type { PruneResult } from '../core/stale-data.js';
 import { git } from './overnight-push-prep.js';
 
 export const WORKTREE_MIN_AGE_DAYS = 14;
 
+/** Ignored paths with one of these as a path segment are rebuildable, not work. */
+export const BUILD_OUTPUT = new Set(['node_modules', 'dist', 'build', 'target', 'coverage', '.venv']);
+
 const WORKTREE_NAME = /^[\w.-]+-\d+$/;
-// Read-only runs take no index lock, and `status` must not start a
-// `core.fsmonitor` program the repo's config names.
-const SAFE_GIT = ['--no-optional-locks', '-c', 'core.fsmonitor=false'];
+// Every call, the removal included: no index lock for a read, no
+// `core.fsmonitor` program the repo's config names, and untracked files
+// always count (`worktree remove` runs its own status and would otherwise
+// honour `status.showUntrackedFiles=no` and delete them).
+const SAFE_GIT = ['--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'status.showUntrackedFiles=all'];
+const IN_PROGRESS = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
+const MAX_NAMED_PATHS = 3;
 
 export type WorktreeAction = 'removed' | 'would-remove' | 'kept';
 
@@ -49,10 +69,15 @@ export interface WorktreeReport {
   reason: string;
 }
 
-export interface CleanupOutput {
+export interface WorktreeScan {
+  worktrees: WorktreeReport[];
+  /** What went wrong: a scan that threw, a removal that was planned and then refused. */
+  errors: string[];
+}
+
+export interface CleanupOutput extends WorktreeScan {
   /** False: a dry run, nothing was deleted. */
   applied: boolean;
-  worktrees: WorktreeReport[];
   /** Rejected state copies past retention: removed when `applied`, else listed. */
   rejectedCopies: string[];
 }
@@ -63,6 +88,10 @@ export interface CleanupOptions {
 
 function gitOut(worktree: string, args: string[]): string {
   return git(worktree, [...SAFE_GIT, ...args]).trim();
+}
+
+function gitDirOf(dir: string): string {
+  return gitOut(dir, ['rev-parse', '--absolute-git-dir']);
 }
 
 function kept(dir: string, reason: string): WorktreeReport {
@@ -83,23 +112,73 @@ function refusal(dataDir: string, dir: string): string | null {
 
 /** Whole days since the directory itself or the worktree's index last changed. */
 function idleDays(dir: string, now: number): number {
-  const index = path.join(gitOut(dir, ['rev-parse', '--absolute-git-dir']), 'index');
+  const index = path.join(gitDirOf(dir), 'index');
   const dirMtime = fs.statSync(dir).mtimeMs;
   const lastTouched = fs.existsSync(index) ? Math.max(dirMtime, fs.statSync(index).mtimeMs) : dirMtime;
   return Math.max(0, Math.floor((now - lastTouched) / DAY_MS));
+}
+
+function operationInProgress(dir: string): string | null {
+  const gitDir = gitDirOf(dir);
+  const found = IN_PROGRESS.filter((name) => fs.existsSync(path.join(gitDir, name)));
+  return found.length > 0 ? `operation in progress (${found.join(', ')})` : null;
+}
+
+function isBuildOutput(ignoredPath: string): boolean {
+  return ignoredPath.split('/').some((segment) => BUILD_OUTPUT.has(segment));
+}
+
+function ignoredOutsideBuildOutput(dir: string): string | null {
+  // `matching` lists an ignored directory once instead of every file in it.
+  const status = gitOut(dir, ['status', '--porcelain', '--ignored=matching', '--untracked-files=normal']);
+  const ignored = status.split('\n').filter((line) => line.startsWith('!! '));
+  const precious = ignored.map((line) => line.slice(3)).filter((ignoredPath) => !isBuildOutput(ignoredPath));
+  if (precious.length === 0) return null;
+  const more = precious.length > MAX_NAMED_PATHS ? `, and ${precious.length - MAX_NAMED_PATHS} more` : '';
+  return `ignored files outside build output: ${precious.slice(0, MAX_NAMED_PATHS).join(', ')}${more}`;
+}
+
+function hiddenEdits(dir: string): string | null {
+  // `ls-files -v` tags: `S` skip-worktree, a lowercase letter assume-unchanged.
+  const isFlagged = /^[a-zS] /m.test(gitOut(dir, ['ls-files', '-v']));
+  return isFlagged ? 'files flagged skip-worktree or assume-unchanged (edits to them are invisible)' : null;
+}
+
+function reflogOnlyCommits(dir: string): string | null {
+  // This worktree's own HEAD reflog; `rev-list -g` cannot take `--not`.
+  // ponytail: the commits go on the command line; a reflog too long for that
+  // errors, and an error keeps the worktree.
+  const reflog = gitOut(dir, ['reflog', 'show', '--format=%H', 'HEAD']);
+  const commits = new Set(reflog.split('\n').filter((sha) => sha !== ''));
+  if (commits.size === 0) return null;
+  const lost = gitOut(dir, ['rev-list', ...commits, '--not', '--branches', '--remotes', '--tags']);
+  if (lost === '') return null;
+  return `${lost.split('\n').length} commit(s) reachable only from this worktree's HEAD reflog`;
+}
+
+const DEEP_CHECKS = [operationInProgress, ignoredOutsideBuildOutput, hiddenEdits, reflogOnlyCommits];
+
+/** Why a clean-or-not, pushed-or-not worktree of `ageDays` is kept, or null when it may go. */
+function keepReason(dir: string, report: WorktreeReport, ageDays: number): string | null {
+  if (!report.clean) return 'uncommitted or untracked files';
+  if (!report.pushed) return 'HEAD is not on any remote-tracking branch (unpushed work)';
+  for (const check of DEEP_CHECKS) {
+    const reason = check(dir);
+    if (reason) return reason;
+  }
+  if (ageDays < WORKTREE_MIN_AGE_DAYS) return `touched ${ageDays} day(s) ago (kept for ${WORKTREE_MIN_AGE_DAYS})`;
+  return null;
 }
 
 function judge(dataDir: string, dir: string, now: number): WorktreeReport {
   const refused = refusal(dataDir, dir);
   if (refused) return kept(dir, refused);
   const ageDays = idleDays(dir, now);
-  const isClean = gitOut(dir, ['status', '--porcelain']) === '';
+  const isClean = gitOut(dir, ['status', '--porcelain', '--untracked-files=all']) === '';
   const isPushed = gitOut(dir, ['for-each-ref', '--count=1', '--contains', 'HEAD', 'refs/remotes']) !== '';
   const report = { ...kept(dir, ''), ageDays, clean: isClean, pushed: isPushed };
-  if (!isClean) return { ...report, reason: 'uncommitted or untracked files' };
-  if (!isPushed) return { ...report, reason: 'HEAD is not on any remote-tracking branch (unpushed work)' };
-  if (ageDays < WORKTREE_MIN_AGE_DAYS)
-    return { ...report, reason: `touched ${ageDays} day(s) ago (kept for ${WORKTREE_MIN_AGE_DAYS})` };
+  const reason = keepReason(dir, report, ageDays);
+  if (reason) return { ...report, reason };
   return { ...report, action: 'would-remove', reason: `clean, pushed, idle ${ageDays} days` };
 }
 
@@ -113,35 +192,54 @@ function inspect(dataDir: string, dir: string, now: number): WorktreeReport {
 
 function remove(report: WorktreeReport): WorktreeReport {
   try {
-    git(report.path, ['worktree', 'remove', report.path]);
+    git(report.path, [...SAFE_GIT, 'worktree', 'remove', report.path]);
   } catch (err) {
     return { ...report, action: 'kept', reason: `git worktree remove refused: ${errorMessage(err)}` };
   }
   return { ...report, action: 'removed' };
 }
 
-function scan(dataDir: string, root: string, options: CleanupOptions, now: number): WorktreeReport[] {
+function scan(dataDir: string, root: string, options: CleanupOptions, now: number): WorktreeScan {
   // A symlinked `worktrees` would have every child resolve outside the data dir.
-  if (!fs.existsSync(root) || !fs.lstatSync(root).isDirectory()) return [];
-  const reports = fs.readdirSync(root).map((name) => inspect(dataDir, path.join(root, name), now));
-  if (!options.apply) return reports;
-  return reports.map((r) => (r.action === 'would-remove' ? remove(r) : r));
+  if (!fs.existsSync(root) || !fs.lstatSync(root).isDirectory()) return { worktrees: [], errors: [] };
+  const planned = fs.readdirSync(root).map((name) => inspect(dataDir, path.join(root, name), now));
+  if (!options.apply) return { worktrees: planned, errors: [] };
+  const worktrees = planned.map((r) => (r.action === 'would-remove' ? remove(r) : r));
+  // Planned and then refused: the judgement and Git disagree, which is an error, not a keep.
+  const refused = worktrees.filter((r, i) => r.action === 'kept' && planned[i].action === 'would-remove');
+  return { worktrees, errors: refused.map((r) => `${r.path}: ${r.reason}`) };
 }
 
 /** Every direct child of `<dataDir>/worktrees`, judged; removed only with `apply`. Never throws. */
-export function cleanWorktrees(dataDir: string, options: CleanupOptions, now: number = Date.now()): WorktreeReport[] {
+export function cleanWorktrees(dataDir: string, options: CleanupOptions, now: number = Date.now()): WorktreeScan {
   const root = path.join(dataDir, 'worktrees');
   try {
     return scan(dataDir, root, options, now);
   } catch (err) {
-    return [kept(root, errorMessage(err))];
+    return { worktrees: [], errors: [`could not scan ${root}: ${errorMessage(err)}`] };
   }
 }
 
+function listRejectedCopies(dataDir: string): PruneResult {
+  try {
+    return { removed: staleRejectedCopies(dataDir), errors: [] };
+  } catch (err) {
+    return { removed: [], errors: [`could not list rejected state copies in ${dataDir}: ${errorMessage(err)}`] };
+  }
+}
+
+/**
+ * Sets a non-zero exit code when anything went wrong, in a dry run too: a
+ * scheduler or a script sees only that, and a partial `--apply` is not success.
+ */
 export function runCleanup(options: CleanupOptions): CleanupOutput {
+  if (options.apply) assertAttended('remove worktrees and rejected state copies');
   const dataDir = resolveDataDir();
-  const rejectedCopies = options.apply ? pruneRejectedCopies(dataDir) : staleRejectedCopies(dataDir);
-  return { applied: options.apply, worktrees: cleanWorktrees(dataDir, options), rejectedCopies };
+  const rejected = options.apply ? pruneRejectedCopies(dataDir) : listRejectedCopies(dataDir);
+  const scanned = cleanWorktrees(dataDir, options);
+  const errors = [...scanned.errors, ...rejected.errors];
+  if (errors.length > 0) process.exitCode = 1;
+  return { applied: options.apply, worktrees: scanned.worktrees, rejectedCopies: rejected.removed, errors };
 }
 
 export function printCleanup(data: CleanupOutput): void {
@@ -153,5 +251,7 @@ export function printCleanup(data: CleanupOutput): void {
   for (const file of data.rejectedCopies) console.log(`  ${file}`);
   if (kept.length > 0) console.log(`Kept ${kept.length} worktree(s):`);
   for (const w of kept) console.log(`  ${w.path}: ${w.reason}`);
+  if (data.errors.length > 0) console.log(`${data.errors.length} error(s):`);
+  for (const error of data.errors) console.log(`  ${error}`);
   if (!data.applied && going.length + data.rejectedCopies.length > 0) console.log('Re-run with --apply to remove.');
 }

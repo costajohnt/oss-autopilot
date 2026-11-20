@@ -19,8 +19,7 @@ import { getGitHubTokenAsync, getOctokit, getStatePath } from '../core/index.js'
 import { AgentStateSchema } from '../core/state-schema.js';
 import { errorMessage } from '../core/errors.js';
 import { resolveDataDir } from '../core/paths.js';
-import { REJECTED_KEEP, staleRejectedCopies } from '../core/stale-data.js';
-import { cleanWorktrees } from './cleanup.js';
+import { staleRejectedCopies } from '../core/stale-data.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -332,21 +331,23 @@ export async function checkGitHubRateLimit(preloadedToken?: string | null): Prom
 }
 
 /**
- * Stale data under the data directory (#1956): overnight worktrees and
- * rejected state copies that `cleanup` would remove. Read-only.
+ * Stale data under the data directory (#1956): counts only, from the file
+ * system; no Git runs here. Which worktrees are safe to remove, and why the
+ * others are kept, is what `cleanup` reports.
  */
 export function checkStaleData(dataDir: string = resolveDataDir()): DoctorCheck {
   const name = 'Stale data';
-  const worktrees = cleanWorktrees(dataDir, { apply: false });
-  const removable = worktrees.filter((w) => w.action === 'would-remove').length;
+  const root = path.join(dataDir, 'worktrees');
+  const worktrees = fs.existsSync(root) && fs.lstatSync(root).isDirectory() ? fs.readdirSync(root).length : 0;
   const rejected = staleRejectedCopies(dataDir).length;
-  const message = `${worktrees.length} overnight worktree(s), ${removable} safe to remove; ${rejected} rejected state copy(ies) past retention (newest ${REJECTED_KEEP} kept)`;
-  if (removable + rejected === 0) return { name, message, status: 'ok' };
+  const message = `${worktrees} overnight worktree(s); ${rejected} rejected state copy(ies) past retention`;
+  if (rejected === 0) return { name, message, status: 'ok' };
   return {
     name,
     message,
     status: 'warning',
-    remediation: 'Run `oss-autopilot cleanup` to list them and `oss-autopilot cleanup --apply` to remove them',
+    remediation:
+      'They are pruned at the next overnight run; `oss-autopilot cleanup` (a dry run) lists them and the worktrees',
   };
 }
 

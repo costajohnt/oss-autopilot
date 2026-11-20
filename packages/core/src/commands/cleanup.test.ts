@@ -36,9 +36,23 @@ function addWorktree(name: string, parent: string = path.join(ctx.dataDir, 'work
 }
 
 function only(dir: string, options: CleanupOptions, now: number = OLD): WorktreeReport {
-  const found = cleanWorktrees(ctx.dataDir, options, now).find((r) => r.path === dir);
+  const found = cleanWorktrees(ctx.dataDir, options, now).worktrees.find((r) => r.path === dir);
   if (!found) throw new Error(`no report for ${dir}`);
   return found;
+}
+
+/** Commit a `.gitignore` to main and push it, so worktrees made after start from it. */
+function ignoreOnMain(patterns: string): void {
+  commitFile(ctx.clone, '.gitignore', patterns);
+  git(ctx.clone, ['push', '-q', 'origin', 'main']);
+}
+
+/** Make the worktree look untouched for a month, for callers that use the real clock. */
+function backdate(dir: string): void {
+  const then = (NOW - 30 * DAY_MS) / 1000;
+  const gitDir = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
+  fs.utimesSync(path.join(gitDir, 'index'), then, then);
+  fs.utimesSync(dir, then, then);
 }
 
 /** Seven rejected copies a month old in the (temp HOME) data dir. */
@@ -67,8 +81,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(ctx.tmp, { recursive: true, force: true });
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  process.exitCode = undefined;
+  fs.rmSync(ctx.tmp, { recursive: true, force: true });
 });
 
 describe('cleanWorktrees', () => {
@@ -80,7 +96,7 @@ describe('cleanWorktrees', () => {
     expect(planned.ageDays).toBeGreaterThanOrEqual(WORKTREE_MIN_AGE_DAYS);
     expect(fs.existsSync(dir)).toBe(true);
 
-    expect(only(dir, APPLY).action).toBe('removed');
+    expect(cleanWorktrees(ctx.dataDir, APPLY, OLD)).toMatchObject({ worktrees: [{ action: 'removed' }], errors: [] });
     expect(fs.existsSync(dir)).toBe(false);
     // The branch outlives its worktree, and the clone no longer lists the worktree.
     expect(git(ctx.clone, ['branch', '--list', 'overnight/octo-repo-12'])).toContain('overnight/octo-repo-12');
@@ -103,6 +119,62 @@ describe('cleanWorktrees', () => {
     expect(fs.existsSync(path.join(dir, 'new.txt'))).toBe(true);
   });
 
+  it('keeps a worktree with an untracked file when status.showUntrackedFiles=no hides it', () => {
+    const dir = addWorktree('octo-repo-20');
+    git(ctx.clone, ['config', 'status.showUntrackedFiles', 'no']);
+    fs.writeFileSync(path.join(dir, 'new.txt'), 'new\n');
+    expect(git(dir, ['status', '--porcelain'])).toBe('');
+
+    expect(only(dir, APPLY)).toMatchObject({ action: 'kept', clean: false });
+    expect(fs.readFileSync(path.join(dir, 'new.txt'), 'utf8')).toBe('new\n');
+  });
+
+  it('keeps a worktree holding an ignored file that is not build output, and names it', () => {
+    ignoreOnMain('node_modules/\n.env\n*.sqlite\n');
+    const dir = addWorktree('octo-repo-21');
+    fs.mkdirSync(path.join(dir, 'node_modules'));
+    fs.writeFileSync(path.join(dir, 'node_modules', 'i.js'), '1\n');
+    fs.writeFileSync(path.join(dir, '.env'), 'TOKEN=x\n');
+    fs.writeFileSync(path.join(dir, 'dev.sqlite'), 'db\n');
+
+    const report = only(dir, APPLY);
+    expect(report).toMatchObject({ action: 'kept', clean: true, pushed: true });
+    expect(report.reason).toBe('ignored files outside build output: .env, dev.sqlite');
+    expect(fs.readFileSync(path.join(dir, '.env'), 'utf8')).toBe('TOKEN=x\n');
+  });
+
+  it('removes a worktree whose only ignored files are build output, at any depth', () => {
+    ignoreOnMain('node_modules/\ndist/\n');
+    const dir = addWorktree('octo-repo-22');
+    fs.mkdirSync(path.join(dir, 'node_modules'));
+    fs.writeFileSync(path.join(dir, 'node_modules', 'i.js'), '1\n');
+    fs.mkdirSync(path.join(dir, 'packages', 'core', 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'packages', 'core', 'dist', 'out.js'), '1\n');
+
+    expect(only(dir, APPLY).action).toBe('removed');
+    expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it('keeps a worktree with an edit hidden behind skip-worktree', () => {
+    const dir = addWorktree('octo-repo-23');
+    git(dir, ['update-index', '--skip-worktree', 'a.txt']);
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'hidden edit\n');
+    expect(git(dir, ['status', '--porcelain'])).toBe('');
+
+    const report = only(dir, APPLY);
+    expect(report).toMatchObject({ action: 'kept', clean: true });
+    expect(report.reason).toContain('skip-worktree');
+    expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('hidden edit\n');
+  });
+
+  it('keeps a worktree with a file flagged assume-unchanged', () => {
+    const dir = addWorktree('octo-repo-24');
+    git(dir, ['update-index', '--assume-unchanged', 'a.txt']);
+
+    expect(only(dir, APPLY).reason).toContain('assume-unchanged');
+    expect(fs.existsSync(dir)).toBe(true);
+  });
+
   it('keeps a worktree whose commit is on no remote-tracking ref', () => {
     const dir = addWorktree('octo-repo-issue-3');
     commitFile(dir, 'fix.txt', 'fix\n');
@@ -120,6 +192,55 @@ describe('cleanWorktrees', () => {
 
     expect(only(dir, APPLY).action).toBe('removed');
     expect(git(ctx.clone, ['log', '-1', '--format=%s', 'origin/prep/fix']).trim()).toBe('fix.txt');
+  });
+
+  it('keeps a worktree whose pushed commit was amended afterwards', () => {
+    const dir = addWorktree('octo-repo-25');
+    commitFile(dir, 'fix.txt', 'fix\n');
+    git(dir, ['push', '-q', 'origin', 'HEAD:refs/heads/prep/fix']);
+    git(dir, [...IDENTITY, 'commit', '-q', '--amend', '-m', 'amended']);
+
+    expect(only(dir, APPLY)).toMatchObject({ action: 'kept', clean: true, pushed: false });
+    expect(git(dir, ['log', '-1', '--format=%s']).trim()).toBe('amended');
+  });
+
+  it('keeps a worktree whose reflog holds a commit no ref reaches (made on a detached HEAD)', () => {
+    const dir = addWorktree('octo-repo-26');
+    git(dir, ['checkout', '-q', '--detach']);
+    commitFile(dir, 'detached.txt', 'only here\n');
+    const lost = git(dir, ['rev-parse', 'HEAD']).trim();
+    git(dir, ['checkout', '-q', 'overnight/octo-repo-26']);
+
+    const report = only(dir, APPLY);
+    expect(report).toMatchObject({ action: 'kept', clean: true, pushed: true });
+    expect(report.reason).toBe("1 commit(s) reachable only from this worktree's HEAD reflog");
+    expect(git(dir, ['cat-file', '-t', lost]).trim()).toBe('commit');
+  });
+
+  it('keeps a worktree stopped in the middle of a rebase', () => {
+    const dir = addWorktree('octo-repo-27');
+    commitFile(dir, 'fix.txt', 'fix\n');
+    git(dir, ['push', '-q', 'origin', 'HEAD:refs/heads/prep/fix']);
+    // `--exec false` stops the rebase after the pick, with a clean tree.
+    expect(() => git(dir, [...IDENTITY, 'rebase', '-q', '--exec', 'false', 'origin/main'])).toThrow();
+    expect(git(dir, ['status', '--porcelain'])).toBe('');
+
+    const report = only(dir, APPLY);
+    expect(report.action).toBe('kept');
+    expect(report.reason).toBe('operation in progress (rebase-merge)');
+    expect(fs.existsSync(dir)).toBe(true);
+  });
+
+  it('judges the worktree itself when GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE point elsewhere', () => {
+    const dirty = addWorktree('octo-repo-28');
+    fs.writeFileSync(path.join(dirty, 'new.txt'), 'new\n');
+    const clean = addWorktree('octo-repo-29');
+    vi.stubEnv('GIT_DIR', path.join(ctx.clone, '.git'));
+    vi.stubEnv('GIT_WORK_TREE', ctx.clone);
+    vi.stubEnv('GIT_INDEX_FILE', path.join(ctx.clone, '.git', 'index'));
+
+    expect(only(dirty, DRY_RUN)).toMatchObject({ action: 'kept', clean: false });
+    expect(only(clean, DRY_RUN)).toMatchObject({ action: 'would-remove', clean: true, pushed: true });
   });
 
   it('keeps a worktree touched inside the retention age', () => {
@@ -148,7 +269,7 @@ describe('cleanWorktrees', () => {
     fs.rmdirSync(path.join(ctx.dataDir, 'worktrees'));
     fs.symlinkSync(outside, path.join(ctx.dataDir, 'worktrees'));
 
-    expect(cleanWorktrees(ctx.dataDir, APPLY, OLD)).toEqual([]);
+    expect(cleanWorktrees(ctx.dataDir, APPLY, OLD)).toEqual({ worktrees: [], errors: [] });
     expect(fs.existsSync(real)).toBe(true);
   });
 
@@ -165,14 +286,17 @@ describe('cleanWorktrees', () => {
     expect(fs.existsSync(oddName) && fs.existsSync(plain) && fs.existsSync(fullClone)).toBe(true);
   });
 
-  it('keeps a worktree git refuses to remove, without throwing', () => {
+  it('reports an error, not success, when git refuses a removal it had planned', () => {
     const dir = addWorktree('octo-repo-10');
     git(ctx.clone, ['worktree', 'lock', dir]);
 
-    const report = only(dir, APPLY);
-    expect(report.action).toBe('kept');
-    expect(report.reason).toContain('git worktree remove refused');
+    const result = cleanWorktrees(ctx.dataDir, APPLY, OLD);
+
+    expect(result.worktrees).toMatchObject([{ path: dir, action: 'kept' }]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('git worktree remove refused');
     expect(fs.existsSync(dir)).toBe(true);
+    expect(cleanWorktrees(ctx.dataDir, DRY_RUN, OLD).errors).toEqual([]);
   });
 
   it('keeps a worktree whose check errors, without throwing', () => {
@@ -185,8 +309,22 @@ describe('cleanWorktrees', () => {
     expect(fs.existsSync(dir)).toBe(true);
   });
 
+  it('reports a scan that throws as an error, not as a worktree row', () => {
+    const dir = addWorktree('octo-repo-13');
+    const root = path.join(ctx.dataDir, 'worktrees');
+    fs.chmodSync(root, 0o000);
+
+    const result = cleanWorktrees(ctx.dataDir, APPLY, OLD);
+    fs.chmodSync(root, 0o700);
+
+    expect(result.worktrees).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('could not scan');
+    expect(fs.existsSync(dir)).toBe(true);
+  });
+
   it('is empty without a worktrees directory', () => {
-    expect(cleanWorktrees(path.join(ctx.tmp, 'absent'), APPLY, OLD)).toEqual([]);
+    expect(cleanWorktrees(path.join(ctx.tmp, 'absent'), APPLY, OLD)).toEqual({ worktrees: [], errors: [] });
   });
 });
 
@@ -199,33 +337,62 @@ describe('runCleanup', () => {
   it('reports without deleting by default', () => {
     writeOldCopies();
 
-    const out = runCleanup({ apply: false });
+    const out = runCleanup(DRY_RUN);
 
-    expect(out.applied).toBe(false);
-    expect(out.rejectedCopies).toHaveLength(2);
-    expect(out.worktrees).toEqual([]);
+    expect(out).toMatchObject({ applied: false, worktrees: [], errors: [] });
+    expect(out.rejectedCopies).toHaveLength(1);
     expect(fs.readdirSync(resolveDataDir())).toHaveLength(7);
+    expect(process.exitCode).toBeUndefined();
   });
 
   it('deletes with apply', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     writeOldCopies();
 
-    const out = runCleanup({ apply: true });
+    const out = runCleanup(APPLY);
 
-    expect(out.applied).toBe(true);
-    expect(out.rejectedCopies).toHaveLength(2);
-    expect(fs.readdirSync(resolveDataDir())).toHaveLength(5);
+    expect(out).toMatchObject({ applied: true, errors: [] });
+    expect(out.rejectedCopies).toHaveLength(1);
+    expect(fs.readdirSync(resolveDataDir())).toHaveLength(6);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('refuses --apply during an unattended run, and still allows the dry run', () => {
+    writeOldCopies();
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+
+    expect(() => runCleanup(APPLY)).toThrow(/Refusing to remove worktrees and rejected state copies/);
+    expect(fs.readdirSync(resolveDataDir())).toHaveLength(7);
+    expect(runCleanup(DRY_RUN).rejectedCopies).toHaveLength(1);
+  });
+
+  it('sets a non-zero exit code when one removal fails and another succeeds', () => {
+    const root = path.join(resolveDataDir(), 'worktrees');
+    fs.mkdirSync(root, { recursive: true });
+    const locked = addWorktree('octo-repo-30', root);
+    const free = addWorktree('octo-repo-31', root);
+    git(ctx.clone, ['worktree', 'lock', locked]);
+    backdate(locked);
+    backdate(free);
+
+    const out = runCleanup(APPLY);
+
+    expect(out.errors).toHaveLength(1);
+    expect(out.errors[0]).toContain(locked);
+    expect(process.exitCode).toBe(1);
+    expect(fs.existsSync(locked)).toBe(true);
+    expect(fs.existsSync(free)).toBe(false);
   });
 
   it('is empty when the data directory does not exist', () => {
-    expect(runCleanup({ apply: true })).toEqual({ applied: true, worktrees: [], rejectedCopies: [] });
+    expect(runCleanup(APPLY)).toEqual({ applied: true, worktrees: [], rejectedCopies: [], errors: [] });
   });
 });
 
 describe('printCleanup', () => {
   const worktree = { ageDays: 20, clean: true, pushed: true };
 
-  it('prints the plan, the kept items with reasons, and the --apply hint', () => {
+  it('prints the plan, the kept items with reasons, the errors, and the --apply hint', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     printCleanup({
@@ -235,6 +402,7 @@ describe('printCleanup', () => {
         { ...worktree, path: '/d/worktrees/b-2', action: 'kept', reason: 'uncommitted or untracked files' },
       ],
       rejectedCopies: ['/d/state.json.rejected-1'],
+      errors: ['could not scan /d/worktrees: EACCES'],
     });
 
     const out = log.mock.calls.map((c) => c.join(' ')).join('\n');
@@ -242,13 +410,15 @@ describe('printCleanup', () => {
     expect(out).toContain('/d/worktrees/a-1: clean, pushed, idle 20 days');
     expect(out).toContain('Kept 1 worktree(s):');
     expect(out).toContain('/d/worktrees/b-2: uncommitted or untracked files');
+    expect(out).toContain('1 error(s):');
+    expect(out).toContain('could not scan /d/worktrees: EACCES');
     expect(out).toContain('Re-run with --apply to remove.');
   });
 
   it('prints what was removed, with no hint', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    printCleanup({ applied: true, worktrees: [], rejectedCopies: [] });
+    printCleanup({ applied: true, worktrees: [], rejectedCopies: [], errors: [] });
 
     const out = log.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(out).toBe('Removed 0 worktree(s), 0 rejected state copy(ies)');

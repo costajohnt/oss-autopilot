@@ -644,7 +644,8 @@ describe('GistStateStore', () => {
       await expect(store.bootstrap()).rejects.toThrow(GistCorruptError);
 
       const rejected = fs.readdirSync(tmpDir).filter((f) => f.startsWith('state-cache.json.rejected-'));
-      expect(rejected).toHaveLength(5);
+      expect(rejected).toHaveLength(6);
+      expect(rejected).toContain('state-cache.json.rejected-1');
       expect(rejected).not.toContain('state-cache.json.rejected-3');
       expect(rejected).toContain('state-cache.json.rejected-4');
     });

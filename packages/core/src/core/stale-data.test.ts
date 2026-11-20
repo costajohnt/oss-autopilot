@@ -45,7 +45,49 @@ describe('staleRejectedCopies', () => {
   it('lists old copies beyond the newest', () => {
     const files: string[] = [];
     for (let i = 0; i < REJECTED_KEEP + 3; i++) files.push(writeCopy('state-cache.json', OLD_DAYS + i));
-    expect(new Set(staleRejectedCopies(ctx.dataDir, NOW))).toEqual(new Set(files.slice(REJECTED_KEEP)));
+    // The last one written here is the oldest of its kind, which is kept too.
+    expect(new Set(staleRejectedCopies(ctx.dataDir, NOW))).toEqual(new Set(files.slice(REJECTED_KEEP, -1)));
+  });
+
+  it('keeps the oldest copy of each kind, the one from the start of an incident', () => {
+    const newest = [];
+    for (let i = 0; i < REJECTED_KEEP; i++) newest.push(writeCopy('state.json', OLD_DAYS + i));
+    const middle = writeCopy('state.json', 50);
+    const oldest = writeCopy('state.json', 90);
+    const oldestCache = writeCopy('state-cache.json', 200);
+
+    expect(staleRejectedCopies(ctx.dataDir, NOW)).toEqual([middle]);
+    expect(pruneRejectedCopies(ctx.dataDir, NOW).removed).toEqual([middle]);
+    expect(fs.existsSync(oldest) && fs.existsSync(oldestCache)).toBe(true);
+    expect(newest.every((file) => fs.existsSync(file))).toBe(true);
+  });
+
+  it('ranks a burst of copies with one shared timestamp instead of keeping or dropping them all', () => {
+    const shared = (NOW - 40 * DAY_MS) / 1000;
+    for (let ts = 1; ts <= 20; ts++) {
+      const file = path.join(ctx.dataDir, `state-cache.json.rejected-${ts}`);
+      fs.writeFileSync(file, '{}');
+      fs.utimesSync(file, shared, shared);
+    }
+
+    // 20 copies, all equally old: the newest 5 and the oldest 1 by name order stay.
+    expect(staleRejectedCopies(ctx.dataDir, NOW)).toHaveLength(20 - REJECTED_KEEP - 1);
+    expect(pruneRejectedCopies(ctx.dataDir, NOW).removed).toHaveLength(20 - REJECTED_KEEP - 1);
+    expect(fs.readdirSync(ctx.dataDir)).toHaveLength(REJECTED_KEEP + 1);
+  });
+
+  it('skips an entry it cannot stat (a file that vanished mid-scan) with a warning', () => {
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (let i = 0; i < REJECTED_KEEP + 3; i++) writeCopy('state.json', OLD_DAYS + i);
+    // Readable but not searchable: readdir lists the names, lstat on each fails.
+    fs.chmodSync(ctx.dataDir, 0o400);
+
+    const stale = staleRejectedCopies(ctx.dataDir, NOW);
+    fs.chmodSync(ctx.dataDir, 0o700);
+
+    expect(stale).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping state.json.rejected-'));
+    expect(warnSpy).toHaveBeenCalledTimes(REJECTED_KEEP + 3);
   });
 
   it('keeps every young copy, even past the count', () => {
@@ -77,7 +119,7 @@ describe('staleRejectedCopies', () => {
     fs.writeFileSync(path.join(ctx.dataDir, 'state.json'), '{}');
 
     expect(staleRejectedCopies(ctx.dataDir, NOW)).toEqual([]);
-    expect(pruneRejectedCopies(ctx.dataDir, NOW)).toEqual([]);
+    expect(pruneRejectedCopies(ctx.dataDir, NOW)).toEqual({ removed: [], errors: [] });
     expect(fs.readFileSync(outside, 'utf8')).toBe('precious');
     expect(fs.readdirSync(ctx.dataDir)).toHaveLength(REJECTED_KEEP + 5);
   });
@@ -88,34 +130,58 @@ describe('staleRejectedCopies', () => {
 });
 
 describe('pruneRejectedCopies', () => {
-  it('deletes only what retention no longer covers', () => {
+  it('deletes only what retention no longer covers, and says so once at warn', () => {
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const kept: string[] = [];
     for (let i = 0; i < REJECTED_KEEP; i++) kept.push(writeCopy('state-cache.json', OLD_DAYS + i));
-    const old = [writeCopy('state-cache.json', 30), writeCopy('state-cache.json', 40)];
+    const old = [writeCopy('state-cache.json', 30), writeCopy('state-cache.json', 35)];
+    kept.push(writeCopy('state-cache.json', 40));
 
-    expect(new Set(pruneRejectedCopies(ctx.dataDir, NOW))).toEqual(new Set(old));
+    const result = pruneRejectedCopies(ctx.dataDir, NOW);
+
+    expect(new Set(result.removed)).toEqual(new Set(old));
+    expect(result.errors).toEqual([]);
     expect(new Set(fs.readdirSync(ctx.dataDir))).toEqual(new Set(kept.map((f) => path.basename(f))));
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const line = String(warnSpy.mock.calls[0][0]);
+    expect(line).toContain('Pruned 2 rejected state copy(ies)');
+    expect(line).toContain(`newest ${REJECTED_KEEP}`);
+    expect(line).toContain(path.basename(old[0]));
+    expect(line).toContain(path.basename(old[1]));
   });
 
-  it('warns instead of throwing when the directory cannot be read', () => {
+  it('is silent when there is nothing to prune', () => {
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    writeCopy('state.json', 100);
+
+    expect(pruneRejectedCopies(ctx.dataDir, NOW)).toEqual({ removed: [], errors: [] });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('reports instead of throwing when the directory cannot be read', () => {
     const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const notADir = path.join(ctx.tmp, 'file');
     fs.writeFileSync(notADir, '');
 
-    expect(pruneRejectedCopies(notADir, NOW)).toEqual([]);
+    const result = pruneRejectedCopies(notADir, NOW);
+
+    expect(result.removed).toEqual([]);
+    expect(result.errors).toHaveLength(1);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not prune rejected state copies'));
   });
 
-  it('warns and carries on when one delete fails', () => {
+  it('reports and carries on when a delete fails', () => {
     const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (let i = 0; i < REJECTED_KEEP; i++) writeCopy('state.json', OLD_DAYS + i);
     const old = writeCopy('state.json', 60);
+    writeCopy('state.json', 90);
     fs.chmodSync(ctx.dataDir, 0o500);
 
-    const removed = pruneRejectedCopies(ctx.dataDir, NOW);
+    const result = pruneRejectedCopies(ctx.dataDir, NOW);
     fs.chmodSync(ctx.dataDir, 0o700);
 
-    expect(removed).toEqual([]);
+    expect(result.removed).toEqual([]);
+    expect(result.errors).toHaveLength(1);
     expect(fs.existsSync(old)).toBe(true);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not delete rejected state copy'));
   });

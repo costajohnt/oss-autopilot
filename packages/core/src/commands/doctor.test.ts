@@ -366,7 +366,9 @@ describe('checkStaleData', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
     fs.writeFileSync(path.join(dataDir, 'state.json.rejected-1'), '{}');
 
-    expect(checkStaleData(dataDir).status).toBe('ok');
+    fs.mkdirSync(path.join(dataDir, 'worktrees', 'octo-repo-1'), { recursive: true });
+
+    expect(checkStaleData(dataDir)).toMatchObject({ status: 'ok', message: expect.stringContaining('1 overnight') });
     expect(checkStaleData(path.join(dataDir, 'absent')).status).toBe('ok');
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
@@ -382,8 +384,9 @@ describe('checkStaleData', () => {
     const result = checkStaleData(dataDir);
 
     expect(result.status).toBe('warning');
-    expect(result.message).toContain('3 rejected state copy(ies) past retention');
-    expect(result.remediation).toContain('cleanup --apply');
+    expect(result.message).toContain('2 rejected state copy(ies) past retention');
+    expect(result.remediation).toContain('oss-autopilot cleanup');
+    expect(result.remediation).not.toContain('--apply');
     expect(fs.readdirSync(dataDir)).toHaveLength(8);
     fs.rmSync(dataDir, { recursive: true, force: true });
   });

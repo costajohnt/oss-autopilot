@@ -790,10 +790,12 @@ describe('loadState rejected-file preservation and recovery metadata (#1371)', (
 
     const result = loadState();
 
-    // The new copy and the 4 newest old ones stay; the 3 oldest go.
+    // The new copy, the 4 newest old ones and the very oldest stay; the 2 between go.
     const rejected = listRejectedFiles();
-    expect(rejected).toHaveLength(5);
+    expect(rejected).toHaveLength(6);
+    expect(rejected).toContain('state.json.rejected-1');
     expect(rejected).toContain(path.basename(result.recovery?.rejectedPath ?? ''));
+    expect(rejected).not.toContain('state.json.rejected-2');
     expect(rejected).not.toContain('state.json.rejected-3');
     expect(rejected).toContain('state.json.rejected-4');
   });

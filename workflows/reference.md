@@ -210,8 +210,11 @@ rejected with a did-you-mean suggestion.
 <prefix> doctor --json
 
 # List stale overnight worktrees and rejected state copies under ~/.oss-autopilot (dry run).
-# --apply removes a worktree only when it is clean, its HEAD is on a remote-tracking
-# branch and nothing touched it for 14 days; every kept one is listed with the reason.
+# --apply removes a worktree only when it is clean (untracked files count), its HEAD is on
+# a remote-tracking branch, it holds no ignored files outside build output, no hidden or
+# reflog-only work, no rebase or merge in progress, and nothing touched it for 14 days.
+# Every kept one is listed with the reason. --apply refuses in an unattended run, and the
+# command exits non-zero when anything failed (data.errors).
 <prefix> cleanup --json [--apply]
 
 # Audit new files on this branch for cross-references (old name: check-integration)

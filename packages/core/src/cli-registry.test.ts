@@ -2126,7 +2126,7 @@ describe('doctor command', () => {
 });
 
 describe('cleanup command (#1956)', () => {
-  const data = { applied: false, worktrees: [], rejectedCopies: [] };
+  const data = { applied: false, worktrees: [], rejectedCopies: [], errors: [] };
 
   it('is a dry run by default and prints through printCleanup', async () => {
     mockRunCleanup.mockReturnValue(data);
