@@ -455,6 +455,22 @@ jobs:
           fi
           echo "All build metrics within thresholds"
 
+      # The steps above test the bundles inside the workspace. This one tests
+      # what npm users get: build and pack both packages the way
+      # release-please.yml does, install the tarballs into a clean prefix and
+      # run the bins (#1943). Kept last because prepublishOnly rebuilds dist.
+      - name: Pack, install and run the npm tarballs
+        if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          pnpm --filter @oss-autopilot/core run prepublishOnly
+          pnpm --filter @oss-autopilot/core pack --pack-destination "$RUNNER_TEMP/pack-check"
+          pnpm --filter @oss-autopilot/mcp run prepublishOnly
+          pnpm --filter @oss-autopilot/mcp pack --pack-destination "$RUNNER_TEMP/pack-check"
+          tar -tzf "$RUNNER_TEMP"/pack-check/oss-autopilot-core-*.tgz | grep -x 'package/dist/dashboard/index.html'
+          bash scripts/verify-packed-tarballs.sh "$RUNNER_TEMP"/pack-check/*.tgz
+
   # Maintains badges and baselines on the 'badges' branch after CI passes on main.
   # Uses a separate branch because main has branch protection rules.
   # - Test count badge (tests.json) for shields.io endpoint

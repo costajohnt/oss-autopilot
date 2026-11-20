@@ -164,6 +164,12 @@ jobs:
         # the step's `pipefail` shell would fail a good tarball.
         run: tar -tzf "$RUNNER_TEMP"/pkg-core/*.tgz | grep -x 'package/dist/dashboard/index.html'
 
+      # Last gate before the publish: install the tarball that is about to be
+      # published into a clean prefix and run its bin (#1943).
+      - name: Install the tarball and run its bin
+        timeout-minutes: 10
+        run: bash scripts/verify-packed-tarballs.sh "$RUNNER_TEMP"/pkg-core/*.tgz
+
       - name: Publish @oss-autopilot/core
         run: npm publish "$RUNNER_TEMP"/pkg-core/*.tgz --access public --provenance
 
@@ -209,6 +215,15 @@ jobs:
         run: |
           pnpm --filter @oss-autopilot/mcp run prepublishOnly
           pnpm --filter @oss-autopilot/mcp pack --pack-destination "$RUNNER_TEMP/pkg-mcp"
+
+      # Last gate before the publish: install the tarball that is about to be
+      # published into a clean prefix, run its bin and complete an MCP
+      # `initialize` over stdio, which is what .mcp.json does for every plugin
+      # user (#1943). Its dependency on core resolves from npm here, so this
+      # also proves `pnpm pack` rewrote `workspace:^` to a published version.
+      - name: Install the tarball and run its bin
+        timeout-minutes: 10
+        run: bash scripts/verify-packed-tarballs.sh "$RUNNER_TEMP"/pkg-mcp/*.tgz
 
       - name: Publish @oss-autopilot/mcp
         run: npm publish "$RUNNER_TEMP"/pkg-mcp/*.tgz --access public --provenance
