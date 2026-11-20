@@ -88,7 +88,7 @@ Use the MCP / CLI / gh path above.
 
 ### 2. Check Branch Freshness
 
-**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `cli.bundle.cjs config --json` (the read-only CLI path below; the MCP config tool is a get-or-set mutator and is deliberately not granted to this agent); a user with clones in `~/code/` or `~/projects/` configures those paths once (per machine, in `~/.oss-autopilot/local-config.json`, #2010) and avoids the silent-fallback footgun (#1247 Improvement 1).
+**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `cli.bundle.cjs config --json` (the read-only CLI path below; the MCP config tool is a get-or-set mutator and is deliberately not granted to this agent); a user with clones in `~/code/` or `~/projects/` sets those paths once per machine with `setup --set localRepoScanPaths=~/code,~/projects` (stored in `~/.oss-autopilot/local-config.json`, not synced, #2010) and avoids the silent-fallback footgun (#1247 Improvement 1).
 
 ```bash
 # Read configured scan paths (run once per session):

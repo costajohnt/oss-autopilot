@@ -17,6 +17,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { getLocalConfigPath } from './paths.js';
@@ -50,10 +51,23 @@ const StoredPathSchema = z.union([
   z.object({ path: z.string(), source: z.enum(['set', 'adopted', 'probe']) }),
 ]);
 
+export type ScanPathsSource = 'set' | 'adopted';
+
+// A bare array is a hand edit; it loads as `set`. A malformed value only
+// drops this key (with a warning), not the whole file.
+const ScanPathsShape = z.object({ paths: z.array(z.string()), source: z.enum(['set', 'adopted']) });
+const StoredScanPathsSchema = z
+  .union([z.array(z.string()), ScanPathsShape])
+  .optional()
+  .catch((ctx) => {
+    const problems = ctx.issues.map((issue) => issue.message).join('; ');
+    warn(MODULE, `Ignoring malformed localRepoScanPaths in local-config.json (${problems})`);
+  });
+
 const LocalConfigSchema = z.looseObject({
   issueListPath: StoredPathSchema.optional(),
   skippedIssuesPath: StoredPathSchema.optional(),
-  localRepoScanPaths: z.array(z.string()).optional(),
+  localRepoScanPaths: StoredScanPathsSchema,
   localRepoCache: LocalRepoCacheSchema.optional(),
 });
 
@@ -160,7 +174,7 @@ const SHELL_UNSAFE_PATH = /[$`"\\\n\r]/;
  * inside double quotes ($ ` " \, a line break or NUL). Checked on every
  * write, CLI and MCP alike.
  */
-export function assertSafeMachinePath(key: MachinePathKey, value: string): void {
+export function assertSafeMachinePath(key: string, value: string): void {
   if (SHELL_UNSAFE_PATH.test(value) || value.includes('\0')) {
     throw new ValidationError(`Invalid value for ${key}: a path may not contain $ \` " \\, a line break or NUL.`);
   }
@@ -181,6 +195,11 @@ export function setMachinePath(key: MachinePathKey, value = '', source: MachineP
   return stored;
 }
 
+/** `~/x` with the home directory expanded; anything else unchanged. */
+function expandHome(entry: string): string {
+  return entry === '~' || entry.startsWith('~/') ? path.join(os.homedir(), entry.slice(1)) : entry;
+}
+
 /** True for an absolute, shell-safe path to a directory on this machine's disk. */
 function isSafeDirHere(candidate: string): boolean {
   return (
@@ -192,19 +211,67 @@ function isSafeDirHere(candidate: string): boolean {
 }
 
 /**
- * This machine's repo scan roots (#2010), or undefined to use the defaults.
- *
- * The local value wins. With none, a synced list is adopted (copied to the
- * local file and returned) only when every entry is an absolute, shell-safe
- * directory here; otherwise it was written for another machine and is
- * ignored. There is no setter: edit `local-config.json` to change it.
+ * The stored local entries as scan roots: `~/` expanded, relative or unsafe
+ * entries skipped (a hand edit cannot depend on the current directory), and
+ * a warning for an entry that is not on disk (the scan skips it).
  */
-export function getMachineScanPaths(synced: string[] | undefined): string[] | undefined {
-  const local = readLocalConfig().localRepoScanPaths;
-  if (local) return local;
+function usableScanPaths(entries: string[]): string[] {
+  const usable: string[] = [];
+  for (const raw of entries) {
+    const entry = expandHome(raw);
+    if (!path.isAbsolute(entry) || SHELL_UNSAFE_PATH.test(entry) || entry.includes('\0')) {
+      warn(MODULE, `Skipping localRepoScanPaths entry "${raw}": not an absolute, shell-safe path`);
+      continue;
+    }
+    if (!fs.existsSync(entry)) warn(MODULE, `localRepoScanPaths entry ${entry} does not exist on this machine`);
+    usable.push(entry);
+  }
+  return usable;
+}
+
+/**
+ * This machine's repo scan roots (#2010) and how they got there, or undefined
+ * to use the defaults.
+ *
+ * A stored local value wins, even an empty one (`setup --set
+ * localRepoScanPaths=`), which means "use the defaults". With none, a synced
+ * list is adopted (copied to the local file) only when every entry is an
+ * absolute, shell-safe directory here; otherwise it was written for another
+ * machine and is ignored.
+ */
+export function getMachineScanPaths(
+  synced: string[] | undefined,
+): { paths: string[]; source: ScanPathsSource } | undefined {
+  const stored = readLocalConfig().localRepoScanPaths;
+  if (stored) {
+    const local = Array.isArray(stored) ? { paths: stored, source: 'set' as const } : stored;
+    const paths = usableScanPaths(local.paths);
+    return paths.length > 0 ? { paths, source: local.source } : undefined;
+  }
   if (!synced?.length || synced.some((entry) => !isSafeDirHere(entry))) return undefined;
-  adopt({ localRepoScanPaths: synced });
-  return synced;
+  adopt({ localRepoScanPaths: { paths: synced, source: 'adopted' } });
+  return { paths: synced, source: 'adopted' };
+}
+
+/**
+ * Set this machine's scan roots from a comma-separated list. Entries are
+ * trimmed, `~/` is expanded and relative entries resolve against the current
+ * directory. An empty list clears them, so the defaults apply. Returns what
+ * was stored.
+ *
+ * @throws ValidationError when an entry contains a shell metacharacter.
+ */
+export function setMachineScanPaths(value: string): string[] {
+  const paths = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      assertSafeMachinePath('localRepoScanPaths', entry);
+      return path.resolve(expandHome(entry));
+    });
+  updateLocalConfig({ localRepoScanPaths: { paths, source: 'set' } });
+  return paths;
 }
 
 /** The cache with only the repos whose checkout is on this machine's disk. */

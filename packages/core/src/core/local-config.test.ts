@@ -14,6 +14,7 @@ import {
   getMachineRepoCache,
   getMachineScanPaths,
   MACHINE_PATH_KEYS,
+  setMachineScanPaths,
   setMachinePath,
   setMachineRepoCache,
 } from './local-config.js';
@@ -271,16 +272,24 @@ describe('getMachineScanPaths (#2010)', () => {
   });
 
   it('prefers the local value over the synced one', () => {
-    storeLocal(['/here/dev']);
+    const mine = existingDir('mine');
+    setMachineScanPaths(mine);
 
-    expect(getMachineScanPaths([existingDir('theirs')])).toEqual(['/here/dev']);
+    expect(getMachineScanPaths([existingDir('theirs')])).toEqual({ paths: [mine], source: 'set' });
+  });
+
+  it('loads a hand-edited bare array as set', () => {
+    const mine = existingDir('mine');
+    storeLocal([mine]);
+
+    expect(getMachineScanPaths(undefined)).toEqual({ paths: [mine], source: 'set' });
   });
 
   it('adopts a synced list once when every entry is a directory here', () => {
     const synced = [existingDir('dev'), existingDir('oss')];
 
-    expect(getMachineScanPaths(synced)).toEqual(synced);
-    expect(readStored()).toEqual({ localRepoScanPaths: synced });
+    expect(getMachineScanPaths(synced)).toEqual({ paths: synced, source: 'adopted' });
+    expect(readStored()).toEqual({ localRepoScanPaths: { paths: synced, source: 'adopted' } });
   });
 
   it('ignores a synced list with any entry missing here: another machine wrote it', () => {
@@ -298,5 +307,47 @@ describe('getMachineScanPaths (#2010)', () => {
 
   it('ignores an empty synced list', () => {
     expect(getMachineScanPaths([])).toBeUndefined();
+  });
+
+  it('an empty local list means the defaults, and the synced list is not adopted', () => {
+    setMachineScanPaths('');
+
+    expect(getMachineScanPaths([existingDir('dev')])).toBeUndefined();
+    expect(readStored()).toEqual({ localRepoScanPaths: { paths: [], source: 'set' } });
+  });
+
+  it('expands ~/ in a hand edit, skips relative and unsafe entries, and keeps a missing one', () => {
+    const dev = existingDir('dev');
+    const missing = path.join(os.homedir(), 'not-here');
+    storeLocal(['~/dev', 'relative/dir', `${dev}/$(x)`, missing]);
+
+    expect(getMachineScanPaths(undefined)).toEqual({ paths: [dev, missing], source: 'set' });
+  });
+
+  it('drops only a malformed value for this key, keeping the rest of the file', () => {
+    const rejectedBefore = rejectedCopies().length;
+    fs.mkdirSync(path.dirname(getLocalConfigPath()), { recursive: true });
+    fs.writeFileSync(
+      getLocalConfigPath(),
+      JSON.stringify({ issueListPath: '/here/list.md', localRepoScanPaths: '/not/an/array' }),
+    );
+
+    expect(getMachineScanPaths(undefined)).toBeUndefined();
+    expect(getMachinePath('issueListPath', {})).toBe('/here/list.md');
+    expect(rejectedCopies()).toHaveLength(rejectedBefore);
+  });
+});
+
+describe('setMachineScanPaths (#2010)', () => {
+  it('splits on commas, trims, drops empties, expands ~/ and resolves relative entries', () => {
+    const stored = setMachineScanPaths(' ~/dev , ,code ');
+
+    expect(stored).toEqual([path.join(os.homedir(), 'dev'), path.resolve('code')]);
+    expect(readStored()).toEqual({ localRepoScanPaths: { paths: stored, source: 'set' } });
+  });
+
+  it('refuses an entry with a shell metacharacter and stores nothing', () => {
+    expect(() => setMachineScanPaths('/ok,/tmp/x$(curl evil)')).toThrow(/may not contain/);
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
   });
 });

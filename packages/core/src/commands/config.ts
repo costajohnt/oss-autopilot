@@ -57,8 +57,8 @@ function validateScope(value: string): IssueScope {
  * effect here (local file first, synced value as fallback), not whatever
  * another machine last synced (#1950). `machinePathSources` says where each
  * shown path comes from and is omitted when neither is configured.
- * `localRepoScanPaths` shows this machine's scan roots, and is omitted when
- * the defaults are in use (#2010).
+ * `localRepoScanPaths` shows this machine's scan roots (source `set` or
+ * `adopted`), and is omitted when the defaults are in use (#2010).
  */
 function showConfig(config: ConfigOutput['config']): ConfigOutput {
   const shown = { ...config };
@@ -71,8 +71,12 @@ function showConfig(config: ConfigOutput['config']): ConfigOutput {
     if (source) sources[key] = source;
   }
   const scanPaths = getMachineScanPaths(config.localRepoScanPaths);
-  if (scanPaths) shown.localRepoScanPaths = scanPaths;
-  else delete shown.localRepoScanPaths;
+  if (scanPaths) {
+    shown.localRepoScanPaths = scanPaths.paths;
+    sources.localRepoScanPaths = scanPaths.source;
+  } else {
+    delete shown.localRepoScanPaths;
+  }
   return { config: shown, ...(Object.keys(sources).length > 0 && { machinePathSources: sources }) };
 }
 

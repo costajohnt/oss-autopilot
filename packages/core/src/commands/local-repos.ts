@@ -161,7 +161,7 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
   const state = stateManager.getState();
   const scanPaths =
     options.paths?.map((p) => path.resolve(p)) ??
-    getMachineScanPaths(state.config.localRepoScanPaths) ??
+    getMachineScanPaths(state.config.localRepoScanPaths)?.paths ??
     DEFAULT_SCAN_PATHS.filter((p) => fs.existsSync(p));
 
   // Use cached data unless --scan is specified

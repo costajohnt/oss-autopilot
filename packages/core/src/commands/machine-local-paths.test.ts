@@ -356,6 +356,30 @@ describe('machine-specific scan roots with a shared Gist (#2010)', () => {
       state.config.localRepoScanPaths = [path.join(machineB, 'dev')];
     });
     await switchTo(machineA);
-    expect(await runConfig({})).toMatchObject({ config: { localRepoScanPaths: [devA] } });
+    expect(await runConfig({})).toMatchObject({
+      config: { localRepoScanPaths: [devA] },
+      machinePathSources: { localRepoScanPaths: 'adopted' },
+    });
+  });
+
+  it('setup --set localRepoScanPaths stores them on this machine only and local-repos scans them', async () => {
+    const devB = path.join(machineB, 'dev');
+    fs.mkdirSync(devB, { recursive: true });
+    seedGist(noSyncedPaths);
+
+    await switchTo(machineB);
+    await runSetup({ set: [`localRepoScanPaths=${devB}`] });
+    const scanned = await runLocalRepos({ scan: true });
+    const shown = await runConfig({});
+
+    expect(scanned.scanPaths).toEqual([devB]);
+    expect(shown).toMatchObject({
+      config: { localRepoScanPaths: [devB] },
+      machinePathSources: { localRepoScanPaths: 'set' },
+    });
+    expect(syncedState().config.localRepoScanPaths).toBeUndefined();
+
+    await runSetup({ set: ['localRepoScanPaths='] });
+    expect(await runConfig({})).not.toHaveProperty('config.localRepoScanPaths');
   });
 });

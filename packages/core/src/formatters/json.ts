@@ -1557,7 +1557,9 @@ export interface ConfigOutput {
    * in this machine's `local-config.json`, `synced` for the shared config
    * fallback. Omitted when neither path is configured.
    */
-  machinePathSources?: Partial<Record<'issueListPath' | 'skippedIssuesPath', 'set' | 'adopted' | 'probe' | 'synced'>>;
+  machinePathSources?: Partial<
+    Record<'issueListPath' | 'skippedIssuesPath' | 'localRepoScanPaths', 'set' | 'adopted' | 'probe' | 'synced'>
+  >;
 }
 
 /** Info about a detected issue list file */
