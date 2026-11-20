@@ -513,11 +513,14 @@ async function fetchRecentPRs<T>(
 
   debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
-  // Untracked orgs are still filtered below, after the page cap, so their PRs use page slots.
+  // The shared scope keeps untracked organisations out of the search itself,
+  // so their PRs use no page slots; the owner filter below stays for a list
+  // that does not fit in a query.
+  const scope = externalPRScope(config.githubUsername, config.untrackedOrgs);
   const search = await searchAllPages((page) =>
     octokit.search.issuesAndPullRequests({
       page,
-      q: query.replaceAll('{username}', config.githubUsername).replace('{since}', since),
+      q: query.replace('{scope}', scope.query).replace('{since}', since),
       sort: 'updated',
       order: 'desc',
       per_page: 100,
@@ -569,7 +572,7 @@ export async function fetchRecentlyClosedPRs(
   return fetchRecentPRs<ClosedPR>(
     octokit,
     config,
-    'is:pr is:closed is:unmerged is:public author:{username} -user:{username} updated:>={since}',
+    'is:pr is:closed is:unmerged {scope} updated:>={since}',
     'closed',
     days,
     (item, { repo, number }) => ({
@@ -600,7 +603,7 @@ export async function fetchRecentlyMergedPRs(
   return fetchRecentPRs<MergedPR>(
     octokit,
     config,
-    'is:pr is:merged is:public author:{username} -user:{username} updated:>={since}',
+    'is:pr is:merged {scope} updated:>={since}',
     'merged',
     days,
     (item, { repo, number }) => {

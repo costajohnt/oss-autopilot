@@ -292,7 +292,7 @@ interface ExcludedRows {
   /** Rows dropped, per reason. */
   counts: Record<ExclusionReason, number>;
   /** Lowercased `owner/repo` of every dropped row. */
-  repos: Set<string>;
+  repoKeys: Set<string>;
 }
 
 /** The ledger rows to keep; the ones dropped are tallied in `excluded`. */
@@ -308,7 +308,7 @@ function keepTrackedRows<T extends { url: string }>(
     const reason = reasonFor(repo);
     if (!reason) return true;
     excluded.counts[reason]++;
-    excluded.repos.add(repo);
+    excluded.repoKeys.add(repo);
     return false;
   });
 }
@@ -361,17 +361,17 @@ export function evictExcludedRepos(state: AgentState, privateRepos: Iterable<str
     return isUntrackedOrg(repo.split('/', 1)[0], orgs) ? 'untracked-org' : undefined;
   };
 
-  const excluded: ExcludedRows = { counts: { 'untracked-org': 0, private: 0 }, repos: new Set() };
+  const excluded: ExcludedRows = { counts: { 'untracked-org': 0, private: 0 }, repoKeys: new Set() };
   const keptMerged = keepTrackedRows(state.mergedPRs ?? [], reasonFor, excluded);
   const keptClosed = keepTrackedRows(state.closedPRs ?? [], reasonFor, excluded);
-  if (excluded.repos.size > 0) {
+  if (excluded.repoKeys.size > 0) {
     state.mergedPRs = keptMerged;
     state.closedPRs = keptClosed;
   }
   return {
     untrackedOrgRows: excluded.counts['untracked-org'],
     privateRows: excluded.counts.private,
-    repos: deleteExcludedScores(state, reasonFor, excluded.repos),
+    repos: deleteExcludedScores(state, reasonFor, excluded.repoKeys),
   };
 }
 
