@@ -42,7 +42,8 @@ import {
   fetchReviewedOpenPRs as fetchReviewedOpenPRsImpl,
   fetchReviewedPRActivity as fetchReviewedPRActivityImpl,
 } from './reviewed-prs-fetch.js';
-import { assembleFetchedPR, headCommitDate, type CommitInfo } from './pr-assembly.js';
+import { commitDateOf } from './commit-date.js';
+import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import {
   batchFetchPRDetails,
   MERGEABLE_RETRY_DELAY_MS,
@@ -568,7 +569,7 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch the HEAD commit's date (see {@link headCommitDate}) and author login via REST `repos.getCommit`.
+   * Fetch the HEAD commit's date (see {@link commitDateOf}) and author login via REST `repos.getCommit`.
    * Rate-limit errors propagate (silently swallowing them produces misleading
    * status, e.g. needs_changes when changes were addressed) (#469); other
    * failures degrade to `undefined` so the PR is still returned.
@@ -577,7 +578,7 @@ export class PRMonitor {
     try {
       const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
       return {
-        date: headCommitDate({
+        date: commitDateOf({
           authorDate: res.data.commit.author?.date,
           committerDate: res.data.commit.committer?.date,
           authorLogin: res.data.author?.login,

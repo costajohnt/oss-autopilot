@@ -27,7 +27,8 @@ import type { Octokit } from '@octokit/rest';
 import { CIStatusResult } from './types.js';
 import { computeCIStatus, type RawCheckRun, type RawCombinedStatus } from './ci-analysis.js';
 import type { ActivityEvent, ReviewComment } from './review-analysis.js';
-import { headCommitDate, type AssemblyComment, type AssemblyReview, type CommitInfo } from './pr-assembly.js';
+import { commitDateOf } from './commit-date.js';
+import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
 import { warn } from './logger.js';
 import { sleep } from './concurrency.js';
@@ -439,7 +440,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
 
   const commit = node.commits.nodes[0]?.commit;
   const commitInfo: CommitInfo = {
-    date: headCommitDate({
+    date: commitDateOf({
       authorDate: commit?.authoredDate,
       committerDate: commit?.committedDate,
       authorLogin: commit?.author?.user?.login,

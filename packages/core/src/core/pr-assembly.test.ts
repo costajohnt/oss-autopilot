@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { assembleFetchedPR, headCommitDate, type PRSignals, type AssemblyConfig } from './pr-assembly.js';
+import { assembleFetchedPR, type PRSignals, type AssemblyConfig } from './pr-assembly.js';
 import { shouldSuggestClose } from './pr-attention.js';
 
 const CONFIG: AssemblyConfig = { githubUsername: 'contributor', dormantThresholdDays: 30, approachingDormantDays: 25 };
@@ -141,30 +141,5 @@ describe('assembleFetchedPR issue link (#1863)', () => {
   it('leaves mentionedIssueUrls empty when nothing is mentioned', async () => {
     const pr = await assembleFetchedPR(signals({ body: 'No links here.' }), CONFIG, undefined);
     expect(pr.mentionedIssueUrls).toEqual([]);
-  });
-});
-
-describe('headCommitDate (#1919)', () => {
-  const dates = { authorDate: '2026-02-01T00:00:00Z', committerDate: '2026-02-03T00:00:00Z' };
-
-  it("uses the committer date for the author's own amend or rebase", () => {
-    expect(headCommitDate({ ...dates, authorLogin: 'Contributor', committerLogin: 'contributor' })).toBe(
-      dates.committerDate,
-    );
-  });
-
-  it('keeps the author date when someone else rewrote the commit', () => {
-    expect(headCommitDate({ ...dates, authorLogin: 'contributor', committerLogin: 'maintainer' })).toBe(
-      dates.authorDate,
-    );
-    expect(headCommitDate({ ...dates, authorLogin: 'contributor', committerLogin: 'web-flow' })).toBe(dates.authorDate);
-    expect(headCommitDate(dates)).toBe(dates.authorDate);
-  });
-
-  it('falls back to whichever date is present', () => {
-    expect(headCommitDate({ committerDate: dates.committerDate, authorLogin: 'contributor' })).toBe(
-      dates.committerDate,
-    );
-    expect(headCommitDate({ authorDate: null, committerDate: null })).toBeUndefined();
   });
 });
