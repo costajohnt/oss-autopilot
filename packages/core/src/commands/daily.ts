@@ -83,8 +83,9 @@ import {
   recordWarning,
 } from './daily-warnings.js';
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
+import { fetchRecentPRLists } from './daily-recent-prs.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
-import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
+import { batchOnFreshBaseline, filterDismissedIssues, reloadOrWarn } from './daily-dismiss-filter.js';
 import { resetStaleClosedCounts, syncLedgersWithGitHub } from './daily-ledger.js';
 
 const MODULE = 'daily';
@@ -320,8 +321,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
   // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
-  let didRecentlyMergedFetchFail = false;
-  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs] = await Promise.all([
+  const [mergedResult, closedResult, recentPRs] = await Promise.all([
     prMonitor.fetchUserMergedPRCounts(starFilter).catch(
       nonFatalCatchWithWarning({
         warnings,
@@ -338,26 +338,11 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
         fallback: emptyPRCountsResult<number>(),
       }),
     ),
-    prMonitor.fetchRecentlyClosedPRs().catch(
-      nonFatalCatchWithWarning({
-        warnings,
-        phase: 'fetch',
-        operation: 'fetch recently closed PRs',
-        fallback: [] as ClosedPR[],
-      }),
-    ),
-    prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
-      // Phase 3.6 treats a fallback here as an incomplete view of the
-      // user's PRs (a just-merged successor would be invisible).
-      didRecentlyMergedFetchFail = true;
-      return nonFatalCatchWithWarning({
-        warnings,
-        phase: 'fetch',
-        operation: 'fetch recently merged PRs',
-        fallback: [] as MergedPR[],
-      })(error);
-    }),
+    // Phase 3.6 treats a failed or partial merged list as an incomplete view
+    // of the user's PRs (a just-merged successor would be invisible).
+    fetchRecentPRLists(prMonitor, warnings),
   ]);
+  const { recentlyClosedPRs, recentlyMergedPRs } = recentPRs;
 
   // Issue conversations run after the PR lists: the engaged set (#1862)
   // needs the open, recently closed and recently merged PRs. The fetch has
@@ -408,7 +393,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // its repo is unknown and the conservative reading is "could be anywhere".
   const successorGaps: SuccessorGaps = { everywhere: [], failedRepos: new Set() };
   if (fetchResult.searchTruncated) successorGaps.everywhere.push('the open-PR search was truncated');
-  if (didRecentlyMergedFetchFail) successorGaps.everywhere.push('the recently-merged fetch failed');
+  successorGaps.everywhere.push(...recentPRs.successorGapReasons);
   for (const failure of failures) {
     const repoKey = repoKeyOf(failure.prUrl);
     if (repoKey) successorGaps.failedRepos.add(repoKey);
@@ -417,7 +402,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
 
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
-    recentlyMergedFetchFailed: didRecentlyMergedFetchFail,
+    recentlyMergedFetchFailed: recentPRs.recentlyMergedFetchFailed,
     truncatedSearches: { merged: mergedResult.truncated, closed: closedResult.truncated },
     successorGaps,
     prs,
@@ -781,7 +766,7 @@ function generateDigestOutput(
 
   // Assess capacity from active PRs only (shelved PRs excluded). Reload first
   // so maxActivePRs reflects a config change made while the run was fetching.
-  stateManager.reloadIfChanged();
+  reloadOrWarn(stateManager, warnings);
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
   // One nudge per issue (#1863): an issue listed under closedPRStatusUpdates

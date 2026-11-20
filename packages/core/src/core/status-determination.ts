@@ -111,6 +111,27 @@ function isChangesAddressedByCommit(commitDate: string | undefined, changesReque
 }
 
 /**
+ * Whether approval settles every unanswered maintainer comment, so the PR is
+ * just waiting to be merged (#1507): it is approved, CI is passing or unknown,
+ * and each comment's author has a standing approval submitted at or after that
+ * comment (the approving review's own note, or feedback its author then
+ * approved). Someone else's approval never settles a comment, and neither does
+ * the commenter's own earlier approval: both leave a question nobody answered
+ * (#1920).
+ *
+ * Fails closed (returns `false`) when the comments are not listed or a date is
+ * missing or unparseable: the safe direction is to surface the comment.
+ */
+function isCommentSettledByApproval(input: DetermineStatusInput): boolean {
+  const { reviewDecision, ciStatus, unansweredComments = [] } = input;
+  if (reviewDecision !== 'approved' || (ciStatus !== 'passing' && ciStatus !== 'unknown')) return false;
+  return (
+    unansweredComments.length > 0 &&
+    unansweredComments.every((c) => normalizeToEpochMs(c.createdAt) <= normalizeToEpochMs(c.authorApprovalDate))
+  );
+}
+
+/**
  * Collect all applicable action reasons independently, without short-circuiting (#675).
  * Used alongside the priority-based decision tree to surface secondary issues.
  *
@@ -133,13 +154,11 @@ function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | 
   const commitDate = resolveContributorCommitDate(input);
   const reasons: ActionReason[] = [];
 
-  // An unresponded maintainer comment on an already-approved, passing/unknown
-  // PR is an approval/LGTM note, not a request for action — it needs no
-  // contributor response and the PR is just awaiting merge (#1507).
-  const approvedAndMergeable = reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown');
+  // Unresponded maintainer comments their authors' approvals settle need no
+  // contributor response: the PR is just awaiting merge (#1507, #1920).
   if (
     hasUnrespondedComment &&
-    !approvedAndMergeable &&
+    !isCommentSettledByApproval(input) &&
     !isCommentAddressedByCommit(commitDate, lastMaintainerCommentDate, latestChangesRequestedDate)
   ) {
     reasons.push('needs_response');
@@ -220,11 +239,12 @@ function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusRes
       // the contributor can't fix them, so the relevant status is "waiting for re-review" (#502)
       return { status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier };
     }
-    // An unresponded comment on an already-approved, passing/unknown PR is an
+    // An unresponded comment its own author's approval settles is an
     // approval/LGTM note (e.g. a re-approval dated after the contributor's last
     // commit), not a request for changes. It needs no contributor response, so
-    // the PR is waiting to be merged — don't trap it in needs_response (#1507).
-    if (reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown')) {
+    // the PR is waiting to be merged: don't trap it in needs_response (#1507).
+    // Any other comment on an approved PR still needs one (#1920).
+    if (isCommentSettledByApproval(input)) {
       return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
     }
     return { status: 'needs_addressing', actionReason: 'needs_response', stalenessTier };

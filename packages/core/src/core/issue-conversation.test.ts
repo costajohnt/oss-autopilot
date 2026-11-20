@@ -795,7 +795,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(0);
   });
 
-  it('should use case-sensitive matching for excludeRepos (matches PRMonitor)', async () => {
+  it('should match excludeRepos case-insensitively, like every other excludeRepos check (#1951)', async () => {
     mockState = {
       ...defaultState(),
       config: {
@@ -827,8 +827,8 @@ describe('IssueConversationMonitor', () => {
     const monitor = new IssueConversationMonitor('fake-token');
     const { issues } = await monitor.fetchCommentedIssues();
 
-    // Case mismatch: 'Excluded/Repo' does not match 'excluded/repo', so issue is NOT filtered
-    expect(issues).toHaveLength(1);
+    // GitHub owner and repo names are case-insensitive: 'Excluded/Repo' excludes 'excluded/repo'
+    expect(issues).toHaveLength(0);
   });
 
   it('should filter out excludeOrgs', async () => {

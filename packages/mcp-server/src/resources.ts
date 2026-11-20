@@ -7,7 +7,13 @@
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { runStatus, runConfig, runGuidelinesView } from '@oss-autopilot/core/commands';
-import { getStateManager, splitRepo, fenceFetchedPR, fenceFetchedPRTitles } from '@oss-autopilot/core';
+import {
+  getStateManager,
+  splitRepo,
+  fenceFetchedPR,
+  fenceFetchedPRTitles,
+  NewerStateVersionError,
+} from '@oss-autopilot/core';
 import { ensureGistInit, reloadExternalState } from './tools.js';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
@@ -54,9 +60,17 @@ async function resourceGistInit(): Promise<void> {
   }
   // #1439: reads have the same staleness problem as tool calls — a long-lived
   // process otherwise serves boot-time state forever after any external CLI
-  // write (local mode) or remote push (gist mode). Reload failures degrade to
-  // cached state inside the helper; they never fail the read.
-  await reloadExternalState();
+  // write (local mode) or remote push (gist mode). A resource read changes
+  // nothing, so a failed reload serves cached state. The one exception is
+  // state from a newer release (#1951): that must reach the user. So must
+  // state that cannot be loaded at all, hence the call outside the guard.
+  getStateManager();
+  try {
+    await reloadExternalState();
+  } catch (e) {
+    if (e instanceof NewerStateVersionError) throw e;
+    console.error('[MCP] Resource read proceeding on cached state; reload failed:', e);
+  }
 }
 
 /**
