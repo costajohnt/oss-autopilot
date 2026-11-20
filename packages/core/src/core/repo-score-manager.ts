@@ -319,7 +319,10 @@ function reconcileField(
  *
  * A repo's `closedWithoutMergeCount` drops to its new ledger count when it was
  * at or below the old one, i.e. when the ledger could have been what held it
- * up. A higher counter came from the search and is left for daily to rewrite.
+ * up. A higher counter was set by daily's closed-PR search and is not touched
+ * here: the next daily run overwrites it with the search count while the repo
+ * is still in that search, or zeroes it and re-raises it to the ledger count
+ * once the repo has left an untruncated search (resetStaleClosedCounts).
  *
  * Idempotent. Returns the number of entries removed.
  */

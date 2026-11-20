@@ -843,6 +843,23 @@ describe('evictClosedPRs', () => {
     expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(5);
   });
 
+  it('drops a count between the new and the old ledger count to the new one', () => {
+    const state = stateWithClosed([1, 2, 3], 2);
+
+    evictClosedPRs(state, [`${PR}/1`, `${PR}/2`]);
+
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(1);
+  });
+
+  it('leaves a count already below the new ledger count alone', () => {
+    const state = stateWithClosed([1, 2, 3], 1);
+
+    evictClosedPRs(state, [`${PR}/1`]);
+
+    expect(state.closedPRs).toHaveLength(2);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(1);
+  });
+
   it('does nothing on a state with no closed ledger', () => {
     const state = makeAgentState({});
     expect(evictClosedPRs(state, [`${PR}/1`])).toBe(0);

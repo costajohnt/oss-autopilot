@@ -1103,6 +1103,58 @@ describe('executeDailyCheck() — error resilience', () => {
 
     expect(mockUpdateRepoScore).not.toHaveBeenCalledWith('owner/existing', { mergedPRCount: 0 });
   });
+
+  it('zeroes the closed count of a repo that left the closed PR search (#1923)', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        repoScores: {
+          'owner/gone': { repo: 'owner/gone', mergedPRCount: 0, closedWithoutMergeCount: 3, score: 2 },
+          'owner/kept': { repo: 'owner/kept', mergedPRCount: 0, closedWithoutMergeCount: 2, score: 3 },
+        },
+      }),
+    );
+    mockFetchUserClosedPRCounts.mockResolvedValue(makeClosedResult(new Map([['owner/kept', 1]])));
+
+    await executeDailyCheck('test-token');
+
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/gone', { closedWithoutMergeCount: 0 });
+    expect(mockUpdateRepoScore).not.toHaveBeenCalledWith('owner/kept', { closedWithoutMergeCount: 0 });
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/kept', { closedWithoutMergeCount: 1 });
+  });
+
+  it('skips the closed count reset when the closed PR search returns nothing', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        repoScores: {
+          'owner/existing': { repo: 'owner/existing', mergedPRCount: 0, closedWithoutMergeCount: 3, score: 2 },
+        },
+      }),
+    );
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await executeDailyCheck('test-token');
+
+    expect(mockUpdateRepoScore).not.toHaveBeenCalledWith('owner/existing', { closedWithoutMergeCount: 0 });
+    consoleSpy.mockRestore();
+  });
+
+  it('skips the closed count reset when the closed PR search was truncated', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        repoScores: {
+          'owner/existing': { repo: 'owner/existing', mergedPRCount: 0, closedWithoutMergeCount: 3, score: 2 },
+        },
+      }),
+    );
+    mockFetchUserClosedPRCounts.mockResolvedValue({
+      ...makeClosedResult(new Map([['owner/other', 1]])),
+      truncated: true,
+    });
+
+    await executeDailyCheck('test-token');
+
+    expect(mockUpdateRepoScore).not.toHaveBeenCalledWith('owner/existing', { closedWithoutMergeCount: 0 });
+  });
 });
 
 // ---------------------------------------------------------------------------

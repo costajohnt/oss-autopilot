@@ -949,7 +949,8 @@ export class StateManager {
    * this prevents the bad data from reaching disk in the first place).
    *
    * Re-seen URLs upgrade the stored entry's missing ledger fields in place
-   * (#1461) — see {@link addMergedPRs} for the full semantics.
+   * (#1461) — see {@link addMergedPRs} for the full semantics. URLs already
+   * in the merged ledger are skipped (#1923).
    *
    * @param prs - Closed PRs to add (duplicates by URL upgrade in place)
    * @returns count of entries added vs. dropped (invalid URL)
@@ -957,7 +958,10 @@ export class StateManager {
   addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
     if (prs.length === 0) return { added: 0, dropped: 0 };
     const { valid: unpicked, dropped } = filterValidUrlEntries(prs, 'closed');
-    const valid = unpicked.map((pr) => this.withPick(pr));
+    // A merged PR is never closed-without-merge: skip it so a caller holding
+    // a pre-eviction copy of the closed ledger cannot put it back (#1923).
+    const mergedUrls = new Set(this.getMergedPRs().map((pr) => pr.url));
+    const valid = unpicked.filter((pr) => !mergedUrls.has(pr.url)).map((pr) => this.withPick(pr));
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
     const byUrl = new Map(this.state.closedPRs.map((pr) => [pr.url, pr]));

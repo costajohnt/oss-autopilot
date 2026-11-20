@@ -1316,6 +1316,45 @@ describe('StateManager merged PRs', () => {
     });
   });
 
+  describe('addClosedPRs merged-ledger guard (#1923)', () => {
+    it('does not put back a merged PR when a backfill re-adds a pre-eviction copy of the closed ledger', () => {
+      const url = 'https://github.com/a/b/pull/1';
+      const other = 'https://github.com/a/b/pull/2';
+      stateManager.addClosedPRs([
+        { url, title: 'reopened', closedAt: '2025-06-01T00:00:00Z' },
+        { url: other, title: 'really closed', closedAt: '2025-06-02T00:00:00Z' },
+      ]);
+      stateManager.addMergedPRs([{ url, title: 'reopened', mergedAt: '2025-06-10T00:00:00Z' }]);
+      const staleClosedCopy = [
+        { url, title: 'reopened', closedAt: '2025-06-01T00:00:00Z', openedAt: '2025-05-01T00:00:00Z' },
+        { url: other, title: 'really closed', closedAt: '2025-06-02T00:00:00Z', openedAt: '2025-05-02T00:00:00Z' },
+      ];
+
+      // Backfill shape: upgrade an existing merged entry, then re-add the closed list read earlier.
+      stateManager.addMergedPRs([
+        { url, title: 'reopened', mergedAt: '2025-06-10T00:00:00Z', openedAt: '2025-05-01T00:00:00Z' },
+      ]);
+      const result = stateManager.addClosedPRs(staleClosedCopy);
+
+      expect(result).toEqual({ added: 0, dropped: 0 });
+      expect(stateManager.getClosedPRs()).toEqual([staleClosedCopy[1]]);
+      expect(stateManager.getRepoScore('a/b')).toMatchObject({ mergedPRCount: 1, closedWithoutMergeCount: 1 });
+    });
+
+    it('skips a closed entry whose URL is already in the merged ledger', () => {
+      const url = 'https://github.com/a/b/pull/1';
+      stateManager.addMergedPRs([{ url, title: 'm', mergedAt: '2025-06-10T00:00:00Z' }]);
+
+      expect(stateManager.addClosedPRs([{ url, title: 'm', closedAt: '2025-06-01T00:00:00Z' }])).toEqual({
+        added: 0,
+        dropped: 0,
+      });
+
+      expect(stateManager.getClosedPRs()).toEqual([]);
+      expect(stateManager.getRepoScore('a/b')?.closedWithoutMergeCount).toBe(0);
+    });
+  });
+
   describe('markPRCommentsFetched / markPRLearningsExtracted (#867)', () => {
     const URL_M = 'https://github.com/a/b/pull/1';
     const URL_C = 'https://github.com/a/b/pull/2';
