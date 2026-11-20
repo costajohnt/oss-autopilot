@@ -49,8 +49,9 @@ export function isAcknowledgmentComment(body: string): boolean {
 
   const lower = body.toLowerCase();
   // "Thanks! Please rebase and I'll merge." is a request, not an acknowledgment (#1916).
-  // Bare "fix" is left out so "Thanks for the fix!" stays an acknowledgment.
-  if (/\b(?:please|pls|but|however|just|needs?|should|must|rebase|squash|update|add|change|remove)\b/.test(lower)) {
+  // Bare "fix", "update" and "change" are left out: they are nouns in pure thanks
+  // ("Thanks for the fix!", "Thanks for the update!").
+  if (/\b(?:please|pls|but|however|just|needs?|should|must|rebase|squash|add|remove)\b/.test(lower)) {
     return false;
   }
   const ackKeywords = [

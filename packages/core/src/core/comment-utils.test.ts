@@ -149,6 +149,13 @@ describe('isAcknowledgmentComment', () => {
     expect(isAcknowledgmentComment('LGTM, just fix the lint failure')).toBe(false);
   });
 
+  it('should keep thanks for an update or a change as acknowledgments (#1916)', () => {
+    expect(isAcknowledgmentComment('Thanks for the update!')).toBe(true);
+    expect(isAcknowledgmentComment('Thanks for the change!')).toBe(true);
+    expect(isAcknowledgmentComment('Thanks, please update the docs')).toBe(false);
+    expect(isAcknowledgmentComment('Looks good, but change the default')).toBe(false);
+  });
+
   it('should match request words on word boundaries only (#1916)', () => {
     // "address" contains "add", "butter" contains "but"
     expect(isAcknowledgmentComment('Thanks, I will look at the address parsing')).toBe(true);
