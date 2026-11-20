@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as nodePath from 'node:path';
-import { parseIssueListPathFromConfig, countIssueListItems } from './startup.js';
+import { countIssueListItems } from './startup.js';
 
 // --- Mocks for runStartup dashboard tests ---
 
@@ -24,8 +24,16 @@ vi.mock('./daily.js', () => ({
   executeDailyCheck: vi.fn(),
 }));
 
+// `execFileSync` is the cwd origin lookup in suggestIssueListPath (#1933);
+// by default the cwd is not a git checkout.
+const { execFileSyncMock } = vi.hoisted(() => ({
+  execFileSyncMock: vi.fn((): string => {
+    throw new Error('not a git repository');
+  }),
+}));
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
+  execFileSync: execFileSyncMock,
 }));
 
 vi.mock('./dashboard-lifecycle.js', () => ({
@@ -55,64 +63,6 @@ vi.mock('node:fs', async () => {
     ...actual,
     existsSync: vi.fn(() => false),
   };
-});
-
-describe('parseIssueListPathFromConfig', () => {
-  it('should extract issueListPath from YAML frontmatter', () => {
-    const config = `---
-setupComplete: true
-issueListPath: open-source/potential-issue-list.md
----
-
-Some content here.
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('open-source/potential-issue-list.md');
-  });
-
-  it('should handle quoted paths', () => {
-    const config = `---
-issueListPath: "my issues/list.md"
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('my issues/list.md');
-  });
-
-  it('should handle single-quoted paths', () => {
-    const config = `---
-issueListPath: 'oss/issues.md'
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('oss/issues.md');
-  });
-
-  it('should return undefined when no frontmatter present', () => {
-    const config = `Just some content without frontmatter.`;
-    expect(parseIssueListPathFromConfig(config)).toBeUndefined();
-  });
-
-  it('should return undefined when issueListPath not in frontmatter', () => {
-    const config = `---
-setupComplete: true
-username: testuser
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBeUndefined();
-  });
-
-  it('should handle empty frontmatter', () => {
-    const config = `---
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBeUndefined();
-  });
-
-  it('should trim whitespace from path', () => {
-    const config = `---
-issueListPath:   path/with/spaces.md
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('path/with/spaces.md');
-  });
 });
 
 describe('countIssueListItems', () => {
@@ -245,43 +195,7 @@ describe('detectIssueList', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should detect issue list from config file', () => {
-    existsSyncMock.mockImplementation((p: string) => {
-      if (p === '.claude/oss-autopilot/config.md') return true;
-      return nodePath.resolve(p) === nodePath.resolve('custom/issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
-      if (path === '.claude/oss-autopilot/config.md') {
-        return '---\nissueListPath: custom/issues.md\n---\n';
-      }
-      return '- [#1](https://github.com/o/r/issues/1) — Issue\n';
-    });
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('custom/issues.md'));
-    expect(result?.source).toBe('configured');
-  });
-
-  it('should handle config file read error gracefully', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    existsSyncMock.mockImplementation((p: string) => {
-      if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
-      return false;
-    });
-    (fsImport as any).readFileSync = vi.fn().mockImplementation(() => {
-      throw new Error('Permission denied');
-    });
-
-    const result = detectIssueList();
-
-    // Should return undefined because config read failed and no probes match
-    expect(result).toBeUndefined();
-    consoleSpy.mockRestore();
-  });
-
-  it('should auto-detect from known probe paths (returns absolute, #1577)', () => {
+  it('suggests a list at a known probe path (returns absolute, #1577, #1933)', () => {
     existsSyncMock.mockImplementation((path: string) => {
       return typeof path === 'string' && path === 'issues.md';
     });
@@ -291,7 +205,7 @@ describe('detectIssueList', () => {
         '- [#1](https://github.com/o/r/issues/1) — Issue\n- ~~[#2](https://github.com/o/r/issues/2) — Done~~\n',
       );
 
-    const result = detectIssueList();
+    const result = detectIssueList(true);
 
     expect(result).toBeDefined();
     expect(result?.path).toBe(nodePath.resolve('issues.md'));
@@ -309,7 +223,7 @@ describe('detectIssueList', () => {
       throw new Error('EACCES: permission denied');
     });
 
-    const result = detectIssueList();
+    const result = detectIssueList(true);
 
     // The 0/0 counts are a read failure, not an empty list — readError says so.
     expect(result).toBeDefined();
@@ -326,7 +240,7 @@ describe('detectIssueList', () => {
     });
     (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
-    const result = detectIssueList();
+    const result = detectIssueList(true);
 
     expect(result).toBeDefined();
     expect('readError' in (result ?? {})).toBe(false);
@@ -349,34 +263,6 @@ describe('detectIssueList', () => {
     const result = detectIssueList();
 
     expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('state/issues.md'));
-    expect(result?.source).toBe('configured');
-  });
-
-  it('should prefer state.json over config.md when both set', async () => {
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
-      updateConfig: vi.fn(),
-    } as any);
-
-    existsSyncMock.mockImplementation((p: string) => {
-      if (p === '.claude/oss-autopilot/config.md') return true;
-      const r = nodePath.resolve(p);
-      return r === nodePath.resolve('state/issues.md') || r === nodePath.resolve('config/issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
-      if (path === '.claude/oss-autopilot/config.md') {
-        return '---\nissueListPath: config/issues.md\n---\n';
-      }
-      return '- [#1](https://github.com/o/r/issues/1) — Issue\n';
-    });
-
-    const result = detectIssueList();
-
-    // state.json path should win
     expect(result?.path).toBe(nodePath.resolve('state/issues.md'));
     expect(result?.source).toBe('configured');
   });
@@ -410,7 +296,7 @@ describe('detectIssueList', () => {
     });
     (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
-    const result = detectIssueList();
+    const result = detectIssueList(true);
 
     expect(result).toBeDefined();
     expect(result?.skippedIssuesPath).toBeUndefined();
@@ -475,29 +361,86 @@ describe('detectIssueList', () => {
     expect(setMachinePathSpy).not.toHaveBeenCalled();
   });
 
-  it('persists an auto-detected list path as absolute so it sticks across CWDs (#1577)', async () => {
+  it('suggests a probed list without saving it or its skip file (#1933)', async () => {
     const updateConfigSpy = vi.fn();
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
       getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: {} })),
+      getState: vi.fn(() => ({ config: { githubUsername: 'me' } })),
       updateConfig: updateConfigSpy,
     } as any);
-    existsSyncMock.mockImplementation(
-      (p: string) => nodePath.resolve(p) === nodePath.resolve('open-source/potential-issue-list.md'),
-    );
+    const list = nodePath.resolve('open-source/potential-issue-list.md');
+    const skip = nodePath.resolve('open-source/skipped-issues.md');
+    existsSyncMock.mockImplementation((p: string) => [list, skip].includes(nodePath.resolve(p)));
     (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
-    const result = detectIssueList();
+    const result = detectIssueList(true);
 
-    expect(result?.source).toBe('auto-detected');
-    expect(result?.path).toBe(nodePath.resolve('open-source/potential-issue-list.md'));
-    expect(setMachinePathSpy).toHaveBeenCalledWith(
-      'issueListPath',
-      nodePath.resolve('open-source/potential-issue-list.md'),
-      'probe',
+    expect(result).toMatchObject({ source: 'auto-detected', path: list, skippedIssuesPath: skip });
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
+    expect(updateConfigSpy).not.toHaveBeenCalled();
+  });
+
+  it('never returns a probed list unless asked for a suggestion (#1933)', () => {
+    existsSyncMock.mockImplementation((p: string) => p === 'issues.md');
+    expect(detectIssueList()).toBeUndefined();
+  });
+
+  it('ignores a legacy .claude/oss-autopilot/config.md (#1933)', () => {
+    existsSyncMock.mockImplementation(
+      (p: string) =>
+        p === '.claude/oss-autopilot/config.md' || nodePath.resolve(p) === nodePath.resolve('custom/issues.md'),
     );
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('---\nissueListPath: custom/issues.md\n---\n');
+    expect(detectIssueList(true)).toBeUndefined();
+  });
+
+  describe('current directory checks (#1933)', () => {
+    beforeEach(async () => {
+      const { getStateManager } = await import('../core/index.js');
+      vi.mocked(getStateManager).mockReturnValue({
+        isSetupComplete: vi.fn(() => true),
+        getLastOvernight: vi.fn(() => {}),
+        getState: vi.fn(() => ({ config: { githubUsername: 'Me' } })),
+      } as any);
+      existsSyncMock.mockImplementation((p: string) => p === 'issues.md');
+      (fsImport as any).readFileSync = vi.fn().mockReturnValue('## Pursue\n- https://github.com/evil/x/issues/1\n');
+    });
+    afterEach(() => {
+      execFileSyncMock.mockReset();
+      execFileSyncMock.mockImplementation(() => {
+        throw new Error('not a git repository');
+      });
+      delete process.env.OSS_AUTOPILOT_UNATTENDED;
+    });
+
+    it("does not offer an issues.md from someone else's checkout", () => {
+      execFileSyncMock.mockReturnValue('https://github.com/evil/repo.git\n');
+      expect(detectIssueList(true)).toBeUndefined();
+      expect(execFileSyncMock).toHaveBeenCalledWith('git', ['remote', 'get-url', 'origin'], expect.anything());
+      expect(setMachinePathSpy).not.toHaveBeenCalled();
+    });
+
+    it('treats a non-GitHub origin as foreign, and a look-alike host too', () => {
+      execFileSyncMock.mockReturnValue('https://gitlab.com/me/repo.git');
+      expect(detectIssueList(true)).toBeUndefined();
+      execFileSyncMock.mockReturnValue('https://evil.example/github.com/me/repo.git');
+      expect(detectIssueList(true)).toBeUndefined();
+    });
+
+    it("offers a list from the user's own checkout (ssh or https, any case)", () => {
+      execFileSyncMock.mockReturnValue('git@github.com:me/notes.git');
+      expect(detectIssueList(true)).toMatchObject({ source: 'auto-detected', path: nodePath.resolve('issues.md') });
+      execFileSyncMock.mockReturnValue('https://github.com/ME/notes');
+      expect(detectIssueList(true)?.source).toBe('auto-detected');
+      expect(setMachinePathSpy).not.toHaveBeenCalled();
+    });
+
+    it('offers nothing during an unattended run, even from a plain directory', () => {
+      process.env.OSS_AUTOPILOT_UNATTENDED = '';
+      expect(detectIssueList(true)).toBeUndefined();
+    });
   });
 
   it('upgrades a relative configured issueListPath to absolute in state (#1577)', async () => {
@@ -544,7 +487,7 @@ describe('detectIssueList', () => {
     existsSyncMock.mockImplementation((p: string) => nodePath.resolve(p) === nodePath.resolve('issues.md'));
     (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
-    const result = detectIssueList();
+    const result = detectIssueList(true);
 
     expect(result?.path).toBe(nodePath.resolve('issues.md'));
     expect(result?.source).toBe('auto-detected');

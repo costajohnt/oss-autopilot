@@ -505,6 +505,12 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   const last = sm.getLastOvernight();
   if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');
 
+  // The URL lands in the morning report and in commands built from it (#1933).
+  const parsed = parseGitHubUrl(options.url);
+  if (!parsed || options.url !== `https://github.com/${parsed.owner}/${parsed.repo}/${parsed.type}/${parsed.number}`) {
+    throw new ValidationError(`Refusing to record an unusual URL: ${options.url}`);
+  }
+
   const report = options.fromReport ? readPreparerReport(options.fromReport) : {};
   const branch = options.branch ?? report.branch;
   if (!branch) throw new ValidationError('No branch to record: pass --branch, or --from-report with a BRANCH: line.');

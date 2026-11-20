@@ -18,14 +18,9 @@ import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.js';
 import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
-import { detectIssueListPath, persistConfigPath } from './locate-issue-list.js';
+import { detectIssueListPath, persistConfigPath, suggestIssueListPath } from './locate-issue-list.js';
 import { getMachinePath, setMachinePath } from '../core/local-config.js';
 import { overnightFreshness } from './overnight.js';
-
-// Path detection moved to locate-issue-list.ts (#1463) so the daily
-// merge-loop can use it without an import cycle through this module.
-// Re-exported here for back-compat with existing consumers/tests.
-export { parseIssueListPathFromConfig } from './locate-issue-list.js';
 
 /**
  * Count available and completed items in an issue list file.
@@ -46,13 +41,15 @@ export function countIssueListItems(content: string): {
 }
 
 /**
- * Detect an issue list file from config or known paths.
+ * Detect the configured issue list file.
+ * @param shouldSuggest - With no configured list, return a list found in
+ *   the current directory as `source: 'auto-detected'` for the user to confirm
+ *   (#1933). Only `/oss` startup asks; nothing about it is saved.
  * @returns Issue list info with path and item counts, or undefined if not found
  */
-export function detectIssueList(): IssueListInfo | undefined {
-  // Steps 1-3 (state config → legacy config.md → known-path probes) live in
-  // locate-issue-list.ts (#1463), shared with the daily merge-loop.
-  const located = detectIssueListPath();
+export function detectIssueList(shouldSuggest = false): IssueListInfo | undefined {
+  // Path lookup lives in locate-issue-list.ts (#1463), shared with the daily merge-loop.
+  const located = detectIssueListPath() ?? (shouldSuggest ? suggestIssueListPath() : undefined);
   if (!located) return undefined;
   const issueListPath = located.path;
   const source: IssueListInfo['source'] = located.source;
@@ -91,7 +88,7 @@ export function detectIssueList(): IssueListInfo | undefined {
         : path.resolve(path.dirname(issueListPath), configuredSkipPath);
       if (fs.existsSync(resolvedSkip)) {
         skippedIssuesPath = resolvedSkip;
-        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip, 'configured');
+        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip);
       }
     }
   } catch (err) {
@@ -117,7 +114,8 @@ export function detectIssueList(): IssueListInfo | undefined {
         // shouldn't rewrite the value on every run if it is already there.
         // The write goes to this machine's local settings (#1950).
         const current = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
-        if (!current) {
+        // A suggested list is not confirmed yet (#1933), so neither is its skip file.
+        if (!current && source === 'configured') {
           setMachinePath('skippedIssuesPath', defaultSkipPath, 'probe');
         }
       } catch (err) {
@@ -356,7 +354,7 @@ export async function runStartup(): Promise<StartupOutput> {
   }
 
   // 5. Detect issue list
-  const issueList = detectIssueList();
+  const issueList = detectIssueList(true);
 
   // 6. Pass through dashboard-build status set by the workflow shell (#1293).
   // The workflow runs the SPA build BEFORE invoking startup, so the status

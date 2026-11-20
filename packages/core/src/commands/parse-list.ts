@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ParseIssueListOutput, ParsedIssueItem } from '../formatters/json.js';
 import { errorMessage } from '../core/errors.js';
+import { parseGitHubUrl } from '../core/urls.js';
 
 interface ParseListOptions {
   filePath: string;
@@ -18,10 +19,14 @@ interface ParseListOptions {
  * Guard 1: PR URLs (/pull/) are intentionally excluded. A pull-request URL is
  * never a valid issue candidate — collecting them inflates `availableCount` and
  * causes `vet-list` to spend API calls on URLs that cannot resolve as issues.
+ *
+ * Guard 2: the owner/repo must pass `parseGitHubUrl` (#1933). List URLs reach
+ * the overnight dispatch line and quoted shell arguments, so a line whose URL
+ * carries quotes, spaces or other characters GitHub never uses is dropped.
  */
 function extractGitHubUrl(line: string): { repo: string; number: number; url: string } | null {
   const match = line.match(/https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/);
-  if (match) {
+  if (match && parseGitHubUrl(match[0])) {
     return { repo: match[1], number: parseInt(match[2], 10), url: match[0] };
   }
   return null;

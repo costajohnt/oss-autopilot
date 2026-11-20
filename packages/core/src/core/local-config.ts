@@ -36,8 +36,8 @@ export type SyncedPaths = Partial<Record<MachinePathKey, string>>;
 /**
  * How a stored path got into the local file: `set` by the user (`setup --set`,
  * `config`), `adopted` from the synced config because it exists on this
- * machine, or found by a `probe` (current-directory list probe, or the
- * `skipped-issues.md` next to the list).
+ * machine, or found by a `probe` (the `skipped-issues.md` next to the list;
+ * an older build also stored current-directory list probes, #1933).
  */
 export type MachinePathSource = 'set' | 'adopted' | 'probe';
 

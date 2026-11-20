@@ -304,10 +304,12 @@ describe('runOvernight', () => {
   });
 });
 
+const U = 'https://github.com/o/r/pull/9';
+
 describe('runOvernightRecord', () => {
   it('refuses before any run', async () => {
     mockGetStateManager.mockReturnValue(fakeStateManager());
-    await expect(runOvernightRecord({ url: 'u', branch: 'b' })).rejects.toThrow(/run `overnight` first/);
+    await expect(runOvernightRecord({ url: U, branch: 'b' })).rejects.toThrow(/run `overnight` first/);
   });
 
   it('flags a recreated report instead of silently rebuilding it', async () => {
@@ -315,7 +317,7 @@ describe('runOvernightRecord', () => {
     mockGetStateManager.mockReturnValue(
       fakeStateManager({ runAt: 'now', reportPath, prepareCount: 0, judgmentCount: 0, prepared: [] }),
     );
-    const out = await runOvernightRecord({ url: 'u', branch: 'b' });
+    const out = await runOvernightRecord({ url: U, branch: 'b' });
     expect(out.reportRecreated).toBe(true);
     expect(fs.readFileSync(reportPath, 'utf8')).toContain('## Prepared branches (1)');
   });
@@ -330,8 +332,13 @@ describe('runOvernightRecord', () => {
     mockGetStateManager.mockReturnValue(sm);
 
     mockCheckpoint.mockResolvedValueOnce('push failed');
-    const first = await runOvernightRecord({ url: 'u1', branch: 'b1', worktree: '/w', note: 'fixed lint' });
-    const second = await runOvernightRecord({ url: 'u2', branch: 'b2' });
+    const first = await runOvernightRecord({
+      url: 'https://github.com/o/r/pull/1',
+      branch: 'b1',
+      worktree: '/w',
+      note: 'fixed lint',
+    });
+    const second = await runOvernightRecord({ url: 'https://github.com/o/r/pull/2', branch: 'b2' });
 
     expect(first.preparedCount).toBe(1);
     expect(second.preparedCount).toBe(2);
@@ -342,8 +349,8 @@ describe('runOvernightRecord', () => {
     expect(sm.setLastOvernight.mock.invocationCallOrder[0]).toBeLessThan(mockCheckpoint.mock.invocationCallOrder[0]);
     const md = fs.readFileSync(reportPath, 'utf8');
     expect(md).toContain('## Prepared branches (2)');
-    expect(md).toContain('- u1 — branch `b1` at /w: fixed lint');
-    expect(md).toContain('- u2 — branch `b2`');
+    expect(md).toContain('- https://github.com/o/r/pull/1 — branch `b1` at /w: fixed lint');
+    expect(md).toContain('- https://github.com/o/r/pull/2 — branch `b2`');
     expect(md).toContain('## Needs your judgment (0)');
     expect(sm.getLastOvernight()?.prepared.map((p) => p.branch)).toEqual(['b1', 'b2']);
   });
@@ -410,7 +417,7 @@ describe('runOvernightRecord --from-report', () => {
     const agentReport = path.join(tmp.dir, 'preparer.txt');
     fs.writeFileSync(agentReport, 'BRANCH: prep/from-report\nNOTE: from report\n');
 
-    await runOvernightRecord({ url: 'u', branch: 'prep/from-flag', fromReport: agentReport });
+    await runOvernightRecord({ url: U, branch: 'prep/from-flag', fromReport: agentReport });
 
     expect(sm.getLastOvernight()?.prepared[0]).toMatchObject({ branch: 'prep/from-flag', note: 'from report' });
   });
@@ -421,17 +428,28 @@ describe('runOvernightRecord --from-report', () => {
       seed();
       const agentReport = path.join(tmp.dir, 'preparer.txt');
       fs.writeFileSync(agentReport, `BRANCH: ${branch}\n`);
-      await expect(runOvernightRecord({ url: 'u', fromReport: agentReport })).rejects.toThrow(
+      await expect(runOvernightRecord({ url: U, fromReport: agentReport })).rejects.toThrow(
         /unusual branch name|No branch to record/,
       );
     },
   );
 
+  it.each([
+    'u',
+    'https://github.com/o/r/pull/1" && gh pr merge 1 "',
+    'https://github.com/o/r/pull/1/files',
+    'https://github.com/o"x/r/issues/1',
+  ])('refuses the URL %j (#1933)', async (url) => {
+    const { sm } = seed();
+    await expect(runOvernightRecord({ url, branch: 'prep/x' })).rejects.toThrow(/unusual URL/);
+    expect(sm.getLastOvernight()?.prepared).toEqual([]);
+  });
+
   it('says what is missing when the report has no BRANCH line', async () => {
     seed();
     const agentReport = path.join(tmp.dir, 'preparer.txt');
     fs.writeFileSync(agentReport, 'STATUS: prepared\n');
-    await expect(runOvernightRecord({ url: 'u', fromReport: agentReport })).rejects.toThrow(/No branch to record/);
+    await expect(runOvernightRecord({ url: U, fromReport: agentReport })).rejects.toThrow(/No branch to record/);
   });
 });
 
@@ -715,7 +733,7 @@ describe('report publishing (#1698)', () => {
 
     sm.setOvernightReportDocument.mockClear();
     const last = sm.getLastOvernight()!;
-    await runOvernightRecord({ url: 'u', branch: 'b' });
+    await runOvernightRecord({ url: U, branch: 'b' });
     expect(sm.setOvernightReportDocument).toHaveBeenCalledTimes(1);
     expect(sm.setOvernightReportDocument.mock.calls[0][0]).toContain('branch `b`');
     expect(fs.existsSync(last.reportPath)).toBe(true);
