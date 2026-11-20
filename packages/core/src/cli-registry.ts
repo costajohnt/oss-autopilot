@@ -78,8 +78,8 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    Commands: manifest, daily, status, strategy, search, features,
  *    verify-issue, issue-thread, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
- *    parse-issue-list, orphan-files, doctor, local-repos, move,
- *    pr-template, repo-cap, pr-preflight, repo-vet, detect-formatters, work (claim/finish/release/list).
+ *    parse-issue-list, doctor, local-repos, move,
+ *    pr-template, repo-cap, pr-preflight, repo-vet, work (claim/finish/release/list).
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
@@ -1325,48 +1325,6 @@ export const commands: CLICommandDef[] = [
     },
   },
 
-  // ── Check Integration ──────────────────────────────────────────────────
-  {
-    name: 'orphan-files',
-    localOnly: true,
-    register(program) {
-      program
-        .command('orphan-files')
-        .alias('check-integration')
-        .description('Detect new files on this branch that no other file references')
-        .option('--base <branch>', 'Base branch to compare against', 'main')
-        .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          const { CheckIntegrationOutputSchema } = await import('./formatters/json.js');
-          await executeAction(
-            options,
-            async () => (await import('./commands/check-integration.js')).runCheckIntegration({ base: options.base }),
-            (data) => {
-              if (data.newFiles.length === 0) {
-                console.log('\nNo new code files to check.');
-                return;
-              }
-              console.log(`\n\u{1F50D} Integration Check (base: ${options.base})\n`);
-              console.log(`New files: ${data.newFiles.length} | Unreferenced: ${data.unreferencedCount}\n`);
-              for (const file of data.newFiles) {
-                const status = file.isIntegrated ? '\u{2705}' : '\u{26A0}\u{FE0F}';
-                console.log(`${status} ${file.path}`);
-                if (file.isIntegrated) {
-                  console.log(`   Referenced by: ${file.referencedBy.join(', ')}`);
-                } else {
-                  console.log('   Not referenced by any file');
-                  if (file.suggestedEntryPoints && file.suggestedEntryPoints.length > 0) {
-                    console.log(`   Suggested entry points: ${file.suggestedEntryPoints.join(', ')}`);
-                  }
-                }
-              }
-            },
-            CheckIntegrationOutputSchema,
-          );
-        });
-    },
-  },
-
   // ── Doctor ─────────────────────────────────────────────────────────────
   {
     name: 'doctor',
@@ -1877,59 +1835,6 @@ export const commands: CLICommandDef[] = [
               }
             },
             RepoVetOutputSchema,
-          );
-        });
-    },
-  },
-
-  // ── Detect Formatters ────────────────────────────────────────────────
-  {
-    name: 'detect-formatters',
-    localOnly: true,
-    register(program) {
-      program
-        .command('detect-formatters [repo-path]')
-        .description('Detect formatters and linters configured in a repository')
-        .option('--ci-log <path>', 'Analyze CI log file for formatting failures')
-        .option('--json', 'Output as JSON')
-        .action(async (repoPath, options) => {
-          const { DetectFormattersOutputSchema } = await import('./formatters/json.js');
-          await executeAction(
-            options,
-            async () =>
-              (await import('./commands/detect-formatters.js')).runDetectFormatters({
-                repoPath,
-                ciLog: options.ciLog,
-              }),
-            (data) => {
-              if (data.formatters.length === 0) {
-                console.log('\nNo formatters detected.');
-              } else {
-                console.log(`\nDetected ${data.formatters.length} formatter(s):\n`);
-                for (const f of data.formatters) {
-                  console.log(`  ${f.name} (${f.configPath})`);
-                  console.log(`    Fix:   ${f.fixCommand}`);
-                  console.log(`    Check: ${f.checkCommand}`);
-                }
-              }
-              if (data.packageJsonScripts.length > 0) {
-                console.log('\npackage.json scripts:');
-                for (const s of data.packageJsonScripts) {
-                  console.log(`  ${s.name}: ${s.command}`);
-                }
-              }
-              if (data.ciDiagnosis) {
-                console.log('');
-                if (data.ciDiagnosis.isFormattingFailure) {
-                  console.log(`CI Diagnosis: Formatting failure detected (${data.ciDiagnosis.formatter})`);
-                  console.log(`  Fix: ${data.ciDiagnosis.fixCommand}`);
-                  console.log(`  Evidence: ${data.ciDiagnosis.evidence.join(', ')}`);
-                } else {
-                  console.log('CI Diagnosis: No formatting failure detected.');
-                }
-              }
-            },
-            DetectFormattersOutputSchema,
           );
         });
     },

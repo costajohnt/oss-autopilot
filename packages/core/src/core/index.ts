@@ -217,15 +217,6 @@ export {
   type AntiLLMScanResult,
 } from './anti-llm-policy.js';
 export {
-  detectFormatters,
-  diagnoseCIFormatterFailure,
-  getPreferredFormatter,
-  type DetectedFormatter,
-  type FormatterDetectionResult,
-  type CIFormatterDiagnosis,
-  type FormatterName,
-} from './formatter-detection.js';
-export {
   CONFIG_KEY_REGISTRY,
   type ConfigKeyDef,
   type SettableVia,

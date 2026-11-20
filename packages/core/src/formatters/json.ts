@@ -27,7 +27,6 @@ import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { ClosedPRStatusUpdate } from '../core/closed-pr-status.js';
 import type { MergedPRNotes } from '../core/merged-pr-notes.js';
 import type { ReviewedPRFollowUp } from '../core/reviewed-prs.js';
-import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } from '../core/issue-verification.js';
 
 // Re-export the daily aggregation types from their canonical home in core/types.
@@ -1280,52 +1279,6 @@ export const ParseIssueListOutputSchema = z.object({
   blockedCount: z.number().int().nonnegative(),
 });
 
-const NewFileInfoSchema = z.object({
-  path: z.string(),
-  referencedBy: z.array(z.string()),
-  isIntegrated: z.boolean(),
-  suggestedEntryPoints: z.array(z.string()).optional(),
-});
-
-export const CheckIntegrationOutputSchema = z.object({
-  newFiles: z.array(NewFileInfoSchema),
-  unreferencedCount: z.number().int().nonnegative(),
-});
-
-const FormatterNameSchema = z.enum([
-  'prettier',
-  'eslint',
-  'biome',
-  'black',
-  'ruff',
-  'rustfmt',
-  'gofmt',
-  'clang-format',
-  'rubocop',
-]);
-
-const DetectedFormatterSchema = z.object({
-  name: FormatterNameSchema,
-  configPath: z.string(),
-  fixCommand: z.string(),
-  checkCommand: z.string(),
-  supportsFileArgs: z.boolean(),
-});
-
-const CIFormatterDiagnosisSchema = z.object({
-  isFormattingFailure: z.boolean(),
-  formatter: FormatterNameSchema.optional(),
-  fixCommand: z.string().optional(),
-  evidence: z.array(z.string()),
-});
-
-export const DetectFormattersOutputSchema = z.object({
-  formatters: z.array(DetectedFormatterSchema),
-  packageJsonScripts: z.array(z.object({ name: z.string(), command: z.string() })),
-  repoPath: z.string(),
-  ciDiagnosis: CIFormatterDiagnosisSchema.optional(),
-});
-
 const LocalRepoInfoSchema = z.object({
   path: z.string(),
   exists: z.boolean(),
@@ -1635,19 +1588,6 @@ export interface ParseIssueListOutput {
 }
 
 /** Info about a new file's integration status (#83) */
-export interface NewFileInfo {
-  path: string;
-  referencedBy: string[];
-  isIntegrated: boolean;
-  suggestedEntryPoints?: string[];
-}
-
-/** Output of the check-integration command (#83) */
-export interface CheckIntegrationOutput {
-  newFiles: NewFileInfo[];
-  unreferencedCount: number;
-}
-
 /**
  * Status of a re-vetted issue from the curated list (#764, #1494).
  *
@@ -1865,11 +1805,6 @@ export interface LocalReposOutput {
   scanPaths: string[];
   cachedAt: string;
   fromCache: boolean;
-}
-
-/** Output of the detect-formatters command. Extends FormatterDetectionResult with optional CI diagnosis. */
-export interface DetectFormattersOutput extends FormatterDetectionResult {
-  ciDiagnosis?: CIFormatterDiagnosis;
 }
 
 /** Output of the stats command */
