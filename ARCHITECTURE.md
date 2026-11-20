@@ -7,7 +7,7 @@ OSS Autopilot is a Claude Code plugin with a TypeScript CLI backend for managing
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Plugin Layer (Claude Code)                             │
-│  commands/*.md  agents/*.md  skills/  workflows/  hooks │
+│  commands/*.md  agents/*.md  skills/  workflows/        │
 ├─────────────────────────────────────────────────────────┤
 │  CLI Layer (Node.js)                                    │
 │  packages/core/src/cli.ts → subcommands → --json stdout │
@@ -48,7 +48,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `work-through-issues.md` | "Work through all issues" action | Parallel investigation → consolidated display → sequential execution |
 | `review-issue-replies.md` | "Review issue replies" action | Review and respond to replies on issues the user commented on or is working on: any substantive non-bot reply on an engaged issue (claimed or linked from one of the user's PRs), maintainer / @mention / quote replies elsewhere (#1862) |
 | `pre-commit-review.md` | Before any commit/push | Multi-agent code review gate (existing PR updates) |
-| `draft-first-workflow.md` | New contributions | Create draft PR → iterative review → squash → mark ready |
+| `draft-first-workflow.md` | New contributions | Commit locally → iterative local review → manual test → squash → push and create the PR (ready or draft) |
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
 | `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue via `draft-review-post`; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
@@ -57,7 +57,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
 | `plan-review.md` | `/plan-ready` | Plan-phase review convergence loop — catches design problems before code exists (#1249) |
-| `reference.md` | Always loaded | Shared conventions and formatting rules |
+| `reference.md` | On demand | Shared conventions and formatting rules |
 
 ### Agents (`agents/`)
 
@@ -89,7 +89,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 25 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 23 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -143,6 +143,10 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
 | `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
 | `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
+| `ledger-backfill` | `ledger-backfill.ts` | Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824) |
+| `eval` | `eval.ts` | Calibration and outcome report from the outcome ledger (#1825) |
+| `repo-cap` | `repo-cap.ts` | Check `owner/repo` against the per-repo open-PR cap (live open-PR count from GitHub) and `excludeRepos` |
+| `overnight run` / `record` / `implement-blocked` / `report` / `push-prep` / `schedule` | `overnight.ts`, `overnight-push-prep.ts` | Overnight prepare-and-queue run: daily check, morning report, no external side effects (#1574) |
 
 ### Build
 
@@ -207,7 +211,7 @@ ETag-based caching for GitHub API responses:
 
 | Module | Purpose |
 |--------|---------|
-| `utils.ts` | GitHub URL parsing, date helpers, token detection, path helpers |
+| `urls.ts`, `dates.ts`, `auth.ts`, `paths.ts` | GitHub URL parsing, date helpers, token detection, path helpers |
 | `errors.ts` | Error hierarchy: `OssAutopilotError` → `ConfigurationError`, `ValidationError` |
 | `logger.ts` | Debug/warn logger. Output goes to stderr. Activated by `--debug` flag |
 | `concurrency.ts` | `runWorkerPool<T>()` — bounded-concurrency Promise pool |
@@ -285,6 +289,7 @@ interface AgentState {
   config: AgentConfig;              // User preferences + shelved/dismissed state
   lastRunAt: string;
   lastDigestAt?: string;
+  lastStrategyAt?: string;          // Last strategy snapshot embedded in a daily run (#1270)
   lastDigest?: DailyDigest;         // Cached for dashboard rendering
   monthlyMergedCounts?: Record<string, number>;
   monthlyClosedCounts?: Record<string, number>;
@@ -294,6 +299,12 @@ interface AgentState {
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
   analyzedIssueConversations?: AnalyzedIssueConversation[];
   activeIssues: TrackedIssue[];     // Issues user has claimed
+  prFollowUpHistory?: Record<string, FollowUpEntry[]>; // Follow-ups drafted per PR URL (#1277)
+  workflowState?: WorkflowState;    // Pause-point snapshot for resumable workflows (#1280)
+  searchSeen: SearchSeenEntry[];    // Issue URLs surfaced by recent searches, for result rotation (#1528)
+  pickSnapshots: PickSnapshot[];    // Vet-time predictions keyed by issue URL (#1824)
+  lastOvernight?: OvernightRecord;  // Latest overnight run (#1574)
+  searchRotation?: SearchRotation;  // Broad-phase language rotation cursor from oss-scout (#1630)
   workClaims: WorkClaim[];          // In-flight implementations and PRs under Tier 2 work, across sessions/machines (#1856, #1852)
 }
 ```

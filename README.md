@@ -119,8 +119,11 @@ npm install @oss-autopilot/core
 ```
 
 ```typescript
+import { ensureGistPersistence, requireGitHubToken } from '@oss-autopilot/core';
 import { runDaily, runSearch } from '@oss-autopilot/core/commands';
 
+// The CLI runs this before every command. Skip it and a machine set up for Gist sync reads and writes local state only.
+await ensureGistPersistence(requireGitHubToken());
 const digest = await runDaily();
 const issues = await runSearch({ maxResults: 10 });
 ```

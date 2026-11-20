@@ -8,6 +8,8 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Now (next 1-2 weeks)
 
+- [ ] Work through the issues filed by the 2026-11-19 audit ([open list](https://github.com/costajohnt/oss-autopilot/issues?q=is%3Aissue+is%3Aopen+%222026-11-19+audit%22+in%3Abody))
+
 ## Next (next 1-2 months)
 
 ## Later (no fixed timeline)
