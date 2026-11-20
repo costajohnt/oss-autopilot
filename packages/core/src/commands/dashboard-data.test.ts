@@ -147,18 +147,24 @@ vi.mock('../core/errors.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../core/github-stats.js', () => ({
-  emptyPRCountsResult: () => ({
-    repos: new Map(),
-    monthlyCounts: {},
-    monthlyOpenedCounts: {},
-    dailyActivityCounts: {},
-  }),
-  MERGED_LEDGER_TRUNCATED_MESSAGE: 'merged ledger truncated',
-  CLOSED_LEDGER_TRUNCATED_MESSAGE: 'closed ledger truncated',
-  fetchMergedPRsSince: (...args: unknown[]) => mockFetchMergedPRsSince(...args),
-  fetchClosedPRsSince: (...args: unknown[]) => mockFetchClosedPRsSince(...args),
-}));
+vi.mock('../core/github-stats.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/github-stats.js')>();
+  return {
+    // The real backfill guard (#1925): pure, so the dashboard's choice of start is what's tested.
+    gapFetchWatermark: actual.gapFetchWatermark,
+    LEDGER_BACKFILL_CEILING: 300,
+    emptyPRCountsResult: () => ({
+      repos: new Map(),
+      monthlyCounts: {},
+      monthlyOpenedCounts: {},
+      dailyActivityCounts: {},
+    }),
+    MERGED_LEDGER_TRUNCATED_MESSAGE: 'merged ledger truncated',
+    CLOSED_LEDGER_TRUNCATED_MESSAGE: 'closed ledger truncated',
+    fetchMergedPRsSince: (...args: unknown[]) => mockFetchMergedPRsSince(...args),
+    fetchClosedPRsSince: (...args: unknown[]) => mockFetchClosedPRsSince(...args),
+  };
+});
 
 vi.mock('./daily.js', () => ({
   toShelvedPRRef: (pr: unknown) => mockToShelvedPRRef(pr),
@@ -1040,6 +1046,43 @@ describe('fetchDashboardData', () => {
 
       expect(mockAddClosedPRs).toHaveBeenCalledWith([]);
       expect(result.partialFailures).toContain('closed ledger truncated');
+    });
+
+    describe('closed-ledger backfill self-heal (#1925)', () => {
+      const WATERMARK = '2026-06-15T00:00:00Z';
+      const closedRows = (count: number) =>
+        Array.from({ length: count }, (_, i) => ({
+          url: `https://github.com/o/r/pull/${i}`,
+          title: `pr ${i}`,
+          closedAt: WATERMARK,
+        }));
+
+      beforeEach(() => {
+        mockGetState.mockReturnValue(makeDefaultState({ lastDigest: null }));
+        mockGetClosedPRWatermark.mockReturnValue(WATERMARK);
+      });
+
+      it('fetches the whole closed history when the ledger trails the closed count: 6 of 40', async () => {
+        mockGetClosedPRs.mockReturnValue(closedRows(6));
+        mockFetchUserClosedPRCounts.mockResolvedValue({ ...makePRCountsResult(), totalCount: 40 });
+
+        await fetchDashboardData('test-token');
+
+        expect(mockFetchClosedPRsSince.mock.calls[0][2]).toBeUndefined();
+      });
+
+      it.each([
+        ['at the ceiling: 300 of 400', 300, 400],
+        ['caught up: 6 of 6', 6, 6],
+        ['with an unknown count', 6, undefined],
+      ])('keeps the watermark %s', async (_label, stored, totalCount) => {
+        mockGetClosedPRs.mockReturnValue(closedRows(stored));
+        mockFetchUserClosedPRCounts.mockResolvedValue({ ...makePRCountsResult(), totalCount });
+
+        await fetchDashboardData('test-token');
+
+        expect(mockFetchClosedPRsSince.mock.calls[0][2]).toBe(WATERMARK);
+      });
     });
 
     it('hands both ledger fetches the user config, which carries untrackedOrgs (#1924)', async () => {

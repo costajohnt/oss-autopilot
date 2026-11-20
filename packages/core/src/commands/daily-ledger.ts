@@ -5,13 +5,20 @@
 
 import type { Octokit } from '@octokit/rest';
 import { firstMaintainerResponseFromDigest, lastReviewStateFromDigest } from '../core/daily-logic.js';
-import { fetchMergedPRsSince, MERGED_LEDGER_TRUNCATED_MESSAGE, type PRsSinceResult } from '../core/github-stats.js';
+import {
+  CLOSED_LEDGER_TRUNCATED_MESSAGE,
+  fetchClosedPRsSince,
+  fetchMergedPRsSince,
+  gapFetchWatermark,
+  MERGED_LEDGER_TRUNCATED_MESSAGE,
+  type PRsSinceResult,
+} from '../core/github-stats.js';
 import type { getStateManager } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { debug, warn } from '../core/logger.js';
 import type { RepoMetadata } from '../core/pr-monitor.js';
 import { findRepoTransfers } from '../core/repo-score-manager.js';
-import type { DailyDigest, MergedPR, StoredMergedPR } from '../core/types.js';
+import type { ClosedPR, DailyDigest, MergedPR, StoredClosedPR, StoredMergedPR } from '../core/types.js';
 import type { DailyWarning } from '../formatters/json.js';
 import { recordWarning } from './daily-warnings.js';
 
@@ -137,8 +144,56 @@ export function resetStaleClosedCounts(
 
 /** This run's merged-ledger gap fetch; undefined when the fetch failed. */
 export type MergedLedgerGap = PRsSinceResult<StoredMergedPR> | undefined;
+/** This run's closed-ledger gap fetch; undefined when the fetch failed. */
+export type ClosedLedgerGap = PRsSinceResult<StoredClosedPR> | undefined;
 
-const GAP_FETCH_OPERATION = 'fetch merged PRs for the ledger';
+/** Run one gap fetch, recording a failure or truncation in `warnings`. */
+async function fetchLedgerGap<T>(
+  kind: 'merged' | 'closed',
+  fetch: () => Promise<PRsSinceResult<T>>,
+  truncatedMessage: string,
+  warnings: DailyWarning[],
+): Promise<PRsSinceResult<T> | undefined> {
+  const operation = `fetch ${kind} PRs for the ledger`;
+  let gap: PRsSinceResult<T> | undefined;
+  try {
+    gap = await fetch();
+  } catch (error) {
+    recordWarning(warnings, 'fetch', operation, error);
+  }
+  if (gap?.truncated) warnings.push({ phase: 'fetch', message: truncatedMessage, operation });
+  return gap;
+}
+
+/**
+ * Compare a ledger with GitHub's all-time count. A hole older than the newest
+ * entry is invisible to the gap fetch; the count is the one signal that shows
+ * it, and `ledger-backfill` is what fills it. The count search and the ledger
+ * fetch share one scope (externalPRScope: public, not the user's own, no
+ * untracked organisations), so the two are comparable; when that scope cannot
+ * be put in a query the count is undefined and the check is skipped.
+ *
+ * A ledger larger than the public total is expected while rows GitHub no
+ * longer lists (or private ones not yet evicted) remain; each such row can
+ * mask one missing public PR until it is gone.
+ */
+function checkLedgerCount(
+  kind: 'merged' | 'closed',
+  stored: number,
+  allTimeCount: number | undefined,
+  warnings: DailyWarning[],
+): void {
+  const missing = (allTimeCount ?? 0) - stored;
+  if (missing > 0) {
+    warnings.push({
+      phase: 'analytics',
+      operation: `check ${kind}-PR ledger`,
+      message:
+        `The ${kind}-PR ledger holds ${stored} of the ${allTimeCount} ${kind} PRs GitHub reports ` +
+        `(${missing} missing). Run \`ledger-backfill\` to fetch them.`,
+    });
+  }
+}
 
 /**
  * Fetch every merged PR since the ledger's newest entry (#1924). The recent
@@ -152,23 +207,74 @@ const GAP_FETCH_OPERATION = 'fetch merged PRs for the ledger';
  * ledger, so the "extract learnings" nudge, which counts ledger rows of
  * recent merges, is also held back for them.
  */
-export async function fetchMergedLedgerGap(
+export function fetchMergedLedgerGap(
   octokit: Octokit,
   stateManager: Pick<StateManagerLike, 'getState' | 'getMergedPRWatermark'>,
   warnings: DailyWarning[],
 ): Promise<MergedLedgerGap> {
   const { config } = stateManager.getState();
   const watermark = stateManager.getMergedPRWatermark();
-  let gap: MergedLedgerGap;
-  try {
-    gap = await fetchMergedPRsSince(octokit, config, watermark);
-  } catch (error) {
-    recordWarning(warnings, 'fetch', GAP_FETCH_OPERATION, error);
-  }
-  if (gap?.truncated) {
-    warnings.push({ phase: 'fetch', operation: GAP_FETCH_OPERATION, message: MERGED_LEDGER_TRUNCATED_MESSAGE });
-  }
-  return gap;
+  return fetchLedgerGap(
+    'merged',
+    () => fetchMergedPRsSince(octokit, config, watermark),
+    MERGED_LEDGER_TRUNCATED_MESSAGE,
+    warnings,
+  );
+}
+
+/**
+ * The closed-ledger mirror of {@link fetchMergedLedgerGap} (#1925). Without
+ * it the recent closed list seeded a fresh ledger with last week's closes,
+ * and the dashboard's fetch then started from that newest row, so older
+ * closed history was never fetched. Must run before anything in this run adds
+ * to the closed ledger.
+ *
+ * A ledger an older version already left short of `allTimeCount` is fetched
+ * from the start while it is under the backfill ceiling (see
+ * gapFetchWatermark), so it heals without a manual `ledger-backfill`.
+ */
+export function fetchClosedLedgerGap(
+  octokit: Octokit,
+  stateManager: Pick<StateManagerLike, 'getState' | 'getClosedPRWatermark' | 'getClosedPRs'>,
+  warnings: DailyWarning[],
+  allTimeCount: number | undefined,
+): Promise<ClosedLedgerGap> {
+  const { config } = stateManager.getState();
+  const watermark = gapFetchWatermark(
+    stateManager.getClosedPRWatermark(),
+    stateManager.getClosedPRs().length,
+    allTimeCount,
+  );
+  return fetchLedgerGap(
+    'closed',
+    () => fetchClosedPRsSince(octokit, config, watermark),
+    CLOSED_LEDGER_TRUNCATED_MESSAGE,
+    warnings,
+  );
+}
+
+/** What a store step takes besides the gap. */
+interface StoreLedgerInput {
+  /** Previous run's digest: best-effort first-response and review state for the new rows (#1461). */
+  previousDigest: DailyDigest | undefined;
+  /** GitHub's all-time count from the count search; undefined when unknown. */
+  allTimeCount: number | undefined;
+  warnings: DailyWarning[];
+}
+
+/** Fields both ledgers fill the same way from a fetched or recent row. */
+function ledgerFields(
+  pr: { url: string; title: string; openedAt?: string; issueUrl?: string },
+  previousDigest: DailyDigest | undefined,
+) {
+  return {
+    url: pr.url,
+    title: pr.title,
+    openedAt: pr.openedAt,
+    firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+    issueUrl: pr.issueUrl,
+    ...lastReviewStateFromDigest(previousDigest, pr.url),
+  };
 }
 
 /**
@@ -179,52 +285,44 @@ export async function fetchMergedLedgerGap(
  * entry is the next run's starting point, so a recent row stored without the
  * rows before it would move that point past merges nobody fetched.
  *
- * Then compares the ledger with GitHub's all-time merged count. A hole older
- * than the newest entry is invisible to the gap fetch; the count is the one
- * signal that shows it, and `ledger-backfill` is what fills it. The count
- * search and the ledger fetch share one scope (externalPRScope: public, not
- * the user's own, no untracked organisations), so the two are comparable;
- * when that scope cannot be put in a query the count is undefined and the
- * check is skipped.
+ * Then compares the ledger with GitHub's all-time merged count (see
+ * checkLedgerCount).
  */
 export function storeMergedLedger(
   stateManager: Pick<StateManagerLike, 'addMergedPRs' | 'getMergedPRs'>,
-  input: {
+  input: StoreLedgerInput & {
     gap: MergedLedgerGap;
     recentlyMergedPRs: ReadonlyArray<MergedPR>;
-    /** Previous run's digest: best-effort first-response and review state for the new rows (#1461). */
-    previousDigest: DailyDigest | undefined;
-    /** GitHub's all-time merged count from the count search; undefined when unknown. */
-    allTimeCount: number | undefined;
-    warnings: DailyWarning[];
   },
 ): void {
   const { gap, previousDigest } = input;
   if (!gap || gap.truncated) return;
-
   const rows = [...input.recentlyMergedPRs, ...gap.prs].map((pr) => ({
-    url: pr.url,
-    title: pr.title,
+    ...ledgerFields(pr, previousDigest),
     mergedAt: pr.mergedAt,
-    openedAt: pr.openedAt,
-    firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
-    issueUrl: pr.issueUrl,
-    ...lastReviewStateFromDigest(previousDigest, pr.url),
   }));
   if (rows.length > 0) stateManager.addMergedPRs(rows);
+  checkLedgerCount('merged', stateManager.getMergedPRs().length, input.allTimeCount, input.warnings);
+}
 
-  // A ledger larger than the public total is expected while rows GitHub no
-  // longer lists (or private ones not yet evicted) remain; each such row can
-  // mask one missing public PR until it is gone.
-  const stored = stateManager.getMergedPRs().length;
-  const missing = (input.allTimeCount ?? 0) - stored;
-  if (missing > 0) {
-    input.warnings.push({
-      phase: 'analytics',
-      operation: 'check merged-PR ledger',
-      message:
-        `The merged-PR ledger holds ${stored} of the ${input.allTimeCount} merged PRs GitHub reports ` +
-        `(${missing} missing). Run \`ledger-backfill\` to fetch them.`,
-    });
-  }
+/**
+ * The closed-ledger mirror of {@link storeMergedLedger} (#1925): the gap
+ * plus the recent closed list, stored only when the gap was fetched whole,
+ * then checked against GitHub's all-time closed-without-merge count.
+ */
+export function storeClosedLedger(
+  stateManager: Pick<StateManagerLike, 'addClosedPRs' | 'getClosedPRs'>,
+  input: StoreLedgerInput & {
+    gap: ClosedLedgerGap;
+    recentlyClosedPRs: ReadonlyArray<ClosedPR>;
+  },
+): void {
+  const { gap, previousDigest } = input;
+  if (!gap || gap.truncated) return;
+  const rows = [...input.recentlyClosedPRs, ...gap.prs].map((pr) => ({
+    ...ledgerFields(pr, previousDigest),
+    closedAt: pr.closedAt,
+  }));
+  if (rows.length > 0) stateManager.addClosedPRs(rows);
+  checkLedgerCount('closed', stateManager.getClosedPRs().length, input.allTimeCount, input.warnings);
 }

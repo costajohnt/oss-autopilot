@@ -78,6 +78,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       evictClosedPRs: vi.fn(),
       evictExcludedRepos: vi.fn(() => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 })),
       getMergedPRWatermark: vi.fn(),
+      getClosedPRWatermark: vi.fn(),
       setLastStrategyAt: vi.fn(),
       save: vi.fn(),
       isPRShelved: vi.fn(() => false),

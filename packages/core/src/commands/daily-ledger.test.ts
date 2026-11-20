@@ -7,9 +7,15 @@ import type { Octokit } from '@octokit/rest';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchMergedPRsSince } from '../core/github-stats.js';
 import { StateManager } from '../core/state.js';
-import type { MergedPR } from '../core/types.js';
+import type { ClosedPR, MergedPR } from '../core/types.js';
 import type { DailyWarning } from '../formatters/json.js';
-import { applyRepoMetadata, fetchMergedLedgerGap, storeMergedLedger } from './daily-ledger.js';
+import {
+  applyRepoMetadata,
+  fetchClosedLedgerGap,
+  fetchMergedLedgerGap,
+  storeClosedLedger,
+  storeMergedLedger,
+} from './daily-ledger.js';
 
 // Calls through; wrapped only so a test can see which fetch daily goes to.
 vi.mock('../core/github-stats.js', async (importOriginal) => {
@@ -35,7 +41,8 @@ function searchItem(number: number, mergedAt: string) {
     created_at: mergedAt,
     updated_at: mergedAt,
     closed_at: mergedAt,
-    pull_request: { merged_at: mergedAt },
+    // `null` for a closed-without-merge item (closedItem).
+    pull_request: { merged_at: mergedAt as string | null },
   };
 }
 
@@ -205,6 +212,175 @@ describe('merged-ledger gap filling (#1924)', () => {
 
       expect(warnings).toEqual([]);
     });
+  });
+});
+
+/** A closed-without-merge search item. */
+function closedItem(number: number, closedAt: string) {
+  return { ...searchItem(number, closedAt), pull_request: { merged_at: null } };
+}
+
+/** One daily run's closed-ledger step: fetch the gap, then store it with the recent list. */
+async function runClosedLedgerStep(
+  sm: StateManager,
+  octokit: Octokit,
+  options: { recent?: ClosedPR[]; allTimeCount?: number } = {},
+): Promise<DailyWarning[]> {
+  const warnings: DailyWarning[] = [];
+  const gap = await fetchClosedLedgerGap(octokit, sm, warnings, options.allTimeCount);
+  storeClosedLedger(sm, {
+    gap,
+    warnings,
+    recentlyClosedPRs: options.recent ?? [],
+    previousDigest: undefined,
+    allTimeCount: options.allTimeCount,
+  });
+  return warnings;
+}
+
+describe('closed-ledger gap filling (#1925)', () => {
+  const olderCloses = [closedItem(1, daysAgo(400)), closedItem(2, daysAgo(90)), closedItem(3, daysAgo(30))];
+  const recentClose = closedItem(4, daysAgo(1));
+  /** `recentClose` as the seven-day list daily shows carries it. */
+  const recentRow: ClosedPR = { url: prUrl(4), repo: 'org/repo', number: 4, title: 'PR 4', closedAt: daysAgo(1) };
+  const closedUrls = (sm: StateManager) => sm.getClosedPRs().map((pr) => pr.url);
+  let sm: StateManager;
+  /** `count` stored closed rows, the newest closed 2 days ago. */
+  const seed = (count: number) =>
+    sm.addClosedPRs(
+      Array.from({ length: count }, (_, i) => ({
+        url: prUrl(100 + i),
+        title: `PR ${100 + i}`,
+        closedAt: daysAgo(2 + i / 100),
+      })),
+    );
+
+  beforeEach(() => {
+    sm = new StateManager(true);
+    sm.updateConfig({ githubUsername: 'me' });
+  });
+
+  it('a new install keeps its older closed history when daily seeds a recent close first', async () => {
+    const search = makeSearch([...olderCloses, recentClose]);
+
+    await runClosedLedgerStep(sm, search.octokit, { recent: [recentRow] });
+
+    expect(closedUrls(sm)).toEqual([prUrl(4), prUrl(3), prUrl(2), prUrl(1)]);
+    expect(queriesOf(search)).toEqual(['is:pr is:closed is:unmerged is:public author:me -user:me']);
+
+    // The next run starts one day before the newest close, not after it.
+    await runClosedLedgerStep(sm, search.octokit);
+    expect(queriesOf(search)[1]).toBe(
+      `is:pr is:closed is:unmerged is:public author:me -user:me updated:>${daysAgo(2)}`,
+    );
+  });
+
+  it('stores nothing, not even the recent close, and warns when the gap is truncated', async () => {
+    const search = makeSearch([...olderCloses, recentClose], 1001);
+
+    const warnings = await runClosedLedgerStep(sm, search.octokit, { recent: [recentRow] });
+
+    expect(closedUrls(sm)).toEqual([]);
+    expect(sm.getClosedPRWatermark()).toBeUndefined();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ phase: 'fetch', operation: 'fetch closed PRs for the ledger' });
+    expect(warnings[0].message).toContain('More than 1000 closed PRs');
+    expect(warnings[0].message).toContain('Run `ledger-backfill`');
+  });
+
+  it('keeps an existing watermark when the gap is truncated', async () => {
+    sm.addClosedPRs([{ url: prUrl(1), title: 'PR 1', closedAt: daysAgo(400) }]);
+    const search = makeSearch([...olderCloses, recentClose], 1001);
+
+    await runClosedLedgerStep(sm, search.octokit, { recent: [recentRow] });
+
+    expect(sm.getClosedPRWatermark()).toBe(daysAgo(400));
+  });
+
+  it('stores nothing when the gap fetch fails, then fills the whole history on the next run', async () => {
+    const search = makeSearch([...olderCloses, recentClose]);
+    search.issuesAndPullRequests.mockRejectedValueOnce(new Error('search down'));
+
+    const warnings = await runClosedLedgerStep(sm, search.octokit, { recent: [recentRow] });
+
+    expect(closedUrls(sm)).toEqual([]);
+    expect(warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch closed PRs for the ledger', message: 'search down' },
+    ]);
+
+    await runClosedLedgerStep(sm, search.octokit, { recent: [recentRow] });
+    expect(closedUrls(sm)).toEqual([prUrl(4), prUrl(3), prUrl(2), prUrl(1)]);
+  });
+
+  it('warns with the difference when the ledger is short of the all-time closed count', async () => {
+    const search = makeSearch(olderCloses);
+
+    const warnings = await runClosedLedgerStep(sm, search.octokit, { allTimeCount: 5 });
+
+    expect(warnings).toEqual([
+      {
+        phase: 'analytics',
+        operation: 'check closed-PR ledger',
+        message:
+          'The closed-PR ledger holds 3 of the 5 closed PRs GitHub reports (2 missing). ' +
+          'Run `ledger-backfill` to fetch them.',
+      },
+    ]);
+  });
+
+  describe('a ledger an older version left short (seeded ahead of its history)', () => {
+    const BASE = 'is:pr is:closed is:unmerged is:public author:me -user:me';
+    it('refetches the whole history while under the ceiling: 6 rows of 40', async () => {
+      seed(6);
+      const search = makeSearch(olderCloses);
+
+      const warnings = await runClosedLedgerStep(sm, search.octokit, { allTimeCount: 40 });
+
+      expect(queriesOf(search)).toEqual([BASE]);
+      expect(closedUrls(sm)).toEqual(expect.arrayContaining([prUrl(1), prUrl(2), prUrl(3)]));
+      expect(closedUrls(sm)).toHaveLength(9);
+      // Still short of 40 after the refetch, so the count warning stays.
+      expect(warnings).toEqual([expect.objectContaining({ operation: 'check closed-PR ledger' })]);
+    });
+
+    it('keeps the watermark and warns at the ceiling: 300 rows of 400', async () => {
+      seed(300);
+      const search = makeSearch(olderCloses);
+
+      const warnings = await runClosedLedgerStep(sm, search.octokit, { allTimeCount: 400 });
+
+      expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+      expect(closedUrls(sm)).toHaveLength(300);
+      expect(warnings).toEqual([
+        {
+          phase: 'analytics',
+          operation: 'check closed-PR ledger',
+          message:
+            'The closed-PR ledger holds 300 of the 400 closed PRs GitHub reports (100 missing). ' +
+            'Run `ledger-backfill` to fetch them.',
+        },
+      ]);
+    });
+
+    it('keeps the watermark when the count is unknown', async () => {
+      seed(6);
+      const search = makeSearch(olderCloses);
+
+      await runClosedLedgerStep(sm, search.octokit);
+
+      expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+    });
+  });
+
+  it('keeps untracked organisations out: the query carries the shared scope', async () => {
+    sm.updateConfig({ untrackedOrgs: ['acme'] });
+    const employer = { ...closedItem(9, daysAgo(3)), html_url: 'https://github.com/Acme/internal/pull/9' };
+    const search = makeSearch([employer, ...olderCloses]);
+
+    await runClosedLedgerStep(sm, search.octokit);
+
+    expect(queriesOf(search)[0]).toBe('is:pr is:closed is:unmerged is:public author:me -user:me -org:acme');
+    expect(closedUrls(sm)).toEqual([prUrl(3), prUrl(2), prUrl(1)]);
   });
 });
 

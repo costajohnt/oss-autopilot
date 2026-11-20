@@ -672,8 +672,34 @@ export const MERGED_LEDGER_TRUNCATED_MESSAGE =
   `More than ${LEDGER_GAP_MAX_RESULTS} merged PRs changed since the merged-PR ledger was last filled, ` +
   'so none were stored. Run `ledger-backfill` to fetch the full history.';
 
-/** What the dashboard reports when the closed-ledger fetch is truncated. */
-export const CLOSED_LEDGER_TRUNCATED_MESSAGE = `More than ${LEDGER_GAP_MAX_RESULTS} closed PRs changed since the closed-PR ledger was last filled, so none were stored.`;
+/** What the daily run and the dashboard report when a closed-ledger gap fetch is truncated. */
+export const CLOSED_LEDGER_TRUNCATED_MESSAGE =
+  `More than ${LEDGER_GAP_MAX_RESULTS} closed PRs changed since the closed-PR ledger was last filled, ` +
+  'so none were stored. Run `ledger-backfill` to fetch the full history.';
+
+/**
+ * A ledger with fewer rows than this that is short of GitHub's all-time count
+ * is refetched from the start (#1504, #1925): a recent row stored ahead of the
+ * history behind it would otherwise hide that history from every gap fetch.
+ * Past it a short ledger keeps its watermark, so a contributor whose count
+ * legitimately exceeds the ledger doesn't refetch everything on every run;
+ * the count warning and `ledger-backfill` cover that case.
+ */
+export const LEDGER_BACKFILL_CEILING = 300;
+
+/**
+ * The watermark a ledger gap fetch starts from: undefined (all time) when the
+ * ledger holds `stored` rows, fewer than `allTimeCount` and under
+ * {@link LEDGER_BACKFILL_CEILING}; otherwise `watermark`. An unknown count
+ * keeps the watermark.
+ */
+export function gapFetchWatermark(
+  watermark: string | undefined,
+  stored: number,
+  allTimeCount: number | undefined,
+): string | undefined {
+  return stored < (allTimeCount ?? 0) && stored < LEDGER_BACKFILL_CEILING ? undefined : watermark;
+}
 
 /** How far before the watermark a gap fetch starts: covers clock skew and search indexing lag. */
 const LEDGER_GAP_OVERLAP_MS = 24 * 60 * 60 * 1000;
@@ -858,36 +884,36 @@ export async function fetchMergedPRsSince(
   return fetchPRsSince(octokit, config, MERGED_ADAPTER, withLedgerOverlap(watermark), maxResults);
 }
 
+const CLOSED_ADAPTER: PRFetchAdapter<StoredClosedPR> = {
+  kind: 'closed',
+  dateNoun: 'close',
+  // `is:unmerged` leaves out merged PRs, which GitHub also counts as closed.
+  // Bounded on `updated` for the same reason as MERGED_ADAPTER: the close-date
+  // facet can be missing from the index (see fetchRecentPRs).
+  buildQuery: (scope, s) => `is:pr is:closed is:unmerged ${scope}` + (s ? ` updated:>${s}` : ''),
+  extractDate: (item) => item.closed_at || '',
+  buildRecord: (item, date) => ({
+    url: item.html_url,
+    title: item.title,
+    closedAt: date,
+    // Free on the search result — feeds the outcome ledger (#1461).
+    openedAt: item.created_at || undefined,
+    issueUrl: closingIssueUrl(item.body, item.html_url),
+  }),
+};
+
 /**
- * Fetch closed-without-merge PRs since a watermark date for incremental storage.
- * If no watermark is provided (first-ever fetch), fetches all closed PRs.
- * Returns StoredClosedPR rows (url, title, closedAt, openedAt) for state persistence.
- * Uses `is:unmerged` to exclude merged PRs (which are also "closed" in GitHub's model).
- * `truncated`, with no rows, when the search matches more than LEDGER_GAP_MAX_RESULTS.
+ * The closed-without-merge mirror of {@link fetchMergedPRsSince} (#1925),
+ * shared by the daily run, the dashboard and `ledger-backfill`: every closed
+ * PR updated since `watermark` (the ledger's newest `closedAt`) minus a
+ * one-day overlap, or all of them when there is no watermark. Same
+ * `truncated` contract: no rows, so the watermark does not move.
  */
 export async function fetchClosedPRsSince(
   octokit: Octokit,
   config: LedgerFetchConfig,
-  since?: string,
+  watermark?: string,
+  maxResults: number = LEDGER_GAP_MAX_RESULTS,
 ): Promise<PRsSinceResult<StoredClosedPR>> {
-  return fetchPRsSince<StoredClosedPR>(
-    octokit,
-    config,
-    {
-      kind: 'closed',
-      dateNoun: 'close',
-      buildQuery: (scope, s) => `is:pr is:closed is:unmerged ${scope}` + (s ? ` closed:>${s}` : ''),
-      extractDate: (item) => item.closed_at || '',
-      buildRecord: (item, date) => ({
-        url: item.html_url,
-        title: item.title,
-        closedAt: date,
-        // Free on the search result — feeds the outcome ledger (#1461).
-        openedAt: item.created_at || undefined,
-        issueUrl: closingIssueUrl(item.body, item.html_url),
-      }),
-    },
-    since,
-    LEDGER_GAP_MAX_RESULTS,
-  );
+  return fetchPRsSince(octokit, config, CLOSED_ADAPTER, withLedgerOverlap(watermark), maxResults);
 }
