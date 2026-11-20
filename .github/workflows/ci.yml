@@ -218,7 +218,7 @@ jobs:
         # Agents must declare specific MCP tools, never the wildcard. See
         # docs/agents-tool-rationale.md for rationale. mcp__* would grant access to every
         # MCP server on the user's machine (including cross-channel posting),
-        # bypassing the draft-review-post gate the global CLAUDE.md enforces.
+        # bypassing the approve-the-exact-draft gate every posting workflow uses.
         # Matches only `tools:` frontmatter lines so prose in an agent body
         # that discusses the pattern does not false-positive.
         run: |

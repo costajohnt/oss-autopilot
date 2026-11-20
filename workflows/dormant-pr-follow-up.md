@@ -84,12 +84,27 @@ For a close candidate, offer the close-with-offer-to-reopen draft by default ins
 - Avoid sycophancy ("Thanks so much for your time!") and formulaic openings.
 - Not re-ping previous comments verbatim — vary phrasing.
 - Never suggest AI attribution.
-- Route through the `draft-review-post` skill — **never post directly.** The skill saves the draft to a file and hands the user the `gh pr comment … --body-file` command to post themselves.
+- Be staged as a draft file and posted only after the user approves the exact text (section 5). **Never post without that approval.**
 
-## 5. After the Draft
+## 5. Stage, Approve, Post
 
-Tell the user:
-> "Draft saved. Review, edit if needed, then run the `gh` command the skill printed to post. I'm done for now."
+Follow "Draft Files" in `workflows/reference.md` (never under `/tmp`, never as a shell argument):
+
+1. Get a draft path (`<unix-ts>` from `date +%s`) and save the follow-up to the printed path **with the Write tool** (use the path literally and quoted):
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path <owner>--<repo>-<pr-number>-followup-<unix-ts>.md
+   ```
+2. Read it back once:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
+   ```
+   Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval of that exact text. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+3. Only after the user explicitly approves, post it:
+   ```bash
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {url} --body-file "<draft-path>" --expect-sha256 <sha256> --json
+   ```
+   If it returns `{ success: false }`, show the `error` field and keep the draft; a hash mismatch means the file changed since the user saw it, so go back to step 2.
+4. On `success: true`, delete the draft (`rm -- "<draft-path>"`). Delete it too when the user decides not to post. For a close candidate, remind the user that closing the PR is theirs to do (`gh pr close <url>`).
 
 Return to the router.
 
@@ -99,13 +114,13 @@ Per the skill: **only one follow-up per timeframe.** If `daysSinceActivity < 7` 
 
 ## Scope / Out-of-Scope
 
-**In scope:** surfacing dormant PRs, drafting one polite follow-up per user-initiated run, routing through `draft-review-post`.
+**In scope:** surfacing dormant PRs, drafting one polite follow-up per user-initiated run, posting it once the user approves the exact text.
 
 **Out of scope:** auto-posting, automatic scheduling, closing PRs on the user's behalf, follow-up composition for PRs whose status is `needs_addressing` (that's the main `/oss` flow).
 
 ## Cross-references
 
 - Policy: `skills/pr-etiquette/SKILL.md` §"Following Up on Dormant PRs".
-- Draft/post protocol: `draft-review-post` skill (mandatory for any externally-visible comment).
+- Draft/post protocol: "Draft Files" in `workflows/reference.md` (mandatory for any externally-visible comment).
 - Router: `commands/oss.md`.
 - Menu integration: `workflows/action-menu.md`.
