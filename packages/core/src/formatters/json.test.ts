@@ -30,6 +30,8 @@ import {
   MoveOutputSchema,
   PRTemplateOutputSchema,
   ParseIssueListOutputSchema,
+  CheckIntegrationOutputSchema,
+  DetectFormattersOutputSchema,
   LocalReposOutputSchema,
   toCompactDailyOutput,
   toCompactStartupOutput,
@@ -802,6 +804,27 @@ describe('Misc command schemas (#1155)', () => {
       blockedCount: 0,
     };
     expect(formatJson(ParseIssueListOutputSchema, data).success).toBe(true);
+  });
+
+  it('CheckIntegrationOutputSchema round-trip', () => {
+    expect(formatJson(CheckIntegrationOutputSchema, { newFiles: [], unreferencedCount: 0 }).success).toBe(true);
+  });
+
+  it('DetectFormattersOutputSchema round-trip with formatters', () => {
+    const data = {
+      formatters: [
+        {
+          name: 'prettier' as const,
+          configPath: '.prettierrc',
+          fixCommand: 'npx prettier --write .',
+          checkCommand: 'npx prettier --check .',
+          supportsFileArgs: true,
+        },
+      ],
+      packageJsonScripts: [{ name: 'lint', command: 'eslint .' }],
+      repoPath: '/repo',
+    };
+    expect(formatJson(DetectFormattersOutputSchema, data).success).toBe(true);
   });
 
   it('LocalReposOutputSchema round-trip', () => {

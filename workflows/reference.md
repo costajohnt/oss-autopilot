@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `dismiss`, `doctor`, `draft`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `parse-issue-list`, `pr-preflight`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
+Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `draft`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `pr-preflight`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow

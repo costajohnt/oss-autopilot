@@ -15,6 +15,7 @@ import type {
   RepoSignals,
   TrackedIssue,
   IssueVettingResult,
+  IssueScope,
   DiffTool,
   AgentConfig,
   AgentState,
@@ -516,6 +517,24 @@ export const PROJECT_CATEGORIES = ProjectCategorySchema.options;
 export const ISSUE_SCOPES = IssueScopeSchema.options;
 
 export const DIFF_TOOLS: readonly DiffTool[] = DiffToolSchema.options;
+
+/** @deprecated Since #1948; nothing reads it. Will be removed in the next major version. */
+export const SCOPE_LABELS: Record<IssueScope, string[]> = {
+  beginner: ['good first issue', 'help wanted', 'easy', 'up-for-grabs', 'first-timers-only', 'beginner'],
+  intermediate: ['enhancement', 'feature', 'feature-request', 'contributions welcome'],
+  advanced: ['proposal', 'RFC', 'accepted', 'design'],
+};
+
+/**
+ * Shape of the retired `analyzedIssueConversations` state entries.
+ *
+ * @deprecated Since #1948; the state field is no longer read or written. Will be removed in the next major version.
+ */
+export interface AnalyzedIssueConversation {
+  url: string;
+  repo: string;
+  analyzedAt: string;
+}
 
 // ── Issue discovery types (used by formatters and test utilities) ──
 

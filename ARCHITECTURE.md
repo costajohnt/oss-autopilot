@@ -90,7 +90,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 24 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 26 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 

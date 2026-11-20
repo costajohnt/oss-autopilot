@@ -69,6 +69,8 @@ const SCHEMAS = new Map<string, ZodType>(
     'repo-vet': json.RepoVetOutputSchema,
     'compliance-score': json.ComplianceScoreOutputSchema,
     'parse-issue-list': json.ParseIssueListOutputSchema,
+    'orphan-files': json.CheckIntegrationOutputSchema,
+    'detect-formatters': json.DetectFormattersOutputSchema,
     'local-repos': json.LocalReposOutputSchema,
     'overnight report': json.OvernightReportOutputSchema,
     'overnight push-prep': json.OvernightPushPrepOutputSchema,

@@ -59,6 +59,8 @@ vi.mock('./formatters/json.js', () => ({
   RepoCapStatusSchema: { name: 'RepoCapStatusSchema' },
   PrPreflightOutputSchema: { name: 'PrPreflightOutputSchema' },
   ParseIssueListOutputSchema: { name: 'ParseIssueListOutputSchema' },
+  CheckIntegrationOutputSchema: { name: 'CheckIntegrationOutputSchema' },
+  DetectFormattersOutputSchema: { name: 'DetectFormattersOutputSchema' },
   LocalReposOutputSchema: { name: 'LocalReposOutputSchema' },
   OvernightPushPrepOutputSchema: { name: 'OvernightPushPrepOutputSchema' },
   OvernightReportOutputSchema: { name: 'OvernightReportOutputSchema' },
@@ -197,6 +199,9 @@ vi.mock('./commands/setup.js', () => ({ runSetup: mockRunSetup, runCheckSetup: m
 const mockRunParseList = vi.fn();
 vi.mock('./commands/parse-list.js', () => ({ runParseList: mockRunParseList }));
 
+const mockRunCheckIntegration = vi.fn();
+vi.mock('./commands/check-integration.js', () => ({ runCheckIntegration: mockRunCheckIntegration }));
+
 const mockRunDoctor = vi.fn();
 vi.mock('./commands/doctor.js', () => ({ runDoctor: mockRunDoctor }));
 
@@ -220,6 +225,9 @@ vi.mock('./commands/pr-template.js', () => ({ runPRTemplate: mockRunPRTemplate }
 
 const mockRunRepoVet = vi.fn();
 vi.mock('./commands/repo-vet.js', () => ({ runRepoVet: mockRunRepoVet }));
+
+const mockRunDetectFormatters = vi.fn();
+vi.mock('./commands/detect-formatters.js', () => ({ runDetectFormatters: mockRunDetectFormatters }));
 
 const mockRunLedgerBackfill = vi.fn();
 vi.mock('./commands/ledger-backfill.js', () => ({ runLedgerBackfill: mockRunLedgerBackfill }));
@@ -279,8 +287,10 @@ import {
   outputJson,
   outputJsonError,
   outputJsonValidated,
+  CheckIntegrationOutputSchema,
   CheckSetupOutputSchema,
   ConfigCommandOutputSchema,
+  DetectFormattersOutputSchema,
   DoctorOutputSchema,
   FeaturesOutputSchema,
   InitOutputSchema,
@@ -2156,7 +2166,7 @@ describe('checkSetup command', () => {
   });
 });
 
-// ─── parse-issue-list / doctor commands (#1586) ──────────────
+// ─── parse-issue-list / orphan-files / doctor commands (#1586) ──────────────
 
 describe('parse-issue-list command', () => {
   const item = { tier: 'pursue', repo: 'octo/alpha', number: 1, title: 'T' };
@@ -2192,6 +2202,51 @@ describe('parse-issue-list command', () => {
     await buildProgram('parse-issue-list').parseAsync(['node', 'cli', 'parse-issue-list', '/tmp/list.md', '--json']);
 
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(ParseIssueListOutputSchema, data);
+  });
+});
+
+describe('orphan-files command', () => {
+  it('prints the no-new-files note', async () => {
+    mockRunCheckIntegration.mockResolvedValue({ newFiles: [], unreferencedCount: 0 });
+
+    await buildProgram('orphan-files').parseAsync(['node', 'cli', 'orphan-files']);
+
+    expect(mockRunCheckIntegration).toHaveBeenCalledWith({ base: 'main' });
+    expect(consoleLogSpy).toHaveBeenCalledWith('\nNo new code files to check.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Warning: `orphan-files` is deprecated and will be removed in the next major version.',
+    );
+  });
+
+  it('--json routes through outputJsonValidated', async () => {
+    const data = { newFiles: [], unreferencedCount: 0 };
+    mockRunCheckIntegration.mockResolvedValue(data);
+
+    await buildProgram('orphan-files').parseAsync(['node', 'cli', 'orphan-files', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(CheckIntegrationOutputSchema, data);
+  });
+
+  it('renders integrated and orphaned files under the check-integration alias', async () => {
+    mockRunCheckIntegration.mockResolvedValue({
+      newFiles: [
+        { path: 'src/a.ts', isIntegrated: true, referencedBy: ['src/index.ts'] },
+        { path: 'src/b.ts', isIntegrated: false, referencedBy: [], suggestedEntryPoints: ['src/cli.ts'] },
+      ],
+      unreferencedCount: 1,
+    });
+
+    await buildProgram('orphan-files').parseAsync(['node', 'cli', 'check-integration', '--base', 'develop']);
+
+    expect(mockRunCheckIntegration).toHaveBeenCalledWith({ base: 'develop' });
+    const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+    expect(out).toContain('Integration Check (base: develop)');
+    expect(out).toContain('New files: 2 | Unreferenced: 1');
+    expect(out).toContain('✅ src/a.ts');
+    expect(out).toContain('Referenced by: src/index.ts');
+    expect(out).toContain('⚠️ src/b.ts');
+    expect(out).toContain('Not referenced by any file');
+    expect(out).toContain('Suggested entry points: src/cli.ts');
   });
 });
 
@@ -2309,7 +2364,7 @@ describe('startup command', () => {
   });
 });
 
-// ─── pr-template / repo-vet commands (#1586) ────────────
+// ─── pr-template / repo-vet / detect-formatters commands (#1586) ────────────
 
 describe('pr-template command', () => {
   it('prints the template, the warning, or the not-found note', async () => {
@@ -2519,6 +2574,75 @@ describe('repo-vet command', () => {
     await buildProgram('repo-vet').parseAsync(['node', 'cli', 'repo-vet', 'octo/alpha', '--json']);
 
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(RepoVetOutputSchema, base);
+  });
+});
+
+describe('detect-formatters command', () => {
+  it('prints the no-formatters note', async () => {
+    mockRunDetectFormatters.mockResolvedValue({ formatters: [], packageJsonScripts: [] });
+
+    await buildProgram('detect-formatters').parseAsync(['node', 'cli', 'detect-formatters']);
+
+    expect(mockRunDetectFormatters).toHaveBeenCalledWith({ repoPath: undefined, ciLog: undefined });
+    expect(consoleLogSpy).toHaveBeenCalledWith('\nNo formatters detected.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Warning: `detect-formatters` is deprecated and will be removed in the next major version.',
+    );
+  });
+
+  it('renders formatters, scripts, and a positive CI diagnosis', async () => {
+    mockRunDetectFormatters.mockResolvedValue({
+      formatters: [
+        { name: 'prettier', configPath: '.prettierrc', fixCommand: 'prettier -w .', checkCommand: 'prettier -c .' },
+      ],
+      packageJsonScripts: [{ name: 'lint', command: 'eslint .' }],
+      ciDiagnosis: {
+        isFormattingFailure: true,
+        formatter: 'prettier',
+        fixCommand: 'prettier -w .',
+        evidence: ['Code style issues'],
+      },
+    });
+
+    await buildProgram('detect-formatters').parseAsync([
+      'node',
+      'cli',
+      'detect-formatters',
+      '/repo',
+      '--ci-log',
+      '/tmp/ci.log',
+    ]);
+
+    expect(mockRunDetectFormatters).toHaveBeenCalledWith({ repoPath: '/repo', ciLog: '/tmp/ci.log' });
+    const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+    expect(out).toContain('Detected 1 formatter(s):');
+    expect(out).toContain('prettier (.prettierrc)');
+    expect(out).toContain('Fix:   prettier -w .');
+    expect(out).toContain('Check: prettier -c .');
+    expect(out).toContain('lint: eslint .');
+    expect(out).toContain('CI Diagnosis: Formatting failure detected (prettier)');
+    expect(out).toContain('Evidence: Code style issues');
+  });
+
+  it('prints the negative CI diagnosis', async () => {
+    mockRunDetectFormatters.mockResolvedValue({
+      formatters: [],
+      packageJsonScripts: [],
+      ciDiagnosis: { isFormattingFailure: false },
+    });
+
+    await buildProgram('detect-formatters').parseAsync(['node', 'cli', 'detect-formatters', '--ci-log', '/tmp/ci.log']);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('CI Diagnosis: No formatting failure detected.');
+  });
+
+  it('--json routes through outputJsonValidated', async () => {
+    const data = { formatters: [], packageJsonScripts: [] };
+    mockRunDetectFormatters.mockResolvedValue(data);
+
+    await buildProgram('detect-formatters').parseAsync(['node', 'cli', 'detect-formatters', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(DetectFormattersOutputSchema, data);
   });
 });
 

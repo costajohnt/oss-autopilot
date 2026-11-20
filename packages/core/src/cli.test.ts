@@ -103,9 +103,11 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'checkSetup',
     'serve',
     'parse-issue-list',
+    'orphan-files',
     'doctor',
     'cleanup',
     'pr-preflight',
+    'detect-formatters',
     'local-repos',
     'startup',
     'move',
@@ -412,8 +414,10 @@ describe('Command registration', () => {
       'checkSetup',
       'serve',
       'parse-issue-list',
+      'orphan-files',
       'doctor',
       'cleanup',
+      'detect-formatters',
       'local-repos',
       'startup',
       'move',
@@ -677,6 +681,14 @@ describe('CLI argument parsing', () => {
     const portOpt = cmd!.options.find((o) => o.long === '--port');
     expect(portOpt).toBeDefined();
     expect(portOpt!.defaultValue).toBe('3000');
+  });
+
+  it('orphan-files has --base option defaulting to "main"', () => {
+    const cmd = findCmd('orphan-files');
+    expect(cmd).toBeDefined();
+    const baseOpt = cmd!.options.find((o) => o.long === '--base');
+    expect(baseOpt).toBeDefined();
+    expect(baseOpt!.defaultValue).toBe('main');
   });
 });
 
