@@ -11,6 +11,7 @@ import {
   maybeCheckpoint,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
+import { setMachinePath } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
 import {
   PROJECT_CATEGORIES,
@@ -215,7 +216,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'skippedIssuesPath': {
-            stateManager.updateConfig({ skippedIssuesPath: value || undefined });
+            setMachinePath('skippedIssuesPath', value || undefined);
             results[key] = value || '(cleared)';
             break;
           }
@@ -406,7 +407,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'issueListPath': {
-            stateManager.updateConfig({ issueListPath: value || undefined });
+            setMachinePath('issueListPath', value || undefined);
             results[key] = value || '(cleared)';
             break;
           }

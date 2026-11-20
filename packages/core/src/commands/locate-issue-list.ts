@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getStateManager } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { getMachinePath, setMachinePath } from '../core/local-config.js';
 import { warn } from '../core/logger.js';
 
 /**
@@ -33,8 +34,9 @@ export interface IssueListLocation {
 }
 
 /**
- * Persist an absolute list/skip path back to state config, but only when it
- * differs from what's stored (avoid an autoSave on every run). Upgrading a
+ * Persist an absolute list/skip path for this machine (the local settings
+ * file, never the synced config: #1950), but only when it differs from the
+ * value in effect (avoid a write on every run). Upgrading a
  * relative/auto-detected value to absolute makes the location stick across
  * working directories, so `/oss` invoked from anywhere keeps finding the list
  * and skip file instead of silently no-opping the vet/skip/list-maintenance
@@ -43,9 +45,8 @@ export interface IssueListLocation {
  */
 export function persistConfigPath(key: 'issueListPath' | 'skippedIssuesPath', absolutePath: string): void {
   try {
-    const stateManager = getStateManager();
-    if (stateManager.getState().config[key] !== absolutePath) {
-      stateManager.updateConfig({ [key]: absolutePath });
+    if (getMachinePath(key, getStateManager().getState().config) !== absolutePath) {
+      setMachinePath(key, absolutePath);
     }
   } catch (error) {
     // Best-effort — the current run still uses the resolved path; the next run
@@ -72,8 +73,7 @@ export function detectIssueListPath(): IssueListLocation | undefined {
 
   // 1. Check state.json config (primary)
   try {
-    const stateManager = getStateManager();
-    const configuredPath = stateManager.getState().config.issueListPath;
+    const configuredPath = getMachinePath('issueListPath', getStateManager().getState().config);
     if (configuredPath) {
       // Resolve a relative configured value against CWD to an absolute path so
       // the location is stable no matter where `/oss` runs (#1577).

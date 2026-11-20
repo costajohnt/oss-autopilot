@@ -19,6 +19,7 @@ import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.
 import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
 import { detectIssueListPath, persistConfigPath } from './locate-issue-list.js';
+import { getMachinePath, setMachinePath } from '../core/local-config.js';
 import { overnightFreshness } from './overnight.js';
 
 // Path detection moved to locate-issue-list.ts (#1463) so the daily
@@ -83,8 +84,7 @@ export function detectIssueList(): IssueListInfo | undefined {
   // unrelated working directory. A multi-segment relative that doesn't resolve
   // here safely falls through to the list-dir default probe below.
   try {
-    const stateManager = getStateManager();
-    const configuredSkipPath = stateManager.getState().config.skippedIssuesPath;
+    const configuredSkipPath = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
     if (configuredSkipPath) {
       const resolvedSkip = path.isAbsolute(configuredSkipPath)
         ? configuredSkipPath
@@ -113,13 +113,12 @@ export function detectIssueList(): IssueListInfo | undefined {
     if (fs.existsSync(defaultSkipPath)) {
       skippedIssuesPath = defaultSkipPath;
       try {
-        const stateManager = getStateManager();
-        // Only write when config actually doesn't have one — re-running
-        // startup shouldn't trigger an autoSave on every run if the
-        // value is already there.
-        const current = stateManager.getState().config.skippedIssuesPath;
+        // Only write when no path is configured: re-running startup
+        // shouldn't rewrite the value on every run if it is already there.
+        // The write goes to this machine's local settings (#1950).
+        const current = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
         if (!current) {
-          stateManager.updateConfig({ skippedIssuesPath: defaultSkipPath });
+          setMachinePath('skippedIssuesPath', defaultSkipPath);
         }
       } catch (err) {
         // Persistence is best-effort — startup still surfaces the path

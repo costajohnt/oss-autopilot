@@ -165,6 +165,8 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issue
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
 
+This path and the skipped-issues path below are saved for this machine only (`~/.oss-autopilot/local-config.json`). They are not part of Gist sync, so set them once on each machine.
+
 ### Skipped Issues File
 
 If the user configured an issue list path, ask:

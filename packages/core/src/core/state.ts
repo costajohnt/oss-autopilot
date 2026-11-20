@@ -11,7 +11,6 @@ import {
   RepoScore,
   RepoScoreUpdate,
   DailyDigest,
-  LocalRepoCache,
   StatusOverride,
   FetchedPRStatus,
   StoredMergedPR,
@@ -870,11 +869,12 @@ export class StateManager {
   }
 
   /**
-   * Update the local repository cache.
-   * @param cache - Local repository cache mapping repo names to paths
+   * Drop the synced copy of the local repository cache. The cache is
+   * per-machine and lives in `local-config.json` (#1950).
    */
-  setLocalRepoCache(cache: LocalRepoCache): void {
-    this.state.localRepoCache = cache;
+  clearSyncedLocalRepoCache(): void {
+    if (this.state.localRepoCache === undefined) return;
+    delete this.state.localRepoCache;
     this.autoSave();
   }
 

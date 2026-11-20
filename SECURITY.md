@@ -39,7 +39,8 @@ All GitHub URLs and identifiers are validated before use.
 All data lives under `~/.oss-autopilot/`.
 
 - **Directory permissions:** `0o700` (owner-only) for the data directory, backup directory, and cache directory.
-- **File permissions:** `0o600` (owner-only) for `state.json` and HTTP cache entries.
+- **File permissions:** `0o600` (owner-only) for `state.json`, `local-config.json` and HTTP cache entries.
+- **Local paths stay local.** The curated list path, the skipped-issues path and the local repository cache are kept in `local-config.json`, which is never sent to the sync Gist.
 - **Atomic writes:** State files are written to a `.tmp` file first, then atomically renamed via `fs.renameSync`. This prevents corruption from crashes or concurrent access.
 - **Advisory file locks:** State writes acquire an exclusive lock (`{ flag: 'wx' }`) with PID tracking. Stale locks (>30 seconds) are automatically cleaned up.
 - **No credentials in state.** `state.json` contains only PR metadata (titles, URLs, status, labels). Dashboard HTML is generated locally and HTML-escaped to prevent XSS from untrusted GitHub API data.

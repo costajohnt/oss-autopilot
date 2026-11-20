@@ -248,7 +248,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `includeDocIssues` | `true` | Include documentation issues in search |
 | `complexIssues` | `off` | `warm` relaxes issue vetting in repos where you already have a merged PR, so larger and maintainer-filed issues surface there |
 | `autoExtractLearnings` | `true` | After a PR merges, extract what the maintainers asked for into per-repo guidelines |
-| `issueListPath` | (none) | Path to your own curated issue list |
+| `issueListPath` | (none) | Path to your own curated issue list (set per machine, not synced) |
 | `projectCategories` | `[]` | Categories to prioritize (nonprofit, devtools, and so on) |
 | `preferredOrgs` | `[]` | Orgs to prioritize |
 

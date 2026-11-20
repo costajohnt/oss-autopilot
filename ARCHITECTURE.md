@@ -232,6 +232,7 @@ ETag-based caching for GitHub API responses:
 | `repo-score-manager.ts` | Repository score tracking with TTL-based staleness |
 | `gist-state-store.ts` | Gist-based persistence layer for cross-machine state sync |
 | `machine-id.ts` | `getMachineId` — the random UUID in `~/.oss-autopilot/machine-id` (local only) that tells work claims which machine a worktree path is on (#1856) |
+| `local-config.ts` | `getMachinePath` / `setMachinePath` / `getMachineRepoCache` — per-machine settings in `~/.oss-autopilot/local-config.json` (local only): the curated list path, the skipped-issues path and the local repo cache (#1950) |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
 | `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
@@ -297,7 +298,7 @@ interface AgentState {
   monthlyMergedCounts?: Record<string, number>;
   monthlyClosedCounts?: Record<string, number>;
   monthlyOpenedCounts?: Record<string, number>;
-  localRepoCache?: LocalRepoCache;
+  localRepoCache?: LocalRepoCache;  // Legacy: read once for adoption, never written (see Per-Machine Settings)
   mergedPRs?: StoredMergedPR[];     // Stored merged PR records
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
   analyzedIssueConversations?: AnalyzedIssueConversation[];
@@ -319,6 +320,21 @@ Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 - `config.dismissedIssues: Record<string, string>` — Issue URLs (and, since #1861 / #1857, PR URLs for merged-PR notes and review follow-ups) mapped to dismiss timestamps
 - `config.dismissedPRHeads: Record<string, string>` — PR URLs mapped to the head SHA recorded by `dismiss <pr-url> --head <sha>` (#1857); a review follow-up with a recorded head stays hidden until the head changes or a qualifying comment lands after the stamp. Cleared by `undismiss` or a dismiss without `--head`
 
+### Per-Machine Settings (`~/.oss-autopilot/local-config.json`)
+
+With Gist sync, `state.json` is one document shared by every machine, so a filesystem path stored in it is replaced by whichever machine wrote last. Three values are per-machine and live in `local-config.json`, which no sync path reads or writes (#1950):
+
+- `issueListPath` and `skippedIssuesPath` — read through `getMachinePath(key, state.config)` in `core/local-config.ts`. `setup --set`, `config` and auto-detection write the local file only.
+- `localRepoCache` — read through `getMachineRepoCache`. Entries whose checkout is gone are dropped on every read; the file is rewritten by the next `local-repos --scan`.
+
+The synced keys (`config.issueListPath`, `config.skippedIssuesPath`, `localRepoCache`) stay in the schema for clients that have not upgraded, and are only a fallback:
+
+- No local value: the synced value is used as before. If it is an absolute path that exists on this machine it is copied into the local file (it was most likely set here); if it does not exist it is not adopted, and the command behaves as it always has for a configured path that is missing.
+- A local value, including an explicit clear, always wins over the synced one.
+- New clients never write the two synced path keys and leave existing values in place. A fresh `local-repos --scan` removes the synced `localRepoCache` (a regenerable cache that only adds to the Gist's size).
+
+Until every machine runs a release with this change, an older client can still overwrite the synced keys; a machine that already holds local values is unaffected.
+
 ### What's NOT Stored (v2 Design)
 
 PRs are **not** stored in state. On every `daily` run, all open PRs are fetched fresh from GitHub's Search API. This eliminates stale-state bugs — the only source of truth for PR status is GitHub itself.
@@ -332,6 +348,7 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 ├── cache/                # ETag-based HTTP response cache
 ├── gist-id               # Gist ID for cross-machine state sync (opt-in)
 ├── machine-id            # Random UUID identifying this machine on work claims (local only, never synced)
+├── local-config.json     # Per-machine paths and local repo cache (local only, never synced)
 ├── state-cache.json      # Local cache of gist state for offline access
 └── dashboard-server.pid  # Running dashboard server PID + port
 ```

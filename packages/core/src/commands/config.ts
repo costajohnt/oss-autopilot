@@ -12,6 +12,7 @@ import {
   type StateManager,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
+import { setMachinePath } from '../core/local-config.js';
 import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
@@ -222,7 +223,7 @@ function applyConfigKey(stateManager: StateManager, key: string, value: string):
       break;
     }
     case 'issueListPath': {
-      stateManager.updateConfig({ issueListPath: value || undefined });
+      setMachinePath('issueListPath', value || undefined);
       break;
     }
     case 'diffTool': {

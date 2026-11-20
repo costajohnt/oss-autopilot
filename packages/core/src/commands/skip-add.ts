@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { getStateManager } from '../core/index.js';
+import { getMachinePath } from '../core/local-config.js';
 
 // Keep in sync with GITHUB_URL_RE in skip-file-parser.ts. Captures are kept
 // (despite being unused here) so the regex stays byte-identical to the parser
@@ -41,7 +42,7 @@ function formatUtcDate(d: Date): string {
  * @throws when no path can be resolved or the URL isn't a GitHub issue/PR URL.
  */
 export function runSkipAdd(options: SkipAddOptions): SkipAddOutput {
-  const skipFilePath = options.skipFilePath ?? getStateManager().getState().config.skippedIssuesPath;
+  const skipFilePath = options.skipFilePath ?? getMachinePath('skippedIssuesPath', getStateManager().getState().config);
 
   if (!skipFilePath) {
     throw new Error(

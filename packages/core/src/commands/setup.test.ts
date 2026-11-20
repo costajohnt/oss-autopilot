@@ -16,6 +16,9 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
+const { setMachinePathSpy } = vi.hoisted(() => ({ setMachinePathSpy: vi.fn() }));
+vi.mock('../core/local-config.js', () => ({ setMachinePath: setMachinePathSpy }));
+
 vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
 }));
@@ -353,14 +356,15 @@ describe('runSetup', () => {
   it('should set skippedIssuesPath', async () => {
     const result = (await runSetup({ set: ['skippedIssuesPath=/tmp/skip.txt'] })) as SetupSetOutput;
 
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: '/tmp/skip.txt' });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', '/tmp/skip.txt');
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
     expect(result.settings).toMatchObject({ skippedIssuesPath: '/tmp/skip.txt' });
   });
 
   it('should clear skippedIssuesPath when value is empty', async () => {
     const result = (await runSetup({ set: ['skippedIssuesPath='] })) as SetupSetOutput;
 
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: undefined });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', undefined);
     expect(result.settings).toMatchObject({ skippedIssuesPath: '(cleared)' });
   });
 
