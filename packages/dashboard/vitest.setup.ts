@@ -2,7 +2,15 @@
  * Vitest setup for dashboard tests.
  * Provides canvas mock and matchMedia stub needed in jsdom environment.
  */
-import { vi } from 'vitest';
+import { afterAll, vi } from 'vitest';
+
+// Preact schedules effect flushes with a 35 ms timer whose callback calls
+// cancelAnimationFrame. If a test file finishes inside that window, the timer
+// fires after vitest has removed the jsdom globals and the run fails with
+// "ReferenceError: cancelAnimationFrame is not defined" although every test
+// passed (seen on slow CI runners). Wait out the window before teardown: the
+// pending timer was scheduled first, so it always fires before this one.
+afterAll(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
 
 HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
 
