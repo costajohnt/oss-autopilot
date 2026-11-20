@@ -7,16 +7,21 @@
  * guard was a convention tested per call site; this test fails when a new
  * write is added without it.
  *
- * A write counts as guarded when `assertAttended(` appears between the start
- * of its enclosing top-level declaration and the write itself. A write in a
- * helper whose callers hold the guard therefore fails here: guard the helper
- * too, or allowlist it with the reason.
+ * A write counts as guarded only when `assertAttended(...)` is a direct body
+ * statement (two-space indent) of the top-level function that contains the
+ * write, before the write. A guard in a caller, a sibling handler, a class
+ * method, a branch or a nested closure does not count: guard the containing
+ * function, or allowlist the write with the reason.
  *
  * Limit: this is a regex scan over source text, not an AST or a call graph. It
  * misses a client that is neither named `*octokit` nor called with a
- * create/update/delete-style method, a destructured method, a `gh` or
- * `git push` built from non-literal arguments or run through a helper in a
- * file that does not import `child_process`, and writes made by dependencies.
+ * create/update/delete-style method, a destructured method, computed member
+ * access, a route or method held in a variable (including `{ method }`
+ * shorthand), `octokit.paginate('POST ...')`, a `gh` or `git push` built from
+ * non-literal arguments, a shell-string `exec`, and writes made by dependencies.
+ *
+ * `packages/dashboard` is not scanned: it is a browser SPA with no GitHub
+ * client; its POSTs go to the local dashboard server, whose handlers are in core.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -29,10 +34,11 @@ const SCAN_ROOTS = ['core/src', 'mcp-server/src'];
 /** Unguarded on purpose. Key: `<file> <call>`, value: why it may run unattended. */
 const ALLOWED: Record<string, string> = {
   'core/src/core/gist-state-store.ts gists.update':
-    "state sync to the user's own private Gist; the overnight run records its results through it",
+    "state sync to the user's own state Gist (created private); the overnight run records its results through it",
   'core/src/core/gist-state-store.ts gists.create':
     "creates the user's own private state Gist on first use; state sync, not a contribution",
   'core/src/commands/startup.ts method POST': 'POST to the local dashboard server (/api/refresh), not to GitHub',
+  'core/src/core/merged-pr-notes.ts git push': "not a process argument: 'push' is an entry in a word list",
   'core/src/core/auth.ts gh auth token': 'read-only: reads the local gh token',
   'core/src/core/auth.ts gh api user --jq .login': 'read-only: GET /user',
   'core/src/commands/doctor.ts gh --version': 'read-only: local version check',
@@ -42,42 +48,41 @@ const ALLOWED: Record<string, string> = {
 interface Detector {
   re: RegExp;
   /** The call's name, or null when the match is not a write. */
-  call: (match: RegExpExecArray, source: string) => string | null;
+  call: (match: RegExpExecArray) => string | null;
 }
 
 /** `<namespace>.<method>` calls that only read. */
-const READ_CALL = /^(?:(?:search|rateLimit|paginate)\.|\w+\.(?:get|list|check|compare|download))/;
+const READ_CALL = /^(?:(?:search|rateLimit|paginate|log|hook|auth)\.|\w+\.(?:get|list|check|compare|download))/;
 const WRITE_NAMESPACES = new Set(
   'issues pulls repos git gists reactions activity actions checks orgs teams users'.split(' '),
 );
 const callName = (m: RegExpExecArray): string => `${m[1]}.${m[2]}`;
 
 const DETECTORS: Detector[] = [
-  // Octokit REST on a client named *octokit: anything that is not a read.
+  // Octokit REST on a client named *octokit or built by getOctokit(...): anything that is not a read.
   {
-    re: /octokit\??\.(?:rest\.)?(\w+)\.(\w+)\(/gi,
+    re: /octokit(?:\([^)]*\))?\??\.(?:rest\.)?(\w+)\.(\w+)\(/gi,
     call: (m) => (READ_CALL.test(callName(m)) ? null : callName(m)),
   },
-  // Octokit REST on any other receiver: recognizable mutator names only.
+  // Octokit REST on any other receiver: mutator verbs on the known namespaces.
   {
-    re: /\.(\w+)\.((?:create|update|delete|add|remove|merge|set|replace|dismiss|submit|request|lock|unlock)[A-Z]\w*)\(/g,
+    re: /\.(\w+)\.((?:create|update|delete|add|remove|merge|set|replace|dismiss|submit|request|lock|unlock)(?:[A-Z]\w*)?)\(/g,
     call: (m) => (WRITE_NAMESPACES.has(m[1]) ? callName(m) : null),
   },
-  { re: /[`'"]\s*mutation\b/g, call: () => 'graphql mutation' },
-  { re: /\.request\(\s*[`'"](POST|PUT|PATCH|DELETE)\b/g, call: (m) => `request ${m[1]}` },
-  { re: /method:\s*[`'"](POST|PUT|PATCH|DELETE)\b/g, call: (m) => `method ${m[1]}` },
-  // Pushes: a literal 'push' argument in a file that can spawn processes.
-  {
-    re: /[`'"]push[`'"]|[`'"]git\s+push\b/g,
-    call: (_m, source) => (source.includes('child_process') ? 'git push' : null),
-  },
+  { re: /[`'"]\s*mutation(?:\s+\w+)?\s*[({]/g, call: () => 'graphql mutation' },
+  { re: /\.request\(\s*[`'"](POST|PUT|PATCH|DELETE)\b/gi, call: (m) => `request ${m[1].toUpperCase()}` },
+  { re: /method:\s*[`'"](POST|PUT|PATCH|DELETE)\b/gi, call: (m) => `method ${m[1].toUpperCase()}` },
+  // Pushes: any literal 'push' argument, wherever the process is spawned.
+  { re: /[`'"]push[`'"]|[`'"]git\s+push\b/g, call: () => 'git push' },
   // gh CLI: every invocation is a hit; the read-only ones are allowlisted by their arguments.
   { re: /[`'"]gh[`'"]\s*,\s*(\[[^\]]*\]|\w+)/g, call: (m) => ['gh', ...(m[1].match(/[\w.-]+/g) ?? [])].join(' ') },
-  { re: /\bexec(?:Sync)?\(\s*[`'"](gh|git)\b/g, call: (m) => `exec ${m[1]}` },
 ];
 
 const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
 const TOP_LEVEL_DECLARATION = /^(?:export )?(?:default )?(?:async )?(?:function|class|const) /;
+const FUNCTION_START = /^(?:export )?(?:default )?(?:async )?function |=> \{$/;
+/** A direct body statement of a top-level function: exactly one indent level. */
+const DIRECT_GUARD = /^ {2}assertAttended\(/;
 
 interface Finding {
   /** `<file> <call>`, the allowlist key. */
@@ -89,7 +94,7 @@ interface Finding {
 function isGuarded(lines: string[], hitLine: number): boolean {
   let start = hitLine;
   while (start > 0 && !TOP_LEVEL_DECLARATION.test(lines[start])) start--;
-  return lines.slice(start, hitLine + 1).some((line) => line.includes('assertAttended('));
+  return FUNCTION_START.test(lines[start]) && lines.slice(start, hitLine).some((line) => DIRECT_GUARD.test(line));
 }
 
 function scanSource(file: string, raw: string): Finding[] {
@@ -101,7 +106,7 @@ function scanSource(file: string, raw: string): Finding[] {
   const findings: Finding[] = [];
   for (const { re, call } of DETECTORS) {
     for (const match of source.matchAll(re)) {
-      const name = call(match, source);
+      const name = call(match);
       const hitLine = source.slice(0, match.index).split('\n').length - 1;
       if (name === null || seen.has(`${name}:${hitLine}`)) continue;
       seen.add(`${name}:${hitLine}`);
@@ -127,11 +132,12 @@ const FINDINGS = SCAN_ROOTS.flatMap((root) => scanRoot(root));
 const UNGUARDED = FINDINGS.filter((finding) => !finding.guarded);
 const ALLOWED_KEYS = new Set(Object.keys(ALLOWED));
 
-/** Scanner fixture: the unguarded calls in a one-function file with this body. */
-const unguardedCalls = (body: string): string[] =>
-  scanSource('x.ts', `import { execFileSync } from 'node:child_process';\nexport async function run() {\n${body}\n}\n`)
+/** Scanner fixtures: the unguarded calls in a source text, and a one-function file with this body. */
+const unguardedCalls = (source: string): string[] =>
+  scanSource('x.ts', source)
     .filter((finding) => !finding.guarded)
     .map((finding) => finding.key);
+const inFunction = (body: string): string => `export async function run() {\n${body}\n}\n`;
 
 describe('unattended write guard (#1945)', () => {
   it('sees the writes that are known to be guarded', () => {
@@ -146,8 +152,10 @@ describe('unattended write guard (#1945)', () => {
     );
     expect(
       violations,
-      'GitHub write without assertAttended() before it in the same top-level function. ' +
-        'Add the guard, or add the entry to ALLOWED with the reason it may run unattended.',
+      'GitHub write without assertAttended() as a direct statement of the top-level function before it. ' +
+        'The guard must be in the function that contains the call, not in its caller. ' +
+        'Add the guard, or add the entry to ALLOWED with the reason it may run unattended. ' +
+        'If this call only reads, add its verb to READ_CALL.',
     ).toEqual([]);
   });
 
@@ -159,31 +167,51 @@ describe('unattended write guard (#1945)', () => {
   describe('scanner', () => {
     it.each([
       ['await octokit.pulls.create({ owner, repo });', 'x.ts pulls.create'],
-      ['await this.octokit.rest.issues.lock({ owner, repo });', 'x.ts issues.lock'],
+      ['await getOctokit(token).pulls.merge({ owner, repo });', 'x.ts pulls.merge'],
+      ['await client.issues.lock({ owner, repo });', 'x.ts issues.lock'],
       ['await client.issues.addLabels({ owner, repo });', 'x.ts issues.addLabels'],
-      ['await octokit.issues.addLabels({ owner, repo });', 'x.ts issues.addLabels'],
       ['await octokit.graphql(`mutation { addStar(input: $input) { clientMutationId } }`);', 'x.ts graphql mutation'],
-      ["await octokit.request('POST /repos/{owner}/{repo}/forks');", 'x.ts request POST'],
+      ["await octokit.request('post /repos/{owner}/{repo}/forks');", 'x.ts request POST'],
       ["await octokit.request({ method: 'DELETE', url });", 'x.ts method DELETE'],
-      ["execFileSync('git', ['-C', dir, 'push', 'origin', branch]);", 'x.ts git push'],
+      ["git(dir, ['push', 'origin', branch]);", 'x.ts git push'],
       ["execFileSync('gh', ['pr', 'comment', url, '--body', body]);", 'x.ts gh pr comment url --body body'],
-      ["execSync('gh pr merge 1');", 'x.ts exec gh'],
     ])('flags an unguarded %s', (body, key) => {
-      expect(unguardedCalls(body)).toEqual([key]);
+      expect(unguardedCalls(inFunction(body))).toEqual([key]);
     });
 
     it('accepts a write that follows assertAttended in the same function', () => {
-      expect(unguardedCalls("assertAttended('open a PR');\nawait octokit.pulls.create({ owner, repo });")).toEqual([]);
+      const body = "  assertAttended('open a PR');\n  await octokit.pulls.create({ owner, repo });";
+      expect(unguardedCalls(inFunction(body))).toEqual([]);
     });
 
     it('does not accept a guard that lives in a different function', () => {
-      const body = "assertAttended('x');\n}\nexport async function other() {\nawait octokit.pulls.create({});";
-      expect(unguardedCalls(body)).toEqual(['x.ts pulls.create']);
+      const body = "  assertAttended('x');\n}\nexport async function other() {\n  await octokit.pulls.create({});";
+      expect(unguardedCalls(inFunction(body))).toEqual(['x.ts pulls.create']);
     });
 
-    it('ignores reads and comments', () => {
-      const body = 'await octokit.pulls.get({ owner, repo });\n// await octokit.pulls.create({ owner, repo });';
-      expect(unguardedCalls(body)).toEqual([]);
+    it('does not accept a guard inside a branch', () => {
+      const body = "  if (flag) {\n    assertAttended('x');\n  }\n  await octokit.pulls.create({});";
+      expect(unguardedCalls(inFunction(body))).toEqual(['x.ts pulls.create']);
+    });
+
+    it('does not accept a guard in a sibling handler of one registry', () => {
+      const source = [
+        'export const commands = [',
+        "  { run: async () => {\n      assertAttended('x');\n    } },",
+        '  { run: async () => {\n      await octokit.pulls.create({});\n    } },',
+        '];',
+      ].join('\n');
+      expect(unguardedCalls(source)).toEqual(['x.ts pulls.create']);
+    });
+
+    it('ignores reads, logging, comments and prose that starts with "mutation"', () => {
+      const body = [
+        'await octokit.pulls.get({ owner, repo });',
+        "octokit.log.warn('slow');",
+        "warn('mutation was lost');",
+        '// await octokit.pulls.create({ owner, repo });',
+      ].join('\n');
+      expect(unguardedCalls(inFunction(body))).toEqual([]);
     });
   });
 });
