@@ -465,6 +465,7 @@ export class PRMonitor {
           }
           // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
           warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- pins the Promise.all element type for the fallback branch
           return { items: [], truncated: false } as PaginateAllResult<ReviewComment>;
         }
         if (status === 404) {
@@ -475,6 +476,7 @@ export class PRMonitor {
             `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`,
           );
         }
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- pins the Promise.all element type for the fallback branch
         return { items: [], truncated: false } as PaginateAllResult<ReviewComment>;
       }),
     ]);

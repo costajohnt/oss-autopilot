@@ -19,6 +19,7 @@ interface StatusOptions {
  * @param options.offline - When true, adds cache freshness metadata
  * @returns Contribution stats (merge rate, PR counts, repo breakdown)
  */
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runStatus(options: StatusOptions): Promise<StatusOutput> {
   const stateManager = getStateManager();
   const stats = stateManager.getStats();

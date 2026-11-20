@@ -32,6 +32,7 @@ export interface StrategyCommandOutput {
  * message }` when state is below the merged-PR floor, and `{ strategy }`
  * with the full typed result otherwise.
  */
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runStrategy(): Promise<StrategyCommandOutput> {
   const stateManager = getStateManager();
   const state = stateManager.getState();

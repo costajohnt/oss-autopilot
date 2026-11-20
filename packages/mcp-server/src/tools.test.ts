@@ -321,6 +321,7 @@ describe('MCP tool registrations', () => {
       expect(stillExists).toBe(stateSnapshot.exists);
       if (stateSnapshot.exists && stillExists) {
         const after = fs.readFileSync(statePath);
+        // eslint-disable-next-line vitest/no-conditional-expect -- byte comparison only applies when the state file existed before the call
         expect(after.equals(stateSnapshot.bytes!)).toBe(true);
       }
     });

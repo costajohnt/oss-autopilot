@@ -222,6 +222,7 @@ export function markIssueAsDone(
 }
 
 /** Read → transform → write atomically (tmp + rename) so a crash mid-write can't corrupt the file. */
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runMarkIssueListItemDone(options: MarkDoneOptions): Promise<MarkDoneOutput> {
   const filePath = path.resolve(options.listPath ?? configuredIssueListPath());
 

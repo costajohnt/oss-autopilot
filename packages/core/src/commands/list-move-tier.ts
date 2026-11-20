@@ -230,6 +230,7 @@ export function moveIssueToTier(
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runListMoveTier(options: ListMoveTierOptions): Promise<ListMoveTierOutput> {
   const filePath = path.resolve(options.listPath ?? configuredIssueListPath());
 

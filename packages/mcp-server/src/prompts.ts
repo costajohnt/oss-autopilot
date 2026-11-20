@@ -147,6 +147,7 @@ export function registerPrompts(server: McpServer): void {
           .describe('Existing guidelines markdown to update incrementally; omit on first extraction'),
       }),
     },
+    // eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
     async ({ repo, corpus, existingGuidelines }) => {
       let bundles: PRCommentBundle[];
       try {

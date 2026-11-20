@@ -174,6 +174,7 @@ function validateRepo(repo: string): void {
 }
 
 /** Read the per-repo guidelines for `repo`. Returns a `local-unavailable` envelope in non-Gist mode. */
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runGuidelinesView(options: RepoOption): Promise<GuidelinesViewOutput> {
   validateRepo(options.repo);
   const sm = getStateManager();
@@ -196,6 +197,7 @@ export async function runGuidelinesView(options: RepoOption): Promise<Guidelines
  * mode — returns an empty list with `storageMode: 'local-unavailable'` so
  * hosts can distinguish "nothing stored" from "storage not configured".
  */
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runGuidelinesList(): Promise<GuidelinesListOutput> {
   const sm = getStateManager();
   const repos = sm.listGuidelinesRepos();

@@ -27,7 +27,9 @@ describe('RateLimiter', () => {
     const result = limiter.check();
     expect(result.allowed).toBe(false);
     if (!result.allowed) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.retryAfterSeconds).toBeGreaterThan(0);
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.retryAfterSeconds).toBeLessThanOrEqual(60);
     }
   });
@@ -56,6 +58,7 @@ describe('RateLimiter', () => {
     expect(result.allowed).toBe(false);
     if (!result.allowed) {
       // Should be ~20 seconds remaining
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.retryAfterSeconds).toBe(20);
     }
   });

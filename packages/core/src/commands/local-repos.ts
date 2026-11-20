@@ -156,6 +156,7 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
   return repos;
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runLocalRepos(options: LocalReposOptions): Promise<LocalReposOutput> {
   const stateManager = getStateManager();
   const state = stateManager.getState();

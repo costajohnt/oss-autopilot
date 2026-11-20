@@ -71,11 +71,9 @@ export default tseslint.config(
   downgradeToWarn(sonarjs.configs.recommended),
   eslintConfigPrettier,
   {
-    // Root tooling scripts (and this config file) sit outside every package
-    // tsconfig, so the type-aware projectService can't parse them and a
-    // repo-root `eslint .` fails even though `eslint packages/` (the lint
-    // script) passes. They were never part of the lint gate — ignore them so
-    // both invocations agree.
+    // This config file sits outside every package tsconfig, so the
+    // type-aware projectService can't parse it and a repo-root `eslint .`
+    // would fail. scripts/**/*.mjs is linted without types (block below).
     ignores: [
       'packages/*/dist/**',
       'packages/*/docs/**',
@@ -83,7 +81,6 @@ export default tseslint.config(
       'node_modules/**',
       '**/*.cjs',
       'eslint.config.js',
-      'scripts/**',
     ],
   },
   {
@@ -123,6 +120,21 @@ export default tseslint.config(
       ],
       '@typescript-eslint/no-base-to-string': 'error',
       '@typescript-eslint/prefer-promise-reject-errors': 'error',
+      // A `default:` branch counts as handling the rest of a union: the ones
+      // in this codebase are deliberate fallbacks. Switches without one must
+      // name every member, so a new union member can't fall through silently.
+      '@typescript-eslint/switch-exhaustiveness-check': ['error', { considerDefaultExhaustiveForUnions: true }],
+      '@typescript-eslint/require-await': 'error',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+
+      // ── Defect-class unicorn/sonarjs rules promoted out of the warn bucket
+      // (#1944): each one flags code that is wrong, not merely unidiomatic.
+      'sonarjs/no-identical-conditions': 'error',
+      'sonarjs/no-identical-expressions': 'error',
+      'sonarjs/no-all-duplicated-branches': 'error',
+      'sonarjs/no-element-overwrite': 'error',
+      'unicorn/no-thenable': 'error',
+      'unicorn/no-await-in-promise-methods': 'error',
 
       // ── Type-aware rules — downgraded to WARN ───────────────────────
       // The unsafe-* family fires heavily on JSON.parse, env vars, third-party
@@ -134,8 +146,6 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'warn',
       '@typescript-eslint/no-unsafe-return': 'warn',
       '@typescript-eslint/restrict-template-expressions': 'warn',
-      '@typescript-eslint/require-await': 'warn',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
       '@typescript-eslint/no-redundant-type-constituents': 'warn',
 
       // import-x: dev dependencies are fine in tests + tooling
@@ -209,6 +219,24 @@ export default tseslint.config(
     },
   },
   {
+    // Release and build scripts sit outside every tsconfig: lint them
+    // without type information (#1944).
+    files: ['scripts/**/*.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    // The domain layer is clean of no-unsafe-*; keep it that way (#1944).
+    files: ['packages/core/src/core/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+    },
+  },
+  {
     // Rules of Hooks for the Preact SPA (#1369). preact/hooks is positional
     // (slot-indexed by call order), so a hook placed below a conditional
     // return silently corrupts hook state on render paths that change the
@@ -220,38 +248,86 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
+      // Browser code: Node's experimental Web Storage is irrelevant here.
+      'n/no-unsupported-features/node-builtins': 'off',
     },
   },
   {
-    // Test files are excluded from per-package tsconfig.json (they don't ship
-    // in dist). Disable type-aware rules for them — vitest already provides
-    // type checking at runtime. The high-value rules (no-floating-promises,
-    // no-misused-promises) primarily catch bugs in production code paths,
-    // not test setup.
+    // Test files are excluded from the per-package tsconfig.json (they don't
+    // ship in dist), so projectService can't type them. Point them at the
+    // tsconfig that does include them (#2004): core and mcp-server have a
+    // tsconfig.tests.json; the dashboard tsconfig already includes its tests.
     files: [
       '**/*.test.ts',
       '**/*.test.tsx',
       '**/*.e2e.test.ts',
       // Test-support helpers shared between test files; excluded from the
-      // package tsconfig (they don't ship), so the type-aware projectService
-      // can't see them — disable type-checked rules like the tests they serve.
+      // package tsconfig like the tests they serve.
+      '**/src/test-lib/**/*.ts',
+    ],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: [
+          './packages/core/tsconfig.tests.json',
+          './packages/mcp-server/tsconfig.tests.json',
+          './packages/dashboard/tsconfig.json',
+        ],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // Tests are type-checked for the defect-class rules (no-floating-promises,
+      // no-misused-promises, switch-exhaustiveness-check, ...). The unsafe-*
+      // family and the other warn-level type-aware rules stay off here: mocks,
+      // `as unknown as` fixtures and parsed JSON output would add ~1,700
+      // warnings with no defect class behind them. require-await is off
+      // because async mocks often return a value without awaiting, to match
+      // the signature they stand in for (~110 hits).
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/require-await': 'off',
+      // Its autofix removes widening casts on mock fixtures (`{} as
+      // Record<...>`, `undefined as unknown`) that tsc then rejects.
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      // Preact's act() runs a sync callback synchronously; the returned
+      // thenable carries nothing to await.
+      '@typescript-eslint/no-floating-promises': [
+        'error',
+        { allowForKnownSafeCalls: [{ from: 'package', name: 'act', package: 'preact' }] },
+      ],
+    },
+  },
+  {
+    // Build and test-runner configs sit outside every tsconfig `include`.
+    files: ['**/vitest.config.ts', '**/vitest.setup.ts', '**/vite.config.ts'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    files: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.e2e.test.ts',
       '**/src/test-lib/**/*.ts',
       '**/vitest.config.ts',
       '**/vitest.setup.ts',
       '**/vite.config.ts',
     ],
-    ...tseslint.configs.disableTypeChecked,
     plugins: { vitest },
     rules: {
-      ...tseslint.configs.disableTypeChecked.rules,
       '@typescript-eslint/no-explicit-any': 'off',
       ...vitest.configs.recommended.rules,
-      // Allow `it.skip` for gated tests; project uses `it.todo` for stubs
-      'vitest/no-disabled-tests': 'warn',
-      // Conditional expects sometimes the right pattern (loop+branch tests);
-      // surface as warn so they're visible but don't gate CI
-      'vitest/no-conditional-expect': 'warn',
-      'vitest/no-standalone-expect': 'warn',
+      // A skipped or conditionally-asserting test passes without checking
+      // anything (#1944). Use `it.skipIf(cond)` for environment gates and
+      // `it.todo` for stubs; inline-disable audited exceptions with a reason.
+      'vitest/no-disabled-tests': 'error',
+      'vitest/no-conditional-expect': 'error',
+      'vitest/no-standalone-expect': 'error',
       // Vitest accepts a 2nd arg to expect() as a custom error message
       // (jest does not). The plugin's default of maxArgs=1 mismatches the
       // actual vitest API; bump to allow the documented form.

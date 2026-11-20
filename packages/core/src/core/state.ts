@@ -1874,7 +1874,7 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
   let persistence: string | undefined;
   try {
     const raw = fs.readFileSync(getStatePath(), 'utf8');
-    persistence = JSON.parse(raw)?.config?.persistence;
+    persistence = (JSON.parse(raw) as { config?: { persistence?: string } } | null)?.config?.persistence;
   } catch (err) {
     // Anything other than a missing file (EACCES, EMFILE, corrupt JSON) must
     // not be silently classified as a local-mode CHOICE — that would
@@ -1924,7 +1924,9 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
 function peekGistArtifacts(): 'gist' | 'local' | 'unreadable' {
   try {
     const raw = fs.readFileSync(getStateCachePath(), 'utf8');
-    return JSON.parse(raw)?.config?.persistence === 'gist' ? 'gist' : 'local';
+    return (JSON.parse(raw) as { config?: { persistence?: string } } | null)?.config?.persistence === 'gist'
+      ? 'gist'
+      : 'local';
   } catch (err) {
     if ((err as { code?: unknown }).code !== 'ENOENT') {
       warn(MODULE, `State cache unreadable during gist-persistence check (will retry): ${errorMessage(err)}`);
