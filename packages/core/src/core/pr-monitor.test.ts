@@ -493,35 +493,37 @@ describe('hasMergeConflict', () => {
 
 // #1915: mergeability GitHub has not computed yet is neither clean nor
 // conflicted. Each transport re-queries once, then reuses the previous run's value.
-describe('fetchUserOpenPRs with unknown mergeability', () => {
-  const prUrl = 'https://github.com/owner/repo/pull/1';
-  const search = () => ({
-    issuesAndPullRequests: vi.fn().mockResolvedValue({
-      data: { total_count: 1, items: [{ html_url: prUrl, pull_request: { html_url: prUrl } }] },
-    }),
-  });
-  const useState = (previous?: boolean) =>
-    vi.mocked(getStateManager).mockReturnValue(
-      makeStateManagerMock({
-        config: { excludeRepos: [], excludeOrgs: [] },
-        state:
-          previous === undefined
-            ? {}
-            : { lastDigest: { openPRs: [makeFetchedPR({ url: prUrl, hasMergeConflict: previous })] } as any },
-      }),
-    );
-
-  const restPR = (mergeable: boolean | null, mergeable_state: string) => ({
+function restPullResponse(mergeable: boolean | null, mergeableState: string) {
+  return {
     data: {
+      mergeable,
       id: 1,
       title: 'Test PR',
       created_at: '2026-02-01T00:00:00Z',
       updated_at: '2026-02-07T00:00:00Z',
       head: { sha: 'abc123' },
-      mergeable,
-      mergeable_state,
+      mergeable_state: mergeableState,
       body: '',
     },
+  };
+}
+
+function fetchWith(octokit: unknown, state: object = {}) {
+  vi.mocked(getStateManager).mockReturnValue(
+    makeStateManagerMock({ state, config: { excludeRepos: [], excludeOrgs: [] } }),
+  );
+  vi.mocked(getOctokit).mockReturnValueOnce(octokit as any);
+  const monitor = new PRMonitor('fake-token');
+  return monitor.fetchUserOpenPRs();
+}
+
+describe('fetchUserOpenPRs with unknown mergeability', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+  const conflictedLastRun = { lastDigest: { openPRs: [makeFetchedPR({ url: prUrl, hasMergeConflict: true })] } as any };
+  const search = () => ({
+    issuesAndPullRequests: vi.fn().mockResolvedValue({
+      data: { total_count: 1, items: [{ html_url: prUrl, pull_request: { html_url: prUrl } }] },
+    }),
   });
   const restMocks = (get: ReturnType<typeof vi.fn>) => ({
     search: search(),
@@ -538,11 +540,11 @@ describe('fetchUserOpenPRs with unknown mergeability', () => {
   const graphqlNode = (mergeable: string) => ({
     pr0: {
       pullRequest: {
+        mergeable,
         databaseId: 1,
         number: 1,
         title: 'Test PR',
         url: prUrl,
-        mergeable,
         body: '',
         createdAt: '2026-02-01T00:00:00Z',
         updatedAt: '2026-02-07T00:00:00Z',
@@ -555,11 +557,12 @@ describe('fetchUserOpenPRs with unknown mergeability', () => {
   });
 
   it('REST: re-queries once and reports the conflict the second answer reveals', async () => {
-    useState();
-    const get = vi.fn().mockResolvedValueOnce(restPR(null, 'unknown')).mockResolvedValue(restPR(false, 'dirty'));
-    mockOctokitInstance = restMocks(get);
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(restPullResponse(null, 'unknown'))
+      .mockResolvedValue(restPullResponse(false, 'dirty'));
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const { prs } = await fetchWith(restMocks(get));
 
     expect(get).toHaveBeenCalledTimes(2);
     expect(prs[0].hasMergeConflict).toBe(true);
@@ -568,11 +571,9 @@ describe('fetchUserOpenPRs with unknown mergeability', () => {
   });
 
   it("REST: still unknown after the re-query reuses the previous run's conflict", async () => {
-    useState(true);
-    const get = vi.fn().mockResolvedValue(restPR(null, 'unknown'));
-    mockOctokitInstance = restMocks(get);
+    const get = vi.fn().mockResolvedValue(restPullResponse(null, 'unknown'));
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const { prs } = await fetchWith(restMocks(get), conflictedLastRun);
 
     expect(get).toHaveBeenCalledTimes(2);
     expect(prs[0].hasMergeConflict).toBe(true);
@@ -580,20 +581,29 @@ describe('fetchUserOpenPRs with unknown mergeability', () => {
   });
 
   it('REST: still unknown with no previous run is not a conflict', async () => {
-    useState();
-    mockOctokitInstance = restMocks(vi.fn().mockResolvedValue(restPR(null, 'unknown')));
+    const get = vi.fn().mockResolvedValue(restPullResponse(null, 'unknown'));
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const { prs } = await fetchWith(restMocks(get));
 
     expect(prs[0].hasMergeConflict).toBe(false);
   });
 
-  it("GraphQL: still UNKNOWN after the re-query reuses the previous run's conflict", async () => {
-    useState(true);
-    const graphql = vi.fn().mockResolvedValue(graphqlNode('UNKNOWN'));
-    mockOctokitInstance = { search: search(), graphql };
+  it('REST: a rate limit on the re-query fails the PR instead of guessing', async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(restPullResponse(null, 'unknown'))
+      .mockRejectedValueOnce(Object.assign(new Error('rate limited'), { status: 429 }));
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const { prs, failures } = await fetchWith(restMocks(get), conflictedLastRun);
+
+    expect(prs).toEqual([]);
+    expect(failures).toEqual([{ prUrl, error: 'rate limited' }]);
+  });
+
+  it("GraphQL: still UNKNOWN after the re-query reuses the previous run's conflict", async () => {
+    const graphql = vi.fn().mockResolvedValue(graphqlNode('UNKNOWN'));
+
+    const { prs } = await fetchWith({ graphql, search: search() }, conflictedLastRun);
 
     expect(graphql).toHaveBeenCalledTimes(2);
     expect(prs[0].hasMergeConflict).toBe(true);
@@ -602,10 +612,9 @@ describe('fetchUserOpenPRs with unknown mergeability', () => {
   });
 
   it('GraphQL: a fresh MERGEABLE answer wins over a previous conflict', async () => {
-    useState(true);
-    mockOctokitInstance = { search: search(), graphql: vi.fn().mockResolvedValue(graphqlNode('MERGEABLE')) };
+    const graphql = vi.fn().mockResolvedValue(graphqlNode('MERGEABLE'));
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const { prs } = await fetchWith({ graphql, search: search() }, conflictedLastRun);
 
     expect(prs[0].hasMergeConflict).toBe(false);
   });

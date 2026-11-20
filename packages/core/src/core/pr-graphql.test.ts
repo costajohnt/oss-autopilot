@@ -581,6 +581,20 @@ describe('batchFetchPRDetails', () => {
     expect(result.resolved.get(refs[0].url)?.hasMergeConflict).toBeNull();
   });
 
+  it('keeps first-pass data when the re-query returns a null node', async () => {
+    const refs = [ref('o', 'pending', 2)];
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({ pr0: { pullRequest: makeNode({ title: 'first pass', mergeable: 'UNKNOWN' }) } })
+      .mockResolvedValueOnce({ pr0: { pullRequest: null } });
+
+    const result = await batchFetchPRDetails({ graphql } as any, refs);
+
+    expect(graphql).toHaveBeenCalledTimes(2);
+    expect(result.resolved.get(refs[0].url)).toMatchObject({ title: 'first pass', hasMergeConflict: null });
+    expect(result.restFallbackUrls).toEqual([]);
+  });
+
   it('keeps first-pass data when the re-query fails, even on a rate limit', async () => {
     const refs = [ref('o', 'pending', 2)];
     const graphql = vi

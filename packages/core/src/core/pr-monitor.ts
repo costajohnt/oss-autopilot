@@ -537,7 +537,9 @@ export class PRMonitor {
   private resolveMergeConflict(prUrl: string, fresh: boolean | null): boolean {
     if (fresh !== null) return fresh;
     const previous = this.stateManager.getState().lastDigest?.openPRs.find((pr) => pr.url === prUrl);
-    return previous?.hasMergeConflict ?? false;
+    const wasConflicted = previous?.hasMergeConflict ?? false;
+    warn(MODULE, `Mergeability still unknown for ${prUrl}; assuming conflict=${wasConflicted} from the previous run`);
+    return wasConflicted;
   }
 
   /**
