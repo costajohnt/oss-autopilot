@@ -30,6 +30,7 @@ import type { ActivityEvent, ReviewComment } from './review-analysis.js';
 import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
 import { warn } from './logger.js';
+import { sleep } from './concurrency.js';
 
 const MODULE = 'pr-graphql';
 
@@ -51,6 +52,10 @@ export const CI_CONTEXTS_CAP = 100;
  *  requested per PR. Only the newest non-contributor event matters for the
  *  dormancy clock, so overflow is not routed to REST. */
 export const TIMELINE_CAP = 50;
+/** Wait before the single re-query of PRs whose mergeability GitHub had not
+ *  computed yet. The first query starts the computation; it usually lands
+ *  within a couple of seconds. */
+export const MERGEABLE_RETRY_DELAY_MS = 2000;
 
 /** A single PR to enrich. */
 export interface PRRef {
@@ -73,7 +78,8 @@ export interface NormalizedPRData {
   body: string;
   createdAt: string;
   updatedAt: string;
-  hasMergeConflict: boolean;
+  /** `null` when GitHub reported `UNKNOWN` (mergeability not computed yet). */
+  hasMergeConflict: boolean | null;
   headSha: string;
   comments: AssemblyComment[];
   reviews: AssemblyReview[];
@@ -328,10 +334,12 @@ export function buildBatchQuery(refs: PRRef[]): { query: string; variables: Reco
   return { query, variables };
 }
 
-/** Map GraphQL `mergeable` enum to the REST `mergeConflict` boolean. */
-function toMergeConflict(mergeable: GraphQLPullRequestNode['mergeable']): boolean {
+/** Map GraphQL `mergeable` enum to the REST `mergeConflict` value. */
+function toMergeConflict(mergeable: GraphQLPullRequestNode['mergeable']): boolean | null {
   // CONFLICTING mirrors REST `mergeable === false` / `mergeable_state === 'dirty'`.
-  // UNKNOWN mirrors REST `mergeable === null` (GitHub hasn't computed it yet) → not a conflict.
+  // UNKNOWN mirrors REST `mergeable === null` (GitHub hasn't computed it yet):
+  // neither clean nor conflicted, so it stays `null` for the caller to resolve.
+  if (mergeable === 'UNKNOWN') return null;
   return mergeable === 'CONFLICTING';
 }
 
@@ -494,19 +502,44 @@ async function runBatch(octokit: Octokit, refs: PRRef[]): Promise<BatchResponse 
  * Enrich a set of PRs via batched GraphQL queries.
  *
  * Returns the PRs that resolved cleanly plus the URLs that must fall back to the
- * REST enrichment path. Batches run sequentially (GitHub recommends serial
- * requests); with ~3 queries for 30 PRs there is no concurrency benefit.
+ * REST enrichment path. PRs whose mergeability GitHub had not computed yet
+ * (`UNKNOWN`) are re-queried once after {@link MERGEABLE_RETRY_DELAY_MS}; one
+ * still unknown keeps `hasMergeConflict: null` for the caller to resolve.
  */
 export async function batchFetchPRDetails(octokit: Octokit, refs: PRRef[]): Promise<BatchPRResult> {
-  const resolved = new Map<string, NormalizedPRData>();
-  const restFallbackUrls: string[] = [];
-  if (refs.length === 0) return { resolved, restFallbackUrls };
+  if (refs.length === 0) return { resolved: new Map(), restFallbackUrls: [] };
 
   // No GraphQL client available (e.g. a stubbed Octokit in tests) — everything
   // to REST. Guards against calling a non-function `.graphql`.
   if (typeof octokit.graphql !== 'function') {
-    return { resolved, restFallbackUrls: refs.map((r) => r.url) };
+    return { resolved: new Map(), restFallbackUrls: refs.map((r) => r.url) };
   }
+
+  const result = await fetchBatches(octokit, refs);
+
+  const unknown = refs.filter((r) => result.resolved.get(r.url)?.hasMergeConflict === null);
+  if (unknown.length > 0) {
+    await sleep(MERGEABLE_RETRY_DELAY_MS);
+    try {
+      // Only a clean re-resolve replaces the first answer; a PR the retry could
+      // not resolve keeps its first-pass data instead of moving to REST.
+      const retry = await fetchBatches(octokit, unknown);
+      for (const [url, data] of retry.resolved) result.resolved.set(url, data);
+    } catch (err) {
+      // The first pass already succeeded, so a failed re-query (even a rate
+      // limit) costs only the mergeability answer, not the whole run.
+      warn(MODULE, `Mergeability re-query failed, keeping first-pass data: ${errorMessage(err)}`);
+    }
+  }
+
+  return result;
+}
+
+/** Run the batches sequentially (GitHub recommends serial requests); with ~3
+ *  queries for 30 PRs there is no concurrency benefit. */
+async function fetchBatches(octokit: Octokit, refs: PRRef[]): Promise<BatchPRResult> {
+  const resolved = new Map<string, NormalizedPRData>();
+  const restFallbackUrls: string[] = [];
 
   for (const batch of chunk(refs, BATCH_SIZE)) {
     const data = await runBatch(octokit, batch);

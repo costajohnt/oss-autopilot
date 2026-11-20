@@ -17,6 +17,12 @@ vi.mock('./state.js', () => ({
   })),
 }));
 
+// The mergeability re-query waits MERGEABLE_RETRY_DELAY_MS; skip the wait.
+vi.mock('./concurrency.js', async () => ({
+  ...(await vi.importActual<typeof import('./concurrency.js')>('./concurrency.js')),
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock getHttpCache so github-stats caching doesn't leak between tests.
 // Preserve the real module (cachedRequest, HttpCache) — only stub the singleton.
 vi.mock('./http-cache.js', async () => {
@@ -480,8 +486,137 @@ describe('hasMergeConflict', () => {
     expect(hasMergeConflict(true, 'clean')).toBe(false);
   });
 
-  it('should return false when mergeable is null and state is unknown', () => {
-    expect(hasMergeConflict(null, 'unknown')).toBe(false);
+  it('should return null when mergeable is null and state is unknown', () => {
+    expect(hasMergeConflict(null, 'unknown')).toBeNull();
+  });
+});
+
+// #1915: mergeability GitHub has not computed yet is neither clean nor
+// conflicted. Each transport re-queries once, then reuses the previous run's value.
+function restPullResponse(mergeable: boolean | null, mergeableState: string) {
+  return {
+    data: {
+      mergeable,
+      id: 1,
+      title: 'Test PR',
+      created_at: '2026-02-01T00:00:00Z',
+      updated_at: '2026-02-07T00:00:00Z',
+      head: { sha: 'abc123' },
+      mergeable_state: mergeableState,
+      body: '',
+    },
+  };
+}
+
+function fetchWith(octokit: unknown, state: object = {}) {
+  vi.mocked(getStateManager).mockReturnValue(
+    makeStateManagerMock({ state, config: { excludeRepos: [], excludeOrgs: [] } }),
+  );
+  vi.mocked(getOctokit).mockReturnValueOnce(octokit as any);
+  const monitor = new PRMonitor('fake-token');
+  return monitor.fetchUserOpenPRs();
+}
+
+describe('fetchUserOpenPRs with unknown mergeability', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+  const conflictedLastRun = { lastDigest: { openPRs: [makeFetchedPR({ url: prUrl, hasMergeConflict: true })] } as any };
+  const search = () => ({
+    issuesAndPullRequests: vi.fn().mockResolvedValue({
+      data: { total_count: 1, items: [{ html_url: prUrl, pull_request: { html_url: prUrl } }] },
+    }),
+  });
+  const restMocks = (get: ReturnType<typeof vi.fn>) => ({
+    search: search(),
+    pulls: {
+      get,
+      listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
+    },
+    issues: { listComments: vi.fn().mockResolvedValue({ data: [] }) },
+    repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue({ data: { state: 'success', statuses: [] } }) },
+    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
+  });
+
+  const graphqlNode = (mergeable: string) => ({
+    pr0: {
+      pullRequest: {
+        mergeable,
+        databaseId: 1,
+        number: 1,
+        title: 'Test PR',
+        url: prUrl,
+        body: '',
+        createdAt: '2026-02-01T00:00:00Z',
+        updatedAt: '2026-02-07T00:00:00Z',
+        comments: { totalCount: 0, nodes: [] },
+        reviews: { totalCount: 0, nodes: [] },
+        reviewThreads: { totalCount: 0, nodes: [] },
+        commits: { nodes: [] },
+      },
+    },
+  });
+
+  it('REST: re-queries once and reports the conflict the second answer reveals', async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(restPullResponse(null, 'unknown'))
+      .mockResolvedValue(restPullResponse(false, 'dirty'));
+
+    const { prs } = await fetchWith(restMocks(get));
+
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(prs[0].hasMergeConflict).toBe(true);
+    expect(prs[0].status).toBe('needs_addressing');
+    expect(prs[0].actionReason).toBe('merge_conflict');
+  });
+
+  it("REST: still unknown after the re-query reuses the previous run's conflict", async () => {
+    const get = vi.fn().mockResolvedValue(restPullResponse(null, 'unknown'));
+
+    const { prs } = await fetchWith(restMocks(get), conflictedLastRun);
+
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(prs[0].hasMergeConflict).toBe(true);
+    expect(prs[0].actionReason).toBe('merge_conflict');
+  });
+
+  it('REST: still unknown with no previous run is not a conflict', async () => {
+    const get = vi.fn().mockResolvedValue(restPullResponse(null, 'unknown'));
+
+    const { prs } = await fetchWith(restMocks(get));
+
+    expect(prs[0].hasMergeConflict).toBe(false);
+  });
+
+  it('REST: a rate limit on the re-query fails the PR instead of guessing', async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(restPullResponse(null, 'unknown'))
+      .mockRejectedValueOnce(Object.assign(new Error('rate limited'), { status: 429 }));
+
+    const { prs, failures } = await fetchWith(restMocks(get), conflictedLastRun);
+
+    expect(prs).toEqual([]);
+    expect(failures).toEqual([{ prUrl, error: 'rate limited' }]);
+  });
+
+  it("GraphQL: still UNKNOWN after the re-query reuses the previous run's conflict", async () => {
+    const graphql = vi.fn().mockResolvedValue(graphqlNode('UNKNOWN'));
+
+    const { prs } = await fetchWith({ graphql, search: search() }, conflictedLastRun);
+
+    expect(graphql).toHaveBeenCalledTimes(2);
+    expect(prs[0].hasMergeConflict).toBe(true);
+    expect(prs[0].status).toBe('needs_addressing');
+    expect(prs[0].actionReason).toBe('merge_conflict');
+  });
+
+  it('GraphQL: a fresh MERGEABLE answer wins over a previous conflict', async () => {
+    const graphql = vi.fn().mockResolvedValue(graphqlNode('MERGEABLE'));
+
+    const { prs } = await fetchWith({ graphql, search: search() }, conflictedLastRun);
+
+    expect(prs[0].hasMergeConflict).toBe(false);
   });
 });
 

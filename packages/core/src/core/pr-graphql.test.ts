@@ -4,6 +4,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+
+// The UNKNOWN-mergeability re-query waits MERGEABLE_RETRY_DELAY_MS; skip the wait.
+vi.mock('./concurrency.js', async () => ({
+  ...(await vi.importActual<typeof import('./concurrency.js')>('./concurrency.js')),
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { buildBatchQuery, normalizePRNode, batchFetchPRDetails, BATCH_SIZE, type PRRef } from './pr-graphql.js';
 import { assembleFetchedPR, type PRSignals, type AssemblyConfig } from './pr-assembly.js';
 import { computeCIStatus } from './ci-analysis.js';
@@ -545,6 +552,62 @@ describe('batchFetchPRDetails', () => {
     );
   });
 
+  it('re-queries only the UNKNOWN-mergeability PRs, once, and takes the settled answer', async () => {
+    const refs = [ref('o', 'clean', 1), ref('o', 'pending', 2)];
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        pr0: { pullRequest: makeNode({ databaseId: 1 }) },
+        pr1: { pullRequest: makeNode({ databaseId: 2, mergeable: 'UNKNOWN' }) },
+      })
+      .mockResolvedValueOnce({ pr0: { pullRequest: makeNode({ databaseId: 2, mergeable: 'CONFLICTING' }) } });
+
+    const result = await batchFetchPRDetails({ graphql } as any, refs);
+
+    expect(graphql).toHaveBeenCalledTimes(2);
+    expect(graphql.mock.calls[1][1]).toEqual({ o0: 'o', r0: 'pending', n0: 2 });
+    expect(result.resolved.get(refs[0].url)?.hasMergeConflict).toBe(false);
+    expect(result.resolved.get(refs[1].url)?.hasMergeConflict).toBe(true);
+    expect(result.restFallbackUrls).toEqual([]);
+  });
+
+  it('carries an explicit null when mergeability is still UNKNOWN after the re-query', async () => {
+    const refs = [ref('o', 'pending', 2)];
+    const graphql = vi.fn().mockResolvedValue({ pr0: { pullRequest: makeNode({ mergeable: 'UNKNOWN' }) } });
+
+    const result = await batchFetchPRDetails({ graphql } as any, refs);
+
+    expect(graphql).toHaveBeenCalledTimes(2);
+    expect(result.resolved.get(refs[0].url)?.hasMergeConflict).toBeNull();
+  });
+
+  it('keeps first-pass data when the re-query returns a null node', async () => {
+    const refs = [ref('o', 'pending', 2)];
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({ pr0: { pullRequest: makeNode({ title: 'first pass', mergeable: 'UNKNOWN' }) } })
+      .mockResolvedValueOnce({ pr0: { pullRequest: null } });
+
+    const result = await batchFetchPRDetails({ graphql } as any, refs);
+
+    expect(graphql).toHaveBeenCalledTimes(2);
+    expect(result.resolved.get(refs[0].url)).toMatchObject({ title: 'first pass', hasMergeConflict: null });
+    expect(result.restFallbackUrls).toEqual([]);
+  });
+
+  it('keeps first-pass data when the re-query fails, even on a rate limit', async () => {
+    const refs = [ref('o', 'pending', 2)];
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({ pr0: { pullRequest: makeNode({ mergeable: 'UNKNOWN' }) } })
+      .mockRejectedValueOnce(Object.assign(new Error('rate limited'), { status: 429 }));
+
+    const result = await batchFetchPRDetails({ graphql } as any, refs);
+
+    expect(result.resolved.get(refs[0].url)?.hasMergeConflict).toBeNull();
+    expect(result.restFallbackUrls).toEqual([]);
+  });
+
   it('splits large ref sets into multiple batches', async () => {
     const graphql = vi.fn().mockImplementation((_q: string, vars: Record<string, unknown>) => {
       // Echo back a node per alias present in the variables.
@@ -585,7 +648,7 @@ async function assembleFromGraphQL(node: any) {
     body: d.body,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
-    hasMergeConflict: d.hasMergeConflict,
+    hasMergeConflict: d.hasMergeConflict ?? false,
     comments: d.comments,
     reviews: d.reviews,
     reviewComments: d.reviewComments,
