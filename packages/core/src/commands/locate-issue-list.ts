@@ -17,18 +17,21 @@ import { getMachinePath, getMachinePathSource, setMachinePath } from '../core/lo
 import { warn } from '../core/logger.js';
 
 /**
- * The issue list path configured for this machine, for commands whose
+ * The issue list this machine is configured to use, for commands whose
  * `--list-path` is optional. Workflows call those commands without the flag
- * so a stored path is never pasted into shell text.
+ * so a stored path is never pasted into shell text. Resolved by
+ * {@link detectIssueListPath}: configured lists only, with its checks; never
+ * a file found in the current directory.
  */
 export function configuredIssueListPath(): string {
-  const configured = getMachinePath('issueListPath', getStateManager().getState().config);
-  if (!configured) {
+  const location = detectIssueListPath();
+  if (!location) {
     throw new ValidationError(
-      'No issue list path configured. Set one via `oss-autopilot setup --set issueListPath=<path>` or pass --list-path.',
+      'No usable issue list is configured: none is set, or the configured path is relative, missing, or in a ' +
+        'checkout that is not yours. Set one via `oss-autopilot setup --set issueListPath=<absolute path>` or pass --list-path.',
     );
   }
-  return configured;
+  return location.path;
 }
 
 export interface IssueListLocation {

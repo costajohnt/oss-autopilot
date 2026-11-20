@@ -161,12 +161,12 @@ describe('path values a shell would interpret (#1934)', () => {
     },
   );
 
-  it('accepts ordinary paths with spaces, dots, dashes and tildes', () => {
+  it('accepts ordinary absolute paths with spaces, dots and dashes', () => {
     setMachinePath('issueListPath', '/Users/me/My Vault/oss-list_v2.md');
-    setMachinePath('skippedIssuesPath', '~/notes/skipped-issues.md');
+    setMachinePath('skippedIssuesPath', '/Users/me/notes/skipped-issues.md');
     expect(readStored()).toMatchObject({
       issueListPath: { path: '/Users/me/My Vault/oss-list_v2.md' },
-      skippedIssuesPath: { path: '~/notes/skipped-issues.md' },
+      skippedIssuesPath: { path: '/Users/me/notes/skipped-issues.md' },
     });
   });
 

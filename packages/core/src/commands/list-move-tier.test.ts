@@ -161,9 +161,35 @@ describe('runListMoveTier (filesystem)', () => {
       expect(done.filePath).toBe(path.resolve(listPath));
     });
 
-    it('fails clearly when no issue list path is configured', async () => {
+    it('fails clearly when no issue list is configured, without probing the current directory', async () => {
       setMachinePath('issueListPath', '');
-      await expect(runListMoveTier({ issueUrl: URL_A, tier: 'skip' })).rejects.toThrow(/No issue list path configured/);
+      const cwd = process.cwd();
+      // A list at a probed path in the current directory is never used here (#1933).
+      fs.writeFileSync(path.join(tmpDir, 'issues.md'), ['## Pursue', '', `- [A](${URL_A})`, ''].join('\n'));
+      process.chdir(tmpDir);
+      try {
+        await expect(runListMoveTier({ issueUrl: URL_A, tier: 'skip' })).rejects.toThrow(/No usable issue list/);
+        await expect(
+          runMarkIssueListItemDone({ issueUrl: URL_A, prUrl: 'https://github.com/foo/bar/pull/9', prStatus: 'merged' }),
+        ).rejects.toThrow(/No usable issue list/);
+      } finally {
+        process.chdir(cwd);
+      }
+    });
+
+    it('fails when the configured list is missing', async () => {
+      setMachinePath('issueListPath', path.join(tmpDir, 'gone.md'));
+      await expect(runListMoveTier({ issueUrl: URL_A, tier: 'skip' })).rejects.toThrow(/No usable issue list/);
+    });
+
+    it('an explicit list path wins over the configured one', async () => {
+      const other = path.join(tmpDir, 'other.md');
+      fs.writeFileSync(listPath, ['## Pursue', '', `- [A](${URL_A})`, ''].join('\n'));
+      fs.writeFileSync(other, ['## Pursue', '', `- [A](${URL_A})`, ''].join('\n'));
+      setMachinePath('issueListPath', listPath);
+      const moved = await runListMoveTier({ issueUrl: URL_A, tier: 'skip', listPath: other });
+      expect(moved.filePath).toBe(path.resolve(other));
+      expect(fs.readFileSync(listPath, 'utf8')).not.toContain('## Skip');
     });
   });
 
