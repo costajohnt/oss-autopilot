@@ -85,9 +85,9 @@ Then show the enriched format using the resolved PR's fields:
 
 Such a PR is never re-dispatched by "Work through all issues" or a specific-PR selection without asking: offer "Leave it to session {claim.session}" (default) / "Take it over here" (re-claims it for this session with `work claim ... --takeover`; without the flag the CLI refuses a claim another session holds, and the other session sees the takeover on its next menu refresh). A claim by this session's own `sessionName` (a PR this session already started on) needs no line.
 
-**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. The label mapping for `pr.maintainerActionHints` lives at `maintainer-hints.ts` in the oss-autopilot repository source (core package; not shipped with the plugin) (`MAINTAINER_HINT_LABELS` + `formatMaintainerHints`) — that file is the source of truth (#1264). Documented mappings: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
+**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. Label mapping for `pr.maintainerActionHints`: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
 
-**Effort estimate**: The truth table lives at `issue-effort.ts` in the oss-autopilot repository source (core package; not shipped with the plugin) (`computeIssueEffort`) — that function is the source of truth (#1264). Reproduced here for the workflow's render template; edit the source first if the rules change.
+**Effort estimate**: pick the first row whose condition matches the item.
 
 | Effort | Condition |
 |--------|-----------|
@@ -95,7 +95,7 @@ Such a PR is never re-dispatched by "Work through all issues" or a specific-PR s
 | **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
 | **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
 
-If an issue type doesn't match any row above, default to **Medium** (matches the function's fallback).
+If an issue type doesn't match any row above, default to **Medium**.
 
 **Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
 
@@ -161,7 +161,7 @@ If an entry's `repoHeadingStruck` is `true`, append "(all issues for this repo a
 
 **Collect finished implementations (#1856):** when a live implementation claim has `status: "finished"`, the CLI adds a `collect_implementations` item ("Collect finished implementations (N)"). It routes to `workflows/draft-first-workflow.md`, entry "Collecting a Finished Implementation", which enters the review cycle at Step 3 rather than re-implementing. The claim is computed from state at `daily` time; a run that finished since then shows up through the `work list` refresh above, so when that refresh reports a `finished` implementation and the menu has no `collect_implementations` item, add one with the same label.
 
-The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet **and** `autoExtractLearnings` is `false` — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`. With the default `autoExtractLearnings: true` the item never appears: `data.daily.pendingLearnings` carries the repos instead and `commands/oss.md` extracts them in the background at startup (#1696).
+The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet **and** `autoExtractLearnings` is `false` — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`. With the default `autoExtractLearnings: true` the item never appears: `data.daily.pendingLearnings` carries the repos instead and `commands/oss.md` extracts them in the background at startup (#1696) and stores nothing until the user approves the proposed text (#1929).
 
 ### Ask for Action (Using Pre-Computed Menu)
 

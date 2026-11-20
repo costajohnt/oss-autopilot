@@ -7,18 +7,7 @@
  */
 
 import type { z } from 'zod';
-import type {
-  FetchedPR,
-  DailyDigest,
-  AgentState,
-  AgentConfig,
-  IssueCandidate,
-  TrackedIssue,
-  IssueVettingResult,
-  ProjectHealth,
-  RepoScore,
-  CapacityAssessment,
-} from './types.js';
+import type { FetchedPR, DailyDigest, AgentState, AgentConfig, RepoScore, CapacityAssessment } from './types.js';
 import { DEFAULT_CONFIG, INITIAL_STATE } from './types.js';
 import type { StateManager, Stats } from './state.js';
 // ---------------------------------------------------------------------------
@@ -194,7 +183,7 @@ export function makeStateManagerMock(
     setMonthlyMergedCounts: () => {},
     setMonthlyClosedCounts: () => {},
     setMonthlyOpenedCounts: () => {},
-    setLocalRepoCache: () => {},
+    clearSyncedLocalRepoCache: () => {},
     getMergedPRs: () => [],
     addMergedPRs: () => {},
     getMergedPRWatermark: () => {},
@@ -203,6 +192,7 @@ export function makeStateManagerMock(
     getClosedPRWatermark: () => {},
     renameRepo: () => {},
     evictClosedPRs: () => 0,
+    evictExcludedRepos: () => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 }),
     updateConfig: () => {},
     addIssue: () => {},
     addTrustedProject: () => {},
@@ -241,62 +231,6 @@ export function makeStateManagerMock(
     getHighScoringRepos: () => [],
     getLowScoringRepos: () => [],
   } as unknown as StateManager;
-}
-
-// ---------------------------------------------------------------------------
-// IssueCandidate
-// ---------------------------------------------------------------------------
-
-export function makeIssueCandidate(overrides: Partial<IssueCandidate> = {}): IssueCandidate {
-  const issue: TrackedIssue = {
-    id: 1,
-    url: 'https://github.com/owner/repo/issues/1',
-    repo: 'owner/repo',
-    number: 1,
-    title: 'Test Issue',
-    status: 'candidate',
-    labels: ['good first issue'],
-    createdAt: '2025-06-01T00:00:00Z',
-    updatedAt: '2025-06-15T00:00:00Z',
-    vetted: true,
-    ...overrides.issue,
-  };
-
-  const vettingResult: IssueVettingResult = {
-    passedAllChecks: true,
-    checks: {
-      noExistingPR: true,
-      notClaimed: true,
-      projectActive: true,
-      clearRequirements: true,
-      contributionGuidelinesFound: true,
-    },
-    notes: [],
-    ...overrides.vettingResult,
-  };
-
-  const projectHealth: ProjectHealth = {
-    repo: 'owner/repo',
-    lastCommitAt: '2025-06-14T00:00:00Z',
-    daysSinceLastCommit: 1,
-    openIssuesCount: 50,
-    avgIssueResponseDays: 2,
-    ciStatus: 'passing',
-    isActive: true,
-    ...overrides.projectHealth,
-  };
-
-  return {
-    issue,
-    vettingResult,
-    projectHealth,
-    recommendation: 'approve',
-    reasonsToSkip: [],
-    reasonsToApprove: ['Active project', 'Good first issue'],
-    viabilityScore: 80,
-    searchPriority: 'normal',
-    ...overrides,
-  };
 }
 
 // ---------------------------------------------------------------------------

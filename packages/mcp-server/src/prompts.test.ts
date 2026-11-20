@@ -304,6 +304,9 @@ describe('MCP prompt registrations', () => {
       expect(text).toContain('[COMMENT by maintainer2 (COLLABORATOR)]');
       // Closing instruction
       expect(text).toContain('call the `guidelines-store` tool');
+      // #1929: the prompt must not tell the host to store unreviewed text.
+      expect(text).toContain('Only after they approve');
+      expect(text).toContain('reviewed: true');
     });
 
     it('threads existingGuidelines into an incremental update', async () => {

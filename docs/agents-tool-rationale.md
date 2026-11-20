@@ -35,9 +35,10 @@ agent's body instructs with is actually granted (#1377).
 - `contribution-strategist` — `Bash`, `Read`, `AskUserQuestion`, `mcp__...__strategy` (read-only analyzer; emits a markdown report in chat).
 - `issue-scout` — `Bash`, `Read`, `AskUserQuestion`, `mcp__...__search`, `mcp__...__verify-issue`, `mcp__...__vet`, `mcp__...__vet-list`, `mcp__...__status`.
 - `pr-compliance-checker` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__compliance-score`, `mcp__...__guidelines-get`.
+- `learnings-extractor` — `mcp__...__guidelines-fetch-corpus`, `mcp__...__guidelines-get` (reads strangers' PR comments, so it gets two fetch tools and nothing else: no shell, no file tools, no question tool and no `guidelines-store`. It returns each proposal in its report; the main session writes the file and stores after the user approves, #1929).
 - `overnight-preparer` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep` (unattended: no question tool and no MCP tools; the plist deny list blocks git push and every gh write underneath it).
 - `pr-health-checker` — `Bash`, `Read`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`. (Reads config via the CLI `config --json`; the MCP config tool is a get-or-set mutator and is deliberately not granted.)
-- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files under `/tmp` and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
+- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files in the tool's draft directory, `~/.oss-autopilot/tmp`, and `Edit` for formatting reverts; it posts only on the user's explicit request, through the CLI `post --body-file ... --expect-sha256 ...` via `Bash`, which refuses a file that differs from the text the user saw).
 - `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__guidelines-get` (local git/diff review).
 - `repo-evaluator` — `Bash`, `Read`, `Glob`, `AskUserQuestion`, `mcp__...__vet`, `mcp__...__repo-vet`, `mcp__...__status`.
 
@@ -69,6 +70,7 @@ Opus should not burn tokens on `pr-compliance-checker`'s deterministic rubric.
 | `contribution-strategist` | `haiku` | Aggregates `status --json` into a markdown summary. Bounded scope, no judgment calls. |
 | `issue-scout` | `sonnet` | Judgment on issue viability + anti-AI policy detection; reads scout-bridge output and filters. |
 | `pr-compliance-checker` | `haiku` | Deterministic 6-weight rubric emission against a PR. Structured output, minimal ambiguity. |
+| `learnings-extractor` | `sonnet` | Separates durable maintainer preferences from PR-specific noise in an untrusted comment corpus, and has to recognize instruction-like comments and leave them out. |
 | `overnight-preparer` | `sonnet` | CI log diagnosis, conflict resolution and requested-change edits in a worktree, unattended; needs to reason about failures and know when to stop. |
 | `pr-health-checker` | `sonnet` | Git rebase flow + CI log diagnosis; needs to reason about error messages and suggest fixes. |
 | `pr-responder` | `sonnet` | Claim verification + tone calibration + multi-step draft-accuracy procedure. Heavy reasoning. |

@@ -23,10 +23,16 @@ function isBotReview(review: { user?: { login?: string; type?: string | null } |
   return isBotAuthor(review.user?.login ?? '', review.user?.type);
 }
 
+/** The review fields the verdict helpers read. */
+type VerdictReview = {
+  state?: string | null;
+  submitted_at?: string | null;
+  user?: { login?: string; type?: string | null } | null;
+};
+
 /**
- * Determine review decision from reviews list.
- * Groups reviews by user, keeping each user's latest verdict, then checks
- * for CHANGES_REQUESTED or APPROVED states.
+ * Each human reviewer's standing verdict: their latest APPROVED or
+ * CHANGES_REQUESTED review, dropped again by a later DISMISSED one.
  *
  * Only APPROVED, CHANGES_REQUESTED and DISMISSED change a reviewer's standing
  * verdict on GitHub. COMMENTED is also what GitHub records for every inline
@@ -35,15 +41,8 @@ function isBotReview(review: { user?: { login?: string; type?: string | null } |
  * Bot-authored reviews (e.g. an AI review bot posting APPROVE) are ignored so a
  * bot alone never reads as maintainer approval or a changes request (#1840).
  */
-export function determineReviewDecision(
-  reviews: Array<{ state?: string | null; user?: { login?: string; type?: string | null } | null }>,
-): ReviewDecision {
-  if (reviews.length === 0) {
-    return 'review_required';
-  }
-
-  // Group reviews by user, keeping each user's latest verdict
-  const latestByUser = new Map<string, string>();
+function standingVerdicts(reviews: VerdictReview[]): VerdictReview[] {
+  const latestByUser = new Map<string, VerdictReview>();
   for (const review of reviews) {
     const login = review.user?.login;
     const state = review.state;
@@ -51,11 +50,19 @@ export function determineReviewDecision(
     if (state === 'DISMISSED') {
       latestByUser.delete(login);
     } else if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {
-      latestByUser.set(login, state);
+      latestByUser.set(login, review);
     }
   }
+  return Array.from(latestByUser.values());
+}
 
-  const states = Array.from(latestByUser.values());
+/**
+ * Determine review decision from reviews list: changes requested when any
+ * reviewer's standing verdict ({@link standingVerdicts}) is CHANGES_REQUESTED,
+ * otherwise approved when any is APPROVED.
+ */
+export function determineReviewDecision(reviews: VerdictReview[]): ReviewDecision {
+  const states = standingVerdicts(reviews).map((review) => review.state);
 
   if (states.includes('CHANGES_REQUESTED')) {
     return 'changes_requested';
@@ -66,6 +73,21 @@ export function determineReviewDecision(
   }
 
   return 'review_required';
+}
+
+/**
+ * When `login`'s standing approval (see {@link standingVerdicts}) was
+ * submitted, or undefined when that account has no standing APPROVED verdict.
+ * Logins compare case-insensitively. Lets the status logic tell whether the
+ * author of an unanswered comment approved at or after writing it (#1920).
+ */
+export function getStandingApprovalDate(reviews: VerdictReview[], login: string | undefined): string | undefined {
+  const wanted = login?.toLowerCase();
+  if (!wanted) return undefined;
+  const approval = standingVerdicts(reviews).find(
+    (review) => review.state === 'APPROVED' && review.user?.login?.toLowerCase() === wanted,
+  );
+  return approval?.submitted_at ?? undefined;
 }
 
 /**
@@ -168,12 +190,50 @@ export function getFirstMaintainerResponseAt(
 }
 
 /**
+ * Associations GitHub reports for an account with no tie to the repository.
+ * CONTRIBUTOR is not one of them: an outside token sees a maintainer whose
+ * organization membership is private as CONTRIBUTOR.
+ */
+const NO_STANDING_ASSOCIATIONS: ReadonlySet<string> = new Set([
+  'NONE',
+  'FIRST_TIMER',
+  'FIRST_TIME_CONTRIBUTOR',
+  'MANNEQUIN',
+]);
+
+/** Lower-cased logins of everyone who submitted a review, in any state, or an inline review comment on the PR. */
+function prReviewers(
+  reviews: Array<{ user?: { login?: string } | null }>,
+  reviewComments: ReviewComment[],
+): Set<string> {
+  const logins = new Set<string>();
+  for (const list of [reviews, reviewComments]) {
+    for (const item of list) {
+      const login = item.user?.login;
+      if (login) logins.add(login.toLowerCase());
+    }
+  }
+  return logins;
+}
+
+/**
  * Check if there are unresponded comments from maintainers.
  * Combines issue comments and review comments into a timeline,
  * then finds maintainer comments after the user's last comment.
+ *
+ * Whose items count (#1921): every review from another human, and every issue
+ * comment from another human except a passer-by's. A passer-by is an account
+ * whose association is NONE, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR or MANNEQUIN
+ * ({@link NO_STANDING_ASSOCIATIONS}) and that has submitted no review (in any
+ * state) and no inline review comment on this PR. So an OWNER, MEMBER,
+ * COLLABORATOR or CONTRIBUTOR always counts, anyone who reviewed the PR counts
+ * whatever their association, and an issue comment with no association data
+ * counts: missing a maintainer costs more than surfacing a passer-by. This is
+ * deliberately wider than {@link isMaintainerEngagement}, which drives the
+ * dormancy clock.
  */
 export function checkUnrespondedComments(
-  comments: Array<{ user?: { login?: string; type?: string | null } | null; body?: string | null; created_at: string }>,
+  comments: Array<ActorFields & { body?: string | null; created_at: string }>,
   reviews: Array<{
     user?: { login?: string; type?: string | null } | null;
     body?: string | null;
@@ -183,7 +243,12 @@ export function checkUnrespondedComments(
   }>,
   reviewComments: ReviewComment[],
   username: string,
-): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
+): {
+  hasUnrespondedComment: boolean;
+  lastMaintainerComment?: FetchedPR['lastMaintainerComment'];
+  /** Every unanswered maintainer item, oldest first; the last one is `lastMaintainerComment`. */
+  unrespondedComments: Array<{ author: string; createdAt: string }>;
+} {
   // Combine comments and reviews into a timeline
   const timeline: Array<{
     author: string;
@@ -192,8 +257,11 @@ export function checkUnrespondedComments(
     createdAt: string;
     isUser: boolean;
     reviewId?: number;
+    /** True for an issue comment from an account with no tie to the repository or the PR (#1921). */
+    isPasserBy?: boolean;
   }> = [];
   const usernameLower = username.toLowerCase();
+  const reviewers = prReviewers(reviews, reviewComments);
 
   for (const comment of comments) {
     const author = comment.user?.login || 'unknown';
@@ -203,6 +271,8 @@ export function checkUnrespondedComments(
       body: comment.body || '',
       createdAt: comment.created_at,
       isUser: author.toLowerCase() === usernameLower,
+      isPasserBy:
+        NO_STANDING_ASSOCIATIONS.has(comment.author_association ?? '') && !reviewers.has(author.toLowerCase()),
     });
   }
 
@@ -253,11 +323,13 @@ export function checkUnrespondedComments(
 
   // Find maintainer comments after the user's last comment
   let lastMaintainerComment: FetchedPR['lastMaintainerComment'] | undefined;
+  const unrespondedComments: Array<{ author: string; createdAt: string }> = [];
 
   for (const item of timeline) {
     if (item.isUser) continue; // Skip user's own comments
     if (item.author === 'unknown') continue; // Skip deleted/null accounts
     if (isBotAuthor(item.author, item.userType)) continue; // Skip bots
+    if (item.isPasserBy) continue; // Skip accounts with no tie to the repository or the PR (#1921)
     // Skip pure acknowledgments here, not after the loop, so a later "thanks"
     // does not clear an earlier unanswered request (#1916). A review with
     // inline comments is never skipped: those carry feedback beyond the
@@ -267,6 +339,7 @@ export function checkUnrespondedComments(
 
     const itemTime = new Date(item.createdAt);
     if (!lastUserCommentTime || itemTime > lastUserCommentTime) {
+      unrespondedComments.push({ author: item.author, createdAt: item.createdAt });
       lastMaintainerComment = {
         author: item.author,
         body: item.body.slice(0, 200) + (item.body.length > 200 ? '...' : ''),
@@ -278,6 +351,7 @@ export function checkUnrespondedComments(
   return {
     hasUnrespondedComment: !!lastMaintainerComment,
     lastMaintainerComment,
+    unrespondedComments,
   };
 }
 

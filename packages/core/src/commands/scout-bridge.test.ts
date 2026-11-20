@@ -39,6 +39,35 @@ describe('buildScoutState', () => {
     vi.clearAllMocks();
   });
 
+  it('passes the bans the user confirmed to scout with the blocklist, not unreviewed ones (#1953)', () => {
+    const banned = {
+      aiPolicy: 'banned',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: true,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    const state = makeAgentState({
+      config: { aiPolicyBlocklist: ['matplotlib/matplotlib'] },
+      repoPolicies: {
+        'org/banned': banned,
+        'org/unreviewed': { ...banned, reviewedByUser: false },
+        'org/fine': { ...banned, aiPolicy: 'allowed' },
+        // Written by a newer release this one cannot fully parse: the ban still holds.
+        'org/newer': { aiPolicy: 'banned', reviewedByUser: true, prGate: 'from-the-future' },
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    expect(buildScoutState().preferences.aiPolicyBlocklist).toEqual([
+      'matplotlib/matplotlib',
+      'org/banned',
+      'org/newer',
+    ]);
+  });
+
   it('should map all standard config fields correctly', () => {
     const state = makeAgentState({
       config: {

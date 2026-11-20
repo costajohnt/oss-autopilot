@@ -2,6 +2,7 @@
   "repo": "owner/repo",
   "content": null,
   "agentContent": null,
+  "reviewedAt": null,
   "byteSize": 0,
   "exists": false,
   "storageMode": "gist"

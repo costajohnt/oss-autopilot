@@ -5,84 +5,217 @@
  */
 
 import * as fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema, NEWER_WRITER_HINT, malformedWorkClaimCount, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
-import { errorMessage, ConcurrencyError } from './errors.js';
+import { pruneRejectedCopies } from './stale-data.js';
+import { errorMessage, ConcurrencyError, NewerStateVersionError, StateLockTimeoutError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'state';
 
-// Lock file timeout: if a lock is older than this, it is considered stale
-const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
+// A lock whose owner is gone is stale once it is older than this. The locked
+// section is a synchronous copy + write + rename (milliseconds), so 30 seconds
+// is far past any real write.
+const LOCK_TIMEOUT_MS = 30_000;
+// A lock whose PID is still alive on this host is only taken after this long:
+// the owner is most likely an unrelated process that reused the PID of a
+// crashed writer, and a live writer that is merely slow must keep its lock.
+const LIVE_LOCK_TIMEOUT_MS = 10 * 60_000;
+// Contention: poll every 25 ms for about one second, then fail (#1951).
+const LOCK_RETRY_INTERVAL_MS = 25;
+const LOCK_RETRY_ATTEMPTS = 40;
+
+/** Block this thread for `ms`. saveState is synchronous, so the wait has to be too. */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function errnoCode(err: unknown): string | undefined {
+  return (err as NodeJS.ErrnoException | null)?.code;
+}
 
 /**
- * Check whether an existing lock file is stale (expired or corrupt).
- * Returns true if the lock should be considered stale and can be removed.
+ * The lock file's content, or null when there is no lock file. Any other read
+ * failure is rethrown: an fd or permission problem is not "locked".
  */
-function isLockStale(lockPath: string): boolean {
+function readLockFile(lockPath: string): string | null {
   try {
-    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-    return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
+    return fs.readFileSync(lockPath, 'utf8');
   } catch (err) {
-    // Lock file is unreadable or contains invalid JSON — treat as stale
-    debug(MODULE, 'Lock file unreadable or invalid JSON, treating as stale', err);
+    if (errnoCode(err) !== 'ENOENT') throw err;
+    return null;
+  }
+}
+
+function isPidAlive(pid: unknown): boolean {
+  if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
     return true;
+  } catch (err) {
+    // EPERM: the process exists but belongs to another user.
+    return errnoCode(err) === 'EPERM';
+  }
+}
+
+function parseLock(content: string): { pid?: unknown; timestamp?: unknown } {
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err) {
+    debug(MODULE, 'Lock file is not valid JSON', err);
+  }
+  return parsed ?? {};
+}
+
+/** The lock file's mtime, or a time that can never look stale when it cannot be read. */
+function lockMtimeMs(lockPath: string): number {
+  try {
+    return fs.statSync(lockPath).mtimeMs;
+  } catch (err) {
+    debug(MODULE, 'Lock file disappeared while checking staleness', err);
+    return Infinity;
+  }
+}
+
+/**
+ * Return the lock's content when it is stale, or null when it must be
+ * respected (or is already gone). Age is counted from the earlier of the
+ * lock's timestamp and the file mtime, so a lock without a usable timestamp
+ * (empty while its owner is still writing it, or corrupt) is aged by mtime
+ * instead of being stale on sight, and a timestamp in the future cannot make
+ * a lock immortal.
+ */
+function readStaleLock(lockPath: string): string | null {
+  const content = readLockFile(lockPath);
+  if (content === null) return null;
+  const lock = parseLock(content);
+  // Saving is synchronous, so a process that is acquiring is not inside the
+  // locked section: a lock with its own PID is a leftover, stale now.
+  // ponytail: assumes one PID namespace and one writer thread per process.
+  // Containers sharing the data directory with colliding PIDs rely on the
+  // commit-point check in saveState; add a host/boot id to the lock if that
+  // setup becomes real.
+  if (lock.pid === process.pid) return content;
+  const stamped = typeof lock.timestamp === 'number' ? lock.timestamp : Infinity;
+  const since = Math.min(stamped, lockMtimeMs(lockPath));
+  const limit = isPidAlive(lock.pid) ? LIVE_LOCK_TIMEOUT_MS : LOCK_TIMEOUT_MS;
+  return Date.now() - since > limit ? content : null;
+}
+
+/** Link a wrongly claimed lock back into place; `linkSync` fails rather than overwrite a newer lock. */
+function putBackLock(claimed: string, lockPath: string): void {
+  try {
+    fs.linkSync(claimed, lockPath);
+  } catch (err) {
+    warn(MODULE, `Could not put back a live state lock: ${errorMessage(err)}`);
+  }
+}
+
+/** True when the claimed file is the lock that was judged stale. Unreadable counts as not: it is put back. */
+function isJudgedLock(claimed: string, staleContent: string): boolean {
+  try {
+    return fs.readFileSync(claimed, 'utf8') === staleContent;
+  } catch (err) {
+    warn(MODULE, `Could not read a claimed state lock: ${errorMessage(err)}`);
+    return false;
+  }
+}
+
+/**
+ * Remove a lock judged stale without ever removing a fresh one. The rename
+ * is the atomic claim: of several processes that judged the same lock stale,
+ * one gets the file and the rest fail with ENOENT. If the claimed file is not
+ * the lock that was judged (another process finished its own takeover in
+ * between), it is put back.
+ */
+function removeStaleLock(lockPath: string, staleContent: string): void {
+  const claimed = `${lockPath}.stale-${process.pid}-${randomUUID()}`;
+  try {
+    fs.renameSync(lockPath, claimed);
+  } catch (err) {
+    debug(MODULE, 'Stale lock already claimed or released by another process', err);
+    return;
+  }
+  if (!isJudgedLock(claimed, staleContent)) putBackLock(claimed, lockPath);
+  fs.rmSync(claimed, { force: true });
+}
+
+/** Exclusive-create the lock file. False when one already exists; any other failure is rethrown. */
+function didCreateLock(lockPath: string, lockData: string): boolean {
+  try {
+    fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if file exists
+    return true;
+  } catch (err) {
+    if (errnoCode(err) !== 'EEXIST') throw err;
+    return false;
+  }
+}
+
+/**
+ * Exclusive-create the lock, then re-read it: this process holds the lock
+ * only if the file on disk is the one it wrote. If the re-read fails, a lock
+ * this call created is removed again so it is not left orphaned.
+ */
+function didTakeLock(lockPath: string, lockData: string): boolean {
+  const didCreate = didCreateLock(lockPath, lockData);
+  try {
+    return readLockFile(lockPath) === lockData;
+  } catch (err) {
+    if (didCreate) fs.rmSync(lockPath, { force: true });
+    throw err;
   }
 }
 
 /**
  * Acquire an advisory file lock using exclusive-create (`wx` flag).
- * If the lock file already exists but is stale (older than LOCK_TIMEOUT_MS or corrupt),
- * it is removed and re-acquired.
- * @throws Error if the lock is held by another active process.
+ * A held lock is retried for about a second; a stale one (see
+ * {@link readStaleLock}) is taken over through an atomic rename.
+ * @returns The lock content written, for {@link releaseLock} and for
+ *   re-checking ownership before the write the lock protects.
+ * @throws StateLockTimeoutError (a ConcurrencyError) if the lock is still
+ *   held after the wait. Nothing has been written at that point.
  */
-export function acquireLock(lockPath: string): void {
-  const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
-  try {
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if file exists
-    return;
-  } catch (err) {
-    // Lock file exists (EEXIST from 'wx' flag) — check if it is stale
-    debug(MODULE, 'Lock file already exists, checking staleness', err);
+export function acquireLock(lockPath: string): string {
+  const startedAt = Date.now();
+  const lockData = JSON.stringify({ pid: process.pid, timestamp: startedAt, token: randomUUID() });
+  for (let attempt = 0; attempt <= LOCK_RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) sleepSync(LOCK_RETRY_INTERVAL_MS);
+    if (didTakeLock(lockPath, lockData)) return lockData;
+    const staleContent = readStaleLock(lockPath);
+    if (staleContent !== null) {
+      removeStaleLock(lockPath, staleContent);
+      if (didTakeLock(lockPath, lockData)) return lockData;
+    }
   }
-
-  if (!isLockStale(lockPath)) {
-    throw new Error('State file is locked by another process');
-  }
-
-  // Stale lock detected — remove it and try to re-acquire
-  try {
-    fs.unlinkSync(lockPath);
-  } catch (err) {
-    // Another process may have removed the stale lock first — proceed to re-acquire regardless
-    debug(MODULE, 'Stale lock already removed by another process', err);
-  }
-  try {
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
-  } catch (err) {
-    // Another process grabbed the lock between unlink and write
-    debug(MODULE, 'Lock re-acquire failed (race condition)', err);
-    throw new Error('State file is locked by another process', { cause: err });
-  }
+  throw new StateLockTimeoutError(lockPath, Date.now() - startedAt);
 }
 
 /**
- * Release an advisory file lock, but only if this process owns it.
- * Silently ignores missing lock files or locks owned by other processes.
+ * Release an advisory file lock, but only if it still holds `held`, the
+ * content {@link acquireLock} returned. A missing lock is ignored; any other
+ * failure is warned about, never thrown (this runs in a `finally`).
  */
-export function releaseLock(lockPath: string): void {
+export function releaseLock(lockPath: string, held: string): void {
   try {
-    const data = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-    if (data.pid === process.pid) {
-      fs.unlinkSync(lockPath);
-    }
+    if (readLockFile(lockPath) === held) fs.unlinkSync(lockPath);
   } catch (err) {
-    // Lock already removed or unreadable — nothing to do
-    debug(MODULE, 'Lock file already removed or unreadable during release', err);
+    if (errnoCode(err) !== 'ENOENT') warn(MODULE, `Could not release the state lock ${lockPath}: ${errorMessage(err)}`);
   }
+}
+
+/** Throw unless the lock file still holds what {@link acquireLock} wrote (it was taken over meanwhile). */
+function assertLockHeld(lockPath: string, held: string): void {
+  if (readLockFile(lockPath) === held) return;
+  throw new ConcurrencyError(
+    0,
+    0,
+    'The state lock was taken over by another process before the write. Nothing was written; re-run the command.',
+  );
 }
 
 /**
@@ -399,6 +532,7 @@ function preserveRejectedStateFile(statePath: string): string | null {
     const rejectedPath = statePath + '.rejected-' + Date.now();
     fs.copyFileSync(statePath, rejectedPath);
     warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
+    pruneRejectedCopies(path.dirname(rejectedPath));
     return rejectedPath;
   } catch (preserveErr) {
     warn(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
@@ -419,14 +553,72 @@ export function warnMalformedWorkClaims(raw: unknown, state: AgentState, source:
 }
 
 /**
+ * Refuse stored state whose schema version is above this release's. Treating
+ * it as invalid would restore an older backup (or fresh state) over newer
+ * data. `source` names the copy in the message.
+ */
+export function assertNotNewerVersion(raw: unknown, source: string): void {
+  const version = (raw as { version?: unknown } | null)?.version;
+  const supported = AgentStateSchema.shape.version.value;
+  if (typeof version === 'number' && version > supported) {
+    throw new NewerStateVersionError(source, version, supported);
+  }
+}
+
+/**
+ * Refuse to save over a state file a newer release wrote. Runs on every save,
+ * whatever the caller's mtime baseline: a process that started before the
+ * file existed has no baseline and would otherwise write old state over it.
+ * A missing or unparseable file is not this check's concern.
+ */
+function assertDiskStateNotNewer(statePath: string): void {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch (err) {
+    // No file yet, or one that does not parse: nothing to protect. Any other
+    // failure is worth a warning, but the save still goes ahead.
+    const isExpected = errnoCode(err) === 'ENOENT' || err instanceof SyntaxError;
+    if (isExpected) debug(MODULE, 'No parseable state file to version-check before save', err);
+    else warn(MODULE, `Could not version-check the state file before save: ${errorMessage(err)}`);
+    return;
+  }
+  assertNotNewerVersion(raw, 'state file');
+}
+
+/**
+ * Rethrow a load failure that is not corruption, before any file is touched:
+ * a newer-version state file, or anything carrying an errno `code`, i.e. a
+ * file system error (EACCES, EMFILE, EIO, EISDIR, ENOSPC, ...).
+ * Restoring a backup or starting fresh there would mask the real problem and
+ * can overwrite a valid state file (#1371, #1951). Only unparseable or
+ * structurally broken content returns, to be recovered.
+ */
+function rethrowUnlessCorrupt(error: unknown): void {
+  if (error instanceof NewerStateVersionError) throw error;
+  const code = errnoCode(error);
+  if (code === 'EACCES' || code === 'EPERM') {
+    throw new Error(
+      `Permission denied reading state file (${code}): ${errorMessage(error)}. ` +
+        'This is an environment problem, not state corruption. Check the ownership and ' +
+        'permissions of ~/.oss-autopilot/state.json (e.g. run `ls -l ~/.oss-autopilot/state.json` ' +
+        'and fix with chown/chmod), then retry.',
+      { cause: error },
+    );
+  }
+  if (typeof code === 'string') throw error;
+}
+
+/**
  * Load state from file, or create initial state if none exists.
  * If the main state file is corrupted, attempts to restore from the most recent backup.
  * Performs migration from legacy ./data/ location if needed.
  * @returns Object with the loaded state, the file's mtime (for change detection),
  *   and recovery details when the main file was rejected.
- * @throws Error when the state file exists but cannot be read due to a
- *   permission error (EACCES/EPERM) — that is an environment problem, not
- *   corruption, so restore-or-fresh would mask it and risk clobbering data.
+ * @throws Error when the state file exists but cannot be read due to a file
+ *   system error (EACCES/EPERM get guidance, others are rethrown as they are)
+ *   or was written by a newer release. Neither is corruption, so
+ *   restore-or-fresh would mask it and risk clobbering data. No file is touched.
  */
 export function loadState(): LoadStateResult {
   // Try to migrate from legacy location first
@@ -445,6 +637,7 @@ export function loadState(): LoadStateResult {
       let mtimeMs = safeGetMtimeMs(statePath);
       const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
+      assertNotNewerVersion(raw, 'state file');
 
       // Chain migrations: v1 → v2 → v3 → v4
       let wasMigrated = false;
@@ -510,19 +703,7 @@ export function loadState(): LoadStateResult {
       return { state, mtimeMs };
     }
   } catch (error) {
-    // Permission errors are environmental, not corruption — restoring a
-    // backup or starting fresh here would mask the real problem and risk
-    // clobbering a perfectly valid state file. Rethrow with guidance (#1371).
-    const code = (error as NodeJS.ErrnoException | null)?.code;
-    if (code === 'EACCES' || code === 'EPERM') {
-      throw new Error(
-        `Permission denied reading state file (${code}): ${errorMessage(error)}. ` +
-          'This is an environment problem, not state corruption. Check the ownership and ' +
-          'permissions of ~/.oss-autopilot/state.json (e.g. run `ls -l ~/.oss-autopilot/state.json` ' +
-          'and fix with chown/chmod), then retry.',
-        { cause: error },
-      );
-    }
+    rethrowUnlessCorrupt(error);
 
     warn(MODULE, 'Error loading state:', error);
     warn(MODULE, 'Attempting to restore from backup...');
@@ -608,9 +789,11 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
   const backupDir = getBackupDir();
 
   // Acquire advisory lock to prevent concurrent writes
-  acquireLock(lockPath);
+  const held = acquireLock(lockPath);
 
   try {
+    assertDiskStateNotNewer(statePath);
+
     // Compare-and-swap: reject the write if the file changed externally
     // between the caller's last load and now. Zero/null bypasses the
     // check for first writes and Gist-mode local-cache paths.
@@ -638,47 +821,79 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
       // Continue with save — losing a backup is acceptable, losing the save is not
     }
 
-    // Atomic write: write to temp file then rename to prevent corruption on crash
+    // Atomic write: write to temp file then rename to prevent corruption on crash.
+    // Ownership is re-checked first: a takeover since acquiring must not end in two writers.
+    assertLockHeld(lockPath, held);
     atomicWriteFileSync(statePath, serializeState(state), 0o600);
     const mtimeMs = safeGetMtimeMs(statePath);
     debug(MODULE, 'State saved successfully');
     return mtimeMs;
   } finally {
-    releaseLock(lockPath);
+    releaseLock(lockPath, held);
   }
+}
+
+// Read failures that usually clear on their own: worth one retry before a reload fails its caller.
+const TRANSIENT_READ_CODES = new Set(['EMFILE', 'ENFILE', 'EBUSY', 'EAGAIN']);
+
+/**
+ * loadState for a reload. A file that vanished since the stat is "no change"
+ * (null); a transient resource error is retried once after a short pause.
+ * Everything else loadState throws (newer-version state, EACCES, a second
+ * failure) propagates: swallowing it would leave a long-lived process on old
+ * state that its next save writes over the file (#1951).
+ */
+function loadStateForReload(): LoadStateResult | null {
+  try {
+    return loadState();
+  } catch (error) {
+    const code = errnoCode(error) ?? '';
+    if (code === 'ENOENT') return null;
+    if (!TRANSIENT_READ_CODES.has(code)) throw error;
+    warn(MODULE, `State reload hit ${code}, retrying once: ${errorMessage(error)}`);
+  }
+  sleepSync(LOCK_RETRY_INTERVAL_MS);
+  return loadState();
 }
 
 /**
  * Re-read state from disk if the file has been modified since the last load/save.
  * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
- * @returns The new state and mtime if reloaded, or null if no change detected.
+ * @returns The new state and mtime if reloaded, or null if no change detected
+ *   (or the file is gone).
+ * @throws What {@link loadState} throws, after one retry for transient
+ *   resource errors: a newer-version state file or a persistent file system
+ *   error must reach the caller, not be served as stale state.
  */
 export function reloadStateIfChanged(lastLoadedMtimeMs: number): LoadStateResult | null {
+  const statePath = getStatePath();
+  let currentMtimeMs: number;
   try {
-    const statePath = getStatePath();
-    const currentMtimeMs = fs.statSync(statePath).mtimeMs;
-    if (currentMtimeMs === lastLoadedMtimeMs) return null;
-    const result = loadState();
-    // Re-stat only on the recovery paths. There loadState rewrote the file
-    // itself (backup restore) or returned 0 (fresh state), and a current mtime
-    // stops a reload on every request. On the clean path the baseline was
-    // taken BEFORE the read on purpose: replacing it with a later stat would
-    // pair the content we hold with a newer writer's mtime, and the next save
-    // would overwrite that writer without a ConcurrencyError. A baseline that
-    // is merely old costs one more reload, which converges.
-    if (result.recovery) {
-      try {
-        result.mtimeMs = fs.statSync(statePath).mtimeMs;
-      } catch (err) {
-        // If file was just loaded, stat should not fail. If it does,
-        // next reloadIfChanged() will simply trigger another reload.
-        debug(MODULE, 'Could not re-read mtime after reload (will retry next cycle)', err);
-      }
-    }
-    return result;
+    currentMtimeMs = fs.statSync(statePath).mtimeMs;
   } catch (error) {
-    // statSync failure (file deleted) is benign — keep current in-memory state.
+    if (errnoCode(error) !== 'ENOENT') throw error;
+    // File deleted: benign, keep the current in-memory state.
     warn(MODULE, `Failed to reload state from disk: ${errorMessage(error)}`);
     return null;
   }
+  if (currentMtimeMs === lastLoadedMtimeMs) return null;
+  const result = loadStateForReload();
+  if (result === null) return null;
+  // Re-stat only on the recovery paths. There loadState rewrote the file
+  // itself (backup restore) or returned 0 (fresh state), and a current mtime
+  // stops a reload on every request. On the clean path the baseline was
+  // taken BEFORE the read on purpose: replacing it with a later stat would
+  // pair the content we hold with a newer writer's mtime, and the next save
+  // would overwrite that writer without a ConcurrencyError. A baseline that
+  // is merely old costs one more reload, which converges.
+  if (result.recovery) {
+    try {
+      result.mtimeMs = fs.statSync(statePath).mtimeMs;
+    } catch (err) {
+      // If file was just loaded, stat should not fail. If it does,
+      // next reloadIfChanged() will simply trigger another reload.
+      debug(MODULE, 'Could not re-read mtime after reload (will retry next cycle)', err);
+    }
+  }
+  return result;
 }

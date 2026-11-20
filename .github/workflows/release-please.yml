@@ -86,10 +86,14 @@ jobs:
       # the core version in packages/mcp-server/BUNDLED_CORE_VERSION. Merging
       # the release PR brings that commit to main, and release-please then
       # opens the MCP release that rebuilds the bundle against the new core.
-      # The marker check keeps re-runs (release-please force-pushes this
-      # branch) from stacking commits; an mcp-only release leaves core alone,
-      # so this never loops.
-      - name: Queue an MCP release for a core-only release
+      # When the release PR bumps both, the MCP release it cuts already builds
+      # against the new core, so the marker is still rewritten (it used to be
+      # skipped and sat one core release behind, #1947) but as a chore commit
+      # that queues nothing. The marker check keeps re-runs (release-please
+      # force-pushes this branch) from stacking commits; an mcp-only release
+      # leaves core alone, so this never loops. The version-sources contract
+      # test in packages/core fails CI while the marker and core disagree.
+      - name: Record the bundled core version (queues an MCP release when core-only)
         if: steps.release-pr.outputs.branch != ''
         env:
           BRANCH: ${{ steps.release-pr.outputs.branch }}
@@ -101,10 +105,12 @@ jobs:
           MCP=$(ver packages/mcp-server < .release-please-manifest.json)
           BASE_CORE=$(git show FETCH_HEAD:.release-please-manifest.json | ver .)
           BASE_MCP=$(git show FETCH_HEAD:.release-please-manifest.json | ver packages/mcp-server)
-          if [ "$CORE" = "$BASE_CORE" ] || [ "$MCP" != "$BASE_MCP" ]; then
-            echo "No core-only release (core $BASE_CORE -> $CORE, mcp $BASE_MCP -> $MCP)"
+          if [ "$CORE" = "$BASE_CORE" ]; then
+            echo "No core release (core $BASE_CORE -> $CORE, mcp $BASE_MCP -> $MCP)"
             exit 0
           fi
+          TYPE=fix
+          if [ "$MCP" != "$BASE_MCP" ]; then TYPE=chore; fi
           MARKER=packages/mcp-server/BUNDLED_CORE_VERSION
           if [ "$(cat "$MARKER" 2>/dev/null)" = "$CORE" ]; then
             echo "$MARKER already records core $CORE"
@@ -114,7 +120,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$MARKER"
-          git commit -m "fix(mcp): bundle @oss-autopilot/core ${CORE}"
+          git commit -m "${TYPE}(mcp): bundle @oss-autopilot/core ${CORE}"
           git push origin "HEAD:${BRANCH}"
 
   publish-npm:

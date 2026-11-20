@@ -57,6 +57,7 @@ vi.mock('./formatters/json.js', () => ({
   IssueThreadOutputSchema: { name: 'IssueThreadOutputSchema' },
   PRTemplateOutputSchema: { name: 'PRTemplateOutputSchema' },
   RepoCapStatusSchema: { name: 'RepoCapStatusSchema' },
+  PrPreflightOutputSchema: { name: 'PrPreflightOutputSchema' },
   ParseIssueListOutputSchema: { name: 'ParseIssueListOutputSchema' },
   CheckIntegrationOutputSchema: { name: 'CheckIntegrationOutputSchema' },
   DetectFormattersOutputSchema: { name: 'DetectFormattersOutputSchema' },
@@ -72,6 +73,7 @@ vi.mock('./formatters/json.js', () => ({
   WorkFinishOutputSchema: { name: 'WorkFinishOutputSchema' },
   WorkReleaseOutputSchema: { name: 'WorkReleaseOutputSchema' },
   WorkListOutputSchema: { name: 'WorkListOutputSchema' },
+  PolicyGetOutputSchema: { name: 'PolicyGetOutputSchema' },
 }));
 
 const mockRunWorkClaim = vi.fn();
@@ -204,11 +206,21 @@ vi.mock('./commands/check-integration.js', () => ({ runCheckIntegration: mockRun
 const mockRunDoctor = vi.fn();
 vi.mock('./commands/doctor.js', () => ({ runDoctor: mockRunDoctor }));
 
+const mockRunCleanup = vi.fn();
+const mockPrintCleanup = vi.fn();
+vi.mock('./commands/cleanup.js', () => ({ runCleanup: mockRunCleanup, printCleanup: mockPrintCleanup }));
+
 const mockRunStartup = vi.fn();
 vi.mock('./commands/startup.js', () => ({ runStartup: mockRunStartup }));
 
 const mockRunRepoCap = vi.fn();
 vi.mock('./commands/repo-cap.js', () => ({ runRepoCap: mockRunRepoCap }));
+const mockRunPrPreflight = vi.fn();
+const mockPrintPrPreflight = vi.fn();
+vi.mock('./commands/pr-preflight.js', () => ({
+  runPrPreflight: mockRunPrPreflight,
+  printPrPreflight: mockPrintPrPreflight,
+}));
 const mockRunPRTemplate = vi.fn();
 vi.mock('./commands/pr-template.js', () => ({ runPRTemplate: mockRunPRTemplate }));
 
@@ -252,12 +264,30 @@ const mockGuidelinesView = vi.fn();
 const mockGuidelinesStore = vi.fn();
 const mockGuidelinesReset = vi.fn();
 const mockFetchCorpus = vi.fn();
+const mockPolicyGet = vi.fn();
+const mockPolicySet = vi.fn();
+const mockPolicyReset = vi.fn();
+vi.mock('./commands/policy.js', () => ({
+  runPolicyGet: mockPolicyGet,
+  runPolicySet: mockPolicySet,
+  runPolicyReset: mockPolicyReset,
+}));
+
 vi.mock('./commands/guidelines.js', () => ({
   runGuidelinesList: mockGuidelinesList,
   runGuidelinesView: mockGuidelinesView,
   runGuidelinesStore: mockGuidelinesStore,
   runGuidelinesReset: mockGuidelinesReset,
   runFetchCorpus: mockFetchCorpus,
+}));
+
+const mockReadApprovedDraft = vi.fn();
+const mockRunDraftPath = vi.fn();
+const mockRunDraftShow = vi.fn();
+vi.mock('./commands/draft.js', () => ({
+  readApprovedDraft: mockReadApprovedDraft,
+  runDraftPath: mockRunDraftPath,
+  runDraftShow: mockRunDraftShow,
 }));
 
 // ─── Import after mocks ────────────────────────────────────────────────────
@@ -279,6 +309,7 @@ import {
   OvernightPushPrepOutputSchema,
   ParseIssueListOutputSchema,
   PRTemplateOutputSchema,
+  PrPreflightOutputSchema,
   RepoCapStatusSchema,
   RepoVetOutputSchema,
   SetupOutputSchema,
@@ -1427,6 +1458,142 @@ describe('post command', () => {
   });
 });
 
+describe('approved text from a draft file (#1930)', () => {
+  const DRAFT = '/home/u/.oss-autopilot/tmp/reply.md';
+  const SHA = 'a'.repeat(64);
+
+  it('post --body-file posts the file text untrimmed and forwards --expect-sha256', async () => {
+    mockReadApprovedDraft.mockReturnValue('from file\n');
+    mockRunPost.mockResolvedValue({ commentUrl: `${PR_URL}#issuecomment-6` });
+
+    await buildProgram('post').parseAsync([
+      'node',
+      'cli',
+      'post',
+      PR_URL,
+      '--body-file',
+      DRAFT,
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockReadApprovedDraft).toHaveBeenCalledWith({
+      file: DRAFT,
+      flag: '--body-file',
+      expectSha256: SHA,
+      hasOtherInput: false,
+    });
+    expect(mockRunPost).toHaveBeenCalledWith({ url: PR_URL, message: 'from file\n', expectSha256: SHA });
+  });
+
+  it.each([['--stdin'], ['positional', 'words']])(
+    'post reports %s next to --body-file as another input',
+    async (...extra) => {
+      mockReadApprovedDraft.mockReturnValue('x');
+      mockRunPost.mockResolvedValue({ commentUrl: PR_URL });
+
+      await buildProgram('post').parseAsync(['node', 'cli', 'post', PR_URL, ...extra, '--body-file', DRAFT]);
+
+      expect(mockReadApprovedDraft).toHaveBeenCalledWith({
+        file: DRAFT,
+        flag: '--body-file',
+        expectSha256: undefined,
+        hasOtherInput: true,
+      });
+    },
+  );
+
+  it('post reports a refused draft and never calls runPost', async () => {
+    mockReadApprovedDraft.mockImplementation(() => {
+      throw new Error('--body-file requires --expect-sha256');
+    });
+
+    await expect(
+      buildProgram('post').parseAsync(['node', 'cli', 'post', PR_URL, '--body-file', DRAFT, '--json']),
+    ).rejects.toThrow('process.exit called');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('--body-file requires --expect-sha256', 'UNKNOWN');
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('claim --body-file uses the file text as the claim message', async () => {
+    mockReadApprovedDraft.mockReturnValue('I can take this');
+    mockRunClaim.mockResolvedValue({ commentUrl: `${ISSUE_URL}#issuecomment-7` });
+
+    await buildProgram('claim').parseAsync([
+      'node',
+      'cli',
+      'claim',
+      ISSUE_URL,
+      '--body-file',
+      DRAFT,
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockRunClaim).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, message: 'I can take this', expectSha256: SHA });
+  });
+
+  it('guidelines store --from-file reads the draft and reports --content as another input', async () => {
+    mockReadApprovedDraft.mockReturnValue('# rules\n');
+    mockGuidelinesStore.mockResolvedValue({ repo: 'octo/alpha', byteSize: 8 });
+    const base = ['node', 'cli', 'guidelines', 'store', '--repo', 'octo/alpha', '--from-file', DRAFT, '--reviewed'];
+
+    await buildProgram('guidelines').parseAsync([...base, '--expect-sha256', SHA]);
+
+    expect(mockReadApprovedDraft).toHaveBeenLastCalledWith({
+      file: DRAFT,
+      flag: '--from-file',
+      expectSha256: SHA,
+      hasOtherInput: false,
+    });
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({
+      repo: 'octo/alpha',
+      content: '# rules\n',
+      reviewed: true,
+      expectSha256: SHA,
+    });
+
+    await buildProgram('guidelines').parseAsync([...base, '--content', 'inline']);
+
+    expect(mockReadApprovedDraft).toHaveBeenLastCalledWith(expect.objectContaining({ hasOtherInput: true }));
+  });
+});
+
+describe('draft command (#1930)', () => {
+  const DRAFT = '/home/u/.oss-autopilot/tmp/reply.md';
+
+  it('is local-only: it needs no GitHub token', () => {
+    expect(commands.find((c) => c.name === 'draft')?.localOnly).toBe(true);
+  });
+
+  it('path prints the path, or the envelope with --json', async () => {
+    const data = { path: DRAFT, dir: '/home/u/.oss-autopilot/tmp' };
+    mockRunDraftPath.mockReturnValue(data);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'path', 'reply.md']);
+    expect(mockRunDraftPath).toHaveBeenCalledWith({ name: 'reply.md' });
+    expect(consoleLogSpy).toHaveBeenCalledWith(DRAFT);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'path', 'reply.md', '--json']);
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+
+  it('show prints the text and its hash, or the envelope with --json', async () => {
+    const data = { path: DRAFT, content: 'hello', sha256: 'b'.repeat(64), byteSize: 5, fenced: false };
+    mockRunDraftShow.mockReturnValue(data);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'show', DRAFT]);
+    expect(mockRunDraftShow).toHaveBeenCalledWith({ file: DRAFT, untrusted: false });
+    expect(consoleLogSpy).toHaveBeenCalledWith('hello');
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\nsha256: ${'b'.repeat(64)}`);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'show', DRAFT, '--untrusted', '--json']);
+    expect(mockRunDraftShow).toHaveBeenLastCalledWith({ file: DRAFT, untrusted: true });
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+});
+
 describe('claim command', () => {
   it('passes undefined message when no message parts are given', async () => {
     mockRunClaim.mockResolvedValue({ commentUrl: `${ISSUE_URL}#issuecomment-3` });
@@ -2056,6 +2223,9 @@ describe('orphan-files command', () => {
 
     expect(mockRunCheckIntegration).toHaveBeenCalledWith({ base: 'main' });
     expect(consoleLogSpy).toHaveBeenCalledWith('\nNo new code files to check.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Warning: `orphan-files` is deprecated and will be removed in the next major version.',
+    );
   });
 
   it('--json routes through outputJsonValidated', async () => {
@@ -2118,6 +2288,43 @@ describe('doctor command', () => {
     await buildProgram('doctor').parseAsync(['node', 'cli', 'doctor', '--json']);
 
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(DoctorOutputSchema, data);
+  });
+});
+
+describe('cleanup command (#1956)', () => {
+  const data = { applied: false, worktrees: [], rejectedCopies: [], errors: [] };
+
+  it('is a dry run by default and prints through printCleanup', async () => {
+    mockRunCleanup.mockReturnValue(data);
+
+    await buildProgram('cleanup').parseAsync(['node', 'cli', 'cleanup']);
+
+    expect(mockRunCleanup).toHaveBeenCalledWith({ apply: false });
+    expect(mockPrintCleanup).toHaveBeenCalledWith(data);
+    expect(mockOutputJson).not.toHaveBeenCalled();
+  });
+
+  it('--apply --json deletes and emits the JSON envelope', async () => {
+    mockRunCleanup.mockReturnValue({ ...data, applied: true });
+
+    await buildProgram('cleanup').parseAsync(['node', 'cli', 'cleanup', '--apply', '--json']);
+
+    expect(mockRunCleanup).toHaveBeenCalledWith({ apply: true });
+    expect(mockOutputJson).toHaveBeenCalledWith({ ...data, applied: true });
+    expect(mockPrintCleanup).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('exits non-zero when the run lists errors, and still prints the output', async () => {
+    const failed = { ...data, errors: ['/d/worktrees/a-1: git worktree remove refused'] };
+    mockRunCleanup.mockReturnValue(failed);
+
+    await buildProgram('cleanup').parseAsync(['node', 'cli', 'cleanup']);
+    const exitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    expect(exitCode).toBe(1);
+    expect(mockPrintCleanup).toHaveBeenCalledWith(failed);
   });
 });
 
@@ -2244,6 +2451,89 @@ describe('repo-cap command', () => {
   });
 });
 
+describe('pr-preflight command (#1952)', () => {
+  const data = {
+    verdict: 'warn',
+    checks: [{ id: 'working-tree', status: 'warn', summary: '1 uncommitted change(s)' }],
+  };
+
+  it('defaults to the current directory, no issue and no fetch, and prints through printPrPreflight', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight']);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith({
+      issue: undefined,
+      dir: undefined,
+      base: undefined,
+      fetch: false,
+      local: false,
+    });
+    expect(mockPrintPrPreflight).toHaveBeenCalledWith(data);
+    expect(mockOutputJsonValidated).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('passes the issue, --dir, --base and --fetch through and validates the JSON output', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+    const issue = 'https://github.com/o/r/issues/7';
+
+    await buildProgram('pr-preflight').parseAsync([
+      'node',
+      'cli',
+      'pr-preflight',
+      issue,
+      '--dir',
+      '/work/wt',
+      '--base',
+      'develop',
+      '--fetch',
+      '--json',
+    ]);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith({
+      issue,
+      dir: '/work/wt',
+      base: 'develop',
+      fetch: true,
+      local: false,
+    });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, data);
+    expect(mockPrintPrPreflight).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--local is passed through', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--local']);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith(expect.objectContaining({ local: true, fetch: false }));
+  });
+
+  it('exits non-zero on a fail verdict and still emits the output', async () => {
+    const failed = { ...data, verdict: 'fail' };
+    mockRunPrPreflight.mockResolvedValue(failed);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--json']);
+    const exitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    expect(exitCode).toBe(1);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, failed);
+  });
+
+  it('routes a thrown error to the JSON error envelope', async () => {
+    mockRunPrPreflight.mockRejectedValue(new Error('Not a git working tree: /x'));
+
+    await expect(
+      buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--dir', '/x', '--json']),
+    ).rejects.toThrow();
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('Not a git working tree: /x', expect.anything());
+  });
+});
+
 describe('repo-vet command', () => {
   const base = {
     repoSlug: 'octo/alpha',
@@ -2305,6 +2595,9 @@ describe('detect-formatters command', () => {
 
     expect(mockRunDetectFormatters).toHaveBeenCalledWith({ repoPath: undefined, ciLog: undefined });
     expect(consoleLogSpy).toHaveBeenCalledWith('\nNo formatters detected.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Warning: `detect-formatters` is deprecated and will be removed in the next major version.',
+    );
   });
 
   it('renders formatters, scripts, and a positive CI diagnosis', async () => {
@@ -2508,9 +2801,10 @@ describe('guidelines subcommands', () => {
       REPO,
       '--content',
       'hello',
+      '--reviewed',
     ]);
 
-    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'hello' });
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'hello', reviewed: true });
     expect(consoleLogSpy).toHaveBeenCalledWith(`Stored 5 bytes of guidelines for ${REPO}.`);
   });
 
@@ -2520,7 +2814,8 @@ describe('guidelines subcommands', () => {
       buildProgram('guidelines').parseAsync(['node', 'cli', 'guidelines', 'store', '--repo', REPO]),
     );
 
-    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'piped\n' });
+    // No --reviewed: the flag is passed through as false and the command refuses (#1929).
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'piped\n', reviewed: false });
   });
 
   it('store without --content fails clearly on a TTY stdin', async () => {
@@ -3051,5 +3346,114 @@ describe('work subcommands', () => {
     await program.parseAsync(['node', 'cli', 'work', 'list']);
     expect(consoleLogSpy).toHaveBeenCalledWith('No live work claims.');
     expect(consoleLogSpy).toHaveBeenCalledWith('Warning (may be stale): Operating on cache state');
+  });
+});
+
+// ─── policy subcommands (#1953) ─────────────────────────────────────────────
+
+describe('policy subcommands', () => {
+  const REPO = 'octo/alpha';
+  const POLICY = {
+    aiPolicy: 'disclosure-required',
+    cla: 'required',
+    prGate: 'claim-first',
+    commitRules: ['dco-signoff'],
+    maxOpenAiPRs: 1,
+    reviewedByUser: false,
+    updatedAt: '2026-11-01T00:00:00.000Z',
+    blocklisted: false,
+    disclosureText: '<github-content label="octo/alpha">Assisted-by: tool</github-content>',
+    sources: '<github-content label="octo/alpha">CONTRIBUTING.md: must disclose AI</github-content>',
+  };
+
+  it('get prints every field, or the none-recorded note', async () => {
+    mockPolicyGet.mockResolvedValueOnce({ repo: REPO, policy: POLICY });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'get', '--repo', REPO]);
+    expect(mockPolicyGet).toHaveBeenCalledWith({ repo: REPO });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\n${REPO} (read from repo docs, not reviewed, 2026-11-01)`);
+    expect(consoleLogSpy).toHaveBeenCalledWith('  AI policy: disclosure-required');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  CLA: required   PR gate: claim-first');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Commit rules: dco-signoff');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Max open AI-assisted PRs: 1');
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Disclosure: ${POLICY.disclosureText}`);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Sources: ${POLICY.sources}`);
+
+    mockPolicyGet.mockResolvedValueOnce({ repo: REPO, policy: null });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'get', '--repo', REPO]);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`No contribution policy recorded for ${REPO}.`);
+  });
+
+  it('get --json validates against PolicyGetOutputSchema (tier-1)', async () => {
+    const data = { repo: REPO, policy: null };
+    mockPolicyGet.mockResolvedValue(data);
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'get', '--repo', REPO, '--json']);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'PolicyGetOutputSchema' }, data);
+  });
+
+  it('set passes the flags through, parses --max-open-ai-prs, and notes a blocklist ban', async () => {
+    const policy = { ...POLICY, aiPolicy: 'banned', blocklisted: true, reviewedByUser: true };
+    mockPolicySet.mockResolvedValue({ repo: REPO, policy });
+    await buildProgram('policy').parseAsync([
+      'node',
+      'cli',
+      'policy',
+      'set',
+      '--repo',
+      REPO,
+      '--ai-policy',
+      'allowed',
+      '--max-open-ai-prs',
+      '2',
+      '--commit-rules',
+      'dco-signoff',
+    ]);
+    expect(mockPolicySet).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: REPO, aiPolicy: 'allowed', maxOpenAiPRs: 2, commitRules: 'dco-signoff' }),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('  AI policy: banned (aiPolicyBlocklist)');
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '  Banned by aiPolicyBlocklist; set --ai-policy to another value to take it off the list.',
+    );
+  });
+
+  it('set says when it changed aiPolicyBlocklist', async () => {
+    mockPolicySet.mockResolvedValueOnce({
+      repo: REPO,
+      policy: { ...POLICY, aiPolicy: 'banned' },
+      blocklistChange: 'added',
+    });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--ai-policy', 'banned']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Added ${REPO} to aiPolicyBlocklist.`);
+    mockPolicySet.mockResolvedValueOnce({ repo: REPO, policy: POLICY, blocklistChange: 'removed' });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--ai-policy', 'allowed']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Removed ${REPO} from aiPolicyBlocklist.`);
+  });
+
+  it('set prints the record without the blocklist note when the repo is not listed', async () => {
+    mockPolicySet.mockResolvedValue({
+      repo: REPO,
+      policy: {
+        ...POLICY,
+        commitRules: [],
+        maxOpenAiPRs: undefined,
+        disclosureText: undefined,
+        sources: undefined,
+        reviewedByUser: true,
+      },
+    });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--cla', 'none']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\n${REPO} (set by you, 2026-11-01)`);
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('aiPolicyBlocklist'));
+  });
+
+  it('reset prints the deleted or nothing-stored line', async () => {
+    mockPolicyReset.mockResolvedValueOnce({ repo: REPO, deleted: true });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'reset', '--repo', REPO]);
+    expect(mockPolicyReset).toHaveBeenCalledWith({ repo: REPO });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Deleted the policy for ${REPO}.`);
+
+    mockPolicyReset.mockResolvedValueOnce({ repo: REPO, deleted: false });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'reset', '--repo', REPO]);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`No policy stored for ${REPO}.`);
   });
 });

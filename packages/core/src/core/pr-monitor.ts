@@ -47,12 +47,14 @@ import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import {
   batchFetchPRDetails,
   MERGEABLE_RETRY_DELAY_MS,
+  PR_FETCH_LOG,
   type PRRef,
   type NormalizedPRData,
   type BatchPRResult,
 } from './pr-graphql.js';
 import {
   type PRCountsResult,
+  type RecentListTruncation,
   fetchUserMergedPRCounts as fetchUserMergedPRCountsImpl,
   fetchUserClosedPRCounts as fetchUserClosedPRCountsImpl,
   fetchRecentlyClosedPRs as fetchRecentlyClosedPRsImpl,
@@ -82,6 +84,18 @@ export function hasMergeConflict(mergeable: boolean | null, mergeableState: stri
 const MODULE = 'pr-monitor';
 
 const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
+
+/** What one repository read gives the daily run; see PRMonitor.fetchRepoMetadata. */
+export interface RepoMetadata {
+  stars: number;
+  language: string | null;
+  /**
+   * GitHub's `private` flag for the repository. Undefined when the response
+   * did not carry a boolean; never a guess. Repositories that could not be
+   * read are absent from the result altogether.
+   */
+  isPrivate?: boolean;
+}
 
 export interface PRCheckFailure {
   prUrl: string;
@@ -346,7 +360,7 @@ export class PRMonitor {
     // the common case in a handful of ~1-point queries; anything it can't resolve
     // (connection cap overflow, missing node, GraphQL outage) falls back to the
     // per-PR REST path via the worker pool.
-    await timed('pr-monitor', `Fetch details for ${refs.length} PRs`, async () => {
+    await timed('pr-monitor', `${PR_FETCH_LOG.fetchDetails} ${refs.length} PRs`, async () => {
       let batch: BatchPRResult;
       try {
         batch = await batchFetchPRDetails(this.octokit, refs);
@@ -354,7 +368,7 @@ export class PRMonitor {
         // A fatal batch-level GraphQL error (rate limit / auth). Don't crash the
         // run — route every PR to the REST path, which surfaces per-PR failures
         // exactly as the pre-GraphQL implementation did.
-        warn(MODULE, `GraphQL batch enrichment failed (${errorMessage(error)}); falling back to REST for all PRs`);
+        warn(MODULE, `${PR_FETCH_LOG.enrichmentFailed} (${errorMessage(error)}); falling back to REST for all PRs`);
         batch = { resolved: new Map(), restFallbackUrls: refs.map((r) => r.url) };
       }
 
@@ -366,7 +380,7 @@ export class PRMonitor {
           prs.push(await this.assembleFromNormalized(ref, data));
         } catch (error) {
           const errMsg = errorMessage(error);
-          warn('pr-monitor', `Error assembling ${url}: ${errMsg}`);
+          warn('pr-monitor', `${PR_FETCH_LOG.assembleFailed} ${url}: ${errMsg}`);
           failures.push({ prUrl: url, error: errMsg });
         }
       }
@@ -376,7 +390,7 @@ export class PRMonitor {
         batch.restFallbackUrls,
         async (url) => {
           try {
-            debug('pr-monitor', `Fetching details for ${url} (REST fallback)`);
+            debug('pr-monitor', `Fetching details for ${url} ${PR_FETCH_LOG.restFallback}`);
             const pr = await this.fetchPRDetails(url, warnings);
             if (pr) prs.push(pr);
           } catch (error) {
@@ -641,7 +655,7 @@ export class PRMonitor {
     starFilter?: StarFilter,
   ): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
     const config = this.stateManager.getState().config;
-    return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername, starFilter);
+    return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername, starFilter, config.untrackedOrgs);
   }
 
   /**
@@ -651,18 +665,18 @@ export class PRMonitor {
    */
   async fetchUserClosedPRCounts(starFilter?: StarFilter): Promise<PRCountsResult<number>> {
     const config = this.stateManager.getState().config;
-    return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername, starFilter);
+    return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername, starFilter, config.untrackedOrgs);
   }
 
   /**
-   * Fetch metadata (star count and primary language) for a list of repositories.
-   * Both fields come from the same `repos.get()` call — zero additional API cost.
+   * Fetch metadata (star count, primary language, visibility) for a list of repositories.
+   * All fields come from the same `repos.get()` call — zero additional API cost.
    */
-  async fetchRepoMetadata(repos: string[]): Promise<Map<string, { stars: number; language: string | null }>> {
+  async fetchRepoMetadata(repos: string[]): Promise<Map<string, RepoMetadata>> {
     if (repos.length === 0) return new Map();
 
     debug(MODULE, `Fetching repo metadata for ${repos.length} repos...`);
-    const results = new Map<string, { stars: number; language: string | null }>();
+    const results = new Map<string, RepoMetadata>();
     const cache = getHttpCache();
 
     // Deduplicate repos to avoid fetching the same repo twice
@@ -689,11 +703,18 @@ export class PRMonitor {
                 repo: name,
                 headers,
               }) as Promise<{
-                data: { stargazers_count: number; language: string | null };
+                data: { stargazers_count: number; language: string | null; private?: unknown };
                 headers: Record<string, string>;
               }>,
           );
-          const metadata = { stars: data.stargazers_count, language: data.language ?? null };
+          const metadata: RepoMetadata = {
+            stars: data.stargazers_count,
+            language: data.language ?? null,
+            // The whole response body is what the ETag cache stores, so a 304
+            // answers from a body that carries the flag too. Anything but a
+            // boolean (an unexpected body) reads as unknown.
+            isPrivate: typeof data.private === 'boolean' ? data.private : undefined,
+          };
           return { repo, metadata };
         }),
       );
@@ -724,11 +745,12 @@ export class PRMonitor {
   /**
    * Fetch PRs closed without merge in the last N days.
    * @param days - Lookback window in days (default: 7)
+   * @param truncations - Receives the recent-list truncation when the search returned a partial list (#1928)
    * @returns Recently closed PRs
    */
-  async fetchRecentlyClosedPRs(days: number = 7): Promise<ClosedPR[]> {
+  async fetchRecentlyClosedPRs(days: number = 7, truncations?: RecentListTruncation[]): Promise<ClosedPR[]> {
     const config = this.stateManager.getState().config;
-    return fetchRecentlyClosedPRsImpl(this.octokit, config, days);
+    return fetchRecentlyClosedPRsImpl(this.octokit, config, days, truncations);
   }
 
   /**
@@ -757,11 +779,12 @@ export class PRMonitor {
   /**
    * Fetch PRs merged in the last N days.
    * @param days - Lookback window in days (default: 7)
+   * @param truncations - Receives the recent-list truncation when the search returned a partial list (#1928)
    * @returns Recently merged PRs
    */
-  async fetchRecentlyMergedPRs(days: number = 7): Promise<MergedPR[]> {
+  async fetchRecentlyMergedPRs(days: number = 7, truncations?: RecentListTruncation[]): Promise<MergedPR[]> {
     const config = this.stateManager.getState().config;
-    return fetchRecentlyMergedPRsImpl(this.octokit, config, days);
+    return fetchRecentlyMergedPRsImpl(this.octokit, config, days, truncations);
   }
 
   /**

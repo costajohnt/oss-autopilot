@@ -101,6 +101,7 @@ describe('determineStatus changes_addressed detection', () => {
         ciStatus: 'passing',
         latestCommitDate: '2026-02-06T10:00:00Z', // older
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer (the re-approval)
+        unansweredComments: [{ createdAt: '2026-02-07T10:00:00Z', authorApprovalDate: '2026-02-07T10:00:00Z' }],
       }),
     ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
   });
@@ -113,6 +114,7 @@ describe('determineStatus changes_addressed detection', () => {
         ciStatus: 'unknown',
         latestCommitDate: '2026-02-06T10:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+        unansweredComments: [{ createdAt: '2026-02-07T10:00:00Z', authorApprovalDate: '2026-02-07T10:00:00Z' }],
       }),
     ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
   });
@@ -954,7 +956,12 @@ describe('determineStatus: a merge conflict is never hidden behind a waiting sta
     ],
     [
       'pending_merge: approved with an LGTM-style unresponded comment',
-      { hasUnrespondedComment: true, reviewDecision: 'approved' },
+      {
+        hasUnrespondedComment: true,
+        reviewDecision: 'approved',
+        lastMaintainerCommentDate: '2026-01-01T00:00:00Z',
+        unansweredComments: [{ createdAt: '2026-01-01T00:00:00Z', authorApprovalDate: '2026-01-01T00:00:00Z' }],
+      },
     ],
     ['ci_blocked: failing CI the contributor cannot fix', { ciStatus: 'failing', hasActionableCIFailure: false }],
     [

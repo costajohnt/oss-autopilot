@@ -8,9 +8,8 @@
  * (#1242), strategy (#1243), and the recent #1252 / #1264 / #1286
  * extractions.
  *
- * Pure typed helper — no I/O. Callers (the workflow runner, the
- * `pr-compliance-checker` agent) read the file themselves and pass
- * the contents in. The extraction step is heuristic regex matching
+ * Pure typed helper — no I/O. The caller (`derivePolicy` in
+ * repo-policy.ts, #1953) reads the file and passes the contents in. The extraction step is heuristic regex matching
  * over headings + bullet phrases; it intentionally over-recalls
  * (some false positives) rather than under-recalling.
  *

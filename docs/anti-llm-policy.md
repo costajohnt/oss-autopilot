@@ -77,17 +77,11 @@ If the scan flagged a repo that actually welcomes AI help:
 
 1. Verify the phrase in-context by reading the source file the excerpt cites.
 2. If it's a false positive, file an issue in this repo with the exact matching text.
-3. As a temporary workaround, remove the repo from `aiPolicyBlocklist`:
-
-   ```bash
-   oss-autopilot setup --set aiPolicyBlocklist="matplotlib/matplotlib"
-   ```
-
-   (Pass the full comma-separated list minus the entry you're removing — `--set` replaces the whole value.)
+3. Record the repo's real policy: `oss-autopilot policy set --repo owner/repo --ai-policy allowed`. `vet` stores what the scan found as the repo's contribution policy, unreviewed, and recommends skip; search leaves out only bans you confirmed and lists unreviewed ones in `policyBannedRepos`. A policy you set is never overwritten by a later vet. Any `--ai-policy` other than `banned` also takes the repo off `aiPolicyBlocklist`, which would otherwise keep banning it; `--ai-policy banned` adds it. `policy reset` leaves the blocklist alone.
 
 ## Hidden / out-of-band signals
 
-Not every anti-LLM stance is scannable from document text. Maintainers sometimes hide AI-submitted PRs as spam, add comments on closed policy issues, or voice opposition in external channels. The scan cannot see any of that. If you observe such signals during vetting, manually add the repo to `aiPolicyBlocklist` to auto-exclude future searches.
+Not every anti-LLM stance is scannable from document text. Maintainers sometimes hide AI-submitted PRs as spam, add comments on closed policy issues, or voice opposition in external channels. The scan cannot see any of that. If you observe such signals during vetting, record the ban with `oss-autopilot policy set --repo owner/repo --ai-policy banned --source "<what you saw>"` to exclude the repo from future searches and fail `pr-preflight` there. That also adds it to `aiPolicyBlocklist`, which clients that predate policy records read from the shared state.
 
 ## See also
 

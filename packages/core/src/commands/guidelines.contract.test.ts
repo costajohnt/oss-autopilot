@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   getMergedPRs: vi.fn(),
   getClosedPRs: vi.fn(),
   markPRCommentsFetched: vi.fn(),
+  markGuidelinesReviewed: vi.fn(),
+  getGuidelinesReview: vi.fn(),
   maybeCheckpoint: vi.fn(),
 }));
 
@@ -42,6 +44,8 @@ vi.mock('../core/index.js', async () => {
       getMergedPRs: mocks.getMergedPRs,
       getClosedPRs: mocks.getClosedPRs,
       markPRCommentsFetched: mocks.markPRCommentsFetched,
+      markGuidelinesReviewed: mocks.markGuidelinesReviewed,
+      getGuidelinesReview: mocks.getGuidelinesReview,
       getState: () => ({ config: { githubUsername: 'testuser' } }),
     }),
     requireGitHubToken: () => 'fake-token',
@@ -101,7 +105,11 @@ describe('guidelines --json contract', () => {
   });
 
   it('store: persisted content matches the golden shape', async () => {
-    const result = await runGuidelinesStore({ repo: 'owner/repo', content: '# Rules\n- be nice\n' });
+    const result = await runGuidelinesStore({
+      repo: 'owner/repo',
+      content: '# Rules\n- be nice\n',
+      reviewed: true,
+    });
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/guidelines.store.json');
   });
 

@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
+import path from 'node:path';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { getStateManager } from '../core/index.js';
+import { getMachinePath } from '../core/local-config.js';
 
 // Keep in sync with GITHUB_URL_RE in skip-file-parser.ts. Captures are kept
 // (despite being unused here) so the regex stays byte-identical to the parser
@@ -41,7 +43,7 @@ function formatUtcDate(d: Date): string {
  * @throws when no path can be resolved or the URL isn't a GitHub issue/PR URL.
  */
 export function runSkipAdd(options: SkipAddOptions): SkipAddOutput {
-  const skipFilePath = options.skipFilePath ?? getStateManager().getState().config.skippedIssuesPath;
+  const skipFilePath = options.skipFilePath ?? getMachinePath('skippedIssuesPath', getStateManager().getState().config);
 
   if (!skipFilePath) {
     throw new Error(
@@ -64,6 +66,15 @@ export function runSkipAdd(options: SkipAddOptions): SkipAddOutput {
   }
 
   if (!fs.existsSync(skipFilePath)) {
+    // A path whose directory is missing is usually another machine's synced
+    // value (#1950): say so instead of failing with a bare ENOENT, and never
+    // create directories for it.
+    if (!fs.existsSync(path.dirname(path.resolve(skipFilePath)))) {
+      throw new Error(
+        `Skipped-issues file ${skipFilePath} cannot be created: its directory does not exist on this machine. ` +
+          'Set the path for this machine via `oss-autopilot setup --set skippedIssuesPath=<path>` or pass --path.',
+      );
+    }
     fs.writeFileSync(skipFilePath, FILE_HEADER);
   }
 

@@ -62,8 +62,8 @@ export interface MergedPRNotes {
   /**
    * Heuristic: every note reads as thanks or praise (keyword, no question,
    * short, no change-related wording) and nobody pushed on top. The workflow
-   * confirms this with the comment-decision classification before acting on
-   * it; see {@link groupThanksOnlyAcknowledgments}.
+   * confirms this against the live thread before acting on it; see
+   * {@link groupThanksOnlyAcknowledgments}.
    */
   thanksOnly: boolean;
   /**

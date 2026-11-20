@@ -43,7 +43,62 @@ const EXPECTED_TOOLS = [
   'guidelines-store',
   'guidelines-reset',
   'guidelines-fetch-corpus',
+  'policy-get',
 ] as const;
+
+// The full table (#1936): a new tool has to be classified here before the
+// suite passes. `read` tools change nothing; `local` tools write only the
+// user's own state (local file or state Gist); `removes` tools drop or
+// overwrite stored data; `github` tools write to other people's repositories under the
+// user's identity and must go through requireApproval (trust-boundary.ts).
+const READ = { readOnlyHint: true };
+const LOCAL = { readOnlyHint: false, destructiveHint: false };
+const REMOVES = { readOnlyHint: false, destructiveHint: true };
+const GITHUB = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+const EXPECTED_ANNOTATIONS: Record<(typeof EXPECTED_TOOLS)[number], Record<string, boolean>> = {
+  daily: LOCAL,
+  status: READ,
+  // search records the issues it showed and the search rotation in state.
+  search: LOCAL,
+  features: READ,
+  vet: LOCAL,
+  // prune rewrites the issue list file.
+  'vet-list': REMOVES,
+  'verify-issue': READ,
+  'issue-thread': READ,
+  // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
+  track: READ,
+  'compliance-score': READ,
+  'repo-vet': READ,
+  strategy: READ,
+  eval: READ,
+  comments: READ,
+  post: GITHUB,
+  claim: GITHUB,
+  config: { readOnlyHint: false, idempotentHint: true },
+  init: LOCAL,
+  setup: LOCAL,
+  'check-setup': READ,
+  startup: LOCAL,
+  dismiss: LOCAL,
+  undismiss: LOCAL,
+  'work-claim': LOCAL,
+  'work-finish': LOCAL,
+  'work-release': REMOVES,
+  'work-list': READ,
+  move: LOCAL,
+  'state-show': READ,
+  'state-sync': LOCAL,
+  'state-unlink': LOCAL,
+  'guidelines-list': READ,
+  'guidelines-get': READ,
+  // Overwrites the repo's guidelines; asks the user through requireApproval.
+  'guidelines-store': REMOVES,
+  'guidelines-reset': REMOVES,
+  'guidelines-fetch-corpus': LOCAL,
+  // Read-only on purpose: `policy set` is CLI-only (#1953).
+  'policy-get': READ,
+};
 
 describe('MCP tool registrations', () => {
   let client: Client;
@@ -87,8 +142,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 36 tools', () => {
-    expect(tools).toHaveLength(36);
+  it('registers exactly 37 tools', () => {
+    expect(tools).toHaveLength(37);
   });
 
   it('registers all expected tool names', () => {
@@ -170,45 +225,13 @@ describe('MCP tool registrations', () => {
   });
 
   describe('annotations', () => {
-    // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
-    // untrack and read v1→v2 stubs were removed in v4 (#1133).
-    const readOnlyTools = [
-      'status',
-      'search',
-      'comments',
-      'check-setup',
-      'track',
-      'compliance-score',
-      'repo-vet',
-      'eval',
-    ];
-    const mutatingTools = [
-      'vet',
-      'daily',
-      'startup',
-      'post',
-      'claim',
-      'config',
-      'init',
-      'setup',
-      'dismiss',
-      'undismiss',
-      'move',
-      'vet-list',
-    ];
-
-    it.each(readOnlyTools)('read-only tool "%s" has readOnlyHint: true', (name) => {
-      const tool = tools.find((t) => t.name === name);
-      expect(tool).toBeDefined();
-      expect(tool!.annotations).toBeDefined();
-      expect((tool!.annotations as Record<string, unknown>).readOnlyHint).toBe(true);
+    it.each(EXPECTED_TOOLS)('tool "%s" carries exactly its classified annotations', (name) => {
+      expect(tools.find((t) => t.name === name)?.annotations).toEqual(EXPECTED_ANNOTATIONS[name]);
     });
 
-    it.each(mutatingTools)('mutating tool "%s" has readOnlyHint: false', (name) => {
-      const tool = tools.find((t) => t.name === name);
-      expect(tool).toBeDefined();
-      expect(tool!.annotations).toBeDefined();
-      expect((tool!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+    it('only the GitHub writers are marked destructive and open-world', () => {
+      const writers = tools.filter((t) => t.annotations?.destructiveHint && t.annotations.openWorldHint);
+      expect(new Set(writers.map((t) => t.name))).toEqual(new Set(['post', 'claim']));
     });
 
     // #1053 — tools that post public content under the user's identity must

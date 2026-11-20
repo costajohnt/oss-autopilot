@@ -6,13 +6,13 @@
  */
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { runStatus, runConfig } from '@oss-autopilot/core/commands';
+import { runStatus, runConfig, runGuidelinesView } from '@oss-autopilot/core/commands';
 import {
   getStateManager,
   splitRepo,
   fenceFetchedPR,
   fenceFetchedPRTitles,
-  labelGuidelinesContent,
+  NewerStateVersionError,
 } from '@oss-autopilot/core';
 import { ensureGistInit, reloadExternalState } from './tools.js';
 
@@ -60,9 +60,17 @@ async function resourceGistInit(): Promise<void> {
   }
   // #1439: reads have the same staleness problem as tool calls — a long-lived
   // process otherwise serves boot-time state forever after any external CLI
-  // write (local mode) or remote push (gist mode). Reload failures degrade to
-  // cached state inside the helper; they never fail the read.
-  await reloadExternalState();
+  // write (local mode) or remote push (gist mode). A resource read changes
+  // nothing, so a failed reload serves cached state. The one exception is
+  // state from a newer release (#1951): that must reach the user. So must
+  // state that cannot be loaded at all, hence the call outside the guard.
+  getStateManager();
+  try {
+    await reloadExternalState();
+  } catch (e) {
+    if (e instanceof NewerStateVersionError) throw e;
+    console.error('[MCP] Resource read proceeding on cached state; reload failed:', e);
+  }
 }
 
 /**
@@ -234,14 +242,14 @@ export function registerResources(server: McpServer): void {
       try {
         const fullRepo = `${String(owner)}/${String(repo)}`;
         await resourceGistInit();
-        const content = getStateManager().getGuidelines(fullRepo);
-        if (!content) {
+        // Same labeled text as the `guidelines-get` tool: provenance note,
+        // review status and the stored text inside the untrusted-content
+        // fence (#1455, #1929). Stored content stays raw.
+        const { agentContent } = await runGuidelinesView({ repo: fullRepo });
+        if (!agentContent) {
           throw new Error(`No guidelines stored for ${fullRepo}`);
         }
-        // Guidelines are LLM-distilled from public PR comments; label the
-        // provenance so the host treats them as guidance, not instructions
-        // (#1455). Stored content stays raw.
-        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: labelGuidelinesContent(content) }] };
+        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: agentContent }] };
       } catch (e) {
         console.error('[MCP] repo-guidelines resource error:', e);
         throw e;

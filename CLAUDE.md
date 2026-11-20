@@ -70,7 +70,7 @@ The system has three layers:
 ```
 Repo root (also the Claude Code plugin directory):
 ├── commands/*.md                       # Plugin slash commands (/oss, /setup-oss, /oss-search, ...)
-├── agents/*.md                          # 8 specialized agents
+├── agents/*.md                          # 9 specialized agents
 ├── skills/oss-contribution/SKILL.md     # Contribution index (universal rules)
 ├── skills/pr-etiquette/SKILL.md         # Review responses, PR descriptions, dormant follow-up
 ├── skills/contribution-ethics/SKILL.md  # AI attribution, AI-tell avoidance, defer-to-human
@@ -101,6 +101,7 @@ Repo root (also the Claude Code plugin directory):
 ├── cache/                               # ETag-based HTTP response cache
 ├── gist-id                              # Gist ID for cross-machine state sync (opt-in)
 ├── machine-id                           # Random UUID identifying this machine on work claims (local only, never synced)
+├── local-config.json                    # Per-machine paths (issue list, skip file) and local repo cache (local only, never synced)
 ├── state-cache.json                     # Local cache of gist state for offline access
 └── dashboard-server.pid                 # PID file for interactive SPA dashboard server
 ```
@@ -185,6 +186,8 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 - On push to main, release-please opens or updates a release PR that bumps all version-bearing files (configured in `release-please-config.json`)
 - Merge the release-please PR to create a GitHub release, which triggers npm publish and then rebuilds the prebuilt `directory` branch. Marketplace users receive changes only at that point, so anything users need (commands, agents, runtime dependency bumps) must land under a releasable prefix; Dependabot uses `fix:` for production dependencies for this reason
 - `.mcp.json` pins the plugin's MCP server to `@oss-autopilot/mcp@<version>` (not `@latest`). The release-please workflow re-pins it on the release PR branch via `node scripts/sync-mcp-pin.mjs`, and CI fails if the pin differs from `packages/mcp-server/package.json`. If it ever drifts, run that script and commit `.mcp.json`
+- `packages/mcp-server/BUNDLED_CORE_VERSION` records the core version the MCP bundle inlines. It is a release trigger, not a runtime constant (the bundle gets core's version from `packages/core/package.json` at build time via `scripts/bundle.mjs`): the release-please workflow rewrites it on every release PR that bumps core, and on a core-only release that commit is what queues the MCP release. Never edit it by hand
+- `packages/core/src/version-sources-contract.test.ts` fails when any stored copy of the core or MCP version (manifest, `plugin.json`, the marker, `server.json`, the `.mcp.json` pin) disagrees with its `package.json`. A release PR is red on it until the workflow has pushed its pin and marker commits
 - **release-please force-updates its branch** (`release-please--branches--main`) on every push to main. `git pull --rebase` will print a `forced update` notice for that ref — that's expected, ignore it. The notice never affects your branch.
 
 ## AI Attribution Rule (CRITICAL)

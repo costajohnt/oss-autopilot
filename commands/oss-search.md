@@ -159,13 +159,9 @@ Use AskUserQuestion:
    - owner/repo#123 (score: 4) — Issue title
    ```
 
-   Append each filtered issue to the skip file:
+   Append each filtered issue to the skip file. The command reads the configured skipped-issues path itself; never paste a stored path into shell text:
    ```bash
-   SKIP_FILE="{skippedIssuesPath}"
-   if [ ! -f "$SKIP_FILE" ]; then
-     printf '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
-   fi
-   echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" skip-add "{issue_url}" --json
    ```
 
    **Important:** `searchRoundScores` should use the **unfiltered** mean (all vetted scores) so diminishing returns detection remains accurate.
@@ -175,9 +171,10 @@ Use AskUserQuestion:
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" list-move-tier "{issue_url}" \
      --tier {pursue|maybe|skip} \
-     --list-path "{issueListPath}" \
      --json
    ```
+
+   Leave out `--list-path`: the command reads the configured issue list path itself, so a stored path is never pasted into shell text.
 
    The command preserves blank lines and sub-bullets between entries, is idempotent (re-running with the same tier is a no-op), and creates the target tier section if it doesn't already exist. It does NOT create list entries: if the issue URL is missing from the list (e.g. step 1 was skipped or wrote a different URL), the command exits non-zero with `success: false` (#1355) — add the entry under `## Pending Vet` first, then re-run the move.
 
@@ -198,11 +195,7 @@ Use AskUserQuestion:
 - Dispatch single `issue-scout` agent, present result
 - If vet result recommendation is "skip", append the issue to the skip file:
   ```bash
-  SKIP_FILE="{skippedIssuesPath}"
-  if [ ! -f "$SKIP_FILE" ]; then
-    printf '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
-  fi
-  echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
+  node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" skip-add "{issue_url}" --json
   ```
 - Offer: "Start working on this issue" / "Pick a different one" / "Done for now"
 - Record score: `searchRoundScores.push(score)` → **Diminishing Returns Check**

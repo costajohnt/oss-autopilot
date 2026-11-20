@@ -34,7 +34,6 @@ export type {
   RepoScore,
   StoredMergedPR,
   StoredClosedPR,
-  AnalyzedIssueConversation,
   ContributionGuidelines,
   IssueVettingResult,
   TrackedIssue,
@@ -163,6 +162,13 @@ export interface DetermineStatusInput {
   contributorUsername?: string;
   lastMaintainerCommentDate?: string;
   latestChangesRequestedDate?: string;
+  /**
+   * Every unanswered maintainer comment, each with the time its author
+   * submitted their own standing approval, if they have one. On an approved PR
+   * a comment still needs a response unless its author approved at or after
+   * writing it (#1920).
+   */
+  unansweredComments?: Array<{ createdAt: string; authorApprovalDate?: string }>;
   /** True if at least one failing CI check is classified as 'actionable'. */
   hasActionableCIFailure?: boolean;
 }
@@ -512,11 +518,23 @@ export const ISSUE_SCOPES = IssueScopeSchema.options;
 
 export const DIFF_TOOLS: readonly DiffTool[] = DiffToolSchema.options;
 
+/** @deprecated Since #1948; nothing reads it. Will be removed in the next major version. */
 export const SCOPE_LABELS: Record<IssueScope, string[]> = {
   beginner: ['good first issue', 'help wanted', 'easy', 'up-for-grabs', 'first-timers-only', 'beginner'],
   intermediate: ['enhancement', 'feature', 'feature-request', 'contributions welcome'],
   advanced: ['proposal', 'RFC', 'accepted', 'design'],
 };
+
+/**
+ * Shape of the retired `analyzedIssueConversations` state entries.
+ *
+ * @deprecated Since #1948; the state field is no longer read or written. Will be removed in the next major version.
+ */
+export interface AnalyzedIssueConversation {
+  url: string;
+  repo: string;
+  analyzedAt: string;
+}
 
 // ── Issue discovery types (used by formatters and test utilities) ──
 

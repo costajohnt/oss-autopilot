@@ -190,7 +190,8 @@ import {
 import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
 import { detectIssueList } from './startup.js';
 import { getGitHubToken } from '../core/index.js';
-import { ConcurrencyError, ConfigurationError } from '../core/errors.js';
+import { ConcurrencyError, ConfigurationError, StateLockTimeoutError } from '../core/errors.js';
+import { getLocalConfigPath } from '../core/paths.js';
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -1142,6 +1143,53 @@ describe('dashboard-server', () => {
 
       expect(result.statusCode).toBe(200);
       expect(mockStateManager.dismissIssue).toHaveBeenCalledTimes(2);
+    });
+
+    it('answers a state lock timeout with a non-retryable 423 and the lock message, without retrying (#1951)', async () => {
+      mockRunMove.mockClear();
+      mockRunMove.mockRejectedValueOnce(new StateLockTimeoutError('/data/state.json.lock', 1000));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(423);
+      expect(JSON.parse(result.body)).toMatchObject({
+        code: 'STATE_LOCKED',
+        retryable: false,
+        error: expect.stringContaining('delete /data/state.json.lock'),
+      });
+      expect(mockRunMove).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a ConfigurationError message from the action instead of a generic 500 (#1951)', async () => {
+      mockRunMove.mockRejectedValueOnce(new ConfigurationError('Update this client and retry'));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body)).toMatchObject({ error: 'Update this client and retry', retryable: false });
+    });
+
+    it('sends a ConfigurationError message thrown by the pre-request reload (#1951)', async () => {
+      mockStateManager.reloadIfChanged.mockImplementationOnce(() => {
+        throw new ConfigurationError('The state file was written by a newer oss-autopilot release');
+      });
+
+      const result = await sendRequest('GET', '/api/data');
+
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body)).toMatchObject({
+        error: 'The state file was written by a newer oss-autopilot release',
+        code: 'CONFIGURATION_ERROR',
+        retryable: false,
+      });
     });
 
     it('returns a machine-readable 409 when the retry also hits ConcurrencyError', async () => {
@@ -2239,6 +2287,15 @@ describe('dashboard-server', () => {
       expect(data.error).toContain('Refresh failed');
     });
 
+    it('answers a state lock timeout with a non-retryable 423 (#1951)', async () => {
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockRejectedValueOnce(new StateLockTimeoutError('/data/state.json.lock', 1000));
+
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(423);
+      expect(JSON.parse(result.body)).toMatchObject({ code: 'STATE_LOCKED', retryable: false });
+    });
+
     it('returns a machine-readable 409 on ConcurrencyError (#1397)', async () => {
       vi.mocked(getGitHubToken).mockReturnValue('test-token');
       vi.mocked(fetchDashboardData).mockRejectedValueOnce(new ConcurrencyError(1000, 2000));
@@ -2484,7 +2541,9 @@ describe('dashboard-server', () => {
     let issueListPath: string;
 
     beforeEach(() => {
-      // Fresh tmp file per test so mtimes don't collide across tests.
+      // Fresh tmp file per test so mtimes don't collide across tests, and no
+      // list path adopted locally from a previous test (#1950).
+      fs.rmSync(getLocalConfigPath(), { force: true });
       issueListDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-issuelist-'));
       issueListPath = path.join(issueListDir, 'potential-issue-list.md');
 

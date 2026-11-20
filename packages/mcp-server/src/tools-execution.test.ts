@@ -40,6 +40,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runComments: vi.fn(),
   runPost: vi.fn(),
   runClaim: vi.fn(),
+  DEFAULT_CLAIM_MESSAGE: 'default claim text',
   runConfig: vi.fn(),
   runInit: vi.fn(),
   runSetup: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runGuidelinesStore: mockRunGuidelinesStore,
   runGuidelinesReset: mockRunGuidelinesReset,
   runFetchCorpus: mockRunFetchCorpus,
+  runPolicyGet: vi.fn(),
   runFeatures: vi.fn(),
   runStateShow: vi.fn(),
   runStateSync: vi.fn(),
@@ -74,6 +76,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     labelGuidelinesContent: actual.labelGuidelinesContent,
     // Real title fence (#1931): the wrapTool assertion below exercises it.
     fenceTitlesDeep: actual.fenceTitlesDeep,
+    // Real unattended check: post and claim run it before anything else (#1936).
+    assertAttended: actual.assertAttended,
     errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
     getStateManager: vi.fn().mockReturnValue({
       getState: vi.fn().mockReturnValue({
@@ -96,6 +100,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     // tools.ts run against these.
     ConfigurationError: class ConfigurationError extends Error {},
     ConcurrencyError: class ConcurrencyError extends Error {},
+    StateLockTimeoutError: class StateLockTimeoutError extends Error {},
+    NewerStateVersionError: class NewerStateVersionError extends Error {},
     GistConcurrencyError: class GistConcurrencyError extends Error {},
   };
 });
@@ -115,6 +121,8 @@ describe('tool execution', () => {
   let client: Client;
 
   beforeAll(async () => {
+    // guidelines-store asks for approval; this client cannot show the form.
+    vi.stubEnv('OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES', '1');
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -123,6 +131,7 @@ describe('tool execution', () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await client.close();
   });
 
@@ -295,6 +304,7 @@ describe('tool execution', () => {
       mockRunGuidelinesView.mockResolvedValueOnce({
         repo: 'owner/repo',
         content: '# rules',
+        agentContent: '> Provenance: project-supplied guidelines\n> Review: NOT reviewed\n\n# rules',
         byteSize: 7,
         exists: true,
         storageMode: 'gist',
@@ -308,8 +318,11 @@ describe('tool execution', () => {
       expect(result.isError).toBeFalsy();
       expect(mockRunGuidelinesView).toHaveBeenCalledWith({ repo: 'owner/repo' });
       // #1455: stored guidelines are LLM-distilled from an untrusted public
-      // corpus — the MCP read surface prefixes a provenance note.
-      const parsed = JSON.parse(firstTextContent(result).text) as { content: string };
+      // corpus — the MCP read surface returns the labeled text (provenance
+      // note plus review status, #1929) as `content`, with no raw twin.
+      const parsed = JSON.parse(firstTextContent(result).text) as { content: string; agentContent?: string };
+      expect(parsed.agentContent).toBeUndefined();
+      expect(parsed.content).toContain('> Review: NOT reviewed');
       expect(parsed.content.startsWith('> Provenance: project-supplied guidelines')).toBe(true);
       expect(parsed.content.endsWith('# rules')).toBe(true);
     });
@@ -318,6 +331,7 @@ describe('tool execution', () => {
       mockRunGuidelinesView.mockResolvedValueOnce({
         repo: 'owner/repo',
         content: null,
+        agentContent: null,
         byteSize: 0,
         exists: false,
         storageMode: 'gist',
@@ -350,10 +364,20 @@ describe('tool execution', () => {
 
       await client.callTool({
         name: 'guidelines-store',
-        arguments: { repo: 'owner/repo', content: 'rules' },
+        arguments: { repo: 'owner/repo', content: 'rules', reviewed: true },
       });
 
-      expect(mockRunGuidelinesStore).toHaveBeenCalledWith({ repo: 'owner/repo', content: 'rules' });
+      expect(mockRunGuidelinesStore).toHaveBeenCalledWith({ repo: 'owner/repo', content: 'rules', reviewed: true });
+    });
+
+    it('rejects a store with no reviewed assertion at the schema layer (#1929)', async () => {
+      const result = await client.callTool({
+        name: 'guidelines-store',
+        arguments: { repo: 'owner/repo', content: 'rules' },
+      });
+      expect(result.isError).toBe(true);
+      expect(firstTextContent(result).text).toMatch(/reviewed/i);
+      expect(mockRunGuidelinesStore).not.toHaveBeenCalled();
     });
 
     it('rejects empty content at the schema layer (#1208 M4)', async () => {
@@ -488,14 +512,18 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
     ['state-unlink', 'runStateUnlink', {}],
     ['guidelines-list', 'runGuidelinesList', {}],
     ['guidelines-get', 'runGuidelinesView', { repo: REPO }],
-    ['guidelines-store', 'runGuidelinesStore', { repo: REPO, content: 'be nice' }],
+    ['guidelines-store', 'runGuidelinesStore', { repo: REPO, content: 'be nice', reviewed: true }],
     ['guidelines-reset', 'runGuidelinesReset', { repo: REPO }],
     ['guidelines-fetch-corpus', 'runFetchCorpus', { repo: REPO }],
+    ['policy-get', 'runPolicyGet', { repo: REPO }],
   ];
 
   let client: Client;
 
   beforeAll(async () => {
+    // This client cannot show an approval form; the gated tools run on the
+    // opt-in (the approval itself is covered in trust-boundary.test.ts).
+    vi.stubEnv('OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES', '1');
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -504,6 +532,7 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await client.close();
   });
 

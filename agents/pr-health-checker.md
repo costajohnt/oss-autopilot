@@ -102,9 +102,10 @@ Once the clone is located:
 cd /path/to/repo
 git checkout <pr-branch>
 git remote add upstream https://github.com/<upstream-owner>/<repo>.git 2>/dev/null
-git fetch upstream <main-branch>
-git log --oneline HEAD..upstream/<main-branch> | wc -l
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-preflight --local --fetch --base <main-branch> --json
 ```
+
+`--local` makes no GitHub call and `<main-branch>` is the PR's base branch. Read `data.behind`: the number of commits the branch is behind `data.remote`/`data.base` after a fetch (`null` means the ref could not be fetched; the `upstream-drift` entry's `summary` says why). Ignore the other `data.checks` entries and the exit code here: they gate a new PR. `success: false` means the command did not run; report the error instead of a count.
 
 If behind, check review state first via `gh pr view NUMBER --repo OWNER/REPO --json reviewDecision,reviews`:
 
@@ -228,4 +229,4 @@ Before any push (including post-rebase force-pushes and CI fix commits):
 
 ## Post-merge learnings (#867, #1696)
 
-When you observe that one of the user's PRs has just transitioned to merged, do nothing extra: the next `/oss` startup extracts learnings from it in the background (`autoExtractLearnings`, default on), or offers an `extract_learnings` menu item when that setting is off. Do not run `workflows/extract-learnings.md` yourself and do not prompt for it.
+When you observe that one of the user's PRs has just transitioned to merged, do nothing extra: the next `/oss` startup drafts learnings from it in the background (the `learnings-extractor` agent) and asks the user before storing them (`autoExtractLearnings`, default on), or offers an `extract_learnings` menu item when that setting is off. Do not run `workflows/extract-learnings.md` yourself and do not prompt for it.

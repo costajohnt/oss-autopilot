@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as nodePath from 'node:path';
-import { parseIssueListPathFromConfig, countIssueListItems } from './startup.js';
+import { countIssueListItems } from './startup.js';
 
 // --- Mocks for runStartup dashboard tests ---
 
@@ -24,8 +24,16 @@ vi.mock('./daily.js', () => ({
   executeDailyCheck: vi.fn(),
 }));
 
+// `execFileSync` runs the Git checkout checks in locate-issue-list (#1933);
+// by default no directory is a git checkout.
+const { execFileSyncMock } = vi.hoisted(() => ({
+  execFileSyncMock: vi.fn((): string => {
+    throw new Error('not a git repository');
+  }),
+}));
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
+  execFileSync: execFileSyncMock,
 }));
 
 vi.mock('./dashboard-lifecycle.js', () => ({
@@ -36,6 +44,22 @@ vi.mock('./dashboard-process.js', () => ({
   recordBrowserOpened: vi.fn(),
 }));
 
+// Path settings are per-machine (#1950): writes go to the local settings
+// file, and with no local value the synced config value is what is read.
+// `localPaths` stands in for the local file.
+const { setMachinePathSpy, localPaths } = vi.hoisted(() => ({
+  setMachinePathSpy: vi.fn(),
+  localPaths: {} as Record<string, { path: string; source: string } | undefined>,
+}));
+vi.mock('../core/local-config.js', () => ({
+  getMachinePath: (key: string, synced: Record<string, string | undefined>) => localPaths[key]?.path ?? synced[key],
+  getMachinePathSource: (key: string, synced: Record<string, string | undefined>) => {
+    const value = synced[key];
+    return localPaths[key]?.source ?? (value ? 'synced' : undefined);
+  },
+  setMachinePath: setMachinePathSpy,
+}));
+
 // Mock fs so detectIssueList doesn't hit the real filesystem
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
@@ -43,64 +67,6 @@ vi.mock('node:fs', async () => {
     ...actual,
     existsSync: vi.fn(() => false),
   };
-});
-
-describe('parseIssueListPathFromConfig', () => {
-  it('should extract issueListPath from YAML frontmatter', () => {
-    const config = `---
-setupComplete: true
-issueListPath: open-source/potential-issue-list.md
----
-
-Some content here.
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('open-source/potential-issue-list.md');
-  });
-
-  it('should handle quoted paths', () => {
-    const config = `---
-issueListPath: "my issues/list.md"
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('my issues/list.md');
-  });
-
-  it('should handle single-quoted paths', () => {
-    const config = `---
-issueListPath: 'oss/issues.md'
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('oss/issues.md');
-  });
-
-  it('should return undefined when no frontmatter present', () => {
-    const config = `Just some content without frontmatter.`;
-    expect(parseIssueListPathFromConfig(config)).toBeUndefined();
-  });
-
-  it('should return undefined when issueListPath not in frontmatter', () => {
-    const config = `---
-setupComplete: true
-username: testuser
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBeUndefined();
-  });
-
-  it('should handle empty frontmatter', () => {
-    const config = `---
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBeUndefined();
-  });
-
-  it('should trim whitespace from path', () => {
-    const config = `---
-issueListPath:   path/with/spaces.md
----
-`;
-    expect(parseIssueListPathFromConfig(config)).toBe('path/with/spaces.md');
-  });
 });
 
 describe('countIssueListItems', () => {
@@ -209,349 +175,231 @@ Just some text, no issue list items.
 
 import * as fsImport from 'node:fs';
 
+/** Make Git report a checkout with these remote URLs (or a failure). */
+function gitCheckout(remotes: string[] | Error): void {
+  execFileSyncMock.mockImplementation(((_cmd: string, args: string[]) => {
+    if (args.includes('rev-parse')) return 'true\n';
+    if (!Array.isArray(remotes)) throw remotes;
+    if (remotes.length === 0) throw new Error('exit 1');
+    return remotes.map((url, i) => `remote.r${i}.url ${url}`).join('\n') + '\n';
+  }) as never);
+}
+
 describe('detectIssueList', () => {
   let detectIssueList: typeof import('./startup.js').detectIssueList;
   let existsSyncMock: ReturnType<typeof vi.fn>;
   let origReadFileSync: typeof fsImport.readFileSync;
+  let config: Record<string, unknown>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  const LIST = nodePath.resolve('/lists/open-source/issues.md');
+  const SKIP = nodePath.resolve('/lists/open-source/skipped-issues.md');
+  const ONE_ITEM = '- [#1](https://github.com/o/r/issues/1) — Issue\n';
+  const warned = () => warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    for (const key of Object.keys(localPaths)) delete localPaths[key];
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error('not a git repository');
+    });
+    config = { githubUsername: 'Me' };
+    const { getStateManager } = await import('../core/index.js');
+    vi.mocked(getStateManager).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => {}),
+      getState: vi.fn(() => ({ config })),
+    } as any);
     const startupMod = await import('./startup.js');
     detectIssueList = startupMod.detectIssueList;
     const fsMod = await import('node:fs');
     existsSyncMock = fsMod.existsSync as ReturnType<typeof vi.fn>;
+    existsSyncMock.mockReturnValue(false);
     origReadFileSync = (fsImport as any).readFileSync;
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue(ONE_ITEM);
+    warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     (fsImport as any).readFileSync = origReadFileSync;
+    warnSpy.mockRestore();
+    delete process.env.OSS_AUTOPILOT_UNATTENDED;
+    vi.restoreAllMocks();
   });
 
-  it('should return undefined when no issue list file exists', () => {
-    existsSyncMock.mockReturnValue(false);
-    const result = detectIssueList();
-    expect(result).toBeUndefined();
+  it('returns undefined when no list is configured or found', () => {
+    expect(detectIssueList(true)).toBeUndefined();
   });
 
-  it('should detect issue list from config file', () => {
-    existsSyncMock.mockImplementation((p: string) => {
-      if (p === '.claude/oss-autopilot/config.md') return true;
-      return nodePath.resolve(p) === nodePath.resolve('custom/issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
-      if (path === '.claude/oss-autopilot/config.md') {
-        return '---\nissueListPath: custom/issues.md\n---\n';
-      }
-      return '- [#1](https://github.com/o/r/issues/1) — Issue\n';
-    });
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('custom/issues.md'));
-    expect(result?.source).toBe('configured');
-  });
-
-  it('should handle config file read error gracefully', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    existsSyncMock.mockImplementation((p: string) => {
-      if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
-      return false;
-    });
-    (fsImport as any).readFileSync = vi.fn().mockImplementation(() => {
-      throw new Error('Permission denied');
-    });
-
-    const result = detectIssueList();
-
-    // Should return undefined because config read failed and no probes match
-    expect(result).toBeUndefined();
-    consoleSpy.mockRestore();
-  });
-
-  it('should auto-detect from known probe paths (returns absolute, #1577)', () => {
-    existsSyncMock.mockImplementation((path: string) => {
-      return typeof path === 'string' && path === 'issues.md';
-    });
+  it('returns a configured absolute list with its counts', () => {
+    config.issueListPath = LIST;
+    existsSyncMock.mockImplementation((p: string) => p === LIST);
     (fsImport as any).readFileSync = vi
       .fn()
-      .mockReturnValue(
-        '- [#1](https://github.com/o/r/issues/1) — Issue\n- ~~[#2](https://github.com/o/r/issues/2) — Done~~\n',
-      );
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('issues.md'));
-    expect(result?.source).toBe('auto-detected');
-    expect(result?.availableCount).toBe(1);
-    expect(result?.completedCount).toBe(1);
+      .mockReturnValue(`${ONE_ITEM}- ~~[#2](https://github.com/o/r/issues/2) — Done~~\n`);
+    expect(detectIssueList()).toMatchObject({ path: LIST, source: 'configured', availableCount: 1, completedCount: 1 });
   });
 
-  it('should surface readError when the issue list file cannot be read (#1448)', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    existsSyncMock.mockImplementation((path: string) => {
-      return typeof path === 'string' && path === 'issues.md';
-    });
+  it('surfaces readError when the list cannot be read, and omits it otherwise (#1448)', () => {
+    config.issueListPath = LIST;
+    existsSyncMock.mockImplementation((p: string) => p === LIST);
+    expect('readError' in (detectIssueList() ?? {})).toBe(false);
     (fsImport as any).readFileSync = vi.fn().mockImplementation(() => {
       throw new Error('EACCES: permission denied');
     });
-
-    const result = detectIssueList();
-
-    // The 0/0 counts are a read failure, not an empty list — readError says so.
-    expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('issues.md'));
-    expect(result?.availableCount).toBe(0);
-    expect(result?.completedCount).toBe(0);
-    expect(result?.readError).toContain('EACCES');
-    consoleSpy.mockRestore();
-  });
-
-  it('should not set readError on a successful read (#1448)', () => {
-    existsSyncMock.mockImplementation((path: string) => {
-      return typeof path === 'string' && path === 'issues.md';
-    });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect('readError' in (result ?? {})).toBe(false);
-  });
-
-  it('should detect issue list from state.json config (primary)', async () => {
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
-      updateConfig: vi.fn(),
-    } as any);
-
-    existsSyncMock.mockImplementation((p: string) => {
-      return nodePath.resolve(p) === nodePath.resolve('state/issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('state/issues.md'));
-    expect(result?.source).toBe('configured');
-  });
-
-  it('should prefer state.json over config.md when both set', async () => {
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
-      updateConfig: vi.fn(),
-    } as any);
-
-    existsSyncMock.mockImplementation((p: string) => {
-      if (p === '.claude/oss-autopilot/config.md') return true;
-      const r = nodePath.resolve(p);
-      return r === nodePath.resolve('state/issues.md') || r === nodePath.resolve('config/issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
-      if (path === '.claude/oss-autopilot/config.md') {
-        return '---\nissueListPath: config/issues.md\n---\n';
-      }
-      return '- [#1](https://github.com/o/r/issues/1) — Issue\n';
-    });
-
-    const result = detectIssueList();
-
-    // state.json path should win
-    expect(result?.path).toBe(nodePath.resolve('state/issues.md'));
-    expect(result?.source).toBe('configured');
-  });
-
-  it('should detect skippedIssuesPath when skip file exists alongside issue list', async () => {
-    existsSyncMock.mockImplementation((p: string) => {
-      const r = nodePath.resolve(p);
-      return r === nodePath.resolve('open-source/issues.md') || r === nodePath.resolve('open-source/skipped-issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    // Override getStateManager to return issueListPath pointing to our probe path
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
-      updateConfig: vi.fn(),
-    } as any);
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect(result?.path).toBe(nodePath.resolve('open-source/issues.md'));
-    expect(result?.skippedIssuesPath).toBe(nodePath.resolve('open-source/skipped-issues.md'));
-  });
-
-  it('should return undefined skippedIssuesPath when skip file does not exist', async () => {
-    existsSyncMock.mockImplementation((p: string) => {
-      return typeof p === 'string' && p === 'issues.md';
-    });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    const result = detectIssueList();
-
-    expect(result).toBeDefined();
-    expect(result?.skippedIssuesPath).toBeUndefined();
-  });
-
-  it('persists auto-detected skippedIssuesPath to state.config when not already set (#1330)', async () => {
-    // Repro: startup detects the file via the default-path probe but
-    // returns it only in the run output. Without persistence, every
-    // downstream `skip-add` and scout search reads `config.skippedIssuesPath`
-    // (undefined) and silently no-ops the skip filter.
-    existsSyncMock.mockImplementation((p: string) => {
-      const r = nodePath.resolve(p);
-      return r === nodePath.resolve('open-source/issues.md') || r === nodePath.resolve('open-source/skipped-issues.md');
-    });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    const updateConfigSpy = vi.fn();
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      // No skippedIssuesPath in config yet — the auto-detect must persist it.
-      getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
-      updateConfig: updateConfigSpy,
-    } as any);
-
-    const result = detectIssueList();
-
-    // Persisted ABSOLUTE (#1577) — a bare filename next to the (now absolute) list.
-    expect(result?.skippedIssuesPath).toBe(nodePath.resolve('open-source/skipped-issues.md'));
-    expect(updateConfigSpy).toHaveBeenCalledWith({
-      skippedIssuesPath: nodePath.resolve('open-source/skipped-issues.md'),
+    expect(detectIssueList()).toMatchObject({
+      availableCount: 0,
+      completedCount: 0,
+      readError: expect.stringContaining('EACCES'),
     });
   });
 
-  it('does NOT re-persist paths already stored as absolute (#1330/#1577)', async () => {
-    // Re-running startup on a state that already holds ABSOLUTE paths shouldn't
-    // trigger an autoSave every run. Both `config first` branches take the
-    // stored value, the default-path probe never runs, updateConfig stays
-    // untouched. (A relative value would instead be upgraded once — see above.)
-    const absList = nodePath.resolve('open-source/issues.md');
-    const absSkip = nodePath.resolve('open-source/skipped-issues.md');
-    existsSyncMock.mockImplementation((p: string) => p === absList || p === absSkip);
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    const updateConfigSpy = vi.fn();
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({
-        config: { issueListPath: absList, skippedIssuesPath: absSkip },
-      })),
-      updateConfig: updateConfigSpy,
-    } as any);
-
-    detectIssueList();
-
-    expect(updateConfigSpy).not.toHaveBeenCalled();
+  it('finds skipped-issues.md next to a configured list and saves it (#1330)', () => {
+    config.issueListPath = LIST;
+    existsSyncMock.mockImplementation((p: string) => p === LIST || p === SKIP);
+    expect(detectIssueList()?.skippedIssuesPath).toBe(SKIP);
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', SKIP, 'probe');
   });
 
-  it('persists an auto-detected list path as absolute so it sticks across CWDs (#1577)', async () => {
-    const updateConfigSpy = vi.fn();
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: {} })),
-      updateConfig: updateConfigSpy,
-    } as any);
+  it('does not re-save paths already stored as absolute (#1330/#1577)', () => {
+    config.issueListPath = LIST;
+    config.skippedIssuesPath = SKIP;
+    existsSyncMock.mockImplementation((p: string) => p === LIST || p === SKIP);
+    expect(detectIssueList()?.skippedIssuesPath).toBe(SKIP);
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
+  });
+
+  it('anchors a relative configured skippedIssuesPath to the list dir, saved absolute (#1577)', () => {
+    config.issueListPath = LIST;
+    config.skippedIssuesPath = 'skipped-issues.md';
+    existsSyncMock.mockImplementation((p: string) => p === LIST || p === SKIP);
+    expect(detectIssueList()?.skippedIssuesPath).toBe(SKIP);
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', SKIP, 'adopted');
+  });
+
+  it('refuses a relative configured issueListPath instead of resolving it against cwd (#1933)', () => {
+    config.issueListPath = 'issues.md';
+    existsSyncMock.mockReturnValue(true);
+    expect(detectIssueList(true)).toBeUndefined();
+    expect(warned()).toContain('Ignoring relative issueListPath issues.md');
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
+  });
+
+  it('reports a configured-but-missing list and offers no replacement (#1577, #1933)', () => {
+    config.issueListPath = LIST;
+    existsSyncMock.mockImplementation((p: string) => p === 'issues.md');
+    expect(detectIssueList(true)).toBeUndefined();
+    expect(warned()).toContain(`Configured issueListPath not found at ${LIST}`);
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores a legacy .claude/oss-autopilot/config.md (#1933)', () => {
     existsSyncMock.mockImplementation(
-      (p: string) => nodePath.resolve(p) === nodePath.resolve('open-source/potential-issue-list.md'),
+      (p: string) =>
+        p === '.claude/oss-autopilot/config.md' || nodePath.resolve(p) === nodePath.resolve('custom/issues.md'),
     );
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('---\nissueListPath: custom/issues.md\n---\n');
+    expect(detectIssueList(true)).toBeUndefined();
+  });
 
-    const result = detectIssueList();
+  describe('suggestion from the current directory (#1933)', () => {
+    beforeEach(() => {
+      existsSyncMock.mockImplementation((p: string) => p === 'issues.md' || p.endsWith('skipped-issues.md'));
+    });
 
-    expect(result?.source).toBe('auto-detected');
-    expect(result?.path).toBe(nodePath.resolve('open-source/potential-issue-list.md'));
-    expect(updateConfigSpy).toHaveBeenCalledWith({
-      issueListPath: nodePath.resolve('open-source/potential-issue-list.md'),
+    it('is returned only when asked for, without its skip file, and nothing is saved', () => {
+      expect(detectIssueList()).toBeUndefined();
+      const result = detectIssueList(true);
+      expect(result).toMatchObject({ source: 'auto-detected', path: nodePath.resolve('issues.md'), availableCount: 1 });
+      expect(result?.skippedIssuesPath).toBeUndefined();
+      expect(setMachinePathSpy).not.toHaveBeenCalled();
+    });
+
+    it('is not offered during an unattended run', () => {
+      process.env.OSS_AUTOPILOT_UNATTENDED = '';
+      expect(detectIssueList(true)).toBeUndefined();
+    });
+
+    it.each(['/home/u/a"b', '/home/u/a`b', '/home/u/a$b', String.raw`/home/u/a\b`, '/home/u/a\nb'])(
+      'is not offered from a path with a shell metacharacter (%j)',
+      (cwd) => {
+        vi.spyOn(process, 'cwd').mockReturnValue(cwd);
+        expect(detectIssueList(true)).toBeUndefined();
+      },
+    );
+
+    it("is not offered from someone else's checkout, with a note saying how to use it", () => {
+      gitCheckout(['https://github.com/evil/repo.git']);
+      expect(detectIssueList(true)).toBeUndefined();
+      expect(warned()).toContain(
+        `Found ${nodePath.resolve('issues.md')}, not offered because this checkout has a remote not owned by you`,
+      );
+      expect(warned()).toContain('setup --set issueListPath=');
+    });
+
+    it('treats a fork clone (origin yours, upstream not) as foreign', () => {
+      gitCheckout(['git@github.com:me/fork.git', 'https://github.com/upstream-org/fork.git']);
+      expect(detectIssueList(true)).toBeUndefined();
+    });
+
+    it('treats a checkout with no remotes, or that git refuses to read, as foreign', () => {
+      gitCheckout([]);
+      expect(detectIssueList(true)).toBeUndefined();
+      gitCheckout(new Error('timeout'));
+      expect(detectIssueList(true)).toBeUndefined();
+      execFileSyncMock.mockImplementation(() => {
+        throw Object.assign(new Error('git failed'), { stderr: 'fatal: detected dubious ownership in repository' });
+      });
+      expect(detectIssueList(true)).toBeUndefined();
+    });
+
+    it('is offered from your own checkout on any host and URL form, any case', () => {
+      gitCheckout([
+        'ssh://git@gitea.local:2222/me/vault.git',
+        'git@github.com:ME/vault.git',
+        'https://github.com/me/vault',
+      ]);
+      expect(detectIssueList(true)?.source).toBe('auto-detected');
+    });
+
+    it('treats a look-alike or local-path remote as foreign', () => {
+      gitCheckout(['https://evil.example/github.com/me/repo.git']);
+      expect(detectIssueList(true)).toBeUndefined();
+      gitCheckout(['/srv/git/me/repo.git']);
+      expect(detectIssueList(true)).toBeUndefined();
     });
   });
 
-  it('upgrades a relative configured issueListPath to absolute in state (#1577)', async () => {
-    const updateConfigSpy = vi.fn();
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
-      updateConfig: updateConfigSpy,
-    } as any);
-    existsSyncMock.mockImplementation((p: string) => nodePath.resolve(p) === nodePath.resolve('state/issues.md'));
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    detectIssueList();
-
-    expect(updateConfigSpy).toHaveBeenCalledWith({ issueListPath: nodePath.resolve('state/issues.md') });
-  });
-
-  it('returns undefined (not a silent probe fallthrough that finds nothing) when a configured list is missing (#1577)', async () => {
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: 'gone/list.md' } })),
-      updateConfig: vi.fn(),
-    } as any);
-    existsSyncMock.mockReturnValue(false); // configured path missing, no probes match
+  it("refuses a synced list inside someone else's checkout, checking the list's directory (#1933)", () => {
+    config.issueListPath = LIST;
+    existsSyncMock.mockImplementation((p: string) => p === LIST);
+    gitCheckout(['https://github.com/evil/repo.git']);
     expect(detectIssueList()).toBeUndefined();
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      'git',
+      ['-C', nodePath.dirname(LIST), 'rev-parse', '--is-inside-work-tree'],
+      expect.anything(),
+    );
+    expect(warned()).toContain(`Ignoring issueListPath ${LIST}: its checkout has a remote not owned by you`);
   });
 
-  it('does NOT overwrite a configured-but-missing issueListPath with a probe hit (#1577)', async () => {
-    const updateConfigSpy = vi.fn();
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: '/data/oss/issues.md' } })),
-      updateConfig: updateConfigSpy,
-    } as any);
-    // Configured absolute path absent (e.g. /data unmounted), but a probe file
-    // happens to exist in CWD. The probe is returned for THIS run, but the
-    // user's deliberate config must NOT be clobbered.
-    existsSyncMock.mockImplementation((p: string) => nodePath.resolve(p) === nodePath.resolve('issues.md'));
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
-
-    const result = detectIssueList();
-
-    expect(result?.path).toBe(nodePath.resolve('issues.md'));
-    expect(result?.source).toBe('auto-detected');
-    expect(updateConfigSpy).not.toHaveBeenCalled();
+  it('trusts a list the user set on this machine wherever it is', () => {
+    localPaths.issueListPath = { path: LIST, source: 'set' };
+    existsSyncMock.mockImplementation((p: string) => p === LIST);
+    gitCheckout(['https://github.com/someone/else.git']);
+    expect(detectIssueList()?.source).toBe('configured');
+    expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
-  it('anchors a relative configured skippedIssuesPath to the list dir, persisted absolute (#1577)', async () => {
-    const absList = nodePath.resolve('vault/open-source/issues.md');
-    const expectedSkip = nodePath.resolve('vault/open-source/skipped-issues.md');
-    const updateConfigSpy = vi.fn();
-    const { getStateManager } = await import('../core/index.js');
-    vi.mocked(getStateManager).mockReturnValue({
-      isSetupComplete: vi.fn(() => true),
-      getLastOvernight: vi.fn(() => {}),
-      getState: vi.fn(() => ({ config: { issueListPath: absList, skippedIssuesPath: 'skipped-issues.md' } })),
-      updateConfig: updateConfigSpy,
-    } as any);
-    existsSyncMock.mockImplementation((p: string) => p === absList || p === expectedSkip);
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
+  it('falls back from an unconfirmed probe record to the synced value, with a warning (#1933)', () => {
+    const synced = nodePath.resolve('/synced/issues.md');
+    localPaths.issueListPath = { path: LIST, source: 'probe' };
+    config.issueListPath = synced;
+    existsSyncMock.mockImplementation((p: string) => p === LIST || p === synced);
+    expect(detectIssueList()).toMatchObject({ path: synced, source: 'configured' });
+    expect(warned()).toContain(`issueListPath ${LIST} was auto-detected and never confirmed`);
 
-    const result = detectIssueList();
-
-    expect(result?.skippedIssuesPath).toBe(expectedSkip);
-    expect(updateConfigSpy).toHaveBeenCalledWith({ skippedIssuesPath: expectedSkip });
+    delete config.issueListPath;
+    expect(detectIssueList()).toBeUndefined();
   });
 });
 

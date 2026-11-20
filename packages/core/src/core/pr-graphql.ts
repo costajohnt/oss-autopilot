@@ -58,6 +58,26 @@ export const TIMELINE_CAP = 50;
  *  within a couple of seconds. */
 export const MERGEABLE_RETRY_DELAY_MS = 2000;
 
+/**
+ * Fixed fragments of the log lines the open-PR fetch writes to stderr. The log
+ * sites and the tests that read stderr (#1941) share them, so rewording a
+ * message cannot silently blind a test.
+ */
+export const PR_FETCH_LOG = {
+  /** Debug timing label, followed by ` <count> PRs`. */
+  fetchDetails: 'Fetch details for',
+  /** Debug suffix of the line logged for each PR enriched through REST. */
+  restFallback: '(REST fallback)',
+  /** Warning: one batch query failed and its PRs went to REST. */
+  batchFailed: 'GraphQL batch failed',
+  /** Warning: the batch fetch threw (rate limit, auth) and every PR went to REST. */
+  enrichmentFailed: 'GraphQL batch enrichment failed',
+  /** Warning: one node could not be normalized and that PR went to REST. */
+  normalizeFailed: 'Failed to normalize',
+  /** Warning: a resolved PR could not be assembled and is reported as a failure. */
+  assembleFailed: 'Error assembling',
+} as const;
+
 /** A single PR to enrich. */
 export interface PRRef {
   owner: string;
@@ -507,7 +527,7 @@ async function runBatch(octokit: Octokit, refs: PRRef[]): Promise<BatchResponse 
     // when only some PRs in the batch errored (e.g. one repo went private).
     const partial = (err as { data?: BatchResponse }).data;
     if (partial) return partial;
-    warn(MODULE, `GraphQL batch failed, falling back to REST: ${errorMessage(err)}`);
+    warn(MODULE, `${PR_FETCH_LOG.batchFailed}, falling back to REST: ${errorMessage(err)}`);
     return null;
   }
 }
@@ -571,7 +591,7 @@ async function fetchBatches(octokit: Octokit, refs: PRRef[]): Promise<BatchPRRes
       try {
         outcome = normalizePRNode(data[`pr${i}`]?.pullRequest);
       } catch (err) {
-        warn(MODULE, `Failed to normalize ${ref.url}, falling back to REST: ${errorMessage(err)}`);
+        warn(MODULE, `${PR_FETCH_LOG.normalizeFailed} ${ref.url}, falling back to REST: ${errorMessage(err)}`);
         outcome = { kind: 'missing' };
       }
       if (outcome.kind === 'ok') {

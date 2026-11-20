@@ -79,6 +79,10 @@ vi.mock('../core/index.js', async (importOriginal) => {
   return {
     ...actual,
     requireGitHubToken: vi.fn(() => 'test-token'),
+    // The merged-ledger gap fetch (#1924) searches through this client.
+    getOctokit: () => ({
+      search: { issuesAndPullRequests: () => Promise.resolve({ data: { total_count: 0, items: [] } }) },
+    }),
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,
   };

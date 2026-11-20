@@ -11,6 +11,7 @@ import {
   maybeCheckpoint,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
+import { MACHINE_PATH_KEYS, assertSafeMachinePath, setMachinePath, type MachinePathKey } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
 import {
   PROJECT_CATEGORIES,
@@ -98,6 +99,34 @@ function parseComplexIssues(value: string): 'off' | 'warm' {
 }
 
 /**
+ * Refuse unknown keys, and path values with a shell metacharacter (#1934),
+ * before any pair is applied.
+ */
+function prevalidateSettings(settings: string[]): void {
+  const knownKeys = new Set(getSetupKeys());
+  for (const setting of settings) {
+    const [key] = setting.split('=', 1);
+    if (!knownKeys.has(key)) {
+      throw new ValidationError(formatUnknownKeyError(key, 'setup'));
+    }
+    if ((MACHINE_PATH_KEYS as readonly string[]).includes(key)) {
+      assertSafeMachinePath(key as MachinePathKey, setting.slice(key.length + 1));
+    }
+  }
+}
+
+/** True when every `key=value` names a path kept in this machine's local file. */
+function isMachineLocalOnly(settings: string[]): boolean {
+  const localKeys: readonly string[] = MACHINE_PATH_KEYS;
+  return settings.every((setting) => localKeys.includes(setting.split('=', 1)[0]));
+}
+
+/** Warning for the config keys retired in #1948: still accepted and stored, never read. */
+function retiredKeyWarning(key: string): string {
+  return `${key} is retired and not read by oss-autopilot; it is kept for compatibility`;
+}
+
+/**
  * Interactive setup wizard or direct setting application.
  *
  * Three modes:
@@ -124,13 +153,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // mid-loop would leave earlier successful updates applied in memory (a real
     // issue for long-running consumers like the MCP server and dashboard that
     // share the StateManager singleton across requests).
-    const knownKeys = new Set(getSetupKeys());
-    for (const setting of options.set) {
-      const [key] = setting.split('=', 1);
-      if (!knownKeys.has(key)) {
-        throw new ValidationError(formatUnknownKeyError(key, 'setup'));
-      }
-    }
+    prevalidateSettings(options.set);
 
     // Named so the Gist conflict path can re-apply the same settings on a
     // refreshed baseline (maybeCheckpoint below).
@@ -215,8 +238,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'skippedIssuesPath': {
-            stateManager.updateConfig({ skippedIssuesPath: value || undefined });
-            results[key] = value || '(cleared)';
+            results[key] = setMachinePath('skippedIssuesPath', value || undefined) || '(cleared)';
             break;
           }
           case 'autoExtractLearnings': {
@@ -239,6 +261,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const enabled = value === 'true';
             stateManager.updateConfig({ autoFormatBeforePush: enabled });
             results[key] = String(enabled);
+            warnings.push(retiredKeyWarning(key));
             break;
           }
           case 'trustOwnRepoWrites': {
@@ -248,6 +271,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const trusted = value === 'true';
             stateManager.updateConfig({ trustOwnRepoWrites: trusted });
             results[key] = String(trusted);
+            warnings.push(retiredKeyWarning(key));
             break;
           }
           case 'includeDocIssues': {
@@ -406,8 +430,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'issueListPath': {
-            stateManager.updateConfig({ issueListPath: value || undefined });
-            results[key] = value || '(cleared)';
+            results[key] = setMachinePath('issueListPath', value || undefined) || '(cleared)';
             break;
           }
           case 'diffTool': {
@@ -442,6 +465,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const minutes = parsePositiveInt(value, 'healthCheckFreshnessMinutes');
             stateManager.updateConfig({ healthCheckFreshnessMinutes: minutes });
             results[key] = String(minutes);
+            warnings.push(retiredKeyWarning(key));
             break;
           }
           case 'reviewMaxPasses': {
@@ -468,7 +492,11 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // Push the settings mutation to the Gist in gist mode (no-op locally).
     // Without this the change only hits the local cache and the next
     // bootstrap reverts it from the Gist (#1440).
-    const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () => stateManager.batch(applySettings));
+    // Path settings are written to this machine's local file only (#1950), so
+    // a call that sets nothing else has nothing to push.
+    const gistSyncWarning = isMachineLocalOnly(options.set)
+      ? null
+      : await maybeCheckpoint(stateManager, MODULE, () => stateManager.batch(applySettings));
     return {
       success: true,
       settings: results,

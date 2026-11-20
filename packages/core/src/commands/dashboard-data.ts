@@ -21,7 +21,17 @@ import {
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
+import {
+  emptyPRCountsResult,
+  fetchMergedPRsSince,
+  fetchClosedPRsSince,
+  gapFetchWatermark,
+  LEDGER_BACKFILL_CEILING,
+  type RecentListTruncation,
+  CLOSED_LEDGER_TRUNCATED_MESSAGE,
+  MERGED_LEDGER_TRUNCATED_MESSAGE,
+  type PRsSinceResult,
+} from '../core/github-stats.js';
 import { parseGitHubUrl, issueRefKey } from '../core/urls.js';
 import {
   isBelowMinStars,
@@ -306,13 +316,31 @@ export interface DashboardFetchResult {
  * time that does not parse, issues past the comment-fetch cap) collapse to
  * one label: the monitor already logged each one, and the banner lists
  * operations. Engaged issues whose batched lookup failed were not checked
- * at all this run, so they get their own label.
+ * at all this run, so they get their own label, and so does a comment
+ * search that returned a partial list (#1928).
  */
-function engagedScanLabels(result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures'>): string[] {
+function engagedScanLabels(
+  result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures' | 'searchTruncation'>,
+): string[] {
   const labels: string[] = [];
   if (result.lookupFailures > 0) labels.push('look up engaged issues');
-  if (result.warnings.length > 0) labels.push('scan engaged issues');
+  // A partial comment search is named on its own (#1928); its sentence is one of `warnings`.
+  const { searchTruncation } = result;
+  if (searchTruncation !== undefined) labels.push(searchTruncation);
+  if (result.warnings.length > (searchTruncation === undefined ? 0 : 1)) labels.push('scan engaged issues');
   return labels;
+}
+
+/**
+ * The rows of a ledger gap fetch (#1924). A truncated fetch has none and
+ * puts `truncatedMessage` on the partial-data banner.
+ */
+function gapRows<T>(gap: PRsSinceResult<T>, truncatedMessage: string, partialFailures: string[]): T[] {
+  if (gap.truncated) {
+    partialFailures.push(truncatedMessage);
+    warn(MODULE, truncatedMessage);
+  }
+  return gap.prs;
 }
 
 /**
@@ -341,16 +369,16 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   // recovered. When the stored detail count is materially below the known
   // all-time merged count, drop the watermark for a one-shot full backfill
   // (bounded by the existing pagination cap); once the ledger catches up the
-  // watermark resumes incremental fetching. Closed PRs are not seeded ahead of
-  // their backfill in practice, so only merged needs the guard.
+  // watermark resumes incremental fetching. The closed ledger gets the same
+  // guard below (#1925): the daily run no longer seeds it ahead of its gap
+  // fetch, but ledgers an older version seeded that way still need to heal.
   const storedMergedCount = stateManager.getMergedPRs().length;
   const knownMergedAllTime = stateManager.getState().lastDigest?.summary?.totalMergedAllTime ?? 0;
-  // A full backfill can only ever return up to fetchMergedPRsSince's pagination
-  // cap (MAX_PAGINATION_PAGES * 100 = 300). Stop forcing one once the ledger has
-  // reached that ceiling, so a contributor whose star-filtered all-time count
-  // legitimately exceeds 300 doesn't trigger a full refetch on every poll.
-  const MERGED_BACKFILL_CEILING = 300;
-  const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < MERGED_BACKFILL_CEILING;
+  // Stop forcing one once the ledger has 300 entries, so a contributor whose
+  // star-filtered all-time count legitimately exceeds the ledger doesn't
+  // trigger a full refetch on every poll. Past that, the daily run reports a
+  // short ledger and `ledger-backfill` fills it (#1924).
+  const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < LEDGER_BACKFILL_CEILING;
   const mergedFetchSince = mergedNeedsBackfill ? undefined : watermark;
   if (mergedNeedsBackfill) {
     warn(
@@ -374,31 +402,47 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     };
   };
 
+  const recentListTruncations: RecentListTruncation[] = [];
+  const closedCounts = prMonitor
+    .fetchUserClosedPRCounts(starFilter)
+    .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>()));
+  const storedClosedCount = stateManager.getClosedPRs().length;
   const [
     { prs, failures, warnings: fetchWarnings },
     recentlyClosedPRs,
     recentlyMergedPRs,
     mergedResult,
     closedResult,
-    newMergedPRs,
-    newClosedPRs,
+    mergedGap,
+    closedGap,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
-    prMonitor.fetchRecentlyClosedPRs().catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
-    prMonitor.fetchRecentlyMergedPRs().catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
+    prMonitor
+      .fetchRecentlyClosedPRs(7, recentListTruncations)
+      .catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
+    prMonitor
+      .fetchRecentlyMergedPRs(7, recentListTruncations)
+      .catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
     prMonitor
       .fetchUserMergedPRCounts(starFilter)
       .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>())),
-    prMonitor
-      .fetchUserClosedPRCounts(starFilter)
-      .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>())),
+    closedCounts,
+    // The same gap fetches the daily run uses (#1924, #1925). Nothing else here
+    // adds ledger rows, so a failed or truncated fetch leaves the watermark alone.
     fetchMergedPRsSince(octokit, config, mergedFetchSince).catch(
-      trackingCatch('fetch merged PRs for storage', [] as StoredMergedPR[]),
+      trackingCatch('fetch merged PRs for storage', { prs: [] as StoredMergedPR[], truncated: false }),
     ),
-    fetchClosedPRsSince(octokit, config, closedWatermark).catch(
-      trackingCatch('fetch closed PRs for storage', [] as StoredClosedPR[]),
-    ),
+    // Waits for the closed count: a ledger short of it under the ceiling is
+    // fetched from the start (gapFetchWatermark, #1925).
+    closedCounts
+      .then((counts) =>
+        fetchClosedPRsSince(octokit, config, gapFetchWatermark(closedWatermark, storedClosedCount, counts.totalCount)),
+      )
+      .catch(trackingCatch('fetch closed PRs for storage', { prs: [] as StoredClosedPR[], truncated: false })),
   ]);
+
+  const newMergedPRs = gapRows(mergedGap, MERGED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
+  const newClosedPRs = gapRows(closedGap, CLOSED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
 
   // Issue conversations run after the PR lists: the engaged set (#1862)
   // needs the open, recently closed and recently merged PRs. The fetch has
@@ -447,6 +491,8 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       warn(MODULE, message);
     }
   }
+  // Same for a recent-list truncation (#1928): the short label here, the full sentence already logged.
+  partialFailures.push(...recentListTruncations.map((truncation) => truncation.label));
 
   // Wrap all state mutations in a batch for a single disk write.
   // try-catch: save errors should not crash the dashboard data fetch.

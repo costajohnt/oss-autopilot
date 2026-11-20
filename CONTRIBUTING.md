@@ -69,7 +69,7 @@ git checkout -b fix/your-bug-fix
 - Add tests if applicable
 - Run `pnpm test` to ensure tests pass
 - Run `pnpm run build` to ensure it compiles
-- Run `pnpm lint` and `pnpm format:check` to catch style issues (the pre-commit hook runs the format check; the pre-push hook runs lint)
+- Run `pnpm lint` and `pnpm format:check` to catch style issues (the pre-commit hook runs the format check; the pre-push hook runs lint). `pnpm lint` builds `packages/core` first, because the type-aware rules need its type declarations, and fails when the warning count goes above the cap in the root `package.json`, so new code must not add warnings
 - **Do NOT manually bump versions or edit CHANGELOG.md** — versioning is automated via [release-please](https://github.com/googleapis/release-please)
 
 ### 4. Commit

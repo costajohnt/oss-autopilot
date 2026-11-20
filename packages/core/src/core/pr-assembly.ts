@@ -17,6 +17,7 @@ import {
   type ReviewComment,
   determineReviewDecision,
   getLatestChangesRequestedDate,
+  getStandingApprovalDate,
   checkUnrespondedComments,
   getFirstMaintainerResponseAt,
   getLastMaintainerActivity,
@@ -117,7 +118,7 @@ export async function assembleFetchedPR(
   const mergeConflict = signals.hasMergeConflict;
 
   // Check if there's an unresponded maintainer comment (delegated to review-analysis module)
-  const { hasUnrespondedComment, lastMaintainerComment } = checkUnrespondedComments(
+  const { hasUnrespondedComment, lastMaintainerComment, unrespondedComments } = checkUnrespondedComments(
     comments,
     reviews,
     reviewComments,
@@ -191,6 +192,10 @@ export async function assembleFetchedPR(
     contributorUsername: config.githubUsername,
     lastMaintainerCommentDate: lastMaintainerComment?.createdAt,
     latestChangesRequestedDate,
+    unansweredComments: unrespondedComments.map((c) => ({
+      createdAt: c.createdAt,
+      authorApprovalDate: getStandingApprovalDate(reviews, c.author),
+    })),
     hasActionableCIFailure,
   });
 

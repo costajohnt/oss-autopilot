@@ -10,9 +10,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   assessCapacity,
   collectActionableIssues,
-  formatActionHint,
-  formatBriefSummary,
-  formatSummary,
   toShelvedPRRef,
   computeRepoSignals,
   computeLedgerRepoSignals,
@@ -25,6 +22,7 @@ import {
   CRITICAL_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
+import { formatActionHint, formatBriefSummary, formatSummary } from '../commands/daily-render.js';
 import { summarizeAttentionBuckets } from './pr-attention.js';
 import type { FetchedPR, MaintainerActionHint, AgentState, CommentedIssue } from './types.js';
 import {

@@ -20,6 +20,11 @@
  *   and its sibling archives: an entry whose status line links the PR carries
  *   the vet score as `**Tier (N/10)**`.
  *
+ * Before any of that it adds the merged (#1924) and closed (#1925) PRs the
+ * ledgers are missing: the daily run and the dashboard only fetch forward from
+ * each ledger's newest entry, so a hole behind it stays until this command
+ * walks the full history.
+ *
  * Only missing fields are filled (addMergedPRs/addClosedPRs never overwrite),
  * so the command is safe to re-run; the weekly eval job runs it first.
  */
@@ -29,6 +34,12 @@ import * as path from 'node:path';
 import type { Octokit } from '@octokit/rest';
 import { classifyCloseReason, classifySelfClose, type CloseContext } from '../core/close-reason.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import {
+  fetchClosedPRsSince,
+  fetchMergedPRsSince,
+  type LedgerFetchConfig,
+  type PRsSinceResult,
+} from '../core/github-stats.js';
 import { getOctokit, requireGitHubToken, getStateManager, parseGitHubUrl } from '../core/index.js';
 import { isGraphqlRateLimited } from '../core/pr-graphql.js';
 import { getFirstMaintainerResponseAt, MAINTAINER_RESPONSE_RULE } from '../core/review-analysis.js';
@@ -43,6 +54,10 @@ const BATCH_SIZE = 40;
 const LIST_KEEP_SCORE = 6;
 
 export interface LedgerBackfillOutput {
+  /** Merged PRs GitHub lists that the ledger did not hold, added in this run (#1924). */
+  mergedAdded: number;
+  /** Closed-without-merge PRs GitHub lists that the ledger did not hold, added in this run (#1925). */
+  closedAdded: number;
   /** Ledger PRs sent to GitHub because they had not been backfilled yet. */
   queried: number;
   /** Entries that gained each field in this run. */
@@ -281,6 +296,37 @@ function countFilled(entries: Array<StoredMergedPR | StoredClosedPR>) {
   };
 }
 
+/**
+ * Every merged or closed PR GitHub lists for the user, with no result limit,
+ * so holes anywhere in the ledger can be filled (#1924, #1925). Empty with a
+ * warning when the walk fails: a partial history is never returned, because
+ * storing a recent row without the rows before it would hide them from the
+ * daily gap fetch. Rate-limit and auth errors rethrow.
+ */
+async function fetchHistory<T>(
+  kind: 'merged' | 'closed',
+  fetchSince: (
+    octokit: Octokit,
+    config: LedgerFetchConfig,
+    watermark: undefined,
+    max: number,
+  ) => Promise<PRsSinceResult<T>>,
+  octokit: Octokit,
+  config: LedgerFetchConfig,
+  warnings: string[],
+): Promise<T[]> {
+  let history: PRsSinceResult<T>;
+  try {
+    history = await fetchSince(octokit, config, undefined, Infinity);
+  } catch (err) {
+    if (isRateLimitOrAuthError(err)) throw err;
+    warnings.push(`${kind} PR history fetch failed, no missing PRs were added: ${errorMessage(err)}`);
+    return [];
+  }
+  if (history.truncated) warnings.push(`${kind} PR history could not be walked to the end; no missing PRs were added`);
+  return history.prs;
+}
+
 export async function runLedgerBackfill(options: { issueListPath?: string } = {}): Promise<LedgerBackfillOutput> {
   const stateManager = getStateManager();
   const warnings: string[] = [];
@@ -292,6 +338,18 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   const listPath = options.issueListPath ?? detectIssueListPath()?.path;
   if (!listPath) warnings.push('no curated issue list found; list vet scores were not imported');
   const lists = listPath ? readListFiles(listPath, warnings) : [];
+
+  // 0. History: add the merged and closed PRs the ledgers are missing, so the
+  // steps below enrich them in the same run.
+  const octokit = getOctokit(requireGitHubToken());
+  const { config } = stateManager.getState();
+  // Merged rows are stored before the closed walk starts, so a rate limit on
+  // that walk keeps them; storing them first also keeps a PR that has since
+  // merged out of the closed ledger.
+  const history = await fetchHistory('merged', fetchMergedPRsSince, octokit, config, warnings);
+  const { added: mergedAdded } = stateManager.addMergedPRs(history);
+  const closedHistory = await fetchHistory('closed', fetchClosedPRsSince, octokit, config, warnings);
+  const { added: closedAdded } = stateManager.addClosedPRs(closedHistory);
 
   // 1. GitHub: openedAt, closing issue, close reason, first response, for
   // entries not yet backfilled, plus one-time re-fetches for fields added
@@ -307,7 +365,6 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   const responses = new Map<string, string | undefined>();
   let fatal: Error | undefined;
   if (needsFetch.length > 0) {
-    const octokit = getOctokit(requireGitHubToken());
     let failedBatches = 0;
     for (let i = 0; i < needsFetch.length; i += BATCH_SIZE) {
       try {
@@ -352,6 +409,9 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   };
 
   const applyLedger = (): void => {
+    // Again, in case the reload above or a Gist conflict retry dropped them.
+    stateManager.addMergedPRs(history);
+    stateManager.addClosedPRs(closedHistory);
     stateManager.addMergedPRs(
       merged.map((e) => ({ url: e.url, title: e.title, mergedAt: e.mergedAt, ...recovered(e) })),
     );
@@ -385,6 +445,8 @@ export async function runLedgerBackfill(options: { issueListPath?: string } = {}
   const gistSyncWarning = await maybeCheckpoint(stateManager, 'ledger-backfill', () => stateManager.batch(applyLedger));
   if (fatal) throw fatal;
   return {
+    mergedAdded,
+    closedAdded,
     queried: needsFetch.length,
     filled: {
       openedAt: after.openedAt - before.openedAt,

@@ -11,7 +11,6 @@ import {
   RepoScore,
   RepoScoreUpdate,
   DailyDigest,
-  LocalRepoCache,
   StatusOverride,
   FetchedPRStatus,
   StoredMergedPR,
@@ -22,7 +21,7 @@ import {
   SearchRotation,
   WorkClaim,
 } from './types.js';
-import { AgentStateSchema } from './state-schema.js';
+import { AgentStateSchema, GuidelinesReviewSchema, type GuidelinesReview, type RepoPolicy } from './state-schema.js';
 import { activeWorkClaims, finishWorkClaim, workClaimKey } from './work-claims.js';
 import { serializeState } from './state-prune.js';
 import {
@@ -31,6 +30,7 @@ import {
   reloadStateIfChanged,
   createFreshState,
   atomicWriteFileSync,
+  assertNotNewerVersion,
   warnMalformedWorkClaims,
   type LoadRecoveryInfo,
 } from './state-persistence.js';
@@ -41,6 +41,8 @@ import {
   errorMessage,
   ConfigurationError,
   ConcurrencyError,
+  NewerStateVersionError,
+  StateLockTimeoutError,
   GistConcurrencyError,
   isTransientNetworkError,
   GistDiscoveryError,
@@ -483,7 +485,9 @@ export class StateManager {
     try {
       this.lastLoadedMtimeMs = saveState(this.state, this.lastLoadedMtimeMs);
     } catch (err) {
-      if (err instanceof ConcurrencyError && options.allowReloadAndLoseMutation) {
+      // A lock timeout is no external write: there is nothing to reload, and the mutation must not be dropped.
+      const isExternalWrite = err instanceof ConcurrencyError && !(err instanceof StateLockTimeoutError);
+      if (isExternalWrite && options.allowReloadAndLoseMutation) {
         warn(MODULE, `Concurrent external write detected; reloading and discarding in-memory mutation. ${err.message}`);
         this.reloadIfChanged();
         return;
@@ -595,6 +599,26 @@ export class StateManager {
    */
   deleteGuidelines(repo: string): void {
     guidelinesStoreModule.deleteGuidelines(this.gistStore, repo);
+    this.autoSave();
+  }
+
+  /** Record that the user approved the guidelines text hashing to `sha256` for `repo` (#1929). */
+  markGuidelinesReviewed(repo: string, sha256: string, reviewedAt: string): void {
+    this.state.guidelinesReviews = { ...this.state.guidelinesReviews, [repo]: { reviewedAt, sha256 } };
+    this.autoSave();
+  }
+
+  /** The review stamp for `repo`, or undefined when none is recorded or the entry is unreadable (#1929). */
+  getGuidelinesReview(repo: string): GuidelinesReview | undefined {
+    const parsed = GuidelinesReviewSchema.safeParse(this.state.guidelinesReviews?.[repo]);
+    return parsed.success ? parsed.data : undefined;
+  }
+
+  /** Store `policy` for `repo` (#1953), or delete the record when `policy` is null. Keys are lowercase. */
+  setRepoPolicy(repo: string, policy: RepoPolicy | null): void {
+    const key = repo.toLowerCase();
+    const rest = Object.fromEntries(Object.entries(this.state.repoPolicies ?? {}).filter(([k]) => k !== key));
+    this.state.repoPolicies = policy ? { ...rest, [key]: policy } : rest;
     this.autoSave();
   }
 
@@ -745,8 +769,11 @@ export class StateManager {
       let rawState: unknown;
       try {
         rawState = JSON.parse(raw);
+        assertNotNewerVersion(rawState, 'Gist state');
         this.state = AgentStateSchema.parse(rawState);
       } catch (err) {
+        // Not a bad payload: staying on old in-memory state would push it over the newer Gist.
+        if (err instanceof NewerStateVersionError) throw err;
         warn(MODULE, `Failed to parse refreshed Gist state: ${errorMessage(err)}`);
         // Same reasoning as the missing-file branch: parse failure leaves us
         // on stale in-memory state, so flag it.
@@ -858,11 +885,12 @@ export class StateManager {
   }
 
   /**
-   * Update the local repository cache.
-   * @param cache - Local repository cache mapping repo names to paths
+   * Drop the synced copy of the local repository cache. The cache is
+   * per-machine and lives in `local-config.json` (#1950).
    */
-  setLocalRepoCache(cache: LocalRepoCache): void {
-    this.state.localRepoCache = cache;
+  clearSyncedLocalRepoCache(): void {
+    if (this.state.localRepoCache === undefined) return;
+    delete this.state.localRepoCache;
     this.autoSave();
   }
 
@@ -994,6 +1022,18 @@ export class StateManager {
   evictClosedPRs(openUrls: Iterable<string>): number {
     const evicted = repoScoring.evictClosedPRs(this.state, openUrls);
     if (evicted > 0) this.autoSave();
+    return evicted;
+  }
+
+  /**
+   * Remove ledger rows and repoScores entries for repositories in
+   * `config.untrackedOrgs` and for `privateRepos`, which must hold only
+   * repositories GitHub reported private in this run (#1924). See
+   * repoScoring.evictExcludedRepos.
+   */
+  evictExcludedRepos(privateRepos: Iterable<string>): repoScoring.EvictedRepos {
+    const evicted = repoScoring.evictExcludedRepos(this.state, privateRepos);
+    if (evicted.untrackedOrgRows + evicted.privateRows + evicted.repos > 0) this.autoSave();
     return evicted;
   }
 
@@ -1909,8 +1949,12 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
     let reason = `Gist initialization failed: ${errorMessage(err)}`;
     if (err instanceof GistFileSizeError) {
       reason = `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`;
-    } else if (err instanceof ConfigurationError && !(err instanceof GistDiscoveryError)) {
-      // A GistDiscoveryError carries its own remedy; the scope hint would mislead (#1926).
+    } else if (
+      err instanceof ConfigurationError &&
+      !(err instanceof GistDiscoveryError) &&
+      !(err instanceof NewerStateVersionError)
+    ) {
+      // A GistDiscoveryError or a newer-version error carries its own remedy; the scope hint would mislead (#1926).
       reason = `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`;
     }
     cause = { reason };

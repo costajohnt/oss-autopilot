@@ -17,6 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { ENTRY_LINE_RE, lineMentionsUrl } from './curated-list.js';
+import { configuredIssueListPath } from './locate-issue-list.js';
 
 export type Tier = 'pursue' | 'maybe' | 'skip';
 
@@ -29,7 +30,8 @@ const TIER_HEADERS: Record<Tier, string> = {
 export interface ListMoveTierOptions {
   issueUrl: string;
   tier: Tier;
-  listPath: string;
+  /** Defaults to the configured issueListPath. */
+  listPath?: string;
 }
 
 export interface ListMoveTierOutput {
@@ -229,7 +231,7 @@ export function moveIssueToTier(
 }
 
 export async function runListMoveTier(options: ListMoveTierOptions): Promise<ListMoveTierOutput> {
-  const filePath = path.resolve(options.listPath);
+  const filePath = path.resolve(options.listPath ?? configuredIssueListPath());
 
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);

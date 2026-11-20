@@ -62,6 +62,10 @@ const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockGetMergedPRs = vi.fn((): StoredMergedPR[] => []);
 const mockRenameRepo = vi.fn();
 const mockEvictClosedPRs = vi.fn();
+const mockGetMergedPRWatermark = vi.fn((): string | undefined => undefined);
+const mockGetClosedPRWatermark = vi.fn((): string | undefined => undefined);
+// Search client behind the merged-ledger gap fetch (#1924); empty unless a test routes it.
+const mockSearchPRs = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
@@ -108,6 +112,9 @@ vi.mock('../core/index.js', async (importOriginal) => {
       renameRepo: mockRenameRepo,
       tryReconcilePRCounts: vi.fn(),
       evictClosedPRs: mockEvictClosedPRs,
+      evictExcludedRepos: vi.fn(() => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 })),
+      getMergedPRWatermark: mockGetMergedPRWatermark,
+      getClosedPRWatermark: mockGetClosedPRWatermark,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
@@ -136,6 +143,8 @@ vi.mock('../core/index.js', async (importOriginal) => {
       reloadIfChanged: mockReloadIfChanged,
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
+    // The merged-ledger gap fetch (#1924) searches through this client.
+    getOctokit: vi.fn(() => ({ search: { issuesAndPullRequests: mockSearchPRs } })),
     formatRelativeTime: vi.fn(() => '2 days ago'),
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,
@@ -265,6 +274,9 @@ beforeEach(() => {
   mockFetchRecentlyMergedPRs.mockResolvedValue([]);
   mockGenerateDigest.mockReturnValue(makeDigest());
   mockGetMergedPRs.mockReturnValue([]);
+  mockGetMergedPRWatermark.mockReturnValue(undefined);
+  mockGetClosedPRWatermark.mockReturnValue(undefined);
+  mockSearchPRs.mockResolvedValue({ data: { total_count: 0, items: [] } });
 
   // Default issue conversation response (no issues)
   mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], lookupFailures: 0, warnings: [] });
@@ -1207,6 +1219,207 @@ describe('executeDailyCheck() — scout pass removal (#1458)', () => {
 // executeDailyCheck() — outcome ledger persistence (#1461)
 // ---------------------------------------------------------------------------
 
+/** A merged-PR search item, as the merged-ledger gap fetch receives it. */
+function gapItem(number: number, mergedAt: string) {
+  return {
+    html_url: `https://github.com/org/repo/pull/${number}`,
+    title: `Gap PR ${number}`,
+    created_at: '2026-01-05T00:00:00Z',
+    closed_at: mergedAt,
+    pull_request: { merged_at: mergedAt },
+  };
+}
+
+/** Answer the ledger gap search whose query contains `marker`; the other one finds nothing. */
+function onLedgerSearch(marker: 'is:merged' | 'is:unmerged', answer: () => Promise<unknown>) {
+  mockSearchPRs.mockImplementation(({ q }: { q: string }) =>
+    q.includes(marker) ? answer() : Promise.resolve({ data: { total_count: 0, items: [] } }),
+  );
+}
+
+describe('executeDailyCheck() — merged-ledger gap (#1924)', () => {
+  const WATERMARK = '2026-01-10T00:00:00Z';
+  const recent = {
+    url: 'https://github.com/org/repo/pull/20',
+    repo: 'org/repo',
+    number: 20,
+    title: 'Recent PR',
+    mergedAt: '2026-01-24T12:00:00Z',
+  };
+
+  beforeEach(() => {
+    mockGetMergedPRWatermark.mockReturnValue(WATERMARK);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([recent]);
+  });
+
+  it('stores the merges between the newest ledger entry and the seven-day list after a long pause', async () => {
+    const items = [gapItem(11, '2026-01-11T00:00:00Z'), gapItem(12, '2026-01-12T00:00:00Z')];
+    mockSearchPRs.mockResolvedValue({ data: { total_count: 2, items } });
+
+    const result = await executeDailyCheck('test-token');
+
+    const [stored] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(stored.map((pr) => pr.url)).toEqual([recent.url, items[0].html_url, items[1].html_url]);
+    expect(mockSearchPRs.mock.calls[0][0].q).toBe(
+      'is:pr is:merged is:public author:testuser -user:testuser updated:>2026-01-09T00:00:00Z',
+    );
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('stores no merged PRs, recent ones included, and warns when the gap is larger than one run fetches', async () => {
+    onLedgerSearch('is:merged', () =>
+      Promise.resolve({ data: { total_count: 1001, items: [gapItem(11, '2026-01-11T00:00:00Z')] } }),
+    );
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      {
+        phase: 'fetch',
+        operation: 'fetch merged PRs for the ledger',
+        message: expect.stringContaining('Run `ledger-backfill`'),
+      },
+    ]);
+  });
+
+  it('stores no merged PRs when the gap fetch fails, so the next run starts from the same entry', async () => {
+    onLedgerSearch('is:merged', () => Promise.reject(new Error('search down')));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch merged PRs for the ledger', message: 'search down' },
+    ]);
+  });
+
+  it('warns when the ledger is short of the all-time merged count from the count search', async () => {
+    mockFetchUserMergedPRCounts.mockResolvedValue({ ...makeMergedResult(), totalCount: 12 });
+    mockGetMergedPRs.mockReturnValue([
+      { url: recent.url, title: recent.title, mergedAt: recent.mergedAt },
+      { url: 'https://github.com/org/repo/pull/9', title: 'Old', mergedAt: WATERMARK },
+    ]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.warnings).toEqual([
+      {
+        phase: 'analytics',
+        operation: 'check merged-PR ledger',
+        message:
+          'The merged-PR ledger holds 2 of the 12 merged PRs GitHub reports (10 missing). ' +
+          'Run `ledger-backfill` to fetch them.',
+      },
+    ]);
+  });
+});
+
+describe('executeDailyCheck() — closed-ledger gap (#1925)', () => {
+  const recent = {
+    url: 'https://github.com/org/repo/pull/30',
+    repo: 'org/repo',
+    number: 30,
+    title: 'Recent close',
+    closedAt: '2026-01-24T12:00:00Z',
+  };
+  const older = { ...gapItem(21, '2025-03-01T00:00:00Z'), pull_request: { merged_at: null } };
+  beforeEach(() => {
+    mockFetchRecentlyClosedPRs.mockResolvedValue([recent]);
+  });
+
+  it('a first run stores the older closed history along with the recent close', async () => {
+    onLedgerSearch('is:unmerged', () => Promise.resolve({ data: { total_count: 1, items: [older] } }));
+
+    const result = await executeDailyCheck('test-token');
+
+    const [stored] = mockAddClosedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(stored.map((pr) => pr.url)).toEqual([recent.url, older.html_url]);
+    expect(mockSearchPRs.mock.calls.map(([args]) => args.q)).toContain(
+      'is:pr is:closed is:unmerged is:public author:testuser -user:testuser',
+    );
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('starts one day before the newest closed entry', async () => {
+    mockGetClosedPRWatermark.mockReturnValue('2026-01-10T00:00:00Z');
+
+    await executeDailyCheck('test-token');
+
+    expect(mockSearchPRs.mock.calls.map(([args]) => args.q)).toContain(
+      'is:pr is:closed is:unmerged is:public author:testuser -user:testuser updated:>2026-01-09T00:00:00Z',
+    );
+  });
+
+  it('stores no closed PRs, recent ones included, and warns when the gap is truncated', async () => {
+    onLedgerSearch('is:unmerged', () => Promise.resolve({ data: { total_count: 1001, items: [older] } }));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockAddClosedPRs).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      {
+        phase: 'fetch',
+        operation: 'fetch closed PRs for the ledger',
+        message: expect.stringContaining('Run `ledger-backfill`'),
+      },
+    ]);
+  });
+
+  it('stores the closed gap when only the merged gap fetch fails, and the merged gap when only the closed one fails', async () => {
+    const mergedRecent = {
+      url: 'https://github.com/org/repo/pull/40',
+      repo: 'org/repo',
+      number: 40,
+      title: 'Recent merge',
+      mergedAt: '2026-01-24T12:00:00Z',
+    };
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedRecent]);
+    mockSearchPRs.mockImplementation(({ q }: { q: string }) =>
+      q.includes('is:unmerged')
+        ? Promise.resolve({ data: { total_count: 1, items: [older] } })
+        : Promise.reject(new Error('merged search down')),
+    );
+
+    const first = await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).not.toHaveBeenCalled();
+    const [closedStored] = mockAddClosedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(closedStored.map((pr) => pr.url)).toEqual([recent.url, older.html_url]);
+    expect(first.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch merged PRs for the ledger', message: 'merged search down' },
+    ]);
+
+    mockAddMergedPRs.mockClear();
+    mockAddClosedPRs.mockClear();
+    mockSearchPRs.mockImplementation(({ q }: { q: string }) =>
+      q.includes('is:unmerged')
+        ? Promise.reject(new Error('closed search down'))
+        : Promise.resolve({ data: { total_count: 0, items: [] } }),
+    );
+
+    const second = await executeDailyCheck('test-token');
+
+    expect(mockAddClosedPRs).not.toHaveBeenCalled();
+    const [mergedStored] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(mergedStored.map((pr) => pr.url)).toEqual([mergedRecent.url]);
+    expect(second.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch closed PRs for the ledger', message: 'closed search down' },
+    ]);
+  });
+
+  it('stores no closed PRs when the gap fetch fails', async () => {
+    onLedgerSearch('is:unmerged', () => Promise.reject(new Error('search down')));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockAddClosedPRs).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch closed PRs for the ledger', message: 'search down' },
+    ]);
+  });
+});
+
 describe('executeDailyCheck() — outcome ledger (#1461)', () => {
   const mergedPR = {
     url: 'https://github.com/org/repo/pull/7',
@@ -1942,6 +2155,27 @@ describe('executeDailyCheck() — closed-PR status updates (#1863): guards', () 
     expect(result.closedPRStatusUpdates).toBeUndefined();
     expect(statusWarnings(result)).toHaveLength(1);
     expect(statusWarnings(result)[0].message).toContain(`${closedPR.url} (the recently-merged fetch failed)`);
+  });
+
+  it('warns, and withholds release and nudge, when the recently-merged search returned a partial list (#1928)', async () => {
+    const message = 'Recently merged PR search is partial: read the 300 most recently updated of 450 result(s).';
+    mockFetchRecentlyMergedPRs.mockImplementation(
+      (_days: number, truncations: Array<{ label: string; message: string }>) => {
+        truncations.push({ message, label: 'recently merged PR search truncated (300 of 450)' });
+        return Promise.resolve([]);
+      },
+    );
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockReleaseIssue).not.toHaveBeenCalled();
+    expect(result.closedPRStatusUpdates).toBeUndefined();
+    expect(result.warnings).toContainEqual({ message, phase: 'fetch', operation: 'fetch recent PRs (truncated)' });
+    expect(statusWarnings(result)).toHaveLength(1);
+    expect(statusWarnings(result)[0].message).toContain(
+      `${closedPR.url} (the recently-merged list was truncated; release the claim by hand if no PR replaced this one, the automatic release stays off while the list is over the page cap)`,
+    );
   });
 
   it.each([

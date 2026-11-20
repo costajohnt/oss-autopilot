@@ -7,7 +7,9 @@ import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo, isUntrackedOrg } from './urls.js';
 import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
+import { describeError } from './errors.js';
 import { getHttpCache } from './http-cache.js';
+import { searchAllPages, type SearchPagesResult } from './pagination.js';
 
 const MODULE = 'github-stats';
 
@@ -88,6 +90,51 @@ export function mentionedIssueUrls(
   return [...urls];
 }
 
+/** GitHub rejects a search whose text is longer than this. */
+const MAX_SEARCH_QUERY_CHARS = 256;
+/**
+ * Room kept inside that limit for what callers add around the scope: the
+ * state qualifiers (`is:pr is:closed is:unmerged`) and two date bounds.
+ */
+const SCOPE_QUERY_BUDGET = MAX_SEARCH_QUERY_CHARS - 96;
+/** An organisation login that is safe to put in a search query. */
+const ORG_LOGIN_RE = /^[\w.-]+$/;
+
+/** The search scope every ledger and count query shares; see {@link externalPRScope}. */
+export interface ExternalPRScope {
+  /** Qualifiers to append to `is:pr <state>`. */
+  query: string;
+  /**
+   * True when `query` excludes every untracked organisation, so the search's
+   * `total_count` is the number of PRs the ledger may hold. False when the
+   * list did not fit GitHub's limits: results must still be filtered with
+   * `isUntrackedOrg`, and the total is an overcount.
+   */
+  isExact: boolean;
+}
+
+/**
+ * Which of the user's PRs the ledgers and their counts cover: public
+ * repositories only, not the user's own, and not organisations in
+ * `config.untrackedOrgs` (the user's employer). One fragment, so the merged
+ * and closed ledger fetches and the count searches cannot drift apart: a
+ * count taken over a wider set than the ledger can hold would report a gap
+ * no back-fill closes.
+ */
+export function externalPRScope(username: string, untrackedOrgs: readonly string[] = []): ExternalPRScope {
+  const base = `is:public author:${username} -user:${username}`;
+  const exclusions = untrackedOrgs.map((org) => ` -org:${org}`).join('');
+  // No cap on the number of exclusions: a live search with ten `-org:` terms
+  // was accepted and returned a count. GitHub's documented limit of five
+  // operators is about the AND / OR / NOT keywords, not `-qualifier` terms.
+  const isExact =
+    untrackedOrgs.every((org) => ORG_LOGIN_RE.test(org)) && base.length + exclusions.length <= SCOPE_QUERY_BUDGET;
+  if (!isExact) {
+    debug(MODULE, 'untrackedOrgs do not fit in a search query; filtering results instead, totals are not comparable.');
+  }
+  return { query: isExact ? base + exclusions : base, isExact };
+}
+
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */
 type SearchItem = {
   html_url: string;
@@ -114,6 +161,14 @@ export interface PRCountsResult<R> {
    * so `repos` undercounts and a repo missing from it may still have PRs.
    */
   truncated: boolean;
+  /**
+   * GitHub's `total_count` for the search: every PR in {@link externalPRScope},
+   * before the star filter and whatever the pagination cap. Absent when
+   * unknown (failed fetch, a result cached before the field existed, or
+   * untracked organisations that did not fit in the query), which is not the
+   * same as zero.
+   */
+  totalCount?: number;
 }
 
 /** Returns an empty PRCountsResult. Used as the fallback when stats fetches fail or username is empty. */
@@ -137,6 +192,7 @@ interface CachedPRCounts {
   /** Absent on entries cached before searchedPRs existed. */
   searchedPRs?: Array<{ url: string; title: string }>;
   truncated?: boolean;
+  totalCount?: number;
 }
 
 /** Type guard for deserialized cache data — prevents crashes on corrupt/stale cache. */
@@ -150,7 +206,8 @@ function isCachedPRCounts(v: unknown): v is CachedPRCounts {
     typeof obj.monthlyOpenedCounts === 'object' &&
     obj.monthlyOpenedCounts !== null &&
     typeof obj.dailyActivityCounts === 'object' &&
-    obj.dailyActivityCounts !== null
+    obj.dailyActivityCounts !== null &&
+    ['number', 'undefined'].includes(typeof obj.totalCount)
   );
 }
 
@@ -168,7 +225,8 @@ async function fetchUserPRCounts<R>(
   query: string,
   label: string,
   accumulateRepo: (repos: Map<string, R>, repo: string, item: SearchItem) => string,
-  starFilter?: StarFilter,
+  starFilter: StarFilter | undefined,
+  untrackedOrgs: readonly string[],
 ): Promise<PRCountsResult<R>> {
   if (!githubUsername) {
     return emptyPRCountsResult<R>();
@@ -177,7 +235,12 @@ async function fetchUserPRCounts<R>(
   // Check for a fresh cached result (avoids 10-20 paginated API calls)
   const cache = getHttpCache();
   const minStarsSuffix = starFilter ? `:stars${starFilter.minStars}` : '';
-  const cacheKey = `pr-counts:v3:${label}:${githubUsername}${minStarsSuffix}`;
+  // v4: public repositories only, untracked organisations excluded (#1924).
+  // Sorted, so reordering the setting does not discard a fresh cache entry.
+  const orgKey = untrackedOrgs.map((org) => org.toLowerCase()).sort((a, b) => a.localeCompare(b));
+  const orgsSuffix = orgKey.length > 0 ? `:-${orgKey.join(',')}` : '';
+  const cacheKey = `pr-counts:v4:${label}:${githubUsername}${minStarsSuffix}${orgsSuffix}`;
+  const scope = externalPRScope(githubUsername, untrackedOrgs);
   const cached = cache.getIfFresh(cacheKey, PR_COUNTS_CACHE_TTL_MS);
   if (cached && isCachedPRCounts(cached)) {
     debug(MODULE, `Using cached ${label} PR counts for @${githubUsername}`);
@@ -188,6 +251,7 @@ async function fetchUserPRCounts<R>(
       dailyActivityCounts: cached.dailyActivityCounts,
       searchedPRs: Array.isArray(cached.searchedPRs) ? cached.searchedPRs : [],
       truncated: cached.truncated === true,
+      totalCount: cached.totalCount,
     };
   }
 
@@ -204,7 +268,7 @@ async function fetchUserPRCounts<R>(
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
-      q: `is:pr ${query} author:${githubUsername} -user:${githubUsername}`,
+      q: `is:pr ${query} ${scope.query}`,
       sort: 'updated',
       order: 'desc',
       per_page: 100,
@@ -223,8 +287,9 @@ async function fetchUserPRCounts<R>(
       const { owner } = parsed;
       const repo = `${owner}/${parsed.repo}`;
 
-      // Skip own repos (PRs to your own repos aren't OSS contributions)
-      if (isOwnRepo(owner, githubUsername)) continue;
+      // Skip own repos (PRs to your own repos aren't OSS contributions) and
+      // untracked organisations (never counted, whether or not the query excluded them).
+      if (isOwnRepo(owner, githubUsername) || isUntrackedOrg(owner, untrackedOrgs)) continue;
 
       searchedPRs.push({ url: item.html_url, title: item.title ?? '' });
 
@@ -276,6 +341,7 @@ async function fetchUserPRCounts<R>(
   }
 
   debug(MODULE, `Found ${fetched} ${label} PRs across ${repos.size} repos`);
+  const comparableTotal = scope.isExact ? totalCount : undefined;
 
   // Cache the aggregated result (Map → entries array for JSON serialization).
   // Note: truncated results (from pagination cap) are cached with the same TTL. This is an
@@ -284,13 +350,22 @@ async function fetchUserPRCounts<R>(
   cache.set(cacheKey, '', {
     reposEntries: Array.from(repos.entries()),
     truncated: isTruncated,
+    totalCount: comparableTotal,
     monthlyCounts,
     monthlyOpenedCounts,
     dailyActivityCounts,
     searchedPRs,
   });
 
-  return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts, searchedPRs, truncated: isTruncated };
+  return {
+    repos,
+    monthlyCounts,
+    monthlyOpenedCounts,
+    dailyActivityCounts,
+    searchedPRs,
+    totalCount: comparableTotal,
+    truncated: isTruncated,
+  };
 }
 
 /**
@@ -301,6 +376,7 @@ export function fetchUserMergedPRCounts(
   octokit: Octokit,
   githubUsername: string,
   starFilter?: StarFilter,
+  untrackedOrgs: readonly string[] = [],
 ): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
   return fetchUserPRCounts(
     octokit,
@@ -329,6 +405,7 @@ export function fetchUserMergedPRCounts(
       return mergedAt;
     },
     starFilter,
+    untrackedOrgs,
   );
 }
 
@@ -340,6 +417,7 @@ export function fetchUserClosedPRCounts(
   octokit: Octokit,
   githubUsername: string,
   starFilter?: StarFilter,
+  untrackedOrgs: readonly string[] = [],
 ): Promise<PRCountsResult<number>> {
   return fetchUserPRCounts(
     octokit,
@@ -351,7 +429,36 @@ export function fetchUserClosedPRCounts(
       return item.closed_at || '';
     },
     starFilter,
+    untrackedOrgs,
   );
+}
+
+/**
+ * A recently merged or recently closed PR list that is missing entries
+ * (#1928): the recent-list truncation. Not the count-search truncation of
+ * the all-time merged and closed counts (`PRCountsResult.truncated`).
+ */
+export interface RecentListTruncation {
+  /** Short form for lists of degraded operations, e.g. `recently merged PR search truncated (300 of 450)`. */
+  label: string;
+  /** Full sentence for logs and the daily warnings. */
+  message: string;
+}
+
+/** Word a partial recent-PR search: a failed later page, else the counts read. */
+function describeRecentListTruncation(label: string, search: SearchPagesResult<unknown>): RecentListTruncation {
+  const read = search.items.length;
+  if (search.failure) {
+    const cause = describeError(search.failure.error);
+    return {
+      label: `recently ${label} PR search failed on page ${search.failure.page} (${read} read)`,
+      message: `Recently ${label} PR search failed on page ${search.failure.page} (${cause}); only the ${read} result(s) from the page(s) before it were read. Some recently ${label} PRs may be missing this run.`,
+    };
+  }
+  return {
+    label: `recently ${label} PR search truncated (${read} of ${search.totalCount})`,
+    message: `Recently ${label} PR search is partial: read the ${read} most recently updated of ${search.totalCount} result(s). Some recently ${label} PRs may be missing this run.`,
+  };
 }
 
 /**
@@ -364,6 +471,13 @@ export function fetchUserClosedPRCounts(
  * vanishes from any `closed:>=X` filter even though the API returns a correct
  * `closed_at`. `updated` is the sort key, so it is always indexed. We narrow to
  * the real window here with `dateOf`.
+ *
+ * Reads up to `SEARCH_MAX_PAGES` pages (`searchAllPages`). When the list is
+ * still partial (more results than were read, a later page failed, or GitHub
+ * flagged the search incomplete), what was read is returned and the
+ * recent-list truncation is logged and pushed to `truncations`, so the caller
+ * can report it and hold back anything that reads "not in this list" as a
+ * fact (#1928).
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
@@ -386,6 +500,7 @@ async function fetchRecentPRs<T>(
     closed_at: string | null;
     pull_request?: { merged_at?: string | null };
   }) => string | null | undefined,
+  truncations?: RecentListTruncation[],
 ): Promise<T[]> {
   if (!config.githubUsername) {
     warn(MODULE, `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
@@ -398,16 +513,29 @@ async function fetchRecentPRs<T>(
 
   debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
-  const { data } = await octokit.search.issuesAndPullRequests({
-    q: query.replace('{username}', config.githubUsername).replace('{since}', since),
-    sort: 'updated',
-    order: 'desc',
-    per_page: 100,
-  });
+  // The shared scope keeps untracked organisations out of the search itself,
+  // so their PRs use no page slots; the owner filter below stays for a list
+  // that does not fit in a query.
+  const scope = externalPRScope(config.githubUsername, config.untrackedOrgs);
+  const search = await searchAllPages((page) =>
+    octokit.search.issuesAndPullRequests({
+      page,
+      q: query.replace('{scope}', scope.query).replace('{since}', since),
+      sort: 'updated',
+      order: 'desc',
+      per_page: 100,
+    }),
+  );
+  const { items } = search;
+  if (search.truncated) {
+    const truncation = describeRecentListTruncation(label, search);
+    warn(MODULE, truncation.message);
+    truncations?.push(truncation);
+  }
 
   const results: T[] = [];
 
-  for (const item of data.items) {
+  for (const item of items) {
     const parsed = parseGitHubUrl(item.html_url);
     if (!parsed) {
       warn(MODULE, `Could not parse GitHub URL from API response: ${item.html_url}`);
@@ -439,11 +567,12 @@ export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
   config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
+  truncations?: RecentListTruncation[],
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
     octokit,
     config,
-    'is:pr is:closed is:unmerged is:public author:{username} updated:>={since}',
+    'is:pr is:closed is:unmerged {scope} updated:>={since}',
     'closed',
     days,
     (item, { repo, number }) => ({
@@ -457,6 +586,7 @@ export async function fetchRecentlyClosedPRs(
       issueUrl: closingIssueUrl(item.body, item.html_url),
     }),
     (item) => item.closed_at,
+    truncations,
   );
 }
 
@@ -468,11 +598,12 @@ export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
   config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
+  truncations?: RecentListTruncation[],
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(
     octokit,
     config,
-    'is:pr is:merged is:public author:{username} updated:>={since}',
+    'is:pr is:merged {scope} updated:>={since}',
     'merged',
     days,
     (item, { repo, number }) => {
@@ -495,23 +626,23 @@ export async function fetchRecentlyMergedPRs(
       };
     },
     (item) => item.pull_request?.merged_at || item.closed_at,
+    truncations,
   );
 }
 
 /**
  * Shared adapter for the two `since`-incremental PR fetches (merged and
- * closed-without-merge). Both walk the Search API up to MAX_PAGINATION_PAGES,
- * skip own-org results, and project each item into a stored-shape record —
- * they differ only in the search query, the date field on the result, and
- * label strings (#958).
+ * closed-without-merge). Both walk the Search API, skip own-org results, and
+ * project each item into a stored-shape record. They differ only in the
+ * search query, the date field on the result, and label strings (#958).
  */
 interface PRFetchAdapter<T> {
-  /** Label used in log / warn messages — "merged" or "closed". */
+  /** Label used in log / warn messages: "merged" or "closed". */
   kind: string;
-  /** Noun used in "no {noun} date" skip warnings — "merge" or "close". */
+  /** Noun used in "no {noun} date" skip warnings: "merge" or "close". */
   dateNoun: string;
-  /** Build the Search API `q` query string. */
-  buildQuery: (username: string, since: string | undefined) => string;
+  /** Build the Search API `q` query string from the shared scope (see externalPRScope). */
+  buildQuery: (scope: string, since: string | undefined) => string;
   /** Extract the relevant timestamp from a search item. Return empty string if missing. */
   extractDate: (item: SearchItemForPRs) => string;
   /** Build the stored-shape record from an item and its extracted date. */
@@ -528,131 +659,261 @@ type SearchItemForPRs = {
   pull_request?: { merged_at?: string | null } | null;
 };
 
-async function fetchPRsSince<T>(
-  octokit: Octokit,
-  config: { githubUsername: string },
-  adapter: PRFetchAdapter<T>,
-  since?: string,
-): Promise<T[]> {
-  if (!config.githubUsername) {
-    warn(MODULE, `Skipping ${adapter.kind} PRs fetch: no githubUsername configured.`);
-    return [];
-  }
+/**
+ * Most PRs a ledger gap fetch takes in one run (the Search API's own cap for
+ * a single query). A search matching more returns nothing: the caller stores
+ * no rows, so the ledger's newest entry stays where it was, the next run asks
+ * for the same range, and `ledger-backfill` (no limit) is the way out.
+ */
+export const LEDGER_GAP_MAX_RESULTS = 1000;
 
-  const q = adapter.buildQuery(config.githubUsername, since);
-  debug(MODULE, `Fetching ${adapter.kind} PRs${since ? ` since ${since}` : ' (all time)'}...`);
+/** What the daily run and the dashboard report when a merged-ledger gap fetch is truncated. */
+export const MERGED_LEDGER_TRUNCATED_MESSAGE =
+  `More than ${LEDGER_GAP_MAX_RESULTS} merged PRs changed since the merged-PR ledger was last filled, ` +
+  'so none were stored. Run `ledger-backfill` to fetch the full history.';
 
-  const results: T[] = [];
-  let page = 1;
-  let fetched = 0;
-  // Populated from the first Search API response; always set before we exit the loop.
-  let totalCount!: number;
+/** What the daily run and the dashboard report when a closed-ledger gap fetch is truncated. */
+export const CLOSED_LEDGER_TRUNCATED_MESSAGE =
+  `More than ${LEDGER_GAP_MAX_RESULTS} closed PRs changed since the closed-PR ledger was last filled, ` +
+  'so none were stored. Run `ledger-backfill` to fetch the full history.';
 
-  while (true) {
+/**
+ * A ledger with fewer rows than this that is short of GitHub's all-time count
+ * is refetched from the start (#1504, #1925): a recent row stored ahead of the
+ * history behind it would otherwise hide that history from every gap fetch.
+ * Past it a short ledger keeps its watermark, so a contributor whose count
+ * legitimately exceeds the ledger doesn't refetch everything on every run;
+ * the count warning and `ledger-backfill` cover that case.
+ */
+export const LEDGER_BACKFILL_CEILING = 300;
+
+/**
+ * The watermark a ledger gap fetch starts from: undefined (all time) when the
+ * ledger holds `stored` rows, fewer than `allTimeCount` and under
+ * {@link LEDGER_BACKFILL_CEILING}; otherwise `watermark`. An unknown count
+ * keeps the watermark.
+ */
+export function gapFetchWatermark(
+  watermark: string | undefined,
+  stored: number,
+  allTimeCount: number | undefined,
+): string | undefined {
+  return stored < (allTimeCount ?? 0) && stored < LEDGER_BACKFILL_CEILING ? undefined : watermark;
+}
+
+/** How far before the watermark a gap fetch starts: covers clock skew and search indexing lag. */
+const LEDGER_GAP_OVERLAP_MS = 24 * 60 * 60 * 1000;
+
+/** Result of a since-watermark ledger fetch. */
+export interface PRsSinceResult<T> {
+  /** Every matching PR. Empty when `truncated`: a partial range is never returned. */
+  prs: T[];
+  /** The search matched more than the caller's limit, so the range was not fetched. */
+  truncated: boolean;
+}
+
+/**
+ * The search bound for a ledger watermark (its newest stored date): one
+ * overlap earlier, at second precision. An absent or unparseable watermark
+ * gives undefined, which means "all time".
+ */
+export function withLedgerOverlap(watermark: string = ''): string | undefined {
+  const time = Date.parse(watermark);
+  if (Number.isNaN(time)) return undefined;
+  const bound = new Date(time - LEDGER_GAP_OVERLAP_MS);
+  return `${bound.toISOString().slice(0, 19)}Z`;
+}
+
+interface SearchWindow {
+  items: SearchItemForPRs[];
+  /** GitHub's `total_count` for this window's query. */
+  totalCount: number;
+  /** The window reached the end of its results (as opposed to its page cap). */
+  isExhausted: boolean;
+}
+
+/**
+ * Up to MAX_PAGINATION_PAGES pages of `q`, oldest-created first. That order
+ * never changes while paging (a PR's creation date is fixed), and it lets the
+ * caller continue past the page cap with a `created:>=` bound instead of deep
+ * pages. Stops after the first page when the total exceeds `maxResults`.
+ */
+async function fetchSearchWindow(octokit: Octokit, q: string, maxResults: number): Promise<SearchWindow> {
+  const items: SearchItemForPRs[] = [];
+  let totalCount = 0;
+  let isExhausted = false;
+  for (let page = 1; !isExhausted && page <= MAX_PAGINATION_PAGES && totalCount <= maxResults; page++) {
     const { data } = await octokit.search.issuesAndPullRequests({
       q,
-      sort: 'updated',
-      order: 'desc',
+      sort: 'created',
+      order: 'asc',
       per_page: 100,
       page,
     });
-
     totalCount = data.total_count;
-
-    for (const item of data.items as SearchItemForPRs[]) {
-      const parsed = parseGitHubUrl(item.html_url);
-      if (!parsed) {
-        warn(MODULE, `Skipping ${adapter.kind} PR with unparseable URL: ${item.html_url}`);
-        continue;
-      }
-      if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
-
-      const date = adapter.extractDate(item);
-      if (!date) {
-        warn(MODULE, `Skipping ${adapter.kind} PR with no ${adapter.dateNoun} date: ${item.html_url}`);
-        continue;
-      }
-      results.push(adapter.buildRecord(item, date));
-    }
-
-    fetched += data.items.length;
-
-    if (fetched >= totalCount || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
-      break;
-    }
-    page++;
+    items.push(...(data.items as SearchItemForPRs[]));
+    isExhausted = items.length >= totalCount || data.items.length === 0;
   }
+  return { items, totalCount, isExhausted };
+}
 
-  if (fetched < totalCount && page >= MAX_PAGINATION_PAGES) {
-    warn(
-      MODULE,
-      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${totalCount} ${adapter.kind} PRs. Oldest PRs may be missing.`,
-    );
+/** What a ledger fetch reads from the user's config. */
+export interface LedgerFetchConfig {
+  githubUsername: string;
+  /** Organisations whose PRs are never stored (the user's employer). */
+  untrackedOrgs?: readonly string[];
+}
+
+/** The stored-shape record for a search item, or undefined when it is skipped. */
+function toStoredRecord<T>(
+  item: SearchItemForPRs,
+  config: LedgerFetchConfig,
+  adapter: PRFetchAdapter<T>,
+): T | undefined {
+  const parsed = parseGitHubUrl(item.html_url);
+  if (!parsed) {
+    warn(MODULE, `Skipping ${adapter.kind} PR with unparseable URL: ${item.html_url}`);
+    return undefined;
   }
-
-  debug(MODULE, `Fetched ${results.length} ${adapter.kind} PRs${since ? ' (incremental)' : ' (initial)'}`);
-  return results;
+  if (isOwnRepo(parsed.owner, config.githubUsername)) return undefined;
+  // Never stored, whether or not the query could exclude the organisation.
+  if (isUntrackedOrg(parsed.owner, config.untrackedOrgs)) return undefined;
+  const date = adapter.extractDate(item);
+  if (!date) {
+    warn(MODULE, `Skipping ${adapter.kind} PR with no ${adapter.dateNoun} date: ${item.html_url}`);
+    return undefined;
+  }
+  return adapter.buildRecord(item, date);
 }
 
 /**
- * Fetch merged PRs since a watermark date for incremental storage.
- * If no watermark is provided (first-ever fetch), fetches all merged PRs (up to pagination cap).
- * Returns StoredMergedPR[] (url, title, mergedAt, openedAt) for state persistence.
+ * A window that ended on its page cap without a later creation date to
+ * continue from (300 PRs created in one second, or no creation dates). The
+ * walk would repeat it forever, so it counts as truncated.
+ */
+function isWalkStuck(page: SearchWindow, cursor: string | undefined, next: string | undefined): boolean {
+  return !page.isExhausted && (!next || next === cursor);
+}
+
+/**
+ * Every PR matching the adapter's query for `since`, or `truncated` when
+ * there are more than `maxResults`. Walks the results in windows of
+ * MAX_PAGINATION_PAGES pages, each starting at the creation date the last one
+ * ended on, so no request goes to a deep page. A request failure rejects;
+ * nothing partial is returned either way.
+ */
+async function fetchPRsSince<T extends { url: string }>(
+  octokit: Octokit,
+  config: LedgerFetchConfig,
+  adapter: PRFetchAdapter<T>,
+  since: string | undefined,
+  maxResults: number,
+): Promise<PRsSinceResult<T>> {
+  if (!config.githubUsername) {
+    warn(MODULE, `Skipping ${adapter.kind} PRs fetch: no githubUsername configured.`);
+    return { prs: [], truncated: false };
+  }
+
+  const scope = externalPRScope(config.githubUsername, config.untrackedOrgs);
+  const baseQuery = adapter.buildQuery(scope.query, since);
+  debug(MODULE, `Fetching ${adapter.kind} PRs: ${baseQuery}`);
+
+  const prs: T[] = [];
+  const seen = new Set<string>();
+  let query = baseQuery;
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await fetchSearchWindow(octokit, query, maxResults);
+    const next = page.items.at(-1)?.created_at ?? undefined;
+    if (page.totalCount > maxResults || isWalkStuck(page, cursor, next)) {
+      warn(
+        MODULE,
+        `Not storing ${adapter.kind} PRs: the search matched ${page.totalCount}, more than one run fetches.`,
+      );
+      return { prs: [], truncated: true };
+    }
+    for (const item of page.items) {
+      const record = toStoredRecord(item, config, adapter);
+      if (record && !seen.has(record.url)) prs.push(record);
+      seen.add(item.html_url);
+    }
+    if (page.isExhausted) break;
+    cursor = next;
+    query = `${baseQuery} created:>=${cursor}`;
+  }
+
+  debug(MODULE, `Fetched ${prs.length} ${adapter.kind} PRs`);
+  return { prs, truncated: false };
+}
+
+const MERGED_ADAPTER: PRFetchAdapter<StoredMergedPR> = {
+  kind: 'merged',
+  dateNoun: 'merge',
+  // Bounded on `updated`, not `merged`: GitHub can index a PR for `updated:`
+  // while its merge-date facet is missing (see fetchRecentPRs), and such a PR
+  // would never match `merged:>`. Every PR merged after a date was also
+  // updated after it, so this is a superset; re-seen rows dedupe on write.
+  buildQuery: (scope, s) => `is:pr is:merged ${scope}` + (s ? ` updated:>${s}` : ''),
+  extractDate: (item) => item.pull_request?.merged_at || item.closed_at || '',
+  buildRecord: (item, date) => ({
+    url: item.html_url,
+    title: item.title,
+    mergedAt: date,
+    // Free on the search result — feeds the outcome ledger (#1461).
+    openedAt: item.created_at || undefined,
+    issueUrl: closingIssueUrl(item.body, item.html_url),
+  }),
+};
+
+/**
+ * The one fetch that fills the merged-PR ledger (#1924), shared by the daily
+ * run, the dashboard and `ledger-backfill`: every merged PR updated since
+ * `watermark` (the ledger's newest `mergedAt`) minus a one-day overlap, or
+ * all of them when there is no watermark.
+ *
+ * `truncated` (more than `maxResults` matches) returns no rows. Callers must
+ * then add nothing newer to the ledger, so its watermark does not move past
+ * the range that was not fetched. `ledger-backfill` passes `Infinity`.
  */
 export async function fetchMergedPRsSince(
   octokit: Octokit,
-  config: { githubUsername: string },
-  since?: string,
-): Promise<StoredMergedPR[]> {
-  return fetchPRsSince<StoredMergedPR>(
-    octokit,
-    config,
-    {
-      kind: 'merged',
-      dateNoun: 'merge',
-      buildQuery: (u, s) => `is:pr is:merged author:${u} -user:${u}${s ? ` merged:>${s}` : ''}`,
-      extractDate: (item) => item.pull_request?.merged_at || item.closed_at || '',
-      buildRecord: (item, date) => ({
-        url: item.html_url,
-        title: item.title,
-        mergedAt: date,
-        // Free on the search result — feeds the outcome ledger (#1461).
-        openedAt: item.created_at || undefined,
-        issueUrl: closingIssueUrl(item.body, item.html_url),
-      }),
-    },
-    since,
-  );
+  config: LedgerFetchConfig,
+  watermark?: string,
+  maxResults: number = LEDGER_GAP_MAX_RESULTS,
+): Promise<PRsSinceResult<StoredMergedPR>> {
+  return fetchPRsSince(octokit, config, MERGED_ADAPTER, withLedgerOverlap(watermark), maxResults);
 }
 
+const CLOSED_ADAPTER: PRFetchAdapter<StoredClosedPR> = {
+  kind: 'closed',
+  dateNoun: 'close',
+  // `is:unmerged` leaves out merged PRs, which GitHub also counts as closed.
+  // Bounded on `updated` for the same reason as MERGED_ADAPTER: the close-date
+  // facet can be missing from the index (see fetchRecentPRs).
+  buildQuery: (scope, s) => `is:pr is:closed is:unmerged ${scope}` + (s ? ` updated:>${s}` : ''),
+  extractDate: (item) => item.closed_at || '',
+  buildRecord: (item, date) => ({
+    url: item.html_url,
+    title: item.title,
+    closedAt: date,
+    // Free on the search result — feeds the outcome ledger (#1461).
+    openedAt: item.created_at || undefined,
+    issueUrl: closingIssueUrl(item.body, item.html_url),
+  }),
+};
+
 /**
- * Fetch closed-without-merge PRs since a watermark date for incremental storage.
- * If no watermark is provided (first-ever fetch), fetches all closed PRs (up to pagination cap).
- * Returns StoredClosedPR[] (url, title, closedAt, openedAt) for state persistence.
- * Uses `is:unmerged` to exclude merged PRs (which are also "closed" in GitHub's model).
+ * The closed-without-merge mirror of {@link fetchMergedPRsSince} (#1925),
+ * shared by the daily run, the dashboard and `ledger-backfill`: every closed
+ * PR updated since `watermark` (the ledger's newest `closedAt`) minus a
+ * one-day overlap, or all of them when there is no watermark. Same
+ * `truncated` contract: no rows, so the watermark does not move.
  */
 export async function fetchClosedPRsSince(
   octokit: Octokit,
-  config: { githubUsername: string },
-  since?: string,
-): Promise<StoredClosedPR[]> {
-  return fetchPRsSince<StoredClosedPR>(
-    octokit,
-    config,
-    {
-      kind: 'closed',
-      dateNoun: 'close',
-      buildQuery: (u, s) => `is:pr is:closed is:unmerged author:${u} -user:${u}${s ? ` closed:>${s}` : ''}`,
-      extractDate: (item) => item.closed_at || '',
-      buildRecord: (item, date) => ({
-        url: item.html_url,
-        title: item.title,
-        closedAt: date,
-        // Free on the search result — feeds the outcome ledger (#1461).
-        openedAt: item.created_at || undefined,
-        issueUrl: closingIssueUrl(item.body, item.html_url),
-      }),
-    },
-    since,
-  );
+  config: LedgerFetchConfig,
+  watermark?: string,
+  maxResults: number = LEDGER_GAP_MAX_RESULTS,
+): Promise<PRsSinceResult<StoredClosedPR>> {
+  return fetchPRsSince(octokit, config, CLOSED_ADAPTER, withLedgerOverlap(watermark), maxResults);
 }

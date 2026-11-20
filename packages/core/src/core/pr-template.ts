@@ -34,6 +34,11 @@ export interface PRTemplateResult {
   error?: string;
 }
 
+/** UTF-8 text of a base64 `content` field from the contents API. */
+export function decodeBase64(content: string): string {
+  return Buffer.from(content, 'base64').toString('utf8');
+}
+
 /**
  * Fetch a repository's PR template by trying each standard location.
  * Returns on the first successful match. Rate limit and auth errors
@@ -59,7 +64,7 @@ export async function fetchPRTemplate(octokit: Octokit, owner: string, repo: str
         continue;
       }
 
-      const template = Buffer.from(data.content, 'base64').toString('utf8');
+      const template = decodeBase64(data.content);
       debug(MODULE, `Found PR template at ${path} (${template.length} chars)`);
       return { template, source: path };
     } catch (err: unknown) {

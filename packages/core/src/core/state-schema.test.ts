@@ -287,12 +287,16 @@ describe('AgentStateSchema', () => {
       );
     });
 
-    it('should accept analyzedIssueConversations', () => {
-      const result = AgentStateSchema.parse({
-        version: 4,
+    it('keeps retired root fields written by older clients verbatim (#1948)', () => {
+      const retired = {
         analyzedIssueConversations: [{ url: 'https://github.com/o/r/issues/1', repo: 'o/r', analyzedAt: '2025-03-01' }],
-      });
-      expect(result.analyzedIssueConversations).toHaveLength(1);
+        prFollowUpHistory: {
+          'https://github.com/o/r/pull/1': [{ tier: 'light_check_in', timestamp: '2025-03-01T00:00:00Z' }],
+        },
+        workflowState: { workflowName: 'draft-first', currentStep: '1', lastUpdatedAt: '2025-03-01T00:00:00Z' },
+      };
+      const result = AgentStateSchema.parse({ version: 4, ...retired });
+      expect(result).toMatchObject(retired);
     });
 
     it('should accept gistId field', () => {
@@ -631,5 +635,25 @@ describe('WorkClaimSchema / state.workClaims (#1856, #1852)', () => {
   it('survives serializeState unchanged (not pruned on save)', () => {
     const state = AgentStateSchema.parse({ version: 4, workClaims: [claim] });
     expect(JSON.parse(serializeState(state as never)).workClaims).toEqual([claim]);
+  });
+});
+
+describe('guidelinesReviews (#1929)', () => {
+  it('is absent on state written before the field existed, and survives a round trip once set', () => {
+    expect(AgentStateSchema.parse({ version: 4 }).guidelinesReviews).toBeUndefined();
+    const reviews = { 'owner/repo': { reviewedAt: '2026-11-19T10:00:00.000Z', sha256: 'aa' } };
+    expect(AgentStateSchema.parse({ version: 4, guidelinesReviews: reviews }).guidelinesReviews).toEqual(reviews);
+  });
+
+  it('keeps every entry, readable or not, so one bad entry does not cost the others on the next save', () => {
+    const good = { reviewedAt: '2026-11-19T10:00:00.000Z', sha256: 'aa' };
+    const raw = { 'owner/repo': good, 'bad/entry': 'yes', 'newer/client': { ...good, approvedBy: 'x' } };
+    expect(AgentStateSchema.parse({ version: 4, guidelinesReviews: raw }).guidelinesReviews).toEqual(raw);
+  });
+
+  it('reads a map that is not an object as no reviews instead of rejecting the state', () => {
+    const parsed = AgentStateSchema.parse({ version: 4, guidelinesReviews: 'yes' });
+    expect(parsed.guidelinesReviews).toBeUndefined();
+    expect(parsed.version).toBe(4);
   });
 });

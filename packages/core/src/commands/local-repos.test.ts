@@ -355,13 +355,13 @@ const mockGetStateManager = vi.mocked(getStateManager);
 
 describe('runLocalRepos', () => {
   const mockSave = vi.fn();
-  const mockSetLocalRepoCache = vi.fn();
+  const mockClearSyncedCache = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({ config: {}, localRepoCache: null }),
-      setLocalRepoCache: mockSetLocalRepoCache,
+      clearSyncedLocalRepoCache: mockClearSyncedCache,
       save: mockSave,
     } as any);
     mockExistsSync.mockReturnValue(false);
@@ -376,6 +376,7 @@ describe('runLocalRepos', () => {
       }),
       save: mockSave,
     } as any);
+    mockExistsSync.mockImplementation((p) => p === '/dev/repo');
 
     const result = await runLocalRepos({});
 
@@ -388,7 +389,7 @@ describe('runLocalRepos', () => {
         config: {},
         localRepoCache: { repos: {}, scanPaths: ['/dev'], cachedAt: '2026-01-01T00:00:00Z' },
       }),
-      setLocalRepoCache: mockSetLocalRepoCache,
+      clearSyncedLocalRepoCache: mockClearSyncedCache,
       save: mockSave,
     } as any);
 
@@ -398,7 +399,7 @@ describe('runLocalRepos', () => {
   });
 
   it('should handle cache save failure gracefully', async () => {
-    mockSetLocalRepoCache.mockImplementation(() => {
+    mockClearSyncedCache.mockImplementation(() => {
       throw new Error('Write failed');
     });
 

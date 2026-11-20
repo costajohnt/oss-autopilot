@@ -247,13 +247,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   // ── Tooling ──────────────────────────────────────────────────────────
   {
     key: 'issueListPath',
-    description: 'Path to a text file of extra issue URLs to surface.',
+    description: 'Path to a text file of extra issue URLs to surface (per machine, not synced).',
     settableVia: 'both',
     valueHint: 'filesystem path',
   },
   {
     key: 'skippedIssuesPath',
-    description: 'Path to the skipped-issues file (entries are permanent).',
+    description: 'Path to the skipped-issues file (entries are permanent; per machine, not synced).',
     settableVia: 'setup',
     valueHint: 'filesystem path',
   },
@@ -293,21 +293,21 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   {
     key: 'autoFormatBeforePush',
     description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'true|false',
   },
   {
     key: 'trustOwnRepoWrites',
     description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'true|false',
   },
   {
     key: 'healthCheckFreshnessMinutes',
     description:
-      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
+      'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'positive integer',
   },

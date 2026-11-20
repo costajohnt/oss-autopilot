@@ -36,10 +36,10 @@ vi.mock('../core/paths.js', async (importOriginal) => {
   };
 });
 
-import { getStateManager, resetStateManager } from '../core/index.js';
+import { getStateManager, resetStateManager, NewerStateVersionError } from '../core/index.js';
 import type { CommentedIssue } from '../core/types.js';
 import type { DailyWarning } from '../formatters/json.js';
-import { filterDismissedIssues } from './daily-dismiss-filter.js';
+import { filterDismissedIssues, reloadOrWarn } from './daily-dismiss-filter.js';
 
 const ISSUE_URL = 'https://github.com/owner/repo/issues/13';
 const DISMISSED_AT = '2026-01-15T00:00:00Z';
@@ -112,5 +112,32 @@ describe('filterDismissedIssues against a real StateManager (#1862)', () => {
 
     expect(filterDismissedIssues(getStateManager(), [issue], warnings)).toEqual([issue]);
     expect(warnings).toEqual([]);
+  });
+});
+
+describe('reloadOrWarn (#1951)', () => {
+  it('turns a failed reload into a warning and lets the run continue', () => {
+    const warnings: DailyWarning[] = [];
+    const manager = {
+      reloadIfChanged: () => {
+        throw new Error('EIO: i/o error, read');
+      },
+    };
+
+    reloadOrWarn(manager, warnings);
+
+    expect(warnings).toEqual([
+      { phase: 'state-load', operation: 'reload state before capacity check', message: 'EIO: i/o error, read' },
+    ]);
+  });
+
+  it('still stops the run on state from a newer release', () => {
+    const manager = {
+      reloadIfChanged: () => {
+        throw new NewerStateVersionError('state file', 5, 4);
+      },
+    };
+
+    expect(() => reloadOrWarn(manager, [])).toThrow(NewerStateVersionError);
   });
 });

@@ -36,18 +36,21 @@ workflow is the lightweight load → edit → store path.
 ## Steps
 
 1. **Load the current guidelines** for `repo` via
-   `cli.bundle.cjs guidelines view --repo OWNER/REPO --json` (or the
-   `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get` MCP tool
-   when available).
+   `cli.bundle.cjs guidelines view --repo OWNER/REPO --json` and take
+   its `content` field, the raw stored text. Do not use `agentContent`
+   or the `guidelines-get` MCP tool here: both return the text wrapped
+   in a provenance label and a fence for agents to read, and storing
+   that would save the label into the guidelines (#1929).
 
    - If no guidelines exist, surface a one-line nudge to run
      `extract-learnings` first and exit. This workflow is for editing
      existing entries, not bootstrapping new ones.
 
-2. **Write the current content to a temp draft file** at
-   `/tmp/oss-autopilot-guidelines/<owner>-<repo>-<timestamp>.md`.
-   This mirrors the `draft-review-post` skill's convention (#1248) so
-   the user has a stable path to inspect.
+2. **Write the current content to a draft file** with the Write tool.
+   Get its path from
+   `cli.bundle.cjs draft path guidelines-edit-<owner>--<repo>.md`: the
+   tool's own owner-only draft directory, never `/tmp` (#1930; see
+   "Draft Files" in `workflows/reference.md`).
 
 3. **Show the rendered content to the user** and offer:
    - "Open in default editor" — call `${EDITOR:-vi} <path>` for the
@@ -55,7 +58,8 @@ workflow is the lightweight load → edit → store path.
    - "Paste replacement here" — accept the new markdown via
      `AskUserQuestion`'s textarea. Use this when the user has an
      edited copy on the clipboard already.
-   - "Cancel" — exit without saving.
+   - "Cancel" — delete the draft (`rm -- "<draft-path>"`) and exit
+     without saving.
 
 4. **Validate the edited content** before storing:
    - Non-empty (a zero-length file is treated as "I want to delete";
@@ -64,8 +68,17 @@ workflow is the lightweight load → edit → store path.
    - Under the 8 KB byte budget (the Gist storage cap from #867).
    - No raw secrets pattern matches (defense-in-depth, not authoritative).
 
-5. **Store via the CLI** —
-   `cat <draft-path> | cli.bundle.cjs guidelines store --repo OWNER/REPO`.
+5. **Store via the CLI.** If the user pasted a replacement, write it
+   to the draft path with the Write tool first. Run
+   `cli.bundle.cjs draft show "<draft-path>" --json`, show the user
+   `data.content` as the text about to be stored, and on their
+   confirmation run
+   `cli.bundle.cjs guidelines store --repo OWNER/REPO --from-file "<draft-path>" --expect-sha256 <data.sha256> --reviewed`.
+   `--reviewed` states that the user saw and approved this exact text
+   (#1929); `--expect-sha256` makes the store fail if the file changed
+   after that display (#1930). No `--untrusted` here: this workflow
+   already works on the raw stored text (step 1), and the user has to
+   see their edit as written.
 
    - On success, print a one-line confirmation with the new byte size
      and timestamp.
@@ -73,9 +86,9 @@ workflow is the lightweight load → edit → store path.
      for later, or cancel.
 
 6. **Show a diff summary** between the prior content and the stored
-   content for the user's audit trail. The draft path stays around
-   until the user runs `/oss-guidelines` again (or manually deletes
-   it).
+   content for the user's audit trail. Then delete the draft
+   (`rm -- "<draft-path>"`); keep it only when the store failed and
+   the user chose to save the draft for later.
 
 ## What this workflow does NOT do
 

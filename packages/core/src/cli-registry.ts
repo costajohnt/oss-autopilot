@@ -23,6 +23,28 @@ interface SearchCliOptions {
   excludeFile?: string;
 }
 
+/** Options commander parses for `pr-preflight`. */
+interface PrPreflightCliOptions {
+  json?: boolean;
+  dir?: string;
+  base?: string;
+  fetch?: boolean;
+  local?: boolean;
+}
+
+/** Options commander parses for `policy set`. */
+interface PolicySetCliOptions {
+  json?: boolean;
+  repo: string;
+  aiPolicy?: string;
+  disclosureText?: string;
+  cla?: string;
+  prGate?: string;
+  commitRules?: string;
+  maxOpenAiPrs?: number;
+  source?: string;
+}
+
 interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
   name: string;
@@ -70,17 +92,19 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    verify-issue, issue-thread, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
- *    pr-template, repo-cap, repo-vet, detect-formatters, work (claim/finish/release/list).
+ *    pr-template, repo-cap, pr-preflight, repo-vet, detect-formatters, work (claim/finish/release/list),
+ *    policy (get/set).
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, eval, track, comments,
- *    startup, dismiss, undismiss, stats, and the five
+ *    startup, dismiss, undismiss, stats, policy reset, and the five
  *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
+ * (`draft path` / `draft show` have neither: their shapes are pinned by `commands/draft.test.ts`.)
  *
  * To promote a command to tier 1: export a Zod schema from
  * `formatters/json.ts`, assert it in the command's contract test alongside
@@ -125,6 +149,11 @@ function printRepos(repos: Record<string, { path: string; currentBranch: string 
     console.log(`  ${remote}${branch}`);
     console.log(`    ${info.path}`);
   }
+}
+
+/** Print a deprecation note on stderr for commands kept only for semver (#1948); stdout and `--json` are untouched. */
+function warnDeprecatedCommand(name: string): void {
+  console.error(`Warning: \`${name}\` is deprecated and will be removed in the next major version.`);
 }
 
 export const commands: CLICommandDef[] = [
@@ -812,7 +841,7 @@ export const commands: CLICommandDef[] = [
         .command('list-move-tier <issue-url>')
         .description('Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)')
         .requiredOption('--tier <tier>', 'Target tier: pursue, maybe, or skip')
-        .requiredOption('--list-path <file>', 'Path to the markdown issue list')
+        .option('--list-path <file>', 'Path to the markdown issue list (defaults to the configured issueListPath)')
         .option('--json', 'Output as JSON')
         .action(async (issueUrl, options) => {
           const { ListMoveTierOutputSchema } = await import('./formatters/json.js');
@@ -856,7 +885,7 @@ export const commands: CLICommandDef[] = [
         .description('Mark an issue line in a curated list as done with strikethrough + Done sub-bullet (#1299)')
         .requiredOption('--pr-url <url>', 'PR URL to record on the Done sub-bullet')
         .requiredOption('--pr-status <text>', 'Trailing status, e.g. "merged" or "CI passing"')
-        .requiredOption('--list-path <file>', 'Path to the markdown issue list')
+        .option('--list-path <file>', 'Path to the markdown issue list (defaults to the configured issueListPath)')
         .option('--json', 'Output as JSON')
         .action(async (issueUrl, options) => {
           const { ListMarkDoneOutputSchema } = await import('./formatters/json.js');
@@ -1031,24 +1060,17 @@ export const commands: CLICommandDef[] = [
         .command('post <url> [message...]')
         .description('Post a comment to a PR or issue')
         .option('--stdin', 'Read message from stdin')
+        .option('--body-file <path>', BODY_FILE_HELP)
+        .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
         .option('--json', 'Output as JSON')
-        .action(async (url, messageParts, options) => {
+        .action(async (url: string, messageParts: string[], options: MessageCliOptions) => {
           const { PostOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
             async () => {
-              let message: string;
-              if (options.stdin) {
-                const chunks: Buffer[] = [];
-                for await (const chunk of process.stdin) {
-                  chunks.push(chunk);
-                }
-                message = Buffer.concat(chunks).toString('utf8').trim();
-              } else {
-                message = messageParts.join(' ');
-              }
+              const message = await readMessage(options, messageParts);
               const { runPost } = await import('./commands/comments.js');
-              return runPost({ url, message });
+              return runPost({ url, message, expectSha256: options.expectSha256 });
             },
             (data) => {
               console.log(`Comment posted: ${data.commentUrl}`);
@@ -1066,15 +1088,18 @@ export const commands: CLICommandDef[] = [
       program
         .command('claim <issue-url> [message...]')
         .description('Claim an issue by posting a comment')
+        .option('--body-file <path>', BODY_FILE_HELP)
+        .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
         .option('--json', 'Output as JSON')
-        .action(async (issueUrl, messageParts, options) => {
+        .action(async (issueUrl: string, messageParts: string[], options: MessageCliOptions) => {
           const { ClaimOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
             async () => {
               const { runClaim } = await import('./commands/comments.js');
-              const message = messageParts.length > 0 ? messageParts.join(' ') : undefined;
-              return runClaim({ issueUrl, message });
+              // No words and no file means the default claim message.
+              const message = (await readMessage(options, messageParts)) || undefined;
+              return runClaim({ issueUrl, message, expectSha256: options.expectSha256 });
             },
             (data) => {
               console.log(`Issue claimed: ${data.commentUrl}`);
@@ -1327,10 +1352,11 @@ export const commands: CLICommandDef[] = [
       program
         .command('orphan-files')
         .alias('check-integration')
-        .description('Detect new files on this branch that no other file references')
+        .description('(deprecated) Detect new files on this branch that no other file references')
         .option('--base <branch>', 'Base branch to compare against', 'main')
         .option('--json', 'Output as JSON')
         .action(async (options) => {
+          warnDeprecatedCommand('orphan-files');
           const { CheckIntegrationOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
@@ -1390,6 +1416,29 @@ export const commands: CLICommandDef[] = [
             },
             DoctorOutputSchema,
           );
+        });
+    },
+  },
+
+  // ── Cleanup (#1956) ────────────────────────────────────────────────────
+  {
+    name: 'cleanup',
+    localOnly: true,
+    register(program) {
+      program
+        .command('cleanup')
+        .description('List stale overnight worktrees and rejected state copies; --apply removes the safe ones')
+        .option('--apply', 'Remove what the dry run lists (clean, pushed, idle worktrees only)')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { apply?: boolean; json?: boolean }) => {
+          const { runCleanup, printCleanup } = await import('./commands/cleanup.js');
+          const run = () => {
+            const data = runCleanup({ apply: options.apply === true });
+            // A scheduler or a script only sees the exit code; the output still prints in full.
+            if (data.errors.length > 0) process.exitCode = 1;
+            return Promise.resolve(data);
+          };
+          await executeAction(options, run, printCleanup);
         });
     },
   },
@@ -1767,6 +1816,42 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── PR Preflight (#1952) ─────────────────────────────────────────────
+  {
+    name: 'pr-preflight',
+    // Skips the auth gate, not GitHub: without a token the network checks come back `skipped`.
+    localOnly: true,
+    register(program) {
+      program
+        .command('pr-preflight [issue]')
+        .description(
+          'Gate before opening a PR: upstream drift, base and head branch, working tree, competing work on the issue, repo cap',
+        )
+        .option('--dir <path>', 'Local clone or worktree to check (default: current directory)')
+        .option('--base <branch>', 'Branch the PR will target (default: the upstream default branch)')
+        .option('--fetch', 'Fetch the upstream target branch first instead of reporting a stale ref')
+        .option('--local', 'Skip every GitHub read: local checks and numbers only')
+        .option('--json', 'Output as JSON')
+        .action(async (issue: string | undefined, options: PrPreflightCliOptions) => {
+          const { PrPreflightOutputSchema } = await import('./formatters/json.js');
+          const { runPrPreflight, printPrPreflight } = await import('./commands/pr-preflight.js');
+          const run = async () => {
+            const data = await runPrPreflight({
+              issue,
+              dir: options.dir,
+              base: options.base,
+              fetch: options.fetch === true,
+              local: options.local === true,
+            });
+            // A caller that only sees the exit code still stops on a failed gate; the output prints in full.
+            if (data.verdict === 'fail') process.exitCode = 1;
+            return data;
+          };
+          await executeAction(options, run, printPrPreflight, PrPreflightOutputSchema);
+        });
+    },
+  },
+
   // ── Repo Vet (#1271) ────────────────────────────────────────────────
   {
     name: 'repo-vet',
@@ -1824,10 +1909,11 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('detect-formatters [repo-path]')
-        .description('Detect formatters and linters configured in a repository')
+        .description('(deprecated) Detect formatters and linters configured in a repository')
         .option('--ci-log <path>', 'Analyze CI log file for formatting failures')
         .option('--json', 'Output as JSON')
         .action(async (repoPath, options) => {
+          warnDeprecatedCommand('detect-formatters');
           const { DetectFormattersOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
@@ -2089,6 +2175,58 @@ Load it with:
     },
   },
 
+  // ── Draft files (#1930) ────────────────────────────────────────────────
+  // Local-only and read-only: where to stage text for the user's approval,
+  // and one read that yields both the text to show and the hash to pass back.
+  {
+    name: 'draft',
+    localOnly: true,
+    register(program) {
+      const group = program
+        .command('draft')
+        .description('Stage text for approval in the owner-only draft directory (~/.oss-autopilot/tmp)');
+
+      group
+        .command('path <name>')
+        .description('Print the path for a draft file name, creating the draft directory (mode 0700) if needed')
+        .option('--json', 'Output as JSON')
+        .action(async (name: string, options: { json?: boolean }) => {
+          await executeAction(
+            options,
+            async () => {
+              const { runDraftPath } = await import('./commands/draft.js');
+              return runDraftPath({ name });
+            },
+            (data) => {
+              console.log(data.path);
+            },
+          );
+        });
+
+      group
+        .command('show <file>')
+        .description('Read a draft once and return its text with the SHA-256 to pass back as --expect-sha256')
+        .option(
+          '--untrusted',
+          "Wrap the text in the untrusted-content fence (text distilled from other people's writing)",
+        )
+        .option('--json', 'Output as JSON')
+        .action(async (file: string, options: { json?: boolean; untrusted?: boolean }) => {
+          await executeAction(
+            options,
+            async () => {
+              const { runDraftShow } = await import('./commands/draft.js');
+              return runDraftShow({ file, untrusted: options.untrusted === true });
+            },
+            (data) => {
+              console.log(data.content);
+              console.log(`\nsha256: ${data.sha256}`);
+            },
+          );
+        });
+    },
+  },
+
   // ── Guidelines (#867) ──────────────────────────────────────────────────
   {
     name: 'guidelines',
@@ -2144,16 +2282,26 @@ Load it with:
 
       group
         .command('store')
-        .description('Persist per-repo guidelines (overwrites). Reads markdown content from --content or stdin.')
+        .description(
+          'Persist per-repo guidelines (overwrites). Reads markdown content from --from-file, --content or stdin.',
+        )
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option(
+          '--from-file <path>',
+          'Read the markdown from a draft file (see `draft path`). Needs --expect-sha256; not with --content.',
+        )
         .option('--content <markdown>', 'Markdown content. If omitted, reads from stdin.')
+        .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
+        .option('--reviewed', 'Assert the user saw this exact text and approved it. Required; refused when unattended.')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
+        .action(async (options: GuidelinesStoreCliOptions) => {
           await executeAction(
             options,
             async () => {
-              const content = options.content ?? (await readStdin());
-              return (await import('./commands/guidelines.js')).runGuidelinesStore({ repo: options.repo, content });
+              const content = await readGuidelinesContent(options);
+              const { repo, reviewed = false, expectSha256 } = options;
+              const { runGuidelinesStore } = await import('./commands/guidelines.js');
+              return runGuidelinesStore({ repo, content, reviewed, expectSha256 });
             },
             (data) => {
               console.log(`Stored ${data.byteSize} bytes of guidelines for ${data.repo}.`);
@@ -2223,7 +2371,155 @@ Load it with:
         });
     },
   },
+
+  // ── Repo contribution policy (#1953) ─────────────────────────────────
+  {
+    name: 'policy',
+    // State only: no GitHub call.
+    localOnly: true,
+    register(program) {
+      const group = program
+        .command('policy')
+        .description('Per-repo contribution policy: AI policy, disclosure, CLA, commit rules, PR gate (#1953)');
+
+      group
+        .command('get')
+        .description(
+          'Show the policy that applies to a repo (aiPolicyBlocklist read as a ban; quoted repo text fenced)',
+        )
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { repo: string; json?: boolean }) => {
+          const { PolicyGetOutputSchema } = await import('./formatters/json.js');
+          const { runPolicyGet } = await import('./commands/policy.js');
+          await executeAction(options, () => runPolicyGet({ repo: options.repo }), printPolicy, PolicyGetOutputSchema);
+        });
+
+      group
+        .command('set')
+        .description('Record the policy you confirmed for a repo (merged over what is stored; refused when unattended)')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--ai-policy <value>', 'allowed | disclosure-required | banned | unknown')
+        .option('--disclosure-text <text>', 'The disclosure line the repo asks for')
+        .option('--cla <value>', 'none | required | unknown')
+        .option('--pr-gate <value>', 'none | claim-first | maintainer-label | collaborators-only | unknown')
+        .option(
+          '--commit-rules <ids>',
+          'Comma-separated: conventional-commits, dco-signoff, no-closing-keyword-in-commit ("" clears)',
+        )
+        .option('--max-open-ai-prs <n>', 'Open AI-assisted PRs the repo allows at once (0 clears)', Number)
+        .option('--source <text>', 'Where the rule came from, e.g. a maintainer comment (stored as a short quote)')
+        .option('--json', 'Output as JSON')
+        .action(async (options: PolicySetCliOptions) => {
+          const { PolicyGetOutputSchema } = await import('./formatters/json.js');
+          const { runPolicySet } = await import('./commands/policy.js');
+          // Commander camel-cases --max-open-ai-prs as maxOpenAiPrs.
+          const { maxOpenAiPrs, ...rest } = options;
+          await executeAction(
+            options,
+            () => runPolicySet({ ...rest, maxOpenAiPRs: maxOpenAiPrs }),
+            (data) => {
+              printPolicy(data);
+              const change = { added: `  Added ${data.repo} to`, removed: `  Removed ${data.repo} from` };
+              if (data.blocklistChange) console.log(`${change[data.blocklistChange]} aiPolicyBlocklist.`);
+              if (data.policy?.blocklisted && data.blocklistChange === undefined) {
+                console.log('  Banned by aiPolicyBlocklist; set --ai-policy to another value to take it off the list.');
+              }
+            },
+            PolicyGetOutputSchema,
+          );
+        });
+
+      group
+        .command('reset')
+        .description('Delete the stored policy for a repo (refused when unattended)')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { repo: string; json?: boolean }) => {
+          const { runPolicyReset } = await import('./commands/policy.js');
+          await executeAction(
+            options,
+            () => runPolicyReset({ repo: options.repo }),
+            (data) => {
+              console.log(data.deleted ? `Deleted the policy for ${data.repo}.` : `No policy stored for ${data.repo}.`);
+            },
+          );
+        });
+    },
+  },
 ];
+
+const BODY_FILE_HELP =
+  'Read the message from a draft file (see `draft path`). Needs --expect-sha256; not with --stdin or positional words.';
+const EXPECT_SHA256_HELP = 'Fail before doing anything unless the text hashes to this SHA-256 (from `draft show`)';
+
+/** Options of the commands that post a message (`post`, `claim`). */
+interface MessageCliOptions {
+  json?: boolean;
+  stdin?: boolean;
+  bodyFile?: string;
+  expectSha256?: string;
+}
+
+interface GuidelinesStoreCliOptions {
+  json?: boolean;
+  repo: string;
+  fromFile?: string;
+  content?: string;
+  reviewed?: boolean;
+  expectSha256?: string;
+}
+
+/** The message for `post` / `claim`: an approved draft file, stdin (trimmed), or the positional words. */
+async function readMessage(options: MessageCliOptions, parts: string[]): Promise<string> {
+  if (options.bodyFile !== undefined) {
+    const { readApprovedDraft } = await import('./commands/draft.js');
+    return readApprovedDraft({
+      file: options.bodyFile,
+      flag: '--body-file',
+      expectSha256: options.expectSha256,
+      hasOtherInput: options.stdin === true || parts.length > 0,
+    });
+  }
+  if (options.stdin) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks).toString('utf8').trim();
+  }
+  return parts.join(' ');
+}
+
+async function readGuidelinesContent(options: GuidelinesStoreCliOptions): Promise<string> {
+  if (options.fromFile !== undefined) {
+    const { readApprovedDraft } = await import('./commands/draft.js');
+    return readApprovedDraft({
+      file: options.fromFile,
+      flag: '--from-file',
+      expectSha256: options.expectSha256,
+      hasOtherInput: options.content !== undefined,
+    });
+  }
+  return options.content ?? readStdin();
+}
+
+/** Text mode for `policy get` / `policy set`. Quoted repo text stays fenced. */
+function printPolicy(data: import('./commands/policy.js').PolicyGetOutput): void {
+  const { policy } = data;
+  if (!policy) {
+    console.log(`No contribution policy recorded for ${data.repo}.`);
+    return;
+  }
+  const reviewed = policy.reviewedByUser ? 'set by you' : 'read from repo docs, not reviewed';
+  console.log(`\n${data.repo} (${reviewed}, ${policy.updatedAt.slice(0, 10)})`);
+  console.log(`  AI policy: ${policy.aiPolicy}${policy.blocklisted ? ' (aiPolicyBlocklist)' : ''}`);
+  console.log(`  CLA: ${policy.cla}   PR gate: ${policy.prGate}`);
+  if (policy.commitRules.length > 0) console.log(`  Commit rules: ${policy.commitRules.join(', ')}`);
+  if (policy.maxOpenAiPRs !== undefined) console.log(`  Max open AI-assisted PRs: ${policy.maxOpenAiPRs}`);
+  if (policy.disclosureText) console.log(`  Disclosure: ${policy.disclosureText}`);
+  if (policy.sources) console.log(`  Sources: ${policy.sources}`);
+}
 
 /** Read full stdin content. Used when `guidelines store` content isn't passed inline. */
 async function readStdin(): Promise<string> {

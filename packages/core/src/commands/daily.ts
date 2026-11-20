@@ -28,9 +28,8 @@ import {
   collectActionableIssues,
   computeActionMenu,
   collectEngagedIssues,
+  getOctokit,
   toShelvedPRRef,
-  formatBriefSummary,
-  formatSummary,
   summarizeAttentionBuckets,
   shouldSuggestClose,
   selectClosedPRStatusCandidates,
@@ -82,10 +81,20 @@ import {
   nonFatalCatchWithWarning,
   recordWarning,
 } from './daily-warnings.js';
+import { formatBriefSummary, formatSummary } from './daily-render.js';
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
+import { fetchRecentPRLists } from './daily-recent-prs.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
-import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
-import { resetStaleClosedCounts, syncLedgersWithGitHub } from './daily-ledger.js';
+import { batchOnFreshBaseline, filterDismissedIssues, reloadOrWarn } from './daily-dismiss-filter.js';
+import {
+  applyRepoMetadata,
+  fetchClosedLedgerGap,
+  fetchMergedLedgerGap,
+  resetStaleClosedCounts,
+  storeClosedLedger,
+  storeMergedLedger,
+  syncLedgersWithGitHub,
+} from './daily-ledger.js';
 
 const MODULE = 'daily';
 
@@ -99,17 +108,15 @@ export {
   collectActionableIssues,
   computeActionMenu,
   toShelvedPRRef,
-  formatBriefSummary,
-  formatSummary,
-  printDigest,
   CRITICAL_STATUSES,
 } from '../core/index.js';
+export { formatBriefSummary, formatSummary, printDigest } from './daily-render.js';
 
 // buildStarFilter moved to core/daily-logic.ts so the dashboard layer can
 // reuse it without crossing the commands → sibling-command boundary
 // (#1208 M7). Re-exported here for backward compatibility with anyone
 // importing from this module.
-import { buildStarFilter, firstMaintainerResponseFromDigest, lastReviewStateFromDigest } from '../core/daily-logic.js';
+import { buildStarFilter } from '../core/daily-logic.js';
 
 /**
  * Internal result of the daily check, using full (non-deduplicated) types.
@@ -186,6 +193,10 @@ interface FetchedPRData {
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>;
   /** Which count searches hit their pagination cap, leaving `mergedCounts` / `closedCounts` partial. */
   truncatedSearches: { merged: boolean; closed: boolean };
+  /** GitHub's all-time merged PR count, or undefined when the count search failed. */
+  mergedTotalCount: number | undefined;
+  /** GitHub's all-time closed-without-merge count, or undefined when the count search failed. */
+  closedTotalCount: number | undefined;
   closedCounts: Map<string, number>;
   /** Every PR the merged/closed count searches returned, for transfer detection. */
   searchedPRs: Array<{ url: string; title: string }>;
@@ -320,8 +331,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
   // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
-  let didRecentlyMergedFetchFail = false;
-  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs] = await Promise.all([
+  const [mergedResult, closedResult, recentPRs] = await Promise.all([
     prMonitor.fetchUserMergedPRCounts(starFilter).catch(
       nonFatalCatchWithWarning({
         warnings,
@@ -338,26 +348,11 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
         fallback: emptyPRCountsResult<number>(),
       }),
     ),
-    prMonitor.fetchRecentlyClosedPRs().catch(
-      nonFatalCatchWithWarning({
-        warnings,
-        phase: 'fetch',
-        operation: 'fetch recently closed PRs',
-        fallback: [] as ClosedPR[],
-      }),
-    ),
-    prMonitor.fetchRecentlyMergedPRs().catch((error: unknown) => {
-      // Phase 3.6 treats a fallback here as an incomplete view of the
-      // user's PRs (a just-merged successor would be invisible).
-      didRecentlyMergedFetchFail = true;
-      return nonFatalCatchWithWarning({
-        warnings,
-        phase: 'fetch',
-        operation: 'fetch recently merged PRs',
-        fallback: [] as MergedPR[],
-      })(error);
-    }),
+    // Phase 3.6 treats a failed or partial merged list as an incomplete view
+    // of the user's PRs (a just-merged successor would be invisible).
+    fetchRecentPRLists(prMonitor, warnings),
   ]);
+  const { recentlyClosedPRs, recentlyMergedPRs } = recentPRs;
 
   // Issue conversations run after the PR lists: the engaged set (#1862)
   // needs the open, recently closed and recently merged PRs. The fetch has
@@ -408,7 +403,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   // its repo is unknown and the conservative reading is "could be anywhere".
   const successorGaps: SuccessorGaps = { everywhere: [], failedRepos: new Set() };
   if (fetchResult.searchTruncated) successorGaps.everywhere.push('the open-PR search was truncated');
-  if (didRecentlyMergedFetchFail) successorGaps.everywhere.push('the recently-merged fetch failed');
+  successorGaps.everywhere.push(...recentPRs.successorGapReasons);
   for (const failure of failures) {
     const repoKey = repoKeyOf(failure.prUrl);
     if (repoKey) successorGaps.failedRepos.add(repoKey);
@@ -417,8 +412,10 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
 
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
-    recentlyMergedFetchFailed: didRecentlyMergedFetchFail,
+    recentlyMergedFetchFailed: recentPRs.recentlyMergedFetchFailed,
     truncatedSearches: { merged: mergedResult.truncated, closed: closedResult.truncated },
+    mergedTotalCount: mergedResult.totalCount,
+    closedTotalCount: closedResult.totalCount,
     successorGaps,
     prs,
     failures,
@@ -583,7 +580,7 @@ async function updateRepoScores(
 
   // Fetch metadata (stars + language) for all scored repos — async, so outside the batch above
   const allRepos = Object.keys(stateManager.getState().repoScores);
-  let repoMetadata: Map<string, { stars: number; language: string | null }>;
+  let repoMetadata: Awaited<ReturnType<PRMonitor['fetchRepoMetadata']>>;
   try {
     repoMetadata = await prMonitor.fetchRepoMetadata(allRepos);
   } catch (error) {
@@ -598,26 +595,8 @@ async function updateRepoScores(
   // Batch metadata + trust sync mutations for a single disk write
   try {
     batchOnFreshBaseline(stateManager, () => {
-      let metadataUpdateFailures = 0;
-      for (const [repo, { stars, language }] of repoMetadata) {
-        try {
-          stateManager.updateRepoScore(repo, { stargazersCount: stars, language });
-        } catch (error) {
-          metadataUpdateFailures++;
-          warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
-        }
-      }
-      if (metadataUpdateFailures > 0) {
-        warnings.push({
-          phase: 'repo-scores',
-          operation: 'update repo metadata',
-          message: `${metadataUpdateFailures} of ${repoMetadata.size} metadata update(s) failed. This may indicate corrupted state.`,
-        });
-        warn(
-          MODULE,
-          `[METADATA_UPDATES_FAILED] ${metadataUpdateFailures} of ${repoMetadata.size} metadata update(s) failed.`,
-        );
-      }
+      // Stars and languages in, then untracked and private repositories out (#1924).
+      applyRepoMetadata(stateManager, repoMetadata, warnings);
 
       // Auto-sync trustedProjects from repos with merged PRs
       let trustSyncFailures = 0;
@@ -781,7 +760,7 @@ function generateDigestOutput(
 
   // Assess capacity from active PRs only (shelved PRs excluded). Reload first
   // so maxActivePRs reflects a config change made while the run was fetching.
-  stateManager.reloadIfChanged();
+  reloadOrWarn(stateManager, warnings);
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
   // One nudge per issue (#1863): an issue listed under closedPRStatusUpdates
@@ -1231,6 +1210,8 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     failures,
     mergedCounts,
     truncatedSearches,
+    mergedTotalCount,
+    closedTotalCount,
     closedCounts,
     searchedPRs,
     monthlyCounts,
@@ -1246,6 +1227,12 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
   await updateRepoScores(prMonitor, prs, mergedCounts, truncatedSearches, closedCounts, searchedPRs, warnings);
+
+  // Merges and closes since each ledger's newest entry, fetched before Phase 3 adds to it (#1924, #1925).
+  const [mergedGap, closedGap] = await Promise.all([
+    fetchMergedLedgerGap(getOctokit(token), getStateManager(), warnings),
+    fetchClosedLedgerGap(getOctokit(token), getStateManager(), warnings, closedTotalCount),
+  ]);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
@@ -1276,32 +1263,20 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       // missing ledger fields in place), so overlaps are safe. openedAt comes
       // free from the search result; firstMaintainerResponseAt is best-effort
       // from the previous run's enriched digest — zero new API calls (#1461).
-      if (recentlyMergedPRs.length > 0) {
-        getStateManager().addMergedPRs(
-          recentlyMergedPRs.map((pr) => ({
-            url: pr.url,
-            title: pr.title,
-            mergedAt: pr.mergedAt,
-            openedAt: pr.openedAt,
-            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
-            issueUrl: pr.issueUrl,
-            ...lastReviewStateFromDigest(previousDigest, pr.url),
-          })),
-        );
-      }
-      if (recentlyClosedPRs.length > 0) {
-        getStateManager().addClosedPRs(
-          recentlyClosedPRs.map((pr) => ({
-            url: pr.url,
-            title: pr.title,
-            closedAt: pr.closedAt,
-            openedAt: pr.openedAt,
-            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
-            issueUrl: pr.issueUrl,
-            ...lastReviewStateFromDigest(previousDigest, pr.url),
-          })),
-        );
-      }
+      storeMergedLedger(getStateManager(), {
+        gap: mergedGap,
+        allTimeCount: mergedTotalCount,
+        recentlyMergedPRs,
+        previousDigest,
+        warnings,
+      });
+      storeClosedLedger(getStateManager(), {
+        gap: closedGap,
+        allTimeCount: closedTotalCount,
+        recentlyClosedPRs,
+        previousDigest,
+        warnings,
+      });
     });
   } catch (error) {
     recordWarning(warnings, 'analytics', 'persist monthly analytics', error);

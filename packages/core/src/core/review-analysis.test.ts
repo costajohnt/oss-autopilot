@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   determineReviewDecision,
   getLatestChangesRequestedDate,
+  getStandingApprovalDate,
   isAllSelfReplies,
   getInlineCommentBody,
   reviewHasInlineComments,
@@ -852,5 +853,54 @@ describe('checkUnrespondedComments REST bot type', () => {
       'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
+  });
+});
+
+function review(login: string, state: string, submittedAt: string) {
+  return { state, user: { login }, submitted_at: submittedAt };
+}
+
+describe('getStandingApprovalDate (#1920)', () => {
+  it('returns undefined when the account has no standing approval', () => {
+    expect(getStandingApprovalDate([], 'a')).toBeUndefined();
+    expect(getStandingApprovalDate([review('a', 'COMMENTED', '2026-02-01T00:00:00Z')], 'a')).toBeUndefined();
+    expect(getStandingApprovalDate([review('a', 'APPROVED', '2026-02-01T00:00:00Z')], undefined)).toBeUndefined();
+  });
+
+  it("returns that account's approval, not a later one by someone else", () => {
+    const reviews = [review('a', 'APPROVED', '2026-02-02T00:00:00Z'), review('b', 'APPROVED', '2026-02-03T00:00:00Z')];
+    expect(getStandingApprovalDate(reviews, 'a')).toBe('2026-02-02T00:00:00Z');
+    expect(getStandingApprovalDate(reviews, 'c')).toBeUndefined();
+  });
+
+  it("returns the account's latest approval", () => {
+    const reviews = [review('a', 'APPROVED', '2026-02-02T00:00:00Z'), review('a', 'APPROVED', '2026-02-04T00:00:00Z')];
+    expect(getStandingApprovalDate(reviews, 'a')).toBe('2026-02-04T00:00:00Z');
+  });
+
+  it('matches the login case-insensitively', () => {
+    const reviews = [review('Maintainer', 'APPROVED', '2026-02-02T00:00:00Z')];
+    expect(getStandingApprovalDate(reviews, 'mainTAINER')).toBe('2026-02-02T00:00:00Z');
+  });
+
+  it('ignores an approval that was dismissed or replaced by a changes request', () => {
+    const reviews = [
+      review('b', 'APPROVED', '2026-02-05T00:00:00Z'),
+      review('b', 'DISMISSED', '2026-02-06T00:00:00Z'),
+      review('c', 'APPROVED', '2026-02-07T00:00:00Z'),
+      review('c', 'CHANGES_REQUESTED', '2026-02-08T00:00:00Z'),
+    ];
+    expect(getStandingApprovalDate(reviews, 'b')).toBeUndefined();
+    expect(getStandingApprovalDate(reviews, 'c')).toBeUndefined();
+  });
+
+  it('keeps the approval date when the approver later leaves a COMMENTED review', () => {
+    const reviews = [review('a', 'APPROVED', '2026-02-01T00:00:00Z'), review('a', 'COMMENTED', '2026-02-02T00:00:00Z')];
+    expect(getStandingApprovalDate(reviews, 'a')).toBe('2026-02-01T00:00:00Z');
+  });
+
+  it('ignores bot approvals', () => {
+    const reviews = [review('review-bot[bot]', 'APPROVED', '2026-02-01T00:00:00Z')];
+    expect(getStandingApprovalDate(reviews, 'review-bot[bot]')).toBeUndefined();
   });
 });

@@ -68,7 +68,7 @@ import {
   ensureGistPersistence,
   bootstrapGistBestEffort,
 } from './state.js';
-import { GistDiscoveryError, GistFileSizeError, GistPermissionError } from './errors.js';
+import { GistDiscoveryError, GistFileSizeError, GistPermissionError, NewerStateVersionError } from './errors.js';
 
 function writeGistConfiguredState(): void {
   fs.writeFileSync(
@@ -329,6 +329,14 @@ describe('bootstrapGistBestEffort — localOnly CLI entry points (#1431)', () =>
     expect(warning).toMatch(/LOCAL-ONLY/);
     expect(warning).toContain('write the Gist ID to the gist-id file');
     expect(warning).not.toMatch(/gist scope/);
+  });
+
+  it('NewerStateVersionError: the warning says to update, not to fix the Gist setup (#1951)', async () => {
+    writeGistConfiguredState();
+    createWithGistSpy.mockRejectedValueOnce(new NewerStateVersionError('Gist state', 5, 4));
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toContain('Update this client');
+    expect(warning).not.toMatch(/fix the Gist setup/);
   });
 
   it('GistFileSizeError: the repair guidance is about state size, not the token scope', async () => {

@@ -65,7 +65,10 @@ const SCHEMAS = new Map<string, ZodType>(
     move: json.MoveOutputSchema,
     'pr-template': json.PRTemplateOutputSchema,
     'repo-cap': json.RepoCapStatusSchema,
+    'pr-preflight': json.PrPreflightOutputSchema,
     'repo-vet': json.RepoVetOutputSchema,
+    'policy get': json.PolicyGetOutputSchema,
+    'policy set': json.PolicyGetOutputSchema,
     'compliance-score': json.ComplianceScoreOutputSchema,
     'parse-issue-list': json.ParseIssueListOutputSchema,
     'orphan-files': json.CheckIntegrationOutputSchema,
@@ -100,10 +103,7 @@ const UNCHECKED = new Map<string, string>([
   // Keyed `cmd <command>` for commands without a Zod output schema.
   ['cmd guidelines', 'guidelines view/fetch-corpus/mark-extracted are goldens-only, no Zod schema'],
   ['cmd overnight', 'overnight run/record are goldens-only (report and push-prep have schemas and are checked)'],
-  // extract-learnings.md "Auto mode" forward-references Step 3's `guidelines fetch-corpus` output.
-  ['workflows/extract-learnings.md data.failures', 'guidelines fetch-corpus, no schema'],
-  ['workflows/extract-learnings.md data.prCount', 'guidelines fetch-corpus, no schema'],
-  ['workflows/extract-learnings.md data.skipped', 'guidelines fetch-corpus, no schema'],
+  ['cmd draft', 'draft path/show have no Zod schema; their output shapes are pinned in commands/draft.test.ts (#1930)'],
 ]);
 
 // `cli.bundle.cjs" status --json`, `<prefix> status --json`, or an inline `` `status --json` `` mention.

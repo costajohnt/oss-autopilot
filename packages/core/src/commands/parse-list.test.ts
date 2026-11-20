@@ -497,6 +497,21 @@ describe('parseIssueList — Guard 1: PR URLs never collected as candidates', ()
   });
 });
 
+describe('parseIssueList — owner/repo validated with parseGitHubUrl (#1933)', () => {
+  it('drops lines whose URL has characters GitHub never uses', () => {
+    const content = [
+      '## Pursue',
+      '- https://github.com/good/repo/issues/1 — fine',
+      '- https://github.com/o"$(id)/r/issues/2 — quote and subshell in owner',
+      '- https://github.com/o/r";x/issues/3 — quote in repo',
+      '- https://github.com/o/r`id`/issues/4 — backticks',
+      '- https://github.com/o w/r/issues/5 — space',
+    ].join('\n');
+    const out = parseIssueList(content);
+    expect(out.available.map((i) => i.url)).toEqual(['https://github.com/good/repo/issues/1']);
+  });
+});
+
 describe('parseIssueList — Guard 2: URLs only from entry lines, not sub-bullets or prose', () => {
   it('does not collect a prose paragraph URL even when it looks like a GitHub issue link', () => {
     // Non-list lines are already filtered; this confirms the behavior is intentional.

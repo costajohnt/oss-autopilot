@@ -2,6 +2,7 @@
  * Tests for comments, post, and claim commands
  */
 
+import { createHash } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../core/index.js', () => ({
@@ -314,6 +315,29 @@ describe('runPost', () => {
     }
   });
 
+  it('refuses a message that does not match --expect-sha256, before any GitHub call (#1930)', async () => {
+    const approved = createHash('sha256').update('Thanks!').digest('hex');
+
+    await expect(runPost({ url: TEST_PR_URL, message: 'Thanks! (edited)', expectSha256: approved })).rejects.toThrow(
+      /does not match the approved text/,
+    );
+
+    expect(mockRequireGitHubToken).not.toHaveBeenCalled();
+    expect(mockGetOctokit).not.toHaveBeenCalled();
+  });
+
+  it('posts when the message matches --expect-sha256 (#1930)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
+    const mockCreateComment = vi.fn().mockResolvedValue({ data: { html_url: `${TEST_PR_URL}#issuecomment-9` } });
+    mockGetOctokit.mockReturnValue({ issues: { createComment: mockCreateComment } } as never);
+    const approved = createHash('sha256').update('Thanks!').digest('hex');
+
+    await runPost({ url: TEST_PR_URL, message: 'Thanks!', expectSha256: approved });
+
+    expect(mockCreateComment).toHaveBeenCalledWith(expect.objectContaining({ body: 'Thanks!' }));
+  });
+
   it('should post a comment and return result', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
@@ -366,6 +390,17 @@ describe('runClaim', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it('refuses a claim message that does not match --expect-sha256, before any GitHub call (#1930)', async () => {
+    const approved = createHash('sha256').update('I can take this').digest('hex');
+
+    await expect(
+      runClaim({ issueUrl: TEST_ISSUE_URL, message: 'I can take this, and more', expectSha256: approved }),
+    ).rejects.toThrow(/does not match the approved text/);
+
+    expect(mockGetOctokit).not.toHaveBeenCalled();
+    expect(mockGetStateManager).not.toHaveBeenCalled();
   });
 
   it('should throw error for non-issue URL', async () => {

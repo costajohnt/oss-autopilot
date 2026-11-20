@@ -228,7 +228,7 @@ export function registerPrompts(server: McpServer): void {
         '',
         prSections,
         '',
-        'After producing the guidelines markdown, call the `guidelines-store` tool with `repo` and `content` to persist the result.',
+        'After producing the guidelines markdown, show the user the exact text and ask whether to store it. Only after they approve, call the `guidelines-store` tool with `repo`, `content` and `reviewed: true`. Never store text the user has not seen.',
       ].join('\n');
 
       return userMessage(prompt);

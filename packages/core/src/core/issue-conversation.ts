@@ -31,7 +31,7 @@ import {
   isQuoteReplyTo,
   isStatusNudge,
 } from './comment-utils.js';
-import { paginateAll, paginateAllDetailed } from './pagination.js';
+import { paginateAll, paginateAllDetailed, searchAllPages, type SearchPagesResult } from './pagination.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './dates.js';
@@ -140,13 +140,19 @@ export interface FetchCommentedIssuesResult {
    */
   lookupFailures: number;
   /**
-   * Non-fatal problems for the run's warning channel: a claimed or open-PR
-   * issue that is gone, a comment thread too long to read to the end, an
+   * Non-fatal problems for the run's warning channel: a comment search that
+   * returned a partial list (#1928), a claimed or open-PR issue that is gone, a comment thread too long to read to the end, an
    * engagement time that does not parse, engaged issues with new activity
    * left unread because the comment-fetch cap bit. Each means the result
    * may be missing or misreporting something the user can act on.
    */
   warnings: string[];
+  /**
+   * Set when the comment search returned a partial list (#1928): a short
+   * label for lists of degraded operations, e.g. `commented-issue search
+   * truncated (300 of 420)`. The full sentence is in `warnings`.
+   */
+  searchTruncation?: string;
 }
 
 interface TimelineEntry {
@@ -176,6 +182,23 @@ function labelNames(node: EngagedIssueNode): string[] {
 function describeError(error: unknown): string {
   const status = getHttpStatusCode(error);
   return status === undefined ? errorMessage(error) : `HTTP ${status}: ${errorMessage(error)}`;
+}
+
+/** Word a partial comment search: a failed later page, else the counts read. */
+function describeSearchTruncation(search: SearchPagesResult<unknown>): { label: string; message: string } {
+  const read = search.items.length;
+  const unchecked = 'Replies on the other issues you commented on are not checked this run.';
+  if (search.failure) {
+    const cause = describeError(search.failure.error);
+    return {
+      label: `commented-issue search failed on page ${search.failure.page} (${read} read)`,
+      message: `Commented-issue search failed on page ${search.failure.page} (${cause}); only the ${read} result(s) from the page(s) before it were read. ${unchecked}`,
+    };
+  }
+  return {
+    label: `commented-issue search truncated (${read} of ${search.totalCount})`,
+    message: `Commented-issue search is partial: read the ${read} most recently updated of ${search.totalCount} result(s). ${unchecked}`,
+  };
 }
 
 /**
@@ -248,28 +271,28 @@ export class IssueConversationMonitor {
 
     debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
 
-    // Search for open issues the user has commented on, updated within window
-    // Single page (100) is sufficient for most users; log if truncated.
-    const { data } = await this.octokit.search.issuesAndPullRequests({
-      q: `commenter:${username} type:issue state:open updated:>=${since}`,
-      sort: 'updated',
-      order: 'desc',
-      per_page: 100,
-    });
-
-    if (data.total_count > 100) {
-      warn(
-        MODULE,
-        `Search returned ${data.total_count} results but only first 100 were fetched. Some commented issues may be missing.`,
-      );
-    }
+    // Search for open issues the user has commented on, updated within window.
+    // Own repos and self-authored issues are dropped below either way;
+    // excluding them in the query keeps them from using up page slots (#1928).
+    // Excluded repos and orgs and the blocklist are still filtered after the cap.
+    const search = await searchAllPages((page) =>
+      this.octokit.search.issuesAndPullRequests({
+        page,
+        q: `commenter:${username} type:issue state:open updated:>=${since} -user:${username} -author:${username}`,
+        sort: 'updated',
+        order: 'desc',
+        per_page: 100,
+      }),
+    );
+    const searchTruncation = search.truncated ? describeSearchTruncation(search) : undefined;
+    if (searchTruncation) warnings.push(searchTruncation.message);
 
     // Filter out PRs, user-authored issues, excluded repos, and blocklisted repos.
     // Also parse repo info for each candidate to avoid re-parsing in analyzeIssueConversation.
     const candidates: Candidate[] = [];
     const seenKeys = new Set<string>();
     const searchCandidates = new Map<string, Candidate>();
-    for (const item of data.items) {
+    for (const item of search.items) {
       // Defensive: skip pull requests in case type:issue qualifier is unreliable
       if (item.pull_request) continue;
 
@@ -375,7 +398,7 @@ export class IssueConversationMonitor {
       MODULE,
       `Analyzed ${results.length} issue conversations (${results.filter((i) => i.status === 'new_response').length} with new responses)`,
     );
-    return { failures, lookupFailures, warnings, issues: results };
+    return { failures, lookupFailures, warnings, issues: results, searchTruncation: searchTruncation?.label };
   }
 
   /** Repo-level exclusions shared by the search results and the direct fetches. */
@@ -383,7 +406,7 @@ export class IssueConversationMonitor {
     const { owner } = splitRepo(repoFullName);
     // Skip issues in user-owned repos (we only care about contributing to others' projects)
     if (isOwnRepo(owner, config.githubUsername)) return false;
-    if (config.excludeRepos.includes(repoFullName)) return false;
+    if (config.excludeRepos.some((repo) => repo.toLowerCase() === repoFullName.toLowerCase())) return false;
     if (config.excludeOrgs?.some((org) => owner.toLowerCase() === org.toLowerCase())) return false;
     const blocklist = (config.aiPolicyBlocklist || []).map((r) => r.toLowerCase());
     return !blocklist.includes(repoFullName.toLowerCase());

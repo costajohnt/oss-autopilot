@@ -141,6 +141,16 @@ export function getMachineIdPath(): string {
 }
 
 /**
+ * Returns the path to the per-machine settings file (`~/.oss-autopilot/local-config.json`).
+ *
+ * Holds values that are only valid on this machine (#1950): filesystem paths
+ * and the local repo cache. It is local only: the Gist never carries it.
+ */
+export function getLocalConfigPath(): string {
+  return path.join(getDataDir(), 'local-config.json');
+}
+
+/**
  * Returns the path to the local state cache file (`~/.oss-autopilot/state-cache.json`).
  *
  * A write-through cache of the Gist-hosted state, used as a fallback when

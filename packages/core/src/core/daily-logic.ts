@@ -10,9 +10,7 @@
  *   - toShelvedPRRef — lightweight projection for digest display
  *
  * Rendering functions (formatActionHint, formatBriefSummary, formatSummary,
- * printDigest) live in src/commands/daily-render.ts (#1117). This file
- * re-exports them at the bottom so existing imports keep working without
- * a sweep.
+ * printDigest) live in src/commands/daily-render.ts (#1117).
  */
 
 import { warn } from './logger.js';
@@ -811,12 +809,3 @@ export function isCoveredByDismiss(dismissedAt: string, lastResponseAt: string):
   if (Number.isNaN(dismissedMs) || Number.isNaN(responseMs)) return false;
   return dismissedMs >= responseMs;
 }
-
-// ---------------------------------------------------------------------------
-// Rendering re-exports (back-compat)
-// ---------------------------------------------------------------------------
-//
-// The actual implementations live in src/commands/daily-render.ts. Existing
-// callers that import these from `core/daily-logic` continue to work; new
-// callers should import from `commands/daily-render` directly.
-export { formatActionHint, formatBriefSummary, formatSummary, printDigest } from '../commands/daily-render.js';

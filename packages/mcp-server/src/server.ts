@@ -25,14 +25,22 @@ const version: string = (() => {
   }
 })();
 
+/** How long the user has to answer an approval form (trust-boundary.ts). */
+export const APPROVAL_TIMEOUT_MS = 120_000;
+
 /**
  * Create a fully configured MCP server with all tools, resources, and prompts registered.
  */
 export function createServer(): McpServer {
-  const server = new McpServer({
-    name: 'oss-autopilot',
-    version,
-  });
+  const server = new McpServer(
+    {
+      name: 'oss-autopilot',
+      version,
+    },
+    // An approval form left unanswered refuses the call after two minutes
+    // ("Request timed out") instead of holding the request open for ten.
+    { inputRequired: { roundTimeoutMs: APPROVAL_TIMEOUT_MS } },
+  );
 
   registerTools(server);
   registerResources(server);

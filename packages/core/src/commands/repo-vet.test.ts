@@ -15,6 +15,9 @@ vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
 }));
 
+// Contents arrive as plain text in these stubs: no base64 round trip to maintain.
+vi.mock('../core/pr-template.js', () => ({ decodeBase64: (content: string) => content }));
+
 vi.mock('../core/logger.js', () => ({
   warn: vi.fn(),
   debug: vi.fn(),
@@ -274,5 +277,71 @@ describe('runRepoVet health numbers from non-empty history', () => {
     // stability (no release): (0.1*0.25 + 0.2 + 0.5*0.05) / 0.85 = 2.9.
     // 2 or 4 commits would give 2.8 or 3.0.
     expect(result.rubricScore).toBe(2.9);
+  });
+});
+
+describe('runRepoVet contribution policy (#1953)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockGetStateManager.mockReturnValue({
+      getRepoScore: vi.fn(),
+      getState: () => ({ repoScores: {}, config: { aiPolicyBlocklist: [] } }),
+    } as unknown as ReturnType<typeof getStateManager>);
+  });
+
+  it('reads the policy from CONTRIBUTING and the PR template it already fetches, without storing it', async () => {
+    const octokit = buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND));
+    const files = new Map([
+      ['CONTRIBUTING.md', 'Please comment on the issue and get assigned before opening a pull request.'],
+      ['.github/pull_request_template.md', '- [ ] I have signed the Contributor License Agreement (CLA)'],
+    ]);
+    vi.mocked(octokit.repos.getContent).mockImplementation((async ({ path }: { path: string }) => {
+      const text = files.get(path);
+      if (text === undefined) throw NOT_FOUND;
+      return { data: { type: 'file', content: text } };
+    }) as never);
+    mockGetOctokit.mockReturnValue(octokit);
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect(result.policy).toEqual({
+      aiPolicy: 'unknown',
+      cla: 'required',
+      prGate: 'claim-first',
+      commitRules: [],
+      reviewedByUser: false,
+    });
+    expect(RepoVetOutputSchema.safeParse(result).success).toBe(true);
+  });
+
+  it('honors a stored ban like search and preflight do, whatever this run reads', async () => {
+    const ban = {
+      aiPolicy: 'banned',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: false,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    mockGetStateManager.mockReturnValue({
+      getRepoScore: vi.fn(),
+      getState: () => ({ repoScores: {}, config: { aiPolicyBlocklist: [] }, repoPolicies: { 'owner/repo': ban } }),
+    } as unknown as ReturnType<typeof getStateManager>);
+    const octokit = buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND));
+    vi.mocked(octokit.repos.getContent).mockImplementation((async ({ path }: { path: string }) => {
+      if (path !== 'CONTRIBUTING.md') throw NOT_FOUND;
+      return { data: { type: 'file', content: 'Run the tests before opening a pull request.' } };
+    }) as never);
+    mockGetOctokit.mockReturnValue(octokit);
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+    expect(result.policy?.aiPolicy).toBe('banned');
+  });
+
+  it('omits the policy when no doc was found and nothing is recorded', async () => {
+    mockGetOctokit.mockReturnValue(buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND)));
+    expect('policy' in (await runRepoVet({ repo: 'owner/repo' }))).toBe(false);
   });
 });

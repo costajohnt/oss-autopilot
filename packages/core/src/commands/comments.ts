@@ -20,6 +20,7 @@ import {
   ISSUE_OR_PR_URL_PATTERN,
   ISSUE_URL_PATTERN,
 } from './validation.js';
+import { assertSha256 } from './draft.js';
 
 export { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
 
@@ -31,11 +32,15 @@ interface CommentsOptions {
 interface PostOptions {
   url: string;
   message: string;
+  /** When set, refuse unless `message` hashes to it: the text the user approved via `draft show` (#1930). */
+  expectSha256?: string;
 }
 
 interface ClaimOptions {
   issueUrl: string;
   message?: string;
+  /** When set, refuse unless the claim message hashes to it (#1930). */
+  expectSha256?: string;
 }
 
 /**
@@ -204,6 +209,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
  */
 export async function runPost(options: PostOptions): Promise<PostOutput> {
   assertAttended('post a comment');
+  assertSha256(options.message, options.expectSha256);
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
 
@@ -237,6 +243,9 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
   };
 }
 
+/** The comment `claim` posts when no message is given; the MCP approval form shows this exact text. */
+export const DEFAULT_CLAIM_MESSAGE = "Hi! I'd like to work on this issue. Could you assign it to me?";
+
 /**
  * Post a claim comment on a GitHub issue and track it locally.
  *
@@ -253,10 +262,10 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
 
   const token = requireGitHubToken();
 
-  // Default claim message or custom
-  const message = options.message || "Hi! I'd like to work on this issue. Could you assign it to me?";
+  const message = options.message || DEFAULT_CLAIM_MESSAGE;
 
   validateMessage(message);
+  assertSha256(message, options.expectSha256);
 
   // Parse URL
   const parsed = parseGitHubUrl(options.issueUrl);
