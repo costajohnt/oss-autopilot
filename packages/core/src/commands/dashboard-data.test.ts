@@ -58,7 +58,7 @@ const {
   mockGenerateDigest: vi.fn(),
   mockFetchCommentedIssues: vi.fn(),
   mockGetOctokit: vi.fn().mockReturnValue({}),
-  mockFetchMergedPRsSince: vi.fn().mockResolvedValue([]),
+  mockFetchMergedPRsSince: vi.fn().mockResolvedValue({ prs: [], truncated: false }),
   mockFetchClosedPRsSince: vi.fn().mockResolvedValue([]),
   mockBuildStarFilter: vi.fn().mockReturnValue(undefined),
   // Identity by default (also re-installed in beforeEach after clearAllMocks);
@@ -154,6 +154,7 @@ vi.mock('../core/github-stats.js', () => ({
     monthlyOpenedCounts: {},
     dailyActivityCounts: {},
   }),
+  MERGED_LEDGER_TRUNCATED_MESSAGE: 'merged ledger truncated',
   fetchMergedPRsSince: (...args: unknown[]) => mockFetchMergedPRsSince(...args),
   fetchClosedPRsSince: (...args: unknown[]) => mockFetchClosedPRsSince(...args),
 }));
@@ -943,7 +944,7 @@ describe('fetchDashboardData', () => {
     mockFetchUserMergedPRCounts.mockResolvedValue(makePRCountsResult());
     mockFetchUserClosedPRCounts.mockResolvedValue(makePRCountsResult());
     mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], lookupFailures: 0, warnings: [] });
-    mockFetchMergedPRsSince.mockResolvedValue([]);
+    mockFetchMergedPRsSince.mockResolvedValue({ prs: [], truncated: false });
     mockFetchClosedPRsSince.mockResolvedValue([]);
 
     // generateDigest returns a valid digest and setLastDigest stores it
@@ -1017,6 +1018,28 @@ describe('fetchDashboardData', () => {
       await fetchDashboardData('test-token');
 
       expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBe('2026-06-15T00:00:00Z');
+    });
+
+    it('stores nothing and names the truncation on the banner when the gap fetch is truncated (#1924)', async () => {
+      mockGetState.mockReturnValue(makeDefaultState({ lastDigest: null }));
+      mockGetMergedPRWatermark.mockReturnValue('2026-06-15T00:00:00Z');
+      mockFetchMergedPRsSince.mockResolvedValue({ prs: [], truncated: true });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(mockAddMergedPRs).toHaveBeenCalledWith([]);
+      expect(result.partialFailures).toContain('merged ledger truncated');
+    });
+
+    it('stores nothing when the gap fetch fails, so the watermark stays for the next refresh (#1924)', async () => {
+      mockGetState.mockReturnValue(makeDefaultState({ lastDigest: null }));
+      mockGetMergedPRWatermark.mockReturnValue('2026-06-15T00:00:00Z');
+      mockFetchMergedPRsSince.mockRejectedValue(new Error('search down'));
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(mockAddMergedPRs).toHaveBeenCalledWith([]);
+      expect(result.partialFailures).toContain('fetch merged PRs for storage');
     });
 
     it('does not force a backfill when there is no known count yet (no digest)', async () => {
@@ -1422,9 +1445,10 @@ describe('fetchDashboardData', () => {
     mockAddMergedPRs.mockImplementation(() => {
       throw new Error('merged storage failed');
     });
-    mockFetchMergedPRsSince.mockResolvedValue([
-      { url: 'https://github.com/a/b/pull/1', title: 'New merged', mergedAt: '2026-01-01T00:00:00Z' },
-    ]);
+    mockFetchMergedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [{ url: 'https://github.com/a/b/pull/1', title: 'New merged', mergedAt: '2026-01-01T00:00:00Z' }],
+    });
     mockFetchClosedPRsSince.mockResolvedValue([
       { url: 'https://github.com/a/b/pull/2', title: 'New closed', closedAt: '2026-01-02T00:00:00Z' },
     ]);
@@ -1462,14 +1486,17 @@ describe('fetchDashboardData', () => {
   // ── outcome ledger threading (#1461) ─────────────────────────────────
 
   it('passes openedAt through to addMergedPRs/addClosedPRs (#1461)', async () => {
-    mockFetchMergedPRsSince.mockResolvedValue([
-      {
-        url: 'https://github.com/a/b/pull/1',
-        title: 'New merged',
-        mergedAt: '2026-01-10T00:00:00Z',
-        openedAt: '2026-01-01T00:00:00Z',
-      },
-    ]);
+    mockFetchMergedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [
+        {
+          url: 'https://github.com/a/b/pull/1',
+          title: 'New merged',
+          mergedAt: '2026-01-10T00:00:00Z',
+          openedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+    });
     mockFetchClosedPRsSince.mockResolvedValue([
       {
         url: 'https://github.com/a/b/pull/2',
@@ -1498,9 +1525,10 @@ describe('fetchDashboardData', () => {
       firstMaintainerResponseAt: '2026-01-03T09:00:00Z',
     });
     mockGetState.mockReturnValue(makeDefaultState({ lastDigest: makeMockDigest([previouslyOpen]) }));
-    mockFetchMergedPRsSince.mockResolvedValue([
-      { url: prUrl, title: 'New merged', mergedAt: '2026-01-10T00:00:00Z', openedAt: '2026-01-01T00:00:00Z' },
-    ]);
+    mockFetchMergedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [{ url: prUrl, title: 'New merged', mergedAt: '2026-01-10T00:00:00Z', openedAt: '2026-01-01T00:00:00Z' }],
+    });
 
     await fetchDashboardData('test-token');
 
@@ -1510,9 +1538,10 @@ describe('fetchDashboardData', () => {
   });
 
   it('leaves firstMaintainerResponseAt undefined when the PR never appeared in a digest (#1461)', async () => {
-    mockFetchMergedPRsSince.mockResolvedValue([
-      { url: 'https://github.com/a/b/pull/1', title: 'New merged', mergedAt: '2026-01-10T00:00:00Z' },
-    ]);
+    mockFetchMergedPRsSince.mockResolvedValue({
+      truncated: false,
+      prs: [{ url: 'https://github.com/a/b/pull/1', title: 'New merged', mergedAt: '2026-01-10T00:00:00Z' }],
+    });
 
     await fetchDashboardData('test-token');
 

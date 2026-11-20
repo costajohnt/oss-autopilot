@@ -76,6 +76,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       renameRepo: vi.fn(),
       tryReconcilePRCounts: vi.fn(),
       evictClosedPRs: vi.fn(),
+      getMergedPRWatermark: vi.fn(),
       setLastStrategyAt: vi.fn(),
       save: vi.fn(),
       isPRShelved: vi.fn(() => false),
@@ -95,6 +96,10 @@ vi.mock('../core/index.js', async (importOriginal) => {
       reloadIfChanged: mockReloadIfChanged,
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
+    // The merged-ledger gap fetch (#1924) searches through this client.
+    getOctokit: () => ({
+      search: { issuesAndPullRequests: () => Promise.resolve({ data: { total_count: 0, items: [] } }) },
+    }),
     formatRelativeTime: vi.fn(() => '2 days ago'),
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,

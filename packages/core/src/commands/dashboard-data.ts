@@ -26,6 +26,8 @@ import {
   fetchMergedPRsSince,
   fetchClosedPRsSince,
   type RecentListTruncation,
+  MERGED_LEDGER_TRUNCATED_MESSAGE,
+  type PRsSinceResult,
 } from '../core/github-stats.js';
 import { parseGitHubUrl, issueRefKey } from '../core/urls.js';
 import {
@@ -327,6 +329,18 @@ function engagedScanLabels(
 }
 
 /**
+ * The rows of a merged-ledger gap fetch (#1924). A truncated fetch has none
+ * and goes on the partial-data banner, which names `ledger-backfill`.
+ */
+function mergedGapRows(gap: PRsSinceResult<StoredMergedPR>, partialFailures: string[]): StoredMergedPR[] {
+  if (gap.truncated) {
+    partialFailures.push(MERGED_LEDGER_TRUNCATED_MESSAGE);
+    warn(MODULE, MERGED_LEDGER_TRUNCATED_MESSAGE);
+  }
+  return gap.prs;
+}
+
+/**
  * Fetch fresh dashboard data from GitHub.
  * Returns the digest and commented issues, updating state as a side effect.
  * Throws if the fetch fails entirely (caller should fall back to cached data).
@@ -356,10 +370,10 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   // their backfill in practice, so only merged needs the guard.
   const storedMergedCount = stateManager.getMergedPRs().length;
   const knownMergedAllTime = stateManager.getState().lastDigest?.summary?.totalMergedAllTime ?? 0;
-  // A full backfill can only ever return up to fetchMergedPRsSince's pagination
-  // cap (MAX_PAGINATION_PAGES * 100 = 300). Stop forcing one once the ledger has
-  // reached that ceiling, so a contributor whose star-filtered all-time count
-  // legitimately exceeds 300 doesn't trigger a full refetch on every poll.
+  // Stop forcing one once the ledger has 300 entries, so a contributor whose
+  // star-filtered all-time count legitimately exceeds the ledger doesn't
+  // trigger a full refetch on every poll. Past that, the daily run reports a
+  // short ledger and `ledger-backfill` fills it (#1924).
   const MERGED_BACKFILL_CEILING = 300;
   const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < MERGED_BACKFILL_CEILING;
   const mergedFetchSince = mergedNeedsBackfill ? undefined : watermark;
@@ -392,7 +406,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     recentlyMergedPRs,
     mergedResult,
     closedResult,
-    newMergedPRs,
+    mergedGap,
     newClosedPRs,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
@@ -408,13 +422,17 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     prMonitor
       .fetchUserClosedPRCounts(starFilter)
       .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>())),
+    // The same gap fetch the daily run uses (#1924). Nothing else here adds
+    // merged rows, so a failed or truncated fetch leaves the watermark alone.
     fetchMergedPRsSince(octokit, config, mergedFetchSince).catch(
-      trackingCatch('fetch merged PRs for storage', [] as StoredMergedPR[]),
+      trackingCatch('fetch merged PRs for storage', { prs: [] as StoredMergedPR[], truncated: false }),
     ),
     fetchClosedPRsSince(octokit, config, closedWatermark).catch(
       trackingCatch('fetch closed PRs for storage', [] as StoredClosedPR[]),
     ),
   ]);
+
+  const newMergedPRs = mergedGapRows(mergedGap, partialFailures);
 
   // Issue conversations run after the PR lists: the engaged set (#1862)
   // needs the open, recently closed and recently merged PRs. The fetch has
