@@ -4,14 +4,14 @@
  *
  * The Gist path has a real contention suite (gist-state-store.concurrency.test.ts)
  * pinning the 412/ETag retry bound; this file is its local-mode counterpart.
- * It pins the INTENDED semantics of the current design — optimistic mtime
+ * It pins the INTENDED semantics of the current design — optimistic file-identity
  * compare-and-swap, NOT serialization:
  *
  * - `saveState()` (state-persistence.ts) holds the advisory `wx`-flag lockfile
  *   only for the duration of the physical write. The CAS check (expected vs.
- *   on-disk `mtimeMs`) runs inside that lock, but no lock is held across a
+ *   on-disk mtime, inode and size) runs inside that lock, but no lock is held across a
  *   caller's load → mutate → save window.
- * - `StateManager.save()` passes `lastLoadedMtimeMs` as the CAS baseline and
+ * - `StateManager.save()` passes `lastLoadedFileId` as the CAS baseline and
  *   propagates `ConcurrencyError` on mismatch (unless the caller opts into
  *   `allowReloadAndLoseMutation`).
  * - The documented recovery pattern is reload-reapply: catch
@@ -98,7 +98,7 @@ function statePath(): string {
  */
 function seedStateFile(): number {
   const seeder = new StateManager(false);
-  seeder.save(); // first write: lastLoadedMtimeMs is 0, so CAS is bypassed
+  seeder.save(); // first write: lastLoadedFileId is null, so CAS is bypassed
   const pastSeconds = Math.floor(Date.now() / 1000) - 10;
   fs.utimesSync(statePath(), pastSeconds, pastSeconds);
   return pastSeconds * 1000;
@@ -191,18 +191,12 @@ describe('local state contention: CLI + dashboard on one state.json (#1378)', ()
     expect(disk.config.dismissedIssues?.[ISSUE_URL]).toBeUndefined();
   });
 
-  // (d) mtime-granularity blind spot. The CAS compares statSync().mtimeMs
-  //     values for exact equality, so it can only detect an external write
-  //     whose mtime differs from the baseline. Node reports mtimeMs with the
-  //     filesystem's native precision (sub-millisecond fractional values on
-  //     APFS and ext4 — a 200-iteration back-to-back-write probe on APFS
-  //     produced 0 collisions — but whole seconds on HFS+/FAT). If two
-  //     writes land within the same mtime quantum, the CAS admits a silent
-  //     lost update. This test demonstrates that blind spot deterministically
-  //     by forcing the external write's mtime back to the baseline value,
-  //     standing in for a same-quantum collision; a probabilistic same-ms
-  //     race would be flaky, so the limitation is pinned this way instead.
-  it('documents the CAS blind spot: an external write with an identical mtime is silently overwritten', () => {
+  // (d) mtime-granularity collision. Two writes in one mtime quantum (whole
+  //     seconds on HFS+/FAT) leave mtimeMs unchanged. The CAS also compares
+  //     inode and size (#2006), so a same-mtime external write is still
+  //     refused. Simulated deterministically by forcing the external write's
+  //     mtime back to the baseline value.
+  it('refuses to overwrite an external write whose mtime matches the baseline (#2006)', () => {
     const pinnedMtimeMs = seedStateFile();
 
     // Writer loads the pinned baseline.
@@ -215,18 +209,9 @@ describe('local state contention: CLI + dashboard on one state.json (#1378)', ()
     fs.writeFileSync(statePath(), JSON.stringify(external, null, 2), { mode: 0o600 });
     fs.utimesSync(statePath(), pinnedMtimeMs / 1000, pinnedMtimeMs / 1000);
 
-    // The CAS cannot tell the file changed: expected === actual mtimeMs.
-    // The save succeeds and the external write is silently lost.
-    //
-    // NOTE: these assertions pin the LIMITATION of the current mtime-equality
-    // CAS, not a desirable contract. If a future implementation adds a second
-    // discriminator (content hash, version counter) that detects same-mtime
-    // collisions, this save SHOULD start throwing ConcurrencyError — invert
-    // these assertions in that change; the blind spot being closed is an
-    // improvement, not a regression.
-    expect(() => writer.shelvePR(URL_A)).not.toThrow();
+    expect(() => writer.shelvePR(URL_A)).toThrow(ConcurrencyError);
 
     const disk = readDiskState();
-    expect(disk.config.shelvedPRUrls).toEqual([URL_A]); // URL_B is gone
+    expect(disk.config.shelvedPRUrls).toEqual([URL_B]);
   });
 });

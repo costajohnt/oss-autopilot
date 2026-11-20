@@ -1138,7 +1138,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
   it('saves normally when no external write happened between load and save', () => {
     const sm = new StateManager(false);
     sm.updateConfig({ githubUsername: 'alice' });
-    sm.save(); // seeds the file + lastLoadedMtimeMs
+    sm.save(); // seeds the file + lastLoadedFileId
 
     // In-process mutate + save again — mtime still matches because we
     // were the last writer.
@@ -1209,7 +1209,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
 
     // We hold alice's content. Saving it must not silently replace bob's write.
     expect(loaded.state.config.githubUsername).toBe('alice');
-    expect(() => saveState(loaded.state, loaded.mtimeMs)).toThrow(ConcurrencyError);
+    expect(() => saveState(loaded.state, loaded.fileId)).toThrow(ConcurrencyError);
     expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('bob-wrote-mid-load');
   });
 
@@ -1279,7 +1279,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('carol-wrote-mid-reload');
   });
 
-  it('saveState bypasses the check when expectedMtimeMs is null (first write path)', () => {
+  it('saveState bypasses the check when the expected identity is null (first write path)', () => {
     const fresh = createFreshState();
     // No file on disk; passing null means "skip CAS" — should succeed.
     expect(() => saveState(fresh, null)).not.toThrow();
@@ -1287,14 +1287,14 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(fs.existsSync(statePath)).toBe(true);
   });
 
-  it('saveState with matching expectedMtimeMs succeeds, with mismatching throws', async () => {
+  it('saveState with a matching identity succeeds, with a mismatching one throws', async () => {
     const fresh = createFreshState();
-    const firstMtime = saveState(fresh, null);
-    expect(firstMtime).toBeGreaterThan(0);
+    const firstId = saveState(fresh, null);
+    expect(firstId.mtimeMs).toBeGreaterThan(0);
 
-    // Matching mtime — writes fine.
-    const secondMtime = saveState(fresh, firstMtime);
-    expect(secondMtime).toBeGreaterThan(0);
+    // Matching identity — writes fine.
+    const secondId = saveState(fresh, firstId);
+    expect(secondId.mtimeMs).toBeGreaterThan(0);
 
     // Force the on-disk mtime forward without going through saveState.
     const statePath = path.join(mockTmpDir, 'state.json');
@@ -1303,7 +1303,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     fs.utimesSync(statePath, future, future);
 
     // Now saveState with the stale mtime must throw.
-    expect(() => saveState(fresh, secondMtime)).toThrow(ConcurrencyError);
+    expect(() => saveState(fresh, secondId)).toThrow(ConcurrencyError);
   });
 
   it('allowReloadAndLoseMutation downgrades ConcurrencyError to a reload warning', async () => {

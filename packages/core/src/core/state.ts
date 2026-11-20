@@ -33,6 +33,7 @@ import {
   assertNotNewerVersion,
   warnMalformedWorkClaims,
   type LoadRecoveryInfo,
+  type StateFileIdentity,
 } from './state-persistence.js';
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
@@ -257,7 +258,7 @@ export interface StalenessInfo {
 export class StateManager {
   protected state: AgentState;
   protected inMemoryOnly: boolean;
-  private lastLoadedMtimeMs: number = 0;
+  private lastLoadedFileId: StateFileIdentity | null = null;
   private _batching = false;
   private _batchDirty = false;
   protected gistStore: GistStateStore | null = null;
@@ -283,7 +284,7 @@ export class StateManager {
     } else {
       const result = loadState();
       this.state = result.state;
-      this.lastLoadedMtimeMs = result.mtimeMs;
+      this.lastLoadedFileId = result.fileId;
       this.loadRecovery = result.recovery ?? null;
       this.tryReconcilePRCounts();
     }
@@ -483,7 +484,7 @@ export class StateManager {
 
     // Local file mode with optimistic compare-and-swap.
     try {
-      this.lastLoadedMtimeMs = saveState(this.state, this.lastLoadedMtimeMs);
+      this.lastLoadedFileId = saveState(this.state, this.lastLoadedFileId);
     } catch (err) {
       // A lock timeout is no external write: there is nothing to reload, and the mutation must not be dropped.
       const isExternalWrite = err instanceof ConcurrencyError && !(err instanceof StateLockTimeoutError);
@@ -647,10 +648,10 @@ export class StateManager {
   reloadIfChanged(): boolean {
     if (this.inMemoryOnly) return false;
     if (this.gistStore) return false; // Gist is the source of truth; skip local file reload
-    const result = reloadStateIfChanged(this.lastLoadedMtimeMs);
+    const result = reloadStateIfChanged(this.lastLoadedFileId);
     if (!result) return false;
     this.state = result.state;
-    this.lastLoadedMtimeMs = result.mtimeMs;
+    this.lastLoadedFileId = result.fileId;
     this.loadRecovery = result.recovery ?? null;
     this.tryReconcilePRCounts();
     return true;

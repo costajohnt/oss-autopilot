@@ -512,12 +512,39 @@ export interface LoadRecoveryInfo {
 }
 
 /**
- * Result of {@link loadState}: the loaded state, the file's mtime for change
- * detection, and (only when the main file was rejected) recovery details.
+ * What saveState's compare-and-swap and reloadStateIfChanged compare (#2006).
+ * mtime alone misses two writes in one timestamp quantum (whole seconds on
+ * FAT and some network or synced mounts). Every write here is an atomic
+ * rename, so it lands on a new inode; size catches in-place writers.
+ * Where `ino` is always 0 (some Windows file systems) it compares equal on
+ * both sides and the check falls back to mtime + size.
+ */
+export interface StateFileIdentity {
+  mtimeMs: number;
+  ino: number;
+  size: number;
+}
+
+/** A stat that failed. NaN never compares equal, so it always reads as "changed". */
+const UNKNOWN_FILE_IDENTITY: StateFileIdentity = { mtimeMs: NaN, ino: NaN, size: NaN };
+
+function identityOf(stats: fs.Stats): StateFileIdentity {
+  return { mtimeMs: stats.mtimeMs, ino: stats.ino, size: stats.size };
+}
+
+function isSameIdentity(a: StateFileIdentity, b: StateFileIdentity): boolean {
+  return a.mtimeMs === b.mtimeMs && a.ino === b.ino && a.size === b.size;
+}
+
+/**
+ * Result of {@link loadState}: the loaded state, the file's identity for
+ * change detection, and (only when the main file was rejected) recovery
+ * details. `fileId` is null when there is no baseline to compare against:
+ * no state file yet, or fresh state that replaces a rejected file.
  */
 export interface LoadStateResult {
   state: AgentState;
-  mtimeMs: number;
+  fileId: StateFileIdentity | null;
   recovery?: LoadRecoveryInfo;
 }
 
@@ -613,7 +640,7 @@ function rethrowUnlessCorrupt(error: unknown): void {
  * Load state from file, or create initial state if none exists.
  * If the main state file is corrupted, attempts to restore from the most recent backup.
  * Performs migration from legacy ./data/ location if needed.
- * @returns Object with the loaded state, the file's mtime (for change detection),
+ * @returns Object with the loaded state, the file's identity (for change detection),
  *   and recovery details when the main file was rejected.
  * @throws Error when the state file exists but cannot be read due to a file
  *   system error (EACCES/EPERM get guidance, others are rethrown as they are)
@@ -628,13 +655,13 @@ export function loadState(): LoadStateResult {
 
   try {
     if (fs.existsSync(statePath)) {
-      // Baseline mtime for saveState's compare-and-swap. Taken BEFORE the read:
+      // Baseline identity for saveState's compare-and-swap. Taken BEFORE the read:
       // if another process writes in between, we end up with a baseline older
       // than our content, and the next save fails with a ConcurrencyError the
       // caller can recover from by reloading. Taken after the read, the same
-      // race pairs stale content with the new mtime and the save silently
+      // race pairs stale content with the new identity and the save silently
       // overwrites the other writer.
-      let mtimeMs = safeGetMtimeMs(statePath);
+      let fileId = statFileIdentity(statePath);
       const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
       assertNotNewerVersion(raw, 'state file');
@@ -674,18 +701,17 @@ export function loadState(): LoadStateResult {
 
         const restoredState = tryRestoreFromBackup();
         if (restoredState) {
-          const mtimeMs = safeGetMtimeMs(statePath);
           const recovery: LoadRecoveryInfo = { source: 'backup', rejectedPath, reason };
-          return { state: restoredState, mtimeMs, recovery };
+          return { state: restoredState, fileId: statFileIdentity(statePath), recovery };
         }
         warn(MODULE, 'No valid backup found, starting fresh');
-        return { state: createFreshState(), mtimeMs: 0, recovery: { source: 'fresh', rejectedPath, reason } };
+        return { state: createFreshState(), fileId: null, recovery: { source: 'fresh', rejectedPath, reason } };
       }
 
       // Save migrated state only after validation succeeds
       if (wasMigrated) {
         atomicWriteFileSync(statePath, serializeState(parsed.data), 0o600);
-        mtimeMs = safeGetMtimeMs(statePath); // our own write: what we hold is what is on disk
+        fileId = statFileIdentity(statePath); // our own write: what we hold is what is on disk
         debug(MODULE, 'Migrated and validated state saved');
       }
 
@@ -700,7 +726,7 @@ export function loadState(): LoadStateResult {
       // Log appropriate message based on version
       const repoCount = Object.keys(state.repoScores).length;
       debug(MODULE, `Loaded state v${state.version}: ${repoCount} repo scores tracked`);
-      return { state, mtimeMs };
+      return { state, fileId };
     }
   } catch (error) {
     rethrowUnlessCorrupt(error);
@@ -716,27 +742,28 @@ export function loadState(): LoadStateResult {
 
     const restoredState = tryRestoreFromBackup();
     if (restoredState) {
-      const mtimeMs = safeGetMtimeMs(statePath);
       const recovery: LoadRecoveryInfo = { source: 'backup', rejectedPath, reason };
-      return { state: restoredState, mtimeMs, recovery };
+      return { state: restoredState, fileId: statFileIdentity(statePath), recovery };
     }
     warn(MODULE, 'No valid backup found, starting fresh');
-    return { state: createFreshState(), mtimeMs: 0, recovery: { source: 'fresh', rejectedPath, reason } };
+    return { state: createFreshState(), fileId: null, recovery: { source: 'fresh', rejectedPath, reason } };
   }
 
   debug(MODULE, 'No existing state found, initializing...');
-  return { state: createFreshState(), mtimeMs: 0 };
+  return { state: createFreshState(), fileId: null };
 }
 
 /**
- * Safely read a file's mtime. Returns 0 if the stat call fails.
+ * Read a file's identity. A failed stat returns an identity that matches
+ * nothing, so the next save reports a conflict and the next reload re-reads,
+ * rather than a 0 that would switch the compare-and-swap off (#2006).
  */
-function safeGetMtimeMs(filePath: string): number {
+function statFileIdentity(filePath: string): StateFileIdentity {
   try {
-    return fs.statSync(filePath).mtimeMs;
+    return identityOf(fs.statSync(filePath));
   } catch (error) {
-    debug(MODULE, `Could not read state file mtime (reload detection will always trigger): ${errorMessage(error)}`);
-    return 0;
+    debug(MODULE, `Could not stat state file (treating it as changed): ${errorMessage(error)}`);
+    return UNKNOWN_FILE_IDENTITY;
   }
 }
 
@@ -769,21 +796,22 @@ function cleanupBackups(): void {
  * Persist state to disk, creating a timestamped backup of the previous
  * state file first. Retains at most 10 backup files.
  *
- * When `expectedMtimeMs` is provided (non-null, non-zero), implements
- * optimistic compare-and-swap: if the on-disk file has been modified since
- * the caller last loaded it, throws `ConcurrencyError` instead of
- * overwriting. This prevents the classic read-modify-write lost-update
- * race across processes (see issue #1030). Pass `null` / `0` to disable
- * the check (first write, or when the caller has already reloaded).
+ * When `expected` is provided (non-null), implements optimistic
+ * compare-and-swap: if the on-disk file's identity (mtime, inode, size)
+ * differs from the one the caller last loaded or saved, throws
+ * `ConcurrencyError` instead of overwriting. This prevents the classic
+ * read-modify-write lost-update race across processes (see issues #1030,
+ * #2006). Pass `null` to disable the check (no file at load, or fresh
+ * state replacing a rejected file).
  *
  * The check runs *inside* the advisory lock so the compare-and-swap is
  * atomic with respect to the write.
  *
- * @returns The file's mtime after writing (for change detection).
- * @throws ConcurrencyError when `expectedMtimeMs` is provided and the
- *   on-disk mtime no longer matches.
+ * @returns The file's identity after writing (for change detection).
+ * @throws ConcurrencyError when `expected` is provided and the on-disk
+ *   identity no longer matches, or the file cannot be stat'ed.
  */
-export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number | null = null): number {
+export function saveState(state: Readonly<AgentState>, expected: StateFileIdentity | null = null): StateFileIdentity {
   const statePath = getStatePath();
   const lockPath = statePath + '.lock';
   const backupDir = getBackupDir();
@@ -795,12 +823,12 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
     assertDiskStateNotNewer(statePath);
 
     // Compare-and-swap: reject the write if the file changed externally
-    // between the caller's last load and now. Zero/null bypasses the
-    // check for first writes and Gist-mode local-cache paths.
-    if (expectedMtimeMs !== null && expectedMtimeMs > 0 && fs.existsSync(statePath)) {
-      const currentMtimeMs = safeGetMtimeMs(statePath);
-      if (currentMtimeMs !== expectedMtimeMs) {
-        throw new ConcurrencyError(expectedMtimeMs, currentMtimeMs);
+    // between the caller's last load and now. Null bypasses the check:
+    // there was no file to take a baseline from.
+    if (expected !== null && fs.existsSync(statePath)) {
+      const current = statFileIdentity(statePath);
+      if (!isSameIdentity(current, expected)) {
+        throw new ConcurrencyError(expected.mtimeMs, current.mtimeMs);
       }
     }
 
@@ -825,9 +853,9 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
     // Ownership is re-checked first: a takeover since acquiring must not end in two writers.
     assertLockHeld(lockPath, held);
     atomicWriteFileSync(statePath, serializeState(state), 0o600);
-    const mtimeMs = safeGetMtimeMs(statePath);
+    const fileId = statFileIdentity(statePath);
     debug(MODULE, 'State saved successfully');
-    return mtimeMs;
+    return fileId;
   } finally {
     releaseLock(lockPath, held);
   }
@@ -858,42 +886,36 @@ function loadStateForReload(): LoadStateResult | null {
 
 /**
  * Re-read state from disk if the file has been modified since the last load/save.
- * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
- * @returns The new state and mtime if reloaded, or null if no change detected
+ * Compares file identity (single statSync call) to avoid unnecessary JSON parsing;
+ * a null baseline always reloads.
+ * @returns The new state and identity if reloaded, or null if no change detected
  *   (or the file is gone).
  * @throws What {@link loadState} throws, after one retry for transient
  *   resource errors: a newer-version state file or a persistent file system
  *   error must reach the caller, not be served as stale state.
  */
-export function reloadStateIfChanged(lastLoadedMtimeMs: number): LoadStateResult | null {
+export function reloadStateIfChanged(lastLoaded: StateFileIdentity | null): LoadStateResult | null {
   const statePath = getStatePath();
-  let currentMtimeMs: number;
+  let current: StateFileIdentity;
   try {
-    currentMtimeMs = fs.statSync(statePath).mtimeMs;
+    current = identityOf(fs.statSync(statePath));
   } catch (error) {
     if (errnoCode(error) !== 'ENOENT') throw error;
     // File deleted: benign, keep the current in-memory state.
     warn(MODULE, `Failed to reload state from disk: ${errorMessage(error)}`);
     return null;
   }
-  if (currentMtimeMs === lastLoadedMtimeMs) return null;
+  if (lastLoaded !== null && isSameIdentity(current, lastLoaded)) return null;
   const result = loadStateForReload();
   if (result === null) return null;
   // Re-stat only on the recovery paths. There loadState rewrote the file
-  // itself (backup restore) or returned 0 (fresh state), and a current mtime
-  // stops a reload on every request. On the clean path the baseline was
-  // taken BEFORE the read on purpose: replacing it with a later stat would
-  // pair the content we hold with a newer writer's mtime, and the next save
+  // itself (backup restore) or returned null (fresh state), and a current
+  // identity stops a reload on every request. On the clean path the baseline
+  // was taken BEFORE the read on purpose: replacing it with a later stat would
+  // pair the content we hold with a newer writer's identity, and the next save
   // would overwrite that writer without a ConcurrencyError. A baseline that
-  // is merely old costs one more reload, which converges.
-  if (result.recovery) {
-    try {
-      result.mtimeMs = fs.statSync(statePath).mtimeMs;
-    } catch (err) {
-      // If file was just loaded, stat should not fail. If it does,
-      // next reloadIfChanged() will simply trigger another reload.
-      debug(MODULE, 'Could not re-read mtime after reload (will retry next cycle)', err);
-    }
-  }
+  // is merely old costs one more reload, which converges. A failed stat here
+  // just triggers another reload next cycle.
+  if (result.recovery) result.fileId = statFileIdentity(statePath);
   return result;
 }
