@@ -271,6 +271,15 @@ vi.mock('./commands/guidelines.js', () => ({
   runFetchCorpus: mockFetchCorpus,
 }));
 
+const mockReadDraft = vi.fn();
+const mockRunDraftPath = vi.fn();
+const mockRunDraftShow = vi.fn();
+vi.mock('./commands/draft.js', () => ({
+  readDraft: mockReadDraft,
+  runDraftPath: mockRunDraftPath,
+  runDraftShow: mockRunDraftShow,
+}));
+
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { commands } from './cli-registry.js';
@@ -1436,6 +1445,123 @@ describe('post command', () => {
     );
 
     expect(mockRunPost).toHaveBeenCalledWith({ url: PR_URL, message: 'from stdin' });
+  });
+});
+
+describe('approved text from a draft file (#1930)', () => {
+  const DRAFT = '/home/u/.oss-autopilot/tmp/reply.md';
+  const SHA = 'a'.repeat(64);
+
+  it('post --body-file posts the file text untrimmed and forwards --expect-sha256', async () => {
+    mockReadDraft.mockReturnValue({ content: 'from file\n' });
+    mockRunPost.mockResolvedValue({ commentUrl: `${PR_URL}#issuecomment-6` });
+
+    await buildProgram('post').parseAsync([
+      'node',
+      'cli',
+      'post',
+      PR_URL,
+      'ignored',
+      '--body-file',
+      DRAFT,
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockReadDraft).toHaveBeenCalledWith(DRAFT);
+    expect(mockRunPost).toHaveBeenCalledWith({ url: PR_URL, message: 'from file\n', expectSha256: SHA });
+  });
+
+  it('post reports an unreadable draft and never calls runPost', async () => {
+    mockReadDraft.mockImplementation(() => {
+      throw new Error('Refusing to read /elsewhere/x: drafts must be files directly inside the draft directory');
+    });
+
+    await expect(
+      buildProgram('post').parseAsync(['node', 'cli', 'post', PR_URL, '--body-file', '/elsewhere/x', '--json']),
+    ).rejects.toThrow('process.exit called');
+
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('claim --body-file uses the file text as the claim message', async () => {
+    mockReadDraft.mockReturnValue({ content: 'I can take this' });
+    mockRunClaim.mockResolvedValue({ commentUrl: `${ISSUE_URL}#issuecomment-7` });
+
+    await buildProgram('claim').parseAsync([
+      'node',
+      'cli',
+      'claim',
+      ISSUE_URL,
+      '--body-file',
+      DRAFT,
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockRunClaim).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, message: 'I can take this', expectSha256: SHA });
+  });
+
+  it('guidelines store --from-file wins over --content and forwards --expect-sha256', async () => {
+    mockReadDraft.mockReturnValue({ content: '# rules\n' });
+    mockGuidelinesStore.mockResolvedValue({ repo: 'octo/alpha', byteSize: 8 });
+
+    await buildProgram('guidelines').parseAsync([
+      'node',
+      'cli',
+      'guidelines',
+      'store',
+      '--repo',
+      'octo/alpha',
+      '--from-file',
+      DRAFT,
+      '--content',
+      'ignored',
+      '--reviewed',
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({
+      repo: 'octo/alpha',
+      content: '# rules\n',
+      reviewed: true,
+      expectSha256: SHA,
+    });
+  });
+});
+
+describe('draft command (#1930)', () => {
+  const DRAFT = '/home/u/.oss-autopilot/tmp/reply.md';
+
+  it('is local-only: it needs no GitHub token', () => {
+    expect(commands.find((c) => c.name === 'draft')?.localOnly).toBe(true);
+  });
+
+  it('path prints the path, or the envelope with --json', async () => {
+    const data = { path: DRAFT, dir: '/home/u/.oss-autopilot/tmp' };
+    mockRunDraftPath.mockReturnValue(data);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'path', 'reply.md']);
+    expect(mockRunDraftPath).toHaveBeenCalledWith({ name: 'reply.md' });
+    expect(consoleLogSpy).toHaveBeenCalledWith(DRAFT);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'path', 'reply.md', '--json']);
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+
+  it('show prints the text and its hash, or the envelope with --json', async () => {
+    const data = { path: DRAFT, content: 'hello', sha256: 'b'.repeat(64), byteSize: 5, fenced: false };
+    mockRunDraftShow.mockReturnValue(data);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'show', DRAFT]);
+    expect(mockRunDraftShow).toHaveBeenCalledWith({ file: DRAFT, untrusted: false });
+    expect(consoleLogSpy).toHaveBeenCalledWith('hello');
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\nsha256: ${'b'.repeat(64)}`);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'show', DRAFT, '--untrusted', '--json']);
+    expect(mockRunDraftShow).toHaveBeenLastCalledWith({ file: DRAFT, untrusted: true });
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
   });
 });
 

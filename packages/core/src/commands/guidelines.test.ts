@@ -229,6 +229,25 @@ describe('runGuidelinesStore review gates (#1929)', () => {
     expect(mocks.markGuidelinesReviewed).not.toHaveBeenCalled();
   });
 
+  it('refuses text that does not match --expect-sha256 and stores nothing (#1930)', async () => {
+    await expect(
+      runGuidelinesStore({
+        repo: 'owner/repo',
+        content: '# rules, changed',
+        reviewed: true,
+        expectSha256: SHA_OF_RULES,
+      }),
+    ).rejects.toThrow(/does not match the approved text/);
+    expect(mockSetGuidelines).not.toHaveBeenCalled();
+    expect(mocks.markGuidelinesReviewed).not.toHaveBeenCalled();
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('stores text that matches --expect-sha256 (#1930)', async () => {
+    await runGuidelinesStore({ repo: 'owner/repo', content: '# rules', reviewed: true, expectSha256: SHA_OF_RULES });
+    expect(mockSetGuidelines).toHaveBeenCalledWith('owner/repo', '# rules');
+  });
+
   it('records a review stamp bound to the stored text', async () => {
     await runGuidelinesStore({ repo: 'owner/repo', content: '# rules', reviewed: true });
     expect(mocks.markGuidelinesReviewed).toHaveBeenCalledWith(

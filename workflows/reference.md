@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `pr-preflight`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
+Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `draft`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `pr-preflight`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -73,8 +73,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 # Calibration + outcome report from the ledger (markdown; --json for the structure). Local only
 <prefix> eval [--json]
 
-# Claim an issue with optional message
-<prefix> claim <issue-url> [message...] --json
+# Claim an issue with the default message, or with an approved draft (see "Draft Files" below)
+<prefix> claim <issue-url> --json
+<prefix> claim <issue-url> --body-file <draft-path> --expect-sha256 <sha256> --json
 
 # Parse an issue list from a file
 <prefix> parse-issue-list <path> --json
@@ -98,9 +99,10 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 # Read stored guidelines for a repo
 <prefix> guidelines view --repo <owner/repo> --json
 
-# Persist guidelines the user has read and approved (reads stdin when --content omitted).
+# Persist guidelines the user has read and approved, from a draft file (see "Draft Files" below).
 # --reviewed is required and asserts that approval; refused in an unattended run (#1929).
-<prefix> guidelines store --repo <owner/repo> --reviewed --json < <file>
+# --expect-sha256 fails the store unless the file still holds the text the user saw (#1930).
+<prefix> guidelines store --repo <owner/repo> --from-file <draft-path> --expect-sha256 <sha256> --reviewed --json
 
 # Tombstone the guidelines file
 <prefix> guidelines reset --repo <owner/repo> --json
@@ -114,6 +116,30 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 
 The full extraction workflow lives at [`workflows/extract-learnings.md`](extract-learnings.md). Guidelines require Gist persistence; standalone-mode users see `'local-unavailable'` storage mode.
 
+### Draft Files (#1930)
+
+Text that will be posted or stored under the user's name (a comment, a PR body, a commit message, guidelines) is staged in the tool's own draft directory, `~/.oss-autopilot/tmp` (owner-only), never under `/tmp`: a shared directory lets another local user pre-create or swap the file between the user's approval and the command that reads it.
+
+```bash
+# Path for a draft file name (letters, digits, ".", "_", "-"); creates the directory with mode 0700.
+# Without --json it prints only the path, so it fits in "$(...)".
+<prefix> draft path <name> --json
+
+# Read a draft once: data.content is the text to show the user, data.sha256 is its hash.
+# Add --untrusted when the text was distilled from other people's writing (guideline proposals):
+# content then comes back inside a <github-content> fence, with & and < written as &amp; and &lt;.
+<prefix> draft show <draft-path> [--untrusted] --json
+```
+
+The flow, every time:
+
+1. Get the path from `draft path <name>` and write the text there **with the Write tool** (not `echo`, not a heredoc).
+2. Run `draft show <draft-path> --json` and show the user `data.content`, complete. What you show comes from that output, not from your memory of what you wrote.
+3. After the user approves, run the command with `--body-file` (or `--from-file`) and `--expect-sha256 <data.sha256>`. If the file changed since step 2, the command fails before posting or storing anything: go back to step 2.
+4. After an edit, write the file again and repeat from step 2. Delete the draft once the command succeeds (`rm -- "<draft-path>"`, that exact path).
+
+`--body-file` and `--from-file` only read regular files directly inside the draft directory that you own and that are not group- or world-writable; symlinks are refused.
+
 ### PR Management
 
 ```bash
@@ -126,8 +152,9 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # View comments on a PR
 <prefix> comments <pr-url> --json [--bots]
 
-# Post a comment to an issue or PR
-<prefix> post <url> "message" --json
+# Post a comment to an issue or PR, from an approved draft file (see "Draft Files" below).
+# Never pass the message as a shell argument: backticks and $(...) in it would run as commands (#1930).
+<prefix> post <url> --body-file <draft-path> --expect-sha256 <sha256> --json
 
 # Move a PR between states (attention/waiting set a status override until
 # cleared; shelved hides it from the digest; auto clears back to computed)

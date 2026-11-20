@@ -101,6 +101,7 @@ const UNCHECKED = new Map<string, string>([
   // Keyed `cmd <command>` for commands without a Zod output schema.
   ['cmd guidelines', 'guidelines view/fetch-corpus/mark-extracted are goldens-only, no Zod schema'],
   ['cmd overnight', 'overnight run/record are goldens-only (report and push-prep have schemas and are checked)'],
+  ['cmd draft', 'draft path/show have no Zod schema; their output shapes are pinned in commands/draft.test.ts (#1930)'],
 ]);
 
 // `cli.bundle.cjs" status --json`, `<prefix> status --json`, or an inline `` `status --json` `` mention.

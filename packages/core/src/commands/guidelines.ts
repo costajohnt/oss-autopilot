@@ -25,6 +25,7 @@ import {
 import { ValidationError, assertAttended } from '../core/errors.js';
 import { fetchPRCommentBundlesBatch, type PRCommentBundle } from '../core/pr-comments-fetcher.js';
 import { warn } from '../core/logger.js';
+import { assertSha256 } from './draft.js';
 
 const MODULE = 'guidelines';
 
@@ -142,6 +143,8 @@ interface StoreOptions extends RepoOption {
    * stored on the model's say-so alone.
    */
   reviewed: boolean;
+  /** When set, refuse unless `content` hashes to it: the text the user approved via `draft show` (#1930). */
+  expectSha256?: string;
 }
 
 function sha256Hex(text: string): string {
@@ -226,6 +229,7 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   if (!options.content || options.content.length === 0) {
     throw new Error('Cannot store empty content. Use `guidelines reset` to delete a guidelines file.');
   }
+  assertSha256(options.content, options.expectSha256);
   const sm = getStateManager();
   // Throws GuidelinesNotAvailableError or GuidelinesTooLargeError on failure.
   const sha256 = sha256Hex(options.content);

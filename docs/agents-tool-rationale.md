@@ -38,7 +38,7 @@ agent's body instructs with is actually granted (#1377).
 - `learnings-extractor` — `mcp__...__guidelines-fetch-corpus`, `mcp__...__guidelines-get` (reads strangers' PR comments, so it gets two fetch tools and nothing else: no shell, no file tools, no question tool and no `guidelines-store`. It returns each proposal in its report; the main session writes the file and stores after the user approves, #1929).
 - `overnight-preparer` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep` (unattended: no question tool and no MCP tools; the plist deny list blocks git push and every gh write underneath it).
 - `pr-health-checker` — `Bash`, `Read`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`. (Reads config via the CLI `config --json`; the MCP config tool is a get-or-set mutator and is deliberately not granted.)
-- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files under `/tmp` and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
+- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files in the tool's draft directory, `~/.oss-autopilot/tmp`, and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
 - `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__guidelines-get` (local git/diff review).
 - `repo-evaluator` — `Bash`, `Read`, `Glob`, `AskUserQuestion`, `mcp__...__vet`, `mcp__...__repo-vet`, `mcp__...__status`.
 
