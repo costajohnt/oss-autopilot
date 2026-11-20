@@ -91,6 +91,29 @@ export interface CommitInfo {
   author?: string;
 }
 
+/** Dates and GitHub logins of a HEAD commit's author and committer, as either transport returns them. */
+export interface HeadCommitDates {
+  authorDate?: string | null;
+  committerDate?: string | null;
+  authorLogin?: string | null;
+  committerLogin?: string | null;
+}
+
+/**
+ * The date a HEAD commit reached the PR under (#1919): the committer date when
+ * the author also committed it (their own amend or rebase moved it while Git
+ * kept the old author date), the author date when someone else rewrote it (a
+ * maintainer's rebase is not the contributor addressing feedback). Either
+ * falls back to the other when missing. Same rule as `commitDateOf` in
+ * reviewed-prs.ts.
+ */
+export function headCommitDate(c: HeadCommitDates): string | undefined {
+  const login = c.authorLogin?.toLowerCase();
+  const isOwnRewrite = login !== undefined && c.committerLogin?.toLowerCase() === login;
+  const date = isOwnRewrite ? (c.committerDate ?? c.authorDate) : (c.authorDate ?? c.committerDate);
+  return date ?? undefined;
+}
+
 /**
  * Assemble a {@link FetchedPR} from normalized signals.
  *
