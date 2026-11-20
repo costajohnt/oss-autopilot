@@ -949,6 +949,8 @@ describe('loadState rejected-file preservation and recovery metadata (#1371)', (
     const loaded = loadState();
     expect(loaded.recovery).toBeUndefined();
     expect(loaded.state.config.githubUsername).toBe('newer');
+    // A digest PR with an unknown status counts as needing attention, not hidden.
+    expect(loaded.state.lastDigest?.needsAddressingPRs.map((pr) => pr.url)).toEqual([prUrl]);
 
     saveState(loaded.state, loaded.mtimeMs);
     const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));

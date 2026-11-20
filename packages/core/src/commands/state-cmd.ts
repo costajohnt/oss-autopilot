@@ -20,6 +20,8 @@ export interface InvalidUrlEntry {
 
 export interface StateShowOutput {
   persistence: 'local' | 'gist';
+  /** The stored mode, present only when it is one a newer release added (#2005); `persistence` is then `local`. */
+  storedPersistence?: string;
   gistId: string | null;
   gistDegraded: boolean;
   lastRunAt: string | undefined;
@@ -41,9 +43,11 @@ export interface StateUnlinkOutput {
 export async function runStateShow(options: { validate?: boolean } = {}): Promise<StateShowOutput> {
   const sm = getStateManager();
   const state = sm.getState();
+  const stored = state.config.persistence;
   const output: StateShowOutput = {
     // An unknown mode a newer release wrote runs as local (#2005).
-    persistence: state.config.persistence === 'gist' ? 'gist' : 'local',
+    persistence: stored === 'gist' ? 'gist' : 'local',
+    ...(stored && stored !== 'local' && stored !== 'gist' && { storedPersistence: stored }),
     gistId: state.gistId ?? null,
     gistDegraded: sm.isGistDegraded(),
     lastRunAt: state.lastRunAt,

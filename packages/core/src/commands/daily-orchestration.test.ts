@@ -133,7 +133,11 @@ vi.mock('../core/index.js', async (importOriginal) => {
       // the degraded scenarios.
       getGistHealth: vi.fn(() => {
         if (!mockIsGistMode()) {
-          return mockGetState()?.config?.persistence === 'gist'
+          const mode = mockGetState()?.config?.persistence;
+          if (mode !== undefined && !['local', 'gist'].includes(mode)) {
+            return { mode: 'local', degraded: { mode, cause: 'unknown-mode', recoverable: false } };
+          }
+          return mode === 'gist'
             ? { mode: 'local', degraded: { cause: 'configured-but-local', recoverable: true } }
             : { mode: 'local', degraded: null };
         }
@@ -1172,6 +1176,17 @@ describe('executeDailyCheck() — error resilience', () => {
 // ---------------------------------------------------------------------------
 // executeDailyCheck() — scout pass removal (#1458)
 // ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — persistence mode from a newer release (#2005)', () => {
+  it('warns that a persistence mode a newer release added runs local-only (#2005)', async () => {
+    mockGetState.mockReturnValue(
+      makeDefaultState({ config: { ...makeDefaultState().config, persistence: 'gist-v2' } }),
+    );
+    mockIsGistMode.mockReturnValue(false);
+    const { warnings } = await executeDailyCheck('test-token');
+    expect(warnings.find((w) => w.phase === 'gist-init')?.message).toMatch(/'gist-v2' is from a newer release/);
+  });
+});
 
 describe('executeDailyCheck() — scout pass removal (#1458)', () => {
   const recentlyMerged = [

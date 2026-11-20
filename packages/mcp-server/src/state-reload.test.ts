@@ -123,6 +123,7 @@ vi.mock('@oss-autopilot/core', () => ({
   getStateManager: vi.fn(() => mockStateManager),
   getGitHubTokenAsync: mockGetGitHubTokenAsync,
   ensureGistPersistence: mockEnsureGistPersistence,
+  unknownPersistenceModeWarning: () => null,
   getSetupKeys: () => ['username'],
   getConfigKeys: () => ['username'],
   ConcurrencyError: MockConcurrencyError,

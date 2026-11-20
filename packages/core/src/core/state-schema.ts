@@ -621,6 +621,10 @@ export const FetchedPRSchema = z
  * core schema, and `.passthrough()` preserves the enrichment fields on parse
  * output. This mirrors the pre-#1456 `z.array(z.any())` static contract
  * while actually validating the fields the dashboard dereferences.
+ * One limit (#2005): `status` is an open enum here, so a persisted entry can
+ * carry a status a newer release added although `FetchedPR['status']` is
+ * closed. Readers of the persisted digest compare against known values and
+ * treat anything else as needing attention, so nothing is hidden.
  */
 const FetchedPRArraySchema = z.array(FetchedPRSchema) as unknown as z.ZodType<FetchedPR[]>;
 
@@ -635,7 +639,8 @@ function derivePartitions(raw: unknown): unknown {
   if (!Array.isArray(openPRs) || openPRs.length === 0) return raw;
   return {
     ...(raw as object),
-    needsAddressingPRs: openPRs.filter((pr: { status?: unknown }) => pr?.status === 'needs_addressing'),
+    // A status a newer release added counts as needing attention (#2005).
+    needsAddressingPRs: openPRs.filter((pr: { status?: unknown }) => pr?.status !== 'waiting_on_maintainer'),
     waitingOnMaintainerPRs: openPRs.filter((pr: { status?: unknown }) => pr?.status === 'waiting_on_maintainer'),
   };
 }

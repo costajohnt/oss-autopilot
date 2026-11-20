@@ -18,6 +18,7 @@ import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 const {
   mockGetGitHubTokenAsync,
   mockEnsureGistPersistence,
+  mockUnknownPersistenceModeWarning,
   mockRunStatus,
   MockConfigurationError,
   MockGistFileSizeError,
@@ -53,6 +54,7 @@ const {
   return {
     mockGetGitHubTokenAsync: vi.fn(),
     mockEnsureGistPersistence: vi.fn(),
+    mockUnknownPersistenceModeWarning: vi.fn(),
     mockRunStatus: vi.fn(),
     MockConfigurationError,
     MockGistFileSizeError,
@@ -124,6 +126,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   }),
   getGitHubTokenAsync: mockGetGitHubTokenAsync,
   ensureGistPersistence: mockEnsureGistPersistence,
+  unknownPersistenceModeWarning: mockUnknownPersistenceModeWarning,
   getSetupKeys: () => ['username'],
   getConfigKeys: () => ['username'],
   ConfigurationError: MockConfigurationError,
@@ -157,12 +160,24 @@ describe('ensureGistInit retry semantics (#1368)', () => {
     vi.resetModules();
     mockGetGitHubTokenAsync.mockReset().mockResolvedValue('test-token');
     mockEnsureGistPersistence.mockReset().mockResolvedValue('gist');
+    mockUnknownPersistenceModeWarning.mockReset().mockReturnValue(null);
     mockRunStatus.mockReset().mockResolvedValue({ ok: true });
     client = await freshClient();
   });
 
   afterEach(async () => {
     await client.close();
+  });
+
+  it('a persistence mode a newer release added surfaces its warning on every call (#2005)', async () => {
+    mockEnsureGistPersistence.mockResolvedValue('local-mode');
+    mockUnknownPersistenceModeWarning.mockReturnValue('newer mode runs LOCAL-ONLY');
+
+    for (let call = 0; call < 2; call++) {
+      const result = await client.callTool({ name: 'status', arguments: {} });
+      const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+      expect(payload.gistInitWarning).toBe('newer mode runs LOCAL-ONLY');
+    }
   });
 
   it('a hard init rejection surfaces as a tool error and the next call retries init', async () => {

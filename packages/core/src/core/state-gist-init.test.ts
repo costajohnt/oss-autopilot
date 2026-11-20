@@ -67,6 +67,7 @@ import {
   resetStateManager,
   ensureGistPersistence,
   bootstrapGistBestEffort,
+  unknownPersistenceModeWarning,
 } from './state.js';
 import { GistDiscoveryError, GistFileSizeError, GistPermissionError, NewerStateVersionError } from './errors.js';
 
@@ -308,6 +309,31 @@ describe('bootstrapGistBestEffort — localOnly CLI entry points (#1431)', () =>
     // command's own maybeCheckpoint will actually push instead of no-op.
     expect(getStateManager().isGistMode()).toBe(true);
     expect(createWithGistSpy).toHaveBeenCalledWith('token');
+  });
+
+  it('a mode a newer release added in state.json: LOCAL-ONLY upgrade warning, no bootstrap (#2005)', async () => {
+    fs.writeFileSync(
+      path.join(mockTmpDir, 'state.json'),
+      JSON.stringify({ version: 4, config: { persistence: 'gist-v2' } }),
+    );
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toMatch(/'gist-v2' is from a newer release; this client runs LOCAL-ONLY/);
+    expect(createWithGistSpy).not.toHaveBeenCalled();
+  });
+
+  it('a mode a newer release added in the state cache (no state.json): same warning (#2005)', async () => {
+    fs.writeFileSync(
+      path.join(mockTmpDir, 'state-cache.json'),
+      JSON.stringify({ version: 4, config: { persistence: 'gist-v2' } }),
+    );
+    expect(await ensureGistPersistence('token')).toBe('local-mode');
+    expect(unknownPersistenceModeWarning()).toMatch(/'gist-v2' is from a newer release/);
+  });
+
+  it('known modes and a missing state: no unknown-mode warning (#2005)', () => {
+    expect(unknownPersistenceModeWarning()).toBeNull();
+    writeGistConfiguredState();
+    expect(unknownPersistenceModeWarning()).toBeNull();
   });
 
   it('gist mode + no token: LOCAL-ONLY warning, no bootstrap attempt', async () => {

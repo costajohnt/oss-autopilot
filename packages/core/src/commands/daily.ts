@@ -15,6 +15,7 @@ import {
   IssueConversationMonitor,
   requireGitHubToken,
   renderGistWarning,
+  renderUnknownModeWarning,
   CRITICAL_STATUSES,
   shouldAutoUnshelve,
   shelveReasonsOf,
@@ -1179,7 +1180,9 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       'gist-init',
       'Gist persistence degraded',
       null,
-      renderGistWarning(gistHealth.degraded.cause),
+      gistHealth.degraded.cause === 'unknown-mode'
+        ? renderUnknownModeWarning(gistHealth.degraded.mode)
+        : renderGistWarning(gistHealth.degraded.cause),
     );
   }
 

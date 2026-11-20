@@ -97,6 +97,7 @@ describe('runStateShow', () => {
 
     const result = await runStateShow();
     expect(result.persistence).toBe('local');
+    expect(result.storedPersistence).toBe('gist-v2');
   });
 
   it('returns state data in local mode with null gistId', async () => {

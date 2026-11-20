@@ -9,6 +9,7 @@ export {
   getStateManagerAsync,
   ensureGistPersistence,
   bootstrapGistBestEffort,
+  unknownPersistenceModeWarning,
   type GistPersistenceStatus,
   maybeCheckpoint,
   resetStateManager,
@@ -17,6 +18,7 @@ export {
 } from './state.js';
 export {
   renderGistWarning,
+  renderUnknownModeWarning,
   type GistHealth,
   type GistHealthDegradedCause,
   type GistWarningCause,

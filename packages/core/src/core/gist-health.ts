@@ -21,8 +21,11 @@
  * - `bootstrap-degraded`: the manager IS gist-backed, but the bootstrap fell
  *   back to the local cache and the store is disarmed (#1443) — reads may be
  *   stale and pushes fail.
+ * - `unknown-mode`: config names a persistence mode a newer release added
+ *   (#2005). This release runs it local-only, so writes do not sync until the
+ *   user upgrades. Rendered by {@link renderUnknownModeWarning}.
  */
-export type GistHealthDegradedCause = 'configured-but-local' | 'bootstrap-degraded';
+export type GistHealthDegradedCause = 'configured-but-local' | 'bootstrap-degraded' | 'unknown-mode';
 
 /**
  * Causes {@link renderGistWarning} can name. Superset of
@@ -37,7 +40,8 @@ export type GistHealthDegradedCause = 'configured-but-local' | 'bootstrap-degrad
  *   reported `'degraded'` (transient network fallback, or a #1443 degraded
  *   bootstrap, which it deliberately conflates at that layer).
  */
-export type GistWarningCause = GistHealthDegradedCause | 'no-token' | 'state-unreadable' | 'init-fallback';
+export type GistWarningCause =
+  Exclude<GistHealthDegradedCause, 'unknown-mode'> | 'no-token' | 'state-unreadable' | 'init-fallback';
 
 /**
  * Snapshot of gist persistence health from the one source of truth
@@ -50,20 +54,23 @@ export interface GistHealth {
   /** `null` when healthy: either genuinely local (config agrees) or
    * gist-backed with an armed store. Non-null when this process is not
    * reliably syncing to the Gist. */
-  degraded: null | {
-    cause: GistHealthDegradedCause;
-    /** ISO timestamp when the degradation was first observed, when known
-     * (a degraded bootstrap seeds the staleness marker; a
-     * configured-but-local manager has no marker to date it by). */
-    since?: string;
-    /** Whether a later init/recovery attempt can heal this without user
-     * action. Both manager-level causes are recoverable by re-running
-     * `ensureGistPersistence` with a token (#1415/#1443); a PERMANENT halt
-     * (e.g. token lacking the gist scope) surfaces as a thrown
-     * ConfigurationError at the surface that attempted recovery — the
-     * manager itself cannot observe it, so it never reports false here. */
-    recoverable: boolean;
-  };
+  degraded:
+    | null
+    | { cause: 'unknown-mode'; /** The mode as stored. */ mode: string; recoverable: false }
+    | {
+        cause: Exclude<GistHealthDegradedCause, 'unknown-mode'>;
+        /** ISO timestamp when the degradation was first observed, when known
+         * (a degraded bootstrap seeds the staleness marker; a
+         * configured-but-local manager has no marker to date it by). */
+        since?: string;
+        /** Whether a later init/recovery attempt can heal this without user
+         * action. Both manager-level causes are recoverable by re-running
+         * `ensureGistPersistence` with a token (#1415/#1443); a PERMANENT halt
+         * (e.g. token lacking the gist scope) surfaces as a thrown
+         * ConfigurationError at the surface that attempted recovery — the
+         * manager itself cannot observe it, so it never reports false here. */
+        recoverable: boolean;
+      };
 }
 
 /** Cause → human reason, the MCP's former `gistWarningText` mapping promoted
@@ -97,5 +104,16 @@ export function renderGistWarning(
   return (
     `Gist persistence is configured but ${reason}; writes are LOCAL-ONLY and may be ` +
     `overwritten by the next successful Gist sync.${opts.retryHint ? ` ${opts.retryHint}` : ''}`
+  );
+}
+
+/**
+ * The warning for a persistence mode a newer release wrote (#2005). This
+ * release cannot sync through that mode, so it runs local-only.
+ */
+export function renderUnknownModeWarning(mode: string): string {
+  return (
+    `Persistence mode '${mode}' is from a newer release; this client runs LOCAL-ONLY and writes will not sync. ` +
+    'Upgrade oss-autopilot.'
   );
 }

@@ -151,12 +151,12 @@ function applyConfigKey(stateManager: StateManager, key: string, value: string):
       break;
     }
     case 'remove-scope': {
-      const scope = validateScope(value);
+      // Not validated: a stored scope a newer release added must be removable (#2005).
       const existingScopes = currentConfig.scope ?? [];
-      if (!existingScopes.includes(scope)) {
+      if (!existingScopes.includes(value)) {
         throw new Error(`Scope "${value}" is not currently set`);
       }
-      const filtered = existingScopes.filter((s) => s !== scope);
+      const filtered = existingScopes.filter((s) => s !== value);
       if (filtered.length === 0) {
         throw new Error('Cannot remove the last scope. Use setup to clear scopes entirely.');
       }

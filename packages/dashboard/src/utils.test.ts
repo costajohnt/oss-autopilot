@@ -22,6 +22,10 @@ describe('attentionBucketOf (#1352)', () => {
     expect(attentionBucketOf({ status: 'needs_addressing' })).toBe('needs_attention');
     expect(attentionBucketOf({ status: 'waiting_on_maintainer' })).toBe('waiting');
   });
+
+  it('reads a status a newer release added as needing attention (#2005)', () => {
+    expect(attentionBucketOf({ status: 'needs_rebase' as never })).toBe('needs_attention');
+  });
 });
 
 describe('stripBrackets', () => {
