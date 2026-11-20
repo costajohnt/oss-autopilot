@@ -19,7 +19,7 @@ import {
   type RepoPolicy,
 } from '../core/repo-policy.js';
 import { decodeBase64, fetchPRTemplate } from '../core/pr-template.js';
-import { recordVetPolicy } from './policy.js';
+import { recordVetPolicies } from './policy.js';
 import { probePath } from './repo-vet.js';
 import {
   getStateManager,
@@ -33,6 +33,7 @@ import {
   isFirstInRepo,
   requireGitHubToken,
   splitRepo,
+  getHttpStatusCode,
   errorMessage,
   warn,
   workClaimVetFields,
@@ -136,29 +137,36 @@ export function vetPolicy(candidate: ScoutCandidate, extraDocs: readonly PolicyD
 
 type Octokit = ReturnType<typeof getOctokit>;
 
-/** A doc's text, '' when it is missing or cannot be read. */
-async function docText(octokit: Octokit, owner: string, repo: string, path: string): Promise<string> {
+/** A doc's text: '' when it does not exist, null when the read failed. */
+async function docText(octokit: Octokit, owner: string, repo: string, path: string): Promise<string | null> {
   let text: string | null;
   try {
     text = await probePath(octokit, owner, repo, path);
   } catch {
-    return '';
+    return null;
   }
   return text ?? '';
 }
 
-async function readmeText(octokit: Octokit, owner: string, repo: string): Promise<string> {
+/** The README's text: '' when there is none, null when the read failed. */
+async function readmeText(octokit: Octokit, owner: string, repo: string): Promise<string | null> {
   let response: Awaited<ReturnType<Octokit['repos']['getReadme']>>;
   try {
     response = await octokit.repos.getReadme({ owner, repo });
-  } catch {
-    return '';
+  } catch (error) {
+    return getHttpStatusCode(error) === 404 ? '' : null;
   }
   return decodeBase64(response.data.content);
 }
 
-/** The PR template and the README-linked docs; read failures other than the template's leave the doc out. */
-async function readExtraDocs(repoSlug: string): Promise<PolicyDoc[]> {
+interface ExtraDocs {
+  docs: PolicyDoc[];
+  /** False when any read failed: the docs are a partial view. */
+  complete: boolean;
+}
+
+/** The PR template and the README-linked docs. A failed read leaves its doc out and marks the set incomplete. */
+async function readExtraDocs(repoSlug: string): Promise<ExtraDocs> {
   const { owner, repo } = splitRepo(repoSlug);
   const octokit = getOctokit(requireGitHubToken());
   const [template, readme] = await Promise.all([
@@ -166,14 +174,18 @@ async function readExtraDocs(repoSlug: string): Promise<PolicyDoc[]> {
     readmeText(octokit, owner, repo),
   ]);
   const linked = await Promise.all(
-    linkedPolicyDocs(readme, repoSlug).map(async (file) => ({
+    linkedPolicyDocs(readme ?? '', repoSlug).map(async (file) => ({
       file,
       content: await docText(octokit, owner, repo, file),
     })),
   );
   const templateDoc =
     template.template && template.source ? [{ file: template.source, content: template.template }] : [];
-  return [...templateDoc, ...linked].map((d) => ({ ...d, content: d.content.slice(0, LINKED_DOC_MAX_CHARS) }));
+  const docs = [...templateDoc, ...linked]
+    .filter((d): d is PolicyDoc => d.content !== null)
+    .map((d) => ({ file: d.file, content: d.content.slice(0, LINKED_DOC_MAX_CHARS) }));
+  const isComplete = template.error === undefined && readme !== null && linked.every((d) => d.content !== null);
+  return { docs, complete: isComplete };
 }
 
 /**
@@ -182,20 +194,24 @@ async function readExtraDocs(repoSlug: string): Promise<PolicyDoc[]> {
  * reads (README, up to 4 template paths, 2 linked docs). Best effort: a failed
  * read leaves docs out and never fails the vet.
  */
-async function extraPolicyDocs(repoSlug: string): Promise<PolicyDoc[]> {
+async function extraPolicyDocs(repoSlug: string): Promise<ExtraDocs> {
   try {
     return await readExtraDocs(repoSlug);
   } catch (error) {
     warn('vet', `Could not read the PR template and linked docs of ${repoSlug}: ${errorMessage(error)}`);
-    return [];
+    return { docs: [], complete: false };
   }
 }
 
-/** Record what vet read, then report the policy that applies. */
+/**
+ * Record what vet read, then report the policy that applies. A reading from an
+ * incomplete set of docs only fills a gap (or records a ban), like vet-list's.
+ */
 async function recordedPolicyFields(candidate: ScoutCandidate): Promise<Partial<VetOutput>> {
   const repo = candidate.issue.repo;
-  const derived = vetPolicy(candidate, await extraPolicyDocs(repo));
-  if (derived) await recordVetPolicy(repo, derived);
+  const extra = await extraPolicyDocs(repo);
+  const derived = vetPolicy(candidate, extra.docs);
+  if (derived) await recordVetPolicies([{ repo, policy: derived }], { fillOnly: !extra.complete });
   return policyFields(candidate, derived);
 }
 

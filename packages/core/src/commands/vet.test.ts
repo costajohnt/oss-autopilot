@@ -99,6 +99,7 @@ describe('runVet: PR template and README-linked docs (#2013)', () => {
 
   afterEach(() => {
     mockOctokit.value = {};
+    mockFetchPRTemplate.mockReset();
   });
 
   it('reads the PR template and a same-repo doc the README links to, and records what they say', async () => {
@@ -120,6 +121,33 @@ describe('runVet: PR template and README-linked docs (#2013)', () => {
     const result = await runVet({ issueUrl: TEST_ISSUE_URL });
 
     expect(result.policy).toMatchObject({ prGate: 'claim-first' });
+  });
+
+  const STORED_READING = {
+    aiPolicy: 'unknown',
+    cla: 'none',
+    commitRules: [],
+    prGate: 'none',
+    source: [],
+    reviewedByUser: false,
+    updatedAt: '2026-11-01T00:00:00.000Z',
+  };
+
+  it('replaces a stored unreviewed reading when every read succeeded', async () => {
+    mockGetState.mockReturnValue({ config: {}, repoPolicies: { 'owner/repo': STORED_READING } });
+
+    await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).toHaveBeenCalledWith('owner/repo', expect.objectContaining({ prGate: 'claim-first' }));
+  });
+
+  it('with a failed read, only fills a gap: a stored reading stays', async () => {
+    mockGetState.mockReturnValue({ config: {}, repoPolicies: { 'owner/repo': STORED_READING } });
+    getContent.mockRejectedValue(Object.assign(new Error('Server Error'), { status: 500 }));
+
+    await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).not.toHaveBeenCalled();
   });
 });
 

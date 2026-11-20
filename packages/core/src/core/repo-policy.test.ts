@@ -182,11 +182,19 @@ describe('derivePolicy: maxOpenAiPRs', () => {
 
   it('records no limit from ai-pr-limit-negated.md (a negated limit, counts that are not limits)', () => {
     expect(fromFixture('ai-pr-limit-negated').maxOpenAiPRs).toBeUndefined();
+  });
+
+  it('records no limit from ai-pr-limit-rates.md (review/merge throughput, per-week and per-contributor quotas)', () => {
+    const content = read('ai-pr-limit-rates');
+    expect(fromFixture('ai-pr-limit-rates').maxOpenAiPRs).toBeUndefined();
+    const lines = content.split('\n').filter((line) => /AI-/.test(line) && !line.startsWith('#'));
+    expect(lines).toHaveLength(4);
+    for (const line of lines) expect(policyOf(line).maxOpenAiPRs).toBeUndefined();
     expect(fromFixture('silent').maxOpenAiPRs).toBeUndefined();
   });
 
   it.each([
-    ['No more than 2 open AI-generated pull requests per contributor.', 2],
+    ['Please have no more than 2 open AI-generated pull requests.', 2],
     ['Please do not open more than three LLM-generated PRs at once.', 3],
     ["Don't open more than one AI-assisted PR.", 1],
     ['Contributors may have at most 5 open AI-authored PRs.', 5],
@@ -220,6 +228,14 @@ describe('linkedPolicyDocs', () => {
     const readme =
       '[x](https://example.com/CONTRIBUTING.md) [y](../other/CONTRIBUTING.md) [z](.github/CONTRIBUTING.md) [w](mailto:contributing.md)';
     expect(linkedPolicyDocs(readme, 'owner/repo')).toEqual([]);
+  });
+
+  it('matches the doc name, not any path containing the word, and folder guides', () => {
+    const readme = '[a](docs/nocontributions.md) [b](docs/contributing/README.md) [c](docs/dev_guidelines.rst)';
+    expect(linkedPolicyDocs(readme, 'owner/repo', 5)).toEqual([
+      'docs/contributing/README.md',
+      'docs/dev_guidelines.rst',
+    ]);
   });
 });
 

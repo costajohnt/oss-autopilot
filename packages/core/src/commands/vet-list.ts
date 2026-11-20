@@ -22,7 +22,7 @@ import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { repoCapField } from '../core/repo-cap.js';
 import { ValidationError } from '../core/errors.js';
-import type { RepoPolicy } from '../core/repo-policy.js';
+import { storedPolicy, type RepoPolicy } from '../core/repo-policy.js';
 import { policyFields, vetPolicy } from './vet.js';
 import { recordVetPolicies } from './policy.js';
 import {
@@ -202,14 +202,20 @@ function ruledOutVetOutput(v: IssueVerification): VetOutput {
   };
 }
 
-/** {@link vetPolicy} for one candidate, added to `readings` when there is one. */
+/**
+ * {@link vetPolicy} for one candidate, added to `readings` when there is one.
+ * Returns the reading to show on the row: like the write (`fillOnly`), a
+ * stored record wins over it unless it is a ban.
+ */
 function readPolicy(
   candidate: Parameters<typeof vetPolicy>[0],
   readings: Array<{ repo: string; policy: RepoPolicy }>,
 ): RepoPolicy | null {
   const policy = vetPolicy(candidate);
-  if (policy) readings.push({ repo: candidate.issue.repo, policy });
-  return policy;
+  if (!policy) return null;
+  readings.push({ repo: candidate.issue.repo, policy });
+  const isStored = storedPolicy(getStateManager().getState(), candidate.issue.repo) !== null;
+  return !isStored || policy.aiPolicy === 'banned' ? policy : null;
 }
 
 /**

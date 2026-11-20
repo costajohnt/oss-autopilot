@@ -102,6 +102,10 @@ describe('runVetList: repo contribution policy (#2013)', () => {
       expect.objectContaining({ prGate: 'claim-first', reviewedByUser: false }),
     );
     expect(result.results.find((r) => r.issue.repo === 'new/repo')?.policy).toMatchObject({ prGate: 'claim-first' });
+    // The row shows the stored reading it kept, not the narrower one it did not record.
+    expect(result.results.find((r) => r.issue.repo === 'kept/repo')?.policy).toMatchObject({
+      prGate: 'maintainer-label',
+    });
   });
 
   it('records a ban over a stored reading and makes the row a skip', async () => {
@@ -115,13 +119,16 @@ describe('runVetList: repo contribution policy (#2013)', () => {
     expect(result.results[0].reasonsToSkip.join(' ')).toContain('does not accept AI-assisted contributions');
   });
 
-  it('never replaces a record the user set', async () => {
+  it('never replaces a record the user set, while it still records others in the same run', async () => {
     mocks.state.value = { config: {}, repoPolicies: { 'kept/repo': { ...STORED, reviewedByUser: true } } };
-    listOf(['kept/repo']);
-    mocks.vetIssue.mockResolvedValue(candidate('kept/repo', BAN, NO_MATCH));
+    listOf(['kept/repo', 'new/repo']);
+    mocks.vetIssue.mockImplementation(async (url: string) =>
+      candidate(url.includes('kept/repo') ? 'kept/repo' : 'new/repo', BAN, NO_MATCH),
+    );
 
     await runVetList({ issueListPath: 'issues.md' });
 
-    expect(mocks.setRepoPolicy).not.toHaveBeenCalled();
+    expect(mocks.setRepoPolicy).toHaveBeenCalledTimes(1);
+    expect(mocks.setRepoPolicy).toHaveBeenCalledWith('new/repo', expect.objectContaining({ aiPolicy: 'banned' }));
   });
 });

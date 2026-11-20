@@ -186,6 +186,21 @@ function storedRecordToEdit(
 }
 
 /**
+ * An unreviewed stored record without the derived commit rules and AI-PR limit
+ * the user did not pass: confirming `--ai-policy` must not mark those as
+ * reviewed. A record the user set is returned as is.
+ */
+function withoutUnseenFields(stored: RepoPolicy, options: PolicySetOptions): RepoPolicy {
+  if (stored.reviewedByUser) return stored;
+  const { maxOpenAiPRs, commitRules, ...rest } = stored;
+  return {
+    ...rest,
+    commitRules: options.commitRules === undefined ? [] : commitRules,
+    ...(options.maxOpenAiPRs !== undefined && maxOpenAiPRs !== undefined && { maxOpenAiPRs }),
+  };
+}
+
+/**
  * Record the user's policy for `repo`, merged over what is stored. Refused
  * unattended, and the result is `reviewedByUser: true`, so vet never
  * overwrites it. It cannot lift a `config.aiPolicyBlocklist` ban.
@@ -197,7 +212,7 @@ export async function runPolicySet(options: PolicySetOptions): Promise<PolicyWri
   const stored = storedRecordToEdit(sm.getState(), options);
   const date = new Date();
   const now = date.toISOString();
-  const current = stored ?? {
+  const current = (stored && withoutUnseenFields(stored, options)) ?? {
     aiPolicy: 'unknown',
     cla: 'unknown',
     commitRules: [],
@@ -287,15 +302,37 @@ async function writeVetPolicies(
 ): Promise<void> {
   const sm = getStateManager();
   sm.reloadIfChanged();
-  const writes = readings.filter(({ repo, policy }) => shouldWrite(repo, policy, isFillOnly));
-  if (writes.length === 0) return;
+  const perRepo = onePerRepo(readings);
+  // Re-checked on every run, so a Gist conflict replay judges against the fresh baseline.
+  let written = 0;
   const write = (): void => {
-    for (const { repo, policy } of writes) {
-      if (!isUserReviewed(sm.getState(), repo)) sm.setRepoPolicy(repo, policy);
+    written = 0;
+    for (const { repo, policy } of perRepo) {
+      if (!shouldWrite(repo, policy, isFillOnly)) continue;
+      sm.setRepoPolicy(repo, policy);
+      written++;
     }
   };
   write();
-  await maybeCheckpoint(sm, MODULE, write);
+  if (written > 0) await maybeCheckpoint(sm, MODULE, write);
+}
+
+/** One reading per repo (case-insensitive); a ban wins over any other reading of the same repo. */
+function onePerRepo(
+  readings: ReadonlyArray<{ repo: string; policy: RepoPolicy }>,
+): Array<{ repo: string; policy: RepoPolicy }> {
+  const kept: Array<{ repo: string; policy: RepoPolicy }> = [];
+  const indexByRepo = new Map<string, number>();
+  for (const reading of readings) {
+    const index = indexByRepo.get(reading.repo.toLowerCase());
+    if (index === undefined) {
+      indexByRepo.set(reading.repo.toLowerCase(), kept.length);
+      kept.push(reading);
+      continue;
+    }
+    if (reading.policy.aiPolicy === 'banned') kept[index] = reading;
+  }
+  return kept;
 }
 
 function shouldWrite(repo: string, derived: RepoPolicy, isFillOnly: boolean): boolean {

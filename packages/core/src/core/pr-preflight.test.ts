@@ -613,11 +613,19 @@ describe('checkRepoPolicy (#1953)', () => {
     expect(result.summary).toContain('push access could not be checked');
   });
 
-  it('fails at the max open AI-assisted PRs, warns when the count is unknown', () => {
-    const facts = { ...READY, policy: policy({ maxOpenAiPRs: 1 }) };
+  it('fails at a reviewed max of open AI-assisted PRs, warns when the count is unknown', () => {
+    const facts = { ...READY, policy: policy({ maxOpenAiPRs: 1, reviewedByUser: true }) };
     expect(checkRepoPolicy(facts).status).toBe('fail');
     expect(checkRepoPolicy({ ...facts, cap: null }).status).toBe('warn');
-    expect(checkRepoPolicy({ ...facts, policy: policy({ maxOpenAiPRs: 2 }) }).status).toBe('pass');
+    expect(checkRepoPolicy({ ...facts, policy: policy({ maxOpenAiPRs: 2, reviewedByUser: true }) }).status).toBe(
+      'pass',
+    );
+  });
+
+  it('only warns at a max read from the docs and not reviewed', () => {
+    const result = checkRepoPolicy({ ...READY, policy: policy({ maxOpenAiPRs: 1 }) });
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('docs read as allowing 1 open AI-assisted PR(s) and you have 1');
   });
 
   it('warns on unknown AI policy and a CLA only on a first contribution', () => {
@@ -664,6 +672,8 @@ describe('checkCommitRules (#2013)', () => {
     ['fix: x\n\nRefs #7', false],
     ['fix: the #1 crash', false],
     ['fix: prefixes #4 handling', false],
+    ['fix: x\n\nCloses https://github.com/up/proj/issues/9', true],
+    ['fix: handle the fixes\n#4 is the issue', false],
   ])('no-closing-keyword-in-commit on %j: broken=%s', (message, broken) => {
     const result = checkCommitRules({
       ...READY,
@@ -671,6 +681,22 @@ describe('checkCommitRules (#2013)', () => {
       branchCommits: [message],
     });
     expect(result.status).toBe(broken ? 'fail' : 'pass');
+  });
+
+  it.each([
+    ['Revert "feat: add x"', false],
+    ['fixup! feat: add x', false],
+    ['squash! feat: add x', false],
+    ['Add x', true],
+  ])('conventional-commits on %j: broken=%s', (message, broken) => {
+    const result = checkCommitRules({ ...READY, policy: rules(['conventional-commits']), branchCommits: [message] });
+    expect(result.status).toBe(broken ? 'fail' : 'pass');
+  });
+
+  it('accepts a lowercase signed-off-by trailer', () => {
+    const message = 'feat: x\n\nsigned-off-by: T <t@example.com>';
+    const result = checkCommitRules({ ...READY, policy: rules(['dco-signoff']), branchCommits: [message] });
+    expect(result.status).toBe('pass');
   });
 
   it('checks no rule id this release does not know', () => {

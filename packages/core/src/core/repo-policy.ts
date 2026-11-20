@@ -135,20 +135,34 @@ const COUNT = String.raw`(\d{1,2}|one|a\s+single|two|three|four|five)`;
 const AI_PRS = String.raw`(?:open\s+)?(?:AI|LLM)[-\s](?:assisted|generated|authored|written)\s+(?:PRs?|pull\s+requests?)`;
 /** "one AI-assisted PR at a time", "no more than 2 open AI-generated pull requests", "don't open more than one AI-assisted PR". */
 const AI_PR_LIMITS: readonly RegExp[] = [
-  new RegExp(String.raw`\b${COUNT}\s+${AI_PRS}\s+(?:open\s+)?(?:at\s+(?:a|any\s+one)\s+time|at\s+once)`, 'i'),
+  new RegExp(String.raw`\b${COUNT}\s+${AI_PRS}\s+(?:open\s+)?(?:at\s+(?:a|any\s+one)\s+time|at\s+once)`, 'di'),
   new RegExp(
     String.raw`(?:\bno\s+more\s+than|(?:\bnot|n't|\bnever)\s+(?:\w+\s+)?more\s+than|\bat\s+most|\bup\s+to|\ba\s+maximum\s+of|\blimit(?:ed)?\s+(?:of|to))\s+${COUNT}\s+${AI_PRS}`,
-    'i',
+    'di',
   ),
 ];
 /** "there is no limit on ...", "you don't need to keep to one ...": the rest of the sentence states no limit. */
 const AI_PR_LIMIT_NEGATED =
   /(?:\bno|\bnot|n't)\s+(?:\w+\s+){0,2}?(?:limit|restrict|cap\b|maximum|requir|need|have\s+to|must)[^.;!?]*/gi;
 
+/** "... per week", "... a day", "... per contributor": a throughput or a per-person quota, not an open-PR limit. */
+const RATE_AFTER =
+  /^\s*(?:per|a|an|each|every)\s+(?:week|day|month|year|quarter|release|cycle|contributor|person|author|user)\b/i;
+/** "maintainers review one ... at a time", "we merge up to 10 ...": what the maintainers do, not a contributor limit. */
+const MAINTAINER_VERB = /\b(?:review|merg|triag)\w*\b/i;
+
 function aiPrLimit(line: string): number | null {
   const text = affirmed(line, AI_PR_LIMIT_NEGATED);
-  const count = AI_PR_LIMITS.map((re) => re.exec(text)?.[1]).find((c) => c !== undefined);
-  if (count === undefined) return null;
+  const match = AI_PR_LIMITS.map((re) => re.exec(text)).find((m) => m !== null);
+  const countStart = match?.indices?.[1]?.[0];
+  if (!match || countStart === undefined) return null;
+  const sentence =
+    text
+      .slice(0, countStart)
+      .split(/[.;!?]/)
+      .at(-1) ?? '';
+  if (RATE_AFTER.test(text.slice(match.index + match[0].length)) || MAINTAINER_VERB.test(sentence)) return null;
+  const count = match[1];
   const n = COUNT_WORDS[count.toLowerCase().replaceAll(/\s+/g, ' ')] ?? Number(count);
   return n > 0 ? n : null;
 }
@@ -262,7 +276,10 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
 
 /** Markdown link targets: `[text](target)`. */
 const MD_LINK = /\]\(\s*<?([^\s)>]+)/g;
-const POLICY_DOC_PATH = /(?:contribut|guideline|ai[-_]?(?:policy|usage|use)|llm)[^/]*\.(?:md|markdown|rst|txt)$/i;
+const POLICY_DOC_PATH =
+  /(?:^|\/)(?:[^/]*[-_])?(?:contribut|guideline|ai[-_]?(?:policy|usage|use)|llm)[^/]*\.(?:md|markdown|rst|txt)$/i;
+/** A folder guide: `docs/contributing/README.md`. */
+const POLICY_DOC_FOLDER = /(?:^|\/)(?:contribut|guideline)[^/]*\/(?:readme|index)\.md$/i;
 /** Where scout already reads CONTRIBUTING from. */
 const SCOUT_READ = new Set(['contributing.md', '.github/contributing.md', 'docs/contributing.md']);
 
@@ -288,7 +305,8 @@ function policyDocPath(target: string): string | null {
   // A scheme means another site (or a blob link to another repo); `..` leaves the repo.
   if (/^[a-z][\w+.-]*:/i.test(target) || target.split('/').includes('..')) return null;
   const path = target.replace(/^(?:\.?\/)+/, '');
-  return POLICY_DOC_PATH.test(path) && !SCOUT_READ.has(path.toLowerCase()) ? path : null;
+  const isPolicyDoc = POLICY_DOC_PATH.test(path) || POLICY_DOC_FOLDER.test(path);
+  return isPolicyDoc && !SCOUT_READ.has(path.toLowerCase()) ? path : null;
 }
 
 const EPOCH = '1970-01-01T00:00:00.000Z';

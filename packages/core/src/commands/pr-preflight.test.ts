@@ -636,6 +636,23 @@ describe('runPrPreflight: commit rules (#2013)', () => {
     expect(summaryOf(data, 'commit-rules')).toContain('1 commit(s) follow');
   });
 
+  it('ignores merge commits on the branch', async () => {
+    withRules(['conventional-commits'], true);
+    git(ctx.clone, ['reset', '-q', '--hard', 'upstream/main']);
+    git(ctx.clone, ['checkout', '-q', '-b', 'side']);
+    commitWithMessage('feat: side change');
+    git(ctx.clone, ['checkout', '-q', 'fix/thing']);
+    fs.writeFileSync(path.join(ctx.clone, 'c.txt'), 'c\n');
+    git(ctx.clone, ['add', '--', 'c.txt']);
+    git(ctx.clone, [...IDENTITY, 'commit', '-q', '-m', 'fix: main change']);
+    git(ctx.clone, [...IDENTITY, 'merge', '-q', '--no-ff', '-m', "Merge branch 'side'", 'side']);
+
+    const data = await runPrPreflight({ dir: ctx.clone, fetch: false, local: true });
+
+    expect(statusOf(data, 'commit-rules')).toBe('pass');
+    expect(summaryOf(data, 'commit-rules')).toContain('2 commit(s) follow');
+  });
+
   it('is skipped with no commit rules recorded, and without a branch point', async () => {
     withRules([], true);
     expect(statusOf(await runPrPreflight({ dir: ctx.clone, fetch: false, local: true }), 'commit-rules')).toBe(

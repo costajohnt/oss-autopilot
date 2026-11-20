@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { UNATTENDED_ENV } from '../core/errors.js';
+import { GistConcurrencyError, UNATTENDED_ENV } from '../core/errors.js';
 import { extractFromFence } from '../core/untrusted-content.js';
 import { POLICY_QUOTE_MAX } from '../core/state-schema.js';
 import type { RepoPolicy } from '../core/repo-policy.js';
@@ -33,7 +33,7 @@ vi.mock('../core/index.js', async () => {
   return { ...actual, getStateManager: () => fake.sm };
 });
 
-const { runPolicyGet, runPolicySet, runPolicyReset, recordVetPolicy } = await import('./policy.js');
+const { runPolicyGet, runPolicySet, runPolicyReset, recordVetPolicy, recordVetPolicies } = await import('./policy.js');
 
 const REPO = 'up/proj';
 
@@ -110,6 +110,24 @@ describe('policy set', () => {
     // Once reviewed, a one-field edit is fine.
     const edited = await runPolicySet({ repo: REPO, cla: 'none' });
     expect(edited.policy?.cla).toBe('none');
+  });
+
+  it('confirming --ai-policy on an unreviewed reading drops the derived commit rules and AI-PR limit it did not pass', async () => {
+    await recordVetPolicy(REPO, vetPolicy({ commitRules: ['dco-signoff'], maxOpenAiPRs: 1 }));
+    const out = await runPolicySet({ repo: REPO, aiPolicy: 'allowed' });
+    expect(out.policy?.commitRules).toEqual([]);
+    expect(out.policy?.maxOpenAiPRs).toBeUndefined();
+
+    fake.state.repoPolicies = {};
+    await recordVetPolicy(REPO, vetPolicy({ commitRules: ['dco-signoff'], maxOpenAiPRs: 1 }));
+    const kept = await runPolicySet({ repo: REPO, aiPolicy: 'allowed', commitRules: 'dco-signoff', maxOpenAiPRs: 2 });
+    expect(kept.policy).toMatchObject({ commitRules: ['dco-signoff'], maxOpenAiPRs: 2 });
+  });
+
+  it('keeps the commit rules and limit of a record the user already reviewed', async () => {
+    await runPolicySet({ repo: REPO, aiPolicy: 'allowed', commitRules: 'dco-signoff', maxOpenAiPRs: 1 });
+    const out = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required' });
+    expect(out.policy).toMatchObject({ commitRules: ['dco-signoff'], maxOpenAiPRs: 1 });
   });
 
   it('refuses to overwrite an entry a newer release wrote with defaults', async () => {
@@ -194,6 +212,38 @@ describe('recordVetPolicy', () => {
     await runPolicySet({ repo: REPO, aiPolicy: 'allowed' });
     await recordVetPolicy(REPO, vetPolicy());
     expect(fake.state.repoPolicies[REPO]).toMatchObject({ aiPolicy: 'allowed', reviewedByUser: true });
+  });
+
+  it('keeps one reading per repo in a batch, preferring a ban', async () => {
+    await recordVetPolicies([
+      { repo: 'Up/Proj', policy: vetPolicy({ aiPolicy: 'banned' }) },
+      { repo: REPO, policy: vetPolicy({ aiPolicy: 'allowed' }) },
+    ]);
+    expect(fake.state.repoPolicies[REPO]).toMatchObject({ aiPolicy: 'banned' });
+  });
+
+  it('re-checks each write against the fresh baseline when a Gist conflict replays it', async () => {
+    const freshBan = vetPolicy({ aiPolicy: 'banned', updatedAt: '2026-11-10T00:00:00.000Z' });
+    const checkpoint = vi.fn().mockRejectedValueOnce(new GistConcurrencyError('a', 'b')).mockResolvedValueOnce(true);
+    const gist = {
+      checkpoint,
+      isGistMode: () => true,
+      runMutation: (mutation: () => Promise<unknown>) => mutation(),
+      // Another machine recorded a ban meanwhile.
+      refreshFromGist: () => {
+        fake.state.repoPolicies = { [REPO]: freshBan };
+        return Promise.resolve(true);
+      },
+    };
+    const saved = { ...fake.sm };
+    Object.assign(fake.sm, gist);
+    try {
+      await recordVetPolicies([{ repo: REPO, policy: vetPolicy({ aiPolicy: 'allowed' }) }]);
+    } finally {
+      Object.assign(fake.sm, saved);
+    }
+    expect(checkpoint).toHaveBeenCalledTimes(2);
+    expect(fake.state.repoPolicies[REPO]).toEqual(freshBan);
   });
 
   it('runs unattended: an unreviewed record is not the user approving anything', async () => {
