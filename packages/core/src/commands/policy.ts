@@ -22,6 +22,7 @@ import {
   quote,
   isSamePolicy,
   storedPolicy,
+  unknownFields,
   summarizePolicy,
   type AiPolicy,
   type ClaPolicy,
@@ -198,7 +199,8 @@ export async function runPolicySet(options: PolicySetOptions): Promise<PolicyWri
     reviewedByUser: true,
     updatedAt: now,
   };
-  const next = applySet(current, options, now);
+  // Keep fields a newer release added; the known ones come from the merge.
+  const next = { ...unknownFields(sm.getState(), options.repo), ...applySet(current, options, now) };
   sm.setRepoPolicy(options.repo, next);
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE, () => sm.setRepoPolicy(options.repo, next));
   return { ...getOutput(options.repo), ...(gistSyncWarning && { gistSyncWarning }) };

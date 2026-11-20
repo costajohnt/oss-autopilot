@@ -99,6 +99,18 @@ describe('derivePolicy: prGate from fixture CONTRIBUTING files', () => {
     expect(derivePolicy([]).prGate).toBe('unknown');
   });
 
+  it.each([
+    'We only accept pull requests from collaborators at this time.',
+    'We do not accept external pull requests at this time.',
+    "We don't accept unsolicited pull requests from outside contributors.",
+  ])('"%s" reads as collaborators-only', (line) => {
+    expect(gate(line)).toBe('collaborators-only');
+  });
+
+  it('reads scoped refusals as collaborators-only too: recall over precision, since an unreviewed reading only warns', () => {
+    expect(fromFixture('collaborators-misfires').prGate).toBe('collaborators-only');
+  });
+
   it('reads "don\'t accept external PRs" as collaborators-only, and a review wait as no gate', () => {
     expect(gate("We don't accept external pull requests.")).toBe('collaborators-only');
     expect(gate('After you open the PR, wait for a maintainer to approve it.')).toBe('none');
@@ -121,6 +133,26 @@ describe('derivePolicy: CLA and commit rules', () => {
     expect(fromFixture('no-cla').cla).toBe('none');
     expect(fromFixture('no-signoff').commitRules).toEqual([]);
     expect(fromFixture('no-assignment').prGate).toBe('none');
+  });
+
+  it.each([
+    'You cannot merge without signing the CLA.',
+    'No PR is merged without a signed CLA.',
+    'PRs without a signed CLA cannot be merged.',
+  ])('"%s" reads as a required CLA: "without" states the rule', (line) => {
+    expect(derivePolicy([{ file: 'CONTRIBUTING.md', content: line }]).cla).toBe('required');
+  });
+
+  it.each(['Commits without a Signed-off-by line will be rejected by the DCO bot.', 'Please sign off your commits.'])(
+    '"%s" reads as dco-signoff',
+    (line) => {
+      expect(derivePolicy([{ file: 'CONTRIBUTING.md', content: line }]).commitRules).toContain('dco-signoff');
+    },
+  );
+
+  it('a negated clause does not veto a positive claim phrase on the same line', () => {
+    expect(gate('Comment on the issue and get assigned before opening a PR.')).toBe('claim-first');
+    expect(gate("You don't need to be assigned, but comment on the issue before opening a PR.")).toBe('claim-first');
   });
 });
 
@@ -195,6 +227,12 @@ describe('stored records', () => {
     expect(storedPolicy(state({ policies: { 'up/proj': { aiPolicy: 'from-the-future' } } }), 'up/proj')).toBeNull();
     expect(isUnreadable(state({ policies: { 'up/proj': { aiPolicy: 'from-the-future' } } }), 'up/proj')).toBe(true);
     expect(isUnreadable(state({ policies: { 'up/proj': REVIEWED } }), 'up/proj')).toBe(false);
+  });
+
+  it('storedBans skips keys that are not owner/repo', () => {
+    const ban = { ...REVIEWED, aiPolicy: 'banned' };
+    const s = state({ policies: { 'up/proj': ban, 'not-a-repo': ban, 'a/b/c': ban, 'has space/x': ban } });
+    expect(storedBans(s)).toEqual([{ repo: 'up/proj', reviewedByUser: true }]);
   });
 
   it('still reads a ban from an entry a newer release wrote that does not fully parse', () => {

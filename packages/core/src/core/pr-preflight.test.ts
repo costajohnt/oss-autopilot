@@ -551,10 +551,18 @@ function policy(overrides: Partial<RepoPolicy>): RepoPolicy {
 
 describe('checkRepoPolicy (#1953)', () => {
   it('fails for a banned repo', () => {
-    const result = checkRepoPolicy({ ...READY, policy: policy({ aiPolicy: 'banned' }) });
+    const result = checkRepoPolicy({ ...READY, policy: policy({ aiPolicy: 'banned', reviewedByUser: true }) });
     expect(result.status).toBe('fail');
     expect(result.summary).toBe('up/proj does not accept AI-assisted contributions: do not open this PR');
     expect(runPreflightChecks({ ...READY, policy: policy({ aiPolicy: 'banned' }) }).verdict).toBe('fail');
+  });
+
+  it('still fails for an unreviewed ban, and says how to lift a misreading', () => {
+    const result = checkRepoPolicy({ ...READY, policy: policy({ aiPolicy: 'banned' }) });
+    expect(result.status).toBe('fail');
+    expect(result.summary).toContain(
+      '(read from the repo docs, not reviewed: run `oss-autopilot policy set --repo up/proj --ai-policy allowed` if this is a misreading)',
+    );
   });
 
   it('warns with the disclosure text, fenced, for disclosure-required', () => {

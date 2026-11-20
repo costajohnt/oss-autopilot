@@ -123,6 +123,14 @@ describe('policy set', () => {
     expect(fake.state.repoPolicies[REPO]).toEqual(newer);
   });
 
+  it('keeps fields a newer release added when it edits a record', async () => {
+    fake.state.repoPolicies = {
+      [REPO]: { ...vetPolicy({ reviewedByUser: true }), futureField: { keep: true } },
+    };
+    await runPolicySet({ repo: REPO, cla: 'required' });
+    expect(fake.state.repoPolicies[REPO]).toMatchObject({ cla: 'required', futureField: { keep: true } });
+  });
+
   it('cannot lift a ban from aiPolicyBlocklist', async () => {
     fake.state.config.aiPolicyBlocklist = ['up/proj'];
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'allowed' });

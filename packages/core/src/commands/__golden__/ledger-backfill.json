@@ -11,7 +11,5 @@
   },
   "listFiles": [],
   "unresolved": 1,
-  "warnings": [
-    "no curated issue list found; list vet scores were not imported"
-  ]
+  "warnings": ["no curated issue list found; list vet scores were not imported"]
 }

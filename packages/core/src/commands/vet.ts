@@ -8,7 +8,7 @@ import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { repoCapField } from '../core/repo-cap.js';
-import { derivePolicy, effectivePolicy, policyField, quote, type RepoPolicy } from '../core/repo-policy.js';
+import { banNote, derivePolicy, effectivePolicy, policyField, quote, type RepoPolicy } from '../core/repo-policy.js';
 import { recordVetPolicy } from './policy.js';
 import {
   getStateManager,
@@ -126,10 +126,12 @@ async function policyFields(candidate: ScoutCandidate): Promise<Partial<VetOutpu
   if (derived) await recordVetPolicy(repo, derived);
   const policy = effectivePolicy(getStateManager().getState(), repo, derived ?? undefined);
   if (policy?.aiPolicy !== 'banned') return policyField(policy);
-  // Scout already gives its own reason when its anti-LLM scan matched.
-  const reasonsToSkip = candidate.antiLLMPolicy?.matched
-    ? candidate.reasonsToSkip
-    : [...candidate.reasonsToSkip, BANNED_REASON];
+  // Scout gives its own reason when its scan matched; still add ours when it says how to lift the ban.
+  const note = banNote(policy, repo);
+  const reasonsToSkip =
+    note === '' && candidate.antiLLMPolicy?.matched
+      ? candidate.reasonsToSkip
+      : [...candidate.reasonsToSkip, BANNED_REASON + note];
   return { ...policyField(policy), recommendation: 'skip', reasonsToSkip };
 }
 

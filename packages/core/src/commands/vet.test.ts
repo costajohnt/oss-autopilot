@@ -75,7 +75,10 @@ describe('runVet: repo contribution policy (#1953)', () => {
     );
     expect(result.policy).toMatchObject({ aiPolicy: 'banned', reviewedByUser: false });
     expect(result.recommendation).toBe('skip');
-    expect(result.reasonsToSkip).toContain('repo policy: the project does not accept AI-assisted contributions');
+    expect(result.reasonsToSkip).toContain(
+      'repo policy: the project does not accept AI-assisted contributions (read from the repo docs, not reviewed: ' +
+        'run `oss-autopilot policy set --repo owner/repo --ai-policy allowed` if this is a misreading)',
+    );
   });
 
   it('does not overwrite a record the user set, and reports that record', async () => {

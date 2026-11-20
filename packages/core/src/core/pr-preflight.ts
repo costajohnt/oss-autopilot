@@ -10,7 +10,7 @@
 
 import type { IssueAvailabilityVerdict, IssueVerification } from './issue-verification.js';
 import type { RepoCapStatus } from './repo-cap.js';
-import { fencePolicyText, summarizePolicy, type RepoPolicy } from './repo-policy.js';
+import { banNote, fencePolicyText, summarizePolicy, type RepoPolicy } from './repo-policy.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
 import { isOwnRepo, splitRepo } from './urls.js';
 
@@ -338,7 +338,9 @@ function collaboratorsAsk(facts: PreflightFacts, policy: RepoPolicy, repo: strin
 
 /** What the policy forbids outright; null when nothing does. */
 function policyStop(facts: PreflightFacts, policy: RepoPolicy, repo: string): string | null {
-  if (policy.aiPolicy === 'banned') return `${repo} does not accept AI-assisted contributions: do not open this PR`;
+  if (policy.aiPolicy === 'banned') {
+    return `${repo} does not accept AI-assisted contributions: do not open this PR${banNote(policy, repo)}`;
+  }
   // Only a rule the user confirmed, checked against known push access, stops the PR.
   if (policy.prGate === 'collaborators-only' && policy.reviewedByUser && facts.github?.canPush === false) {
     return `${repo} only takes PRs from collaborators: do not open this PR`;

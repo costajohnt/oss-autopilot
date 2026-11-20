@@ -61,12 +61,19 @@ export function quote(text: string): string {
 const BEFORE_PR = /\bbefore\s+(?:opening|submitting|sending|creating|starting|working)\b/i;
 const CLAIM_PHRASE = /\b(?:comment\s+on\s+the\s+issue|ask\s+to\s+be\s+assigned|get\s+assigned|be\s+assigned)\b/i;
 const PR_NOUN = String.raw`(?:pull\s+requests|prs|contributions)`;
-/** The clause ends here: no "for large refactors" / "to the vendored directory" scoping it down. */
-const CLAUSE_END = String.raw`\s*(?:[.!;,]|$)`;
 
-/** `keyword` within a few words after a negation: "do not require a CLA", "no need to be assigned". */
+/**
+ * `keyword` within a few words after a negation: "do not require a CLA", "no
+ * need to be assigned". "without" is not a negation here: "merged without a
+ * signed CLA" states the rule.
+ */
 function negated(keyword: string): RegExp {
-  return new RegExp(String.raw`(?:\bno|\bnot|n't|\bwithout)\s+(?:\w+\s+){0,3}?${keyword}`, 'i');
+  return new RegExp(String.raw`(?:\bno|\bnot|n't)\s+(?:\w+\s+){0,3}?${keyword}`, 'gi');
+}
+
+/** `line` with the negated spans blanked, so a positive phrase elsewhere on the line still counts. */
+function affirmed(line: string, none: RegExp | undefined): string {
+  return none ? line.replaceAll(none, ' ') : line;
 }
 
 /** A line states the gate when it matches every pattern of `all` and none of `none`. */
@@ -80,17 +87,14 @@ const GATE_RULES: ReadonlyArray<LineRule & { gate: PrGate }> = [
     gate: 'collaborators-only',
     all: [
       new RegExp(
-        String.raw`\bonly\s+accepts?\s+${PR_NOUN}\s+from\s+(?:collaborators|maintainers|team\s+members)${CLAUSE_END}`,
+        String.raw`\bonly\s+accepts?\s+${PR_NOUN}\s+from\s+(?:collaborators|maintainers|team\s+members)\b`,
         'i',
       ),
     ],
   },
   {
     gate: 'collaborators-only',
-    all: [
-      /(?:\bnot|n't)\s+accept\b/i,
-      new RegExp(String.raw`\b(?:external|outside|unsolicited)\s+${PR_NOUN}${CLAUSE_END}`, 'i'),
-    ],
+    all: [/(?:\bnot|n't)\s+accept\b/i, new RegExp(String.raw`\b(?:external|outside|unsolicited)\s+${PR_NOUN}\b`, 'i')],
   },
   {
     gate: 'maintainer-label',
@@ -103,8 +107,8 @@ const GATE_RULES: ReadonlyArray<LineRule & { gate: PrGate }> = [
 /** Strictest first: the first gate any doc states wins. */
 const GATE_ORDER: readonly PrGate[] = ['collaborators-only', 'maintainer-label', 'claim-first'];
 
-const DCO = /\bDCO\b|signed?-off-by|sign-?off/i;
-const DCO_NEGATED = negated('(?:DCO|sign(?:ed)?-?off)');
+const DCO = /\bDCO\b|signed?-off-by|sign[- ]?off/i;
+const DCO_NEGATED = negated('(?:DCO|sign(?:ed)?[- ]?off)');
 
 /** Commit rules: a CONTRIBUTING requirement of `category` whose line matches `evidence`, or a line matching `all`. */
 const COMMIT_RULE_MATCHERS: ReadonlyArray<Partial<LineRule> & { rule: string; category?: string; evidence?: RegExp }> =
@@ -122,7 +126,7 @@ const CLA_EVIDENCE = /\bCLA\b|contributor\s+license\s+agreement/i;
 const CLA_NEGATED = negated(String.raw`(?:CLA\b|contributor\s+license)`);
 
 function lineMatching(text: string, rule: LineRule): string | null {
-  return text.split(/\r?\n/).find((line) => rule.all.every((p) => p.test(line)) && !rule.none?.test(line)) ?? null;
+  return text.split(/\r?\n/).find((line) => rule.all.every((p) => p.test(affirmed(line, rule.none)))) ?? null;
 }
 
 interface Hit {
@@ -162,7 +166,7 @@ function scanCommitRules(doc: PolicyDoc, requirements: ReturnType<typeof extract
   for (const matcher of COMMIT_RULE_MATCHERS) {
     if (found.commitRules.some((r) => r.rule === matcher.rule)) continue;
     const req = requirements.find(
-      (r) => r.category === matcher.category && matcher.evidence?.test(r.evidence) && !matcher.none?.test(r.evidence),
+      (r) => r.category === matcher.category && matcher.evidence?.test(affirmed(r.evidence, matcher.none)),
     );
     const line =
       req?.evidence ?? (matcher.all ? lineMatching(doc.content, { all: matcher.all, none: matcher.none }) : null);
@@ -173,7 +177,7 @@ function scanCommitRules(doc: PolicyDoc, requirements: ReturnType<typeof extract
 function scanRequirements(doc: PolicyDoc, found: Found): void {
   const requirements = extractRequirements(doc.content);
   const cla = requirements.find(
-    (r) => r.category === 'cla_dco' && CLA_EVIDENCE.test(r.evidence) && !CLA_NEGATED.test(r.evidence),
+    (r) => r.category === 'cla_dco' && CLA_EVIDENCE.test(affirmed(r.evidence, CLA_NEGATED)),
   );
   if (cla && !found.cla) found.cla = { file: doc.file, line: cla.evidence };
   scanCommitRules(doc, requirements, found);
@@ -230,6 +234,13 @@ function rawEntry(state: PolicyState, repo: string): Record<string, unknown> | n
   return typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
 }
 
+/** Fields of the stored entry this release does not know (a newer release added them), to keep across an edit. */
+export function unknownFields(state: PolicyState, repo: string): Record<string, unknown> {
+  const raw = rawEntry(state, repo) ?? {};
+  const known = new Set(Object.keys(RepoPolicySchema.shape));
+  return Object.fromEntries(Object.entries(raw).filter(([key]) => !known.has(key)));
+}
+
 /** A stored entry this release cannot parse, e.g. one a newer release wrote with a value added since. */
 export function isUnreadable(state: PolicyState, repo: string): boolean {
   const raw = state.repoPolicies?.[repo.toLowerCase()];
@@ -284,12 +295,29 @@ export function effectivePolicy(state: PolicyState, repo: string, fresh?: RepoPo
   };
 }
 
+const REPO_KEY = /^[^/\s]+\/[^/\s]+$/;
+
+/**
+ * Where a ban came from, for the user: nothing for one they confirmed; how to
+ * lift it otherwise. A blocklist ban is lifted in config, an unreviewed one
+ * with `policy set`.
+ */
+export function banNote(policy: RepoPolicy, repo: string): string {
+  if (policy.source[0]?.file === BLOCKLIST_SOURCE) {
+    return ' (from aiPolicyBlocklist: remove it there with setup --set aiPolicyBlocklist=... if this is wrong)';
+  }
+  if (policy.reviewedByUser) return '';
+  return ` (read from the repo docs, not reviewed: run \`oss-autopilot policy set --repo ${repo} --ai-policy allowed\` if this is a misreading)`;
+}
+
 /** Stored `banned` records (lowercase keys), reviewed or not. */
 export function storedBans(state: PolicyState): Array<{ repo: string; reviewedByUser: boolean }> {
   const bans: Array<{ repo: string; reviewedByUser: boolean }> = [];
   if (!state.repoPolicies) return bans;
   const repos = Object.keys(state.repoPolicies);
   for (const repo of repos) {
+    // A hand-edited or corrupt key is not a repo; never hand it to search.
+    if (!REPO_KEY.test(repo)) continue;
     const policy = storedPolicy(state, repo);
     if (policy?.aiPolicy === 'banned') bans.push({ repo, reviewedByUser: policy.reviewedByUser });
   }
