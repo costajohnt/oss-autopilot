@@ -11,6 +11,7 @@
  */
 import { z } from 'zod';
 import { CLOSE_REASONS, SELF_CLOSE_REASONS } from './close-reason.js';
+import { issueRefKey } from './urls.js';
 
 /**
  * An enum that also accepts values it does not know (#1831): a newer release
@@ -443,7 +444,54 @@ export const AgentConfigSchema = z
   // Passthrough (#1831): a newer release's config fields survive this
   // version's load/save. Retired fields must be dropped explicitly instead.
   .passthrough()
-  .transform(({ snoozedPRs: _retired, ...config }) => config);
+  .transform(({ snoozedPRs: _retired, ...config }) => foldRefKeys(config));
+
+/** ISO stamp to ms for ranking; an unparseable stamp ranks last. */
+function stampRank(at: string): number {
+  const ms = Date.parse(at);
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
+/**
+ * Keep one entry per issue or PR in a URL-keyed map (#2001): keys naming the
+ * same {@link issueRefKey} (owner/repo casing, `/issues/N` vs `/pull/N`) fold
+ * into the one `rank` scores highest, first wins a tie. The winner keeps its
+ * own key, a URL, which older clients sharing the Gist look up by exact match.
+ */
+function foldByRef<T>(map: Record<string, T>, rank: (key: string, value: T) => number): Record<string, T> {
+  const winners = new Map<string, string>();
+  for (const [key, value] of Object.entries(map)) {
+    const ref = issueRefKey(key) ?? key;
+    const current = winners.get(ref);
+    if (current === undefined || rank(key, value) > rank(current, map[current])) winners.set(ref, key);
+  }
+  if (winners.size === Object.keys(map).length) return map;
+  return Object.fromEntries(Array.from(winners.values(), (key) => [key, map[key]]));
+}
+
+/**
+ * Fold duplicate keys of `dismissedIssues`, `dismissedPRHeads` and
+ * `statusOverrides` on load (#2001), newest stamp kept. A PR's dismiss head
+ * follows the dismiss stamp that won.
+ */
+function foldRefKeys<
+  C extends {
+    dismissedIssues: Record<string, string>;
+    dismissedPRHeads: Record<string, string>;
+    statusOverrides?: Record<string, { setAt: string }>;
+  },
+>(config: C): C {
+  const dismissedIssues = foldByRef(config.dismissedIssues, (_key, at) => stampRank(at));
+  const dismissKeys = new Set(Object.keys(dismissedIssues));
+  return {
+    ...config,
+    dismissedIssues,
+    dismissedPRHeads: foldByRef(config.dismissedPRHeads, (key) => (dismissKeys.has(key) ? 1 : 0)),
+    ...(config.statusOverrides && {
+      statusOverrides: foldByRef(config.statusOverrides, (_key, override) => stampRank(override.setAt)),
+    }),
+  };
+}
 
 // ── 6. Cache schemas ─────────────────────────────────────────────────
 

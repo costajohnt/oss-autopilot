@@ -500,6 +500,44 @@ describe('dismissIssue / undismissIssue / getIssueDismissedAt', () => {
   });
 });
 
+// ── URL key normalisation (#2001) ────────────────────────────────────────────
+describe('dismiss and status-override keys match by issueRefKey (#2001)', () => {
+  let stateManager: StateManager;
+  const canonical = 'https://github.com/Owner/Repo/pull/7';
+  const typed = 'https://github.com/owner/repo/issues/7';
+  const head = 'b'.repeat(40);
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('finds a dismiss written with a mixed-case /issues/N URL through the canonical /pull/N URL', () => {
+    expect(stateManager.dismissIssue(typed, '2026-11-01T00:00:00.000Z', { headSha: head })).toBe(true);
+    expect(stateManager.getIssueDismissedAt(canonical)).toBe('2026-11-01T00:00:00.000Z');
+    expect(stateManager.getDismissedPRHead(canonical)).toBe(head);
+  });
+
+  it('re-dismisses and undismisses the existing entry instead of adding a second key', () => {
+    stateManager.dismissIssue(canonical, '2026-11-01T00:00:00.000Z');
+    expect(stateManager.dismissIssue(typed, '2026-11-02T00:00:00.000Z')).toBe(false);
+    expect(stateManager.dismissIssue(typed, '2026-11-03T00:00:00.000Z', { refresh: true, headSha: head })).toBe(true);
+    expect(stateManager.getState().config.dismissedIssues).toEqual({ [canonical]: '2026-11-03T00:00:00.000Z' });
+    expect(stateManager.getState().config.dismissedPRHeads).toEqual({ [canonical]: head });
+    expect(stateManager.undismissIssue(typed)).toBe(true);
+    expect(stateManager.getState().config.dismissedIssues).toEqual({});
+    expect(stateManager.getState().config.dismissedPRHeads).toEqual({});
+  });
+
+  it('sets, finds and clears a status override across URL forms of the same PR', () => {
+    stateManager.setStatusOverride(typed, 'waiting_on_maintainer', '2026-11-01T00:00:00Z');
+    expect(stateManager.getStatusOverride(canonical)?.status).toBe('waiting_on_maintainer');
+    stateManager.setStatusOverride(canonical, 'needs_addressing', '2026-11-02T00:00:00Z');
+    expect(Object.keys(stateManager.getState().config.statusOverrides ?? {})).toEqual([typed]);
+    expect(stateManager.clearStatusOverride(canonical)).toBe(true);
+    expect(stateManager.getState().config.statusOverrides).toEqual({});
+  });
+});
+
 // ── Status overrides (#575) ─────────────────────────────────────────────────
 describe('setStatusOverride / clearStatusOverride / getStatusOverride', () => {
   let stateManager: StateManager;

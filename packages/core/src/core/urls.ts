@@ -98,6 +98,22 @@ export function issueRefKey(url: string): string | null {
 }
 
 /**
+ * The key of a URL-keyed state map (`dismissedIssues`, `dismissedPRHeads`,
+ * `statusOverrides`) that names the same issue or PR as `url` (#2001): `url`
+ * itself when present, else the key with the same {@link issueRefKey}, so a
+ * mixed-case owner/repo or the `/issues/N` form of a PR still finds the entry.
+ * Keys stay URLs because older clients sharing the Gist look them up by exact
+ * URL. undefined when there is no such key.
+ */
+export function findRefKey(map: Readonly<Record<string, unknown>> | undefined, url: string): string | undefined {
+  if (!map) return undefined;
+  if (Object.hasOwn(map, url)) return url;
+  const key = issueRefKey(url);
+  // ponytail: linear scan per miss; maps hold tens to hundreds of entries.
+  return key === null ? undefined : Object.keys(map).find((k) => issueRefKey(k) === key);
+}
+
+/**
  * Extracts the owner and repo from a GitHub web URL
  * (e.g. `https://github.com/owner/repo/pull/42`, `https://github.com/owner/repo/`).
  *

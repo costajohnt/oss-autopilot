@@ -16,7 +16,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { parseGitHubUrl, extractOwnerRepo, isOwnRepo, isUntrackedOrg } from './urls.js';
+import { parseGitHubUrl, extractOwnerRepo, isOwnRepo, isUntrackedOrg, findRefKey } from './urls.js';
 import { DEFAULT_CONCURRENCY, rethrowRejections, runWorkerPool, sleep } from './concurrency.js';
 import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
 import {
@@ -518,7 +518,7 @@ export class PRMonitor {
     // pipeline decides via `needCommitDate` and invokes this thunk lazily.
     // A PR with a status override is the exception: override auto-clear keys
     // on the commit date (#1713), so fetch it up front for those PRs only.
-    const commitInfo = config.statusOverrides?.[prUrl]
+    const commitInfo = findRefKey(config.statusOverrides, prUrl)
       ? await this.fetchCommitInfo(owner, repo, ghPR.head.sha)
       : () => this.fetchCommitInfo(owner, repo, ghPR.head.sha);
     return assembleFetchedPR(
