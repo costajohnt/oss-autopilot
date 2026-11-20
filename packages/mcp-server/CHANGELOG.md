@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.12.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.3...mcp-v5.12.0) (2026-11-20)
+
+
+### Features
+
+* record each repository's contribution policy and check it before a PR opens ([#2000](https://github.com/costajohnt/oss-autopilot/issues/2000)) ([083d671](https://github.com/costajohnt/oss-autopilot/commit/083d6713b24834e0d18dd8cd7c6a37191d07d646))
+
+
+### Bug Fixes
+
+* escape every tag inside the untrusted-content fence and fence titles in MCP results ([#1973](https://github.com/costajohnt/oss-autopilot/issues/1973)) ([e323411](https://github.com/costajohnt/oss-autopilot/commit/e323411f7a8e0a87887fb14cf3f29f9dd4f0b477)), closes [#1931](https://github.com/costajohnt/oss-autopilot/issues/1931)
+* harden state file locking, backup restore and newer-version handling ([#1989](https://github.com/costajohnt/oss-autopilot/issues/1989)) ([ae5aa42](https://github.com/costajohnt/oss-autopilot/commit/ae5aa422e364582431ced4663d86913a751a1e6d)), closes [#1951](https://github.com/costajohnt/oss-autopilot/issues/1951)
+* **mcp:** bind write approvals to the exact arguments and allow each one once ([#2024](https://github.com/costajohnt/oss-autopilot/issues/2024)) ([78c15b5](https://github.com/costajohnt/oss-autopilot/commit/78c15b5b9b29d6afb1d3613dedb582aab6c48442))
+* **mcp:** bundle @oss-autopilot/core 3.42.5 ([18f0638](https://github.com/costajohnt/oss-autopilot/commit/18f0638cbb39565139f4f0b4e02a0253956c206e))
+* **mcp:** ship the server with no runtime dependencies so npx installs only the bundle ([#2021](https://github.com/costajohnt/oss-autopilot/issues/2021)) ([af87d18](https://github.com/costajohnt/oss-autopilot/commit/af87d1882a896dfe5e73d0fac1f2bd352a8ced8d)), closes [#2007](https://github.com/costajohnt/oss-autopilot/issues/2007)
+* never create a new state Gist when the search for the existing one fails ([#1970](https://github.com/costajohnt/oss-autopilot/issues/1970)) ([bdfd289](https://github.com/costajohnt/oss-autopilot/commit/bdfd289ac5e4aa5db7c7ea8c6f8706461277a5c9)), closes [#1926](https://github.com/costajohnt/oss-autopilot/issues/1926)
+* read issue threads through a fenced command in unattended implement mode ([#1977](https://github.com/costajohnt/oss-autopilot/issues/1977)) ([eb48136](https://github.com/costajohnt/oss-autopilot/commit/eb48136237412d58758bd80611ad52db46be1563)), closes [#1932](https://github.com/costajohnt/oss-autopilot/issues/1932)
+* require user review before storing guidelines distilled from PR comments ([#1984](https://github.com/costajohnt/oss-autopilot/issues/1984)) ([3c105eb](https://github.com/costajohnt/oss-autopilot/commit/3c105eb929999bc6e0ef126e5cc359ced74617ff)), closes [#1929](https://github.com/costajohnt/oss-autopilot/issues/1929)
+* **state:** keep newer enum values in synced state instead of restoring a backup ([#2030](https://github.com/costajohnt/oss-autopilot/issues/2030)) ([869bbe5](https://github.com/costajohnt/oss-autopilot/commit/869bbe55b094b5a64db383eff78f2160e16de1e3))
+
 ## [5.11.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.2...mcp-v5.11.3) (2026-11-13)
 
 
