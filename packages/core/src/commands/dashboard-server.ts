@@ -16,7 +16,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { getGitHubToken, getCLIVersion } from '../core/index.js';
-import { errorMessage, ValidationError, ConcurrencyError, GistConcurrencyError } from '../core/errors.js';
+import {
+  errorMessage,
+  ValidationError,
+  ConcurrencyError,
+  GistConcurrencyError,
+  StateLockTimeoutError,
+  ConfigurationError,
+} from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
 import type { MoveTarget } from './move.js';
@@ -208,7 +215,31 @@ function sanitizeHeaderValue(value: string): string {
  * save. See state-concurrency.test.ts (#1378) and errors.ts.
  */
 function isConcurrencyConflict(error: unknown): boolean {
+  if (error instanceof StateLockTimeoutError) return false; // a reload cannot help: see didSendStateError
   return error instanceof ConcurrencyError || error instanceof GistConcurrencyError;
+}
+
+/**
+ * Answer a state error whose message the user has to see (#1951), and report
+ * whether it did. Neither is retried by the page (it retries 409 only), and
+ * each message says what to do:
+ *  - a state-lock timeout (423): the lock is held by another process, so a
+ *    reload-and-retry cannot help and only blocks the event loop again;
+ *  - a ConfigurationError (500), e.g. state written by a newer release: a
+ *    generic "Internal server error" would leave the real message in the
+ *    detached server's log.
+ */
+function didSendStateError(res: http.ServerResponse, error: unknown): boolean {
+  if (res.headersSent) return false;
+  if (error instanceof StateLockTimeoutError) {
+    sendJson(res, 423, { error: error.message, code: 'STATE_LOCKED', retryable: false });
+    return true;
+  }
+  if (error instanceof ConfigurationError) {
+    sendJson(res, 500, { error: error.message, code: error.code, retryable: false });
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -389,6 +420,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       sendError(res, 405, 'Method not allowed');
     } catch (error) {
       warn(MODULE, `Unhandled request error: ${method} ${url} ${errorMessage(error)}`);
+      if (didSendStateError(res, error)) return;
       if (!res.headersSent) {
         sendError(res, 500, 'Internal server error');
       }
@@ -554,6 +586,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     try {
       await sm.runMutation(async () => applyMutation());
     } catch (error) {
+      if (didSendStateError(res, error)) return;
       if (!isConcurrencyConflict(error)) {
         warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
         sendError(res, 500, 'Action failed');
@@ -574,6 +607,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         await reloadState({ force: true });
         await sm.runMutation(async () => applyMutation());
       } catch (retryError) {
+        if (didSendStateError(res, retryError)) return;
         if (isConcurrencyConflict(retryError)) {
           warn(MODULE, `Action conflicted twice: ${body.action} ${body.url} ${errorMessage(retryError)}`);
           sendConflict(res);
@@ -667,6 +701,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       // No server-side retry here (unlike handleAction): a refresh re-run is a
       // full GitHub fetch — expensive and rate-limited. The 409 is retryable
       // by the client, which re-POSTs /api/refresh on its own schedule (#1397).
+      if (didSendStateError(res, error)) return;
       if (isConcurrencyConflict(error)) {
         warn(MODULE, `Dashboard refresh hit a concurrent state write: ${errorMessage(error)}`);
         sendConflict(res);

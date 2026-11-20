@@ -406,7 +406,7 @@ export class IssueConversationMonitor {
     const { owner } = splitRepo(repoFullName);
     // Skip issues in user-owned repos (we only care about contributing to others' projects)
     if (isOwnRepo(owner, config.githubUsername)) return false;
-    if (config.excludeRepos.includes(repoFullName)) return false;
+    if (config.excludeRepos.some((repo) => repo.toLowerCase() === repoFullName.toLowerCase())) return false;
     if (config.excludeOrgs?.some((org) => owner.toLowerCase() === org.toLowerCase())) return false;
     const blocklist = (config.aiPolicyBlocklist || []).map((r) => r.toLowerCase());
     return !blocklist.includes(repoFullName.toLowerCase());

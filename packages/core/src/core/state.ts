@@ -31,6 +31,7 @@ import {
   reloadStateIfChanged,
   createFreshState,
   atomicWriteFileSync,
+  assertNotNewerVersion,
   warnMalformedWorkClaims,
   type LoadRecoveryInfo,
 } from './state-persistence.js';
@@ -41,6 +42,8 @@ import {
   errorMessage,
   ConfigurationError,
   ConcurrencyError,
+  NewerStateVersionError,
+  StateLockTimeoutError,
   GistConcurrencyError,
   isTransientNetworkError,
   GistDiscoveryError,
@@ -483,7 +486,9 @@ export class StateManager {
     try {
       this.lastLoadedMtimeMs = saveState(this.state, this.lastLoadedMtimeMs);
     } catch (err) {
-      if (err instanceof ConcurrencyError && options.allowReloadAndLoseMutation) {
+      // A lock timeout is no external write: there is nothing to reload, and the mutation must not be dropped.
+      const isExternalWrite = err instanceof ConcurrencyError && !(err instanceof StateLockTimeoutError);
+      if (isExternalWrite && options.allowReloadAndLoseMutation) {
         warn(MODULE, `Concurrent external write detected; reloading and discarding in-memory mutation. ${err.message}`);
         this.reloadIfChanged();
         return;
@@ -757,8 +762,11 @@ export class StateManager {
       let rawState: unknown;
       try {
         rawState = JSON.parse(raw);
+        assertNotNewerVersion(rawState, 'Gist state');
         this.state = AgentStateSchema.parse(rawState);
       } catch (err) {
+        // Not a bad payload: staying on old in-memory state would push it over the newer Gist.
+        if (err instanceof NewerStateVersionError) throw err;
         warn(MODULE, `Failed to parse refreshed Gist state: ${errorMessage(err)}`);
         // Same reasoning as the missing-file branch: parse failure leaves us
         // on stale in-memory state, so flag it.
@@ -1921,8 +1929,12 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
     let reason = `Gist initialization failed: ${errorMessage(err)}`;
     if (err instanceof GistFileSizeError) {
       reason = `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`;
-    } else if (err instanceof ConfigurationError && !(err instanceof GistDiscoveryError)) {
-      // A GistDiscoveryError carries its own remedy; the scope hint would mislead (#1926).
+    } else if (
+      err instanceof ConfigurationError &&
+      !(err instanceof GistDiscoveryError) &&
+      !(err instanceof NewerStateVersionError)
+    ) {
+      // A GistDiscoveryError or a newer-version error carries its own remedy; the scope hint would mislead (#1926).
       reason = `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`;
     }
     cause = { reason };

@@ -144,14 +144,14 @@ describe('Concurrent State Write Protection', () => {
     it('should create a lock file on acquire and remove it on release', () => {
       const lockPath = path.join(tmpDir, 'state.json.lock');
 
-      acquireLock(lockPath);
+      const held = acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 
       const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
       expect(lockData.pid).toBe(process.pid);
       expect(typeof lockData.timestamp).toBe('number');
 
-      releaseLock(lockPath);
+      releaseLock(lockPath, held);
       expect(fs.existsSync(lockPath)).toBe(false);
     });
 
@@ -174,28 +174,32 @@ describe('Concurrent State Write Protection', () => {
       fs.writeFileSync(lockPath, staleLockData, { flag: 'wx' });
 
       // Should succeed because the lock is stale
-      acquireLock(lockPath);
+      const held = acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 
       const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
       expect(newLockData.pid).toBe(process.pid);
 
-      releaseLock(lockPath);
+      releaseLock(lockPath, held);
     });
 
     it('should recover from corrupt lock files', () => {
       const lockPath = path.join(tmpDir, 'state.json.lock');
       // Write invalid JSON to simulate a corrupt lock file
       fs.writeFileSync(lockPath, 'NOT VALID JSON', { flag: 'wx' });
+      // A corrupt lock is aged by its mtime (#1951): a fresh unreadable lock
+      // may be one its owner is still writing.
+      const aged = new Date(Date.now() - 60_000);
+      fs.utimesSync(lockPath, aged, aged);
 
-      // Should succeed because corrupt locks are treated as stale
-      acquireLock(lockPath);
+      // Should succeed because the corrupt lock is past the stale threshold
+      const held = acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 
       const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
       expect(newLockData.pid).toBe(process.pid);
 
-      releaseLock(lockPath);
+      releaseLock(lockPath, held);
     });
 
     it('should not release a lock owned by another process', () => {
@@ -204,8 +208,8 @@ describe('Concurrent State Write Protection', () => {
       const lockData = JSON.stringify({ pid: 999_999, timestamp: Date.now() });
       fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
 
-      // releaseLock should not remove it because PID doesn't match
-      releaseLock(lockPath);
+      // releaseLock should not remove it: it is not the lock this caller holds
+      releaseLock(lockPath, 'a lock this caller never took');
       expect(fs.existsSync(lockPath)).toBe(true);
 
       // Clean up
@@ -215,7 +219,7 @@ describe('Concurrent State Write Protection', () => {
     it('should silently handle releasing a non-existent lock', () => {
       const lockPath = path.join(tmpDir, 'non-existent.lock');
       // Should not throw
-      expect(() => releaseLock(lockPath)).not.toThrow();
+      expect(() => releaseLock(lockPath, 'never taken')).not.toThrow();
     });
   });
 });

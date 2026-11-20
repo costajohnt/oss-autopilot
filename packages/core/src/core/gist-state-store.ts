@@ -59,6 +59,7 @@ import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-s
 import { pruneRejectedCopies } from './stale-data.js';
 import { serializeState } from './state-prune.js';
 import {
+  assertNotNewerVersion,
   atomicWriteFileSync,
   createFreshState,
   migrateV1ToV2,
@@ -75,6 +76,7 @@ import {
   GistCorruptError,
   GistDiscoveryError,
   GistFileSizeError,
+  NewerStateVersionError,
   getHttpStatusCode,
   isRateLimitError,
   isTransientNetworkError,
@@ -319,6 +321,7 @@ export class GistStateStore {
         if (fs.existsSync(cachePath)) {
           cacheRaw = fs.readFileSync(cachePath, 'utf8');
           let obj: unknown = JSON.parse(cacheRaw);
+          assertNotNewerVersion(obj, 'local state cache');
 
           // Chain migrations
           if (typeof obj === 'object' && obj !== null) {
@@ -334,6 +337,7 @@ export class GistStateStore {
           return { gistId: '', state: cachedState, created: false, degraded: true };
         }
       } catch (cacheErr) {
+        if (cacheErr instanceof NewerStateVersionError) throw cacheErr;
         // Promote to warn (#1201) and preserve corrupt cache so fresh-state
         // fallback doesn't silently destroy recoverable data on next push.
         if (cacheRaw) {
@@ -417,6 +421,7 @@ export class GistStateStore {
         if (fs.existsSync(cachePath)) {
           cacheRaw = fs.readFileSync(cachePath, 'utf8');
           let obj: unknown = JSON.parse(cacheRaw);
+          assertNotNewerVersion(obj, 'local state cache');
 
           // Chain migrations
           if (typeof obj === 'object' && obj !== null) {
@@ -432,6 +437,7 @@ export class GistStateStore {
           return { gistId: '', state: cachedState, created: false, degraded: true, migrated: false };
         }
       } catch (cacheErr) {
+        if (cacheErr instanceof NewerStateVersionError) throw cacheErr;
         if (cacheRaw) {
           const rejectedPath = preserveRejectedGistContent(cacheRaw, 'local-cache');
           warn(
@@ -644,6 +650,8 @@ export class GistStateStore {
         // An unreadable oversized file is not a conflict: refresh + retry
         // would hit the same wall, so surface it as-is.
         if (readErr instanceof GistFileSizeError) throw readErr;
+        // Nor is a Gist from a newer release: the answer is to update, not to re-run (#1951).
+        if (readErr instanceof NewerStateVersionError) throw readErr;
         if (isRateLimitError(readErr)) throw readErr;
         throw new GistConcurrencyError(preReadEtag, null);
       }
@@ -734,6 +742,8 @@ export class GistStateStore {
       this.lastRefreshError = null;
       return { status: 'refreshed' };
     } catch (err) {
+      // Not a failed fetch: the Gist is fine and this client is too old for it (#1951).
+      if (err instanceof NewerStateVersionError) throw err;
       const error = err instanceof Error ? err : new Error(String(err));
       warn(MODULE, `refreshFromGist failed: ${error.message}`);
       this.lastRefreshError = error;
@@ -889,6 +899,7 @@ export class GistStateStore {
 
     try {
       let obj: unknown = JSON.parse(raw);
+      assertNotNewerVersion(obj, 'Gist state');
 
       // Chain migrations using shared helpers from state-persistence
       if (typeof obj === 'object' && obj !== null) {
@@ -904,6 +915,7 @@ export class GistStateStore {
       warnMalformedWorkClaims(obj, state, 'Gist state');
       return state;
     } catch (err) {
+      if (err instanceof NewerStateVersionError) throw err;
       const rejectedPath = preserveRejectedGistContent(raw, this.gistId ?? 'unknown');
       warn(
         MODULE,

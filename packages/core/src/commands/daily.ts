@@ -85,7 +85,7 @@ import {
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
 import { fetchRecentPRLists } from './daily-recent-prs.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
-import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
+import { batchOnFreshBaseline, filterDismissedIssues, reloadOrWarn } from './daily-dismiss-filter.js';
 import { resetStaleClosedCounts, syncLedgersWithGitHub } from './daily-ledger.js';
 
 const MODULE = 'daily';
@@ -766,7 +766,7 @@ function generateDigestOutput(
 
   // Assess capacity from active PRs only (shelved PRs excluded). Reload first
   // so maxActivePRs reflects a config change made while the run was fetching.
-  stateManager.reloadIfChanged();
+  reloadOrWarn(stateManager, warnings);
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
   // One nudge per issue (#1863): an issue listed under closedPRStatusUpdates

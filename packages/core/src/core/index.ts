@@ -91,6 +91,8 @@ export {
   ValidationError,
   GistPermissionError,
   ConcurrencyError,
+  StateLockTimeoutError,
+  NewerStateVersionError,
   GistConcurrencyError,
   GistDiscoveryError,
   GistFileSizeError,
