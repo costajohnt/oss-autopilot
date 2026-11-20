@@ -17,6 +17,8 @@ import { warn } from '../core/logger.js';
 import { validateRepoIdentifier } from './validation.js';
 import { computeRepoVet, type RepoVetInput, type RepoVetResult } from '../core/repo-vet.js';
 import type { RepoVetOutput } from '../formatters/json.js';
+import { derivePolicy, effectivePolicy, policyField, type PolicyDoc, type RepoPolicy } from '../core/repo-policy.js';
+import { decodeBase64 } from '../core/pr-template.js';
 
 const MODULE = 'repo-vet';
 
@@ -35,25 +37,24 @@ const COMMUNITY_HEALTH_PATHS = [
 ] as const;
 
 /**
- * Returns true when the path exists. Treats 404 as "absent" (the only
- * shape we care about for community-health flags). Re-throws everything
- * else — auth/rate-limit failures must not silently scrub the
- * `hasContributing` etc. flags to `false`, which would understate a
- * repo's community health on a token that lacks scope or has been
- * throttled mid-sequence.
+ * The file's text when the path exists ('' for a directory), null on 404.
+ * Re-throws everything else: auth/rate-limit failures must not silently
+ * scrub the `hasContributing` etc. flags to `false`, which would understate a
+ * repo's community health on a token that lacks scope or has been throttled
+ * mid-sequence.
  */
 async function probePath(
   octokit: ReturnType<typeof getOctokit>,
   owner: string,
   repo: string,
   path: string,
-): Promise<boolean> {
+): Promise<string | null> {
   try {
-    await octokit.repos.getContent({ owner, repo, path });
-    return true;
+    const { data } = await octokit.repos.getContent({ owner, repo, path });
+    return Array.isArray(data) || data.type !== 'file' || !('content' in data) ? '' : decodeBase64(data.content);
   } catch (err) {
     const status = (err as { status?: number }).status;
-    if (status === 404) return false;
+    if (status === 404) return null;
     throw err;
   }
 }
@@ -78,6 +79,8 @@ async function checkCommunityHealth(
   hasPRTemplate: boolean;
   hasCodeOfConduct: boolean;
   incomplete: boolean;
+  /** Text of the files found, for the contribution-policy parsers (#1953). */
+  docs: PolicyDoc[];
 }> {
   const out: Record<string, boolean> = {
     hasContributing: false,
@@ -86,13 +89,16 @@ async function checkCommunityHealth(
     hasCodeOfConduct: false,
   };
   let incomplete = false;
+  const found: Partial<Record<string, PolicyDoc>> = {};
   await Promise.all(
     COMMUNITY_HEALTH_PATHS.map(async ({ key, candidates }) => {
       let sawError = false;
       for (const path of candidates) {
         try {
-          if (await probePath(octokit, owner, repo, path)) {
+          const text = await probePath(octokit, owner, repo, path);
+          if (text !== null) {
             out[key] = true;
+            found[key] = { file: path, content: text };
             return;
           }
         } catch (err) {
@@ -118,6 +124,10 @@ async function checkCommunityHealth(
     hasIssueTemplates: out.hasIssueTemplates,
     hasPRTemplate: out.hasPRTemplate,
     hasCodeOfConduct: out.hasCodeOfConduct,
+    // Fixed order, whichever probe finished first.
+    docs: [found.hasContributing, found.hasPRTemplate].filter(
+      (d): d is PolicyDoc => d !== undefined && d.content !== '',
+    ),
     incomplete,
   };
 }
@@ -151,6 +161,21 @@ function lookupHistoryScore(repoSlug: string): number | undefined {
   } catch (error) {
     warn(MODULE, `History-score lookup skipped (state unavailable): ${errorMessage(error)}`);
     return undefined;
+  }
+}
+
+/**
+ * The contribution policy that applies (#1953): the user's record, else what
+ * this run read from CONTRIBUTING and the PR template, with the blocklist read
+ * as a ban. repo-vet stores nothing; `vet` records the policy.
+ */
+function resolvePolicy(repoSlug: string, docs: PolicyDoc[]): RepoPolicy | null {
+  const derived = docs.length > 0 ? derivePolicy(docs) : undefined;
+  try {
+    return effectivePolicy(getStateManager().getState(), repoSlug, derived);
+  } catch (error) {
+    warn(MODULE, `Stored policy lookup skipped (state unavailable): ${errorMessage(error)}`);
+    return derived ?? null;
   }
 }
 
@@ -311,6 +336,7 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
   // relationship score when one exists. Optional so the output is unchanged
   // for repos the user has no history with (back-compat).
   const historyScore = lookupHistoryScore(options.repo);
+  const policy = resolvePolicy(options.repo, communityHealthSummary.docs);
 
   return {
     repoSlug: options.repo,
@@ -320,5 +346,6 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
     maintainerActivity: { ...maintainerActivity, releasesIncomplete },
     ...rest,
     ...(historyScore !== undefined && { historyScore }),
+    ...policyField(policy),
   };
 }

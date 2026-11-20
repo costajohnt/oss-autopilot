@@ -9,6 +9,7 @@ const mockGetRepoScore = vi.fn();
 const mockRecordPickSnapshots = vi.fn();
 const mockGetState = vi.fn();
 const mockFetchVerification = vi.fn();
+const mockSetRepoPolicy = vi.fn();
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -31,6 +32,7 @@ vi.mock('../core/index.js', async () => {
       getRepoScore: mockGetRepoScore,
       getState: mockGetState,
       recordPickSnapshots: mockRecordPickSnapshots,
+      setRepoPolicy: mockSetRepoPolicy,
       isGistMode: () => false,
       reloadIfChanged: () => false,
     }),
@@ -40,6 +42,72 @@ vi.mock('../core/index.js', async () => {
 import { runVet } from './vet.js';
 
 const TEST_ISSUE_URL = 'https://github.com/owner/repo/issues/5';
+
+function policyCandidate(rawContent?: string) {
+  return {
+    issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
+    recommendation: 'approve' as const,
+    reasonsToApprove: [],
+    reasonsToSkip: [],
+    projectHealth: {},
+    vettingResult: rawContent ? { contributionGuidelines: { rawContent } } : {},
+  };
+}
+
+describe('runVet: repo contribution policy (#1953)', () => {
+  const BAN = 'We do not accept AI-generated contributions.';
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetchVerification.mockRejectedValue(new Error('offline'));
+    mockGetRepoScore.mockReturnValue(undefined);
+  });
+
+  it('records what it read, unreviewed, and a ban makes the issue a skip', async () => {
+    mockGetState.mockReturnValue({ config: {} });
+    mockVetIssue.mockResolvedValue(policyCandidate(BAN));
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).toHaveBeenCalledWith(
+      'owner/repo',
+      expect.objectContaining({ aiPolicy: 'banned', reviewedByUser: false }),
+    );
+    expect(result.policy).toMatchObject({ aiPolicy: 'banned', reviewedByUser: false });
+    expect(result.recommendation).toBe('skip');
+    expect(result.reasonsToSkip).toContain('repo policy: the project does not accept AI-assisted contributions');
+  });
+
+  it('does not overwrite a record the user set, and reports that record', async () => {
+    const reviewed = {
+      aiPolicy: 'allowed',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: true,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    mockGetState.mockReturnValue({ config: {}, repoPolicies: { 'owner/repo': reviewed } });
+    mockVetIssue.mockResolvedValue(policyCandidate(BAN));
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).not.toHaveBeenCalled();
+    expect(result.policy).toMatchObject({ aiPolicy: 'allowed', reviewedByUser: true });
+    expect(result.recommendation).not.toBe('skip');
+  });
+
+  it('shows a blocklisted repo as banned even when vet read nothing', async () => {
+    mockGetState.mockReturnValue({ config: { aiPolicyBlocklist: ['owner/repo'] } });
+    mockVetIssue.mockResolvedValue(policyCandidate());
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).not.toHaveBeenCalled();
+    expect(result.policy?.aiPolicy).toBe('banned');
+    expect(result.recommendation).toBe('skip');
+  });
+});
 
 describe('runVet', () => {
   beforeEach(() => {

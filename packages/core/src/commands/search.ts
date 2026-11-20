@@ -19,6 +19,7 @@ import { computeStrategy } from '../core/strategy.js';
 import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
 import { reposAtCap as findReposAtCap } from '../core/repo-cap.js';
+import { policyField, storedPolicy } from '../core/repo-policy.js';
 import { SCOUT_ROTATION_TTL_DAYS, SEARCH_SEEN_RETENTION_DAYS } from '../core/state-prune.js';
 
 export { type SearchOutput } from '../formatters/json.js';
@@ -376,6 +377,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
         ...(c.personalization?.kind === 'boosted' &&
           c.personalization.reasons.length > 0 && { boostReasons: c.personalization.reasons }),
         ...(c.personalization?.kind === 'diversity' && { diversitySlot: true }),
+        ...policyField(storedPolicy(stateManager.getState(), c.issue.repo)),
       };
     }),
     excludedRepos: result.excludedRepos,

@@ -73,6 +73,7 @@ vi.mock('./formatters/json.js', () => ({
   WorkFinishOutputSchema: { name: 'WorkFinishOutputSchema' },
   WorkReleaseOutputSchema: { name: 'WorkReleaseOutputSchema' },
   WorkListOutputSchema: { name: 'WorkListOutputSchema' },
+  PolicyGetOutputSchema: { name: 'PolicyGetOutputSchema' },
 }));
 
 const mockRunWorkClaim = vi.fn();
@@ -263,6 +264,15 @@ const mockGuidelinesView = vi.fn();
 const mockGuidelinesStore = vi.fn();
 const mockGuidelinesReset = vi.fn();
 const mockFetchCorpus = vi.fn();
+const mockPolicyGet = vi.fn();
+const mockPolicySet = vi.fn();
+const mockPolicyReset = vi.fn();
+vi.mock('./commands/policy.js', () => ({
+  runPolicyGet: mockPolicyGet,
+  runPolicySet: mockPolicySet,
+  runPolicyReset: mockPolicyReset,
+}));
+
 vi.mock('./commands/guidelines.js', () => ({
   runGuidelinesList: mockGuidelinesList,
   runGuidelinesView: mockGuidelinesView,
@@ -3336,5 +3346,101 @@ describe('work subcommands', () => {
     await program.parseAsync(['node', 'cli', 'work', 'list']);
     expect(consoleLogSpy).toHaveBeenCalledWith('No live work claims.');
     expect(consoleLogSpy).toHaveBeenCalledWith('Warning (may be stale): Operating on cache state');
+  });
+});
+
+// ─── policy subcommands (#1953) ─────────────────────────────────────────────
+
+describe('policy subcommands', () => {
+  const REPO = 'octo/alpha';
+  const POLICY = {
+    aiPolicy: 'disclosure-required',
+    cla: 'required',
+    prGate: 'claim-first',
+    commitRules: ['dco-signoff'],
+    maxOpenAiPRs: 1,
+    reviewedByUser: false,
+    updatedAt: '2026-11-01T00:00:00.000Z',
+    blocklisted: false,
+    disclosureText: '<github-content label="octo/alpha">Assisted-by: tool</github-content>',
+    sources: '<github-content label="octo/alpha">CONTRIBUTING.md: must disclose AI</github-content>',
+  };
+
+  it('get prints every field, or the none-recorded note', async () => {
+    mockPolicyGet.mockResolvedValueOnce({ repo: REPO, policy: POLICY });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'get', '--repo', REPO]);
+    expect(mockPolicyGet).toHaveBeenCalledWith({ repo: REPO });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\n${REPO} (read from repo docs, not reviewed, 2026-11-01)`);
+    expect(consoleLogSpy).toHaveBeenCalledWith('  AI policy: disclosure-required');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  CLA: required   PR gate: claim-first');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Commit rules: dco-signoff');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Max open AI-assisted PRs: 1');
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Disclosure: ${POLICY.disclosureText}`);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  Sources: ${POLICY.sources}`);
+
+    mockPolicyGet.mockResolvedValueOnce({ repo: REPO, policy: null });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'get', '--repo', REPO]);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`No contribution policy recorded for ${REPO}.`);
+  });
+
+  it('get --json validates against PolicyGetOutputSchema (tier-1)', async () => {
+    const data = { repo: REPO, policy: null };
+    mockPolicyGet.mockResolvedValue(data);
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'get', '--repo', REPO, '--json']);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'PolicyGetOutputSchema' }, data);
+  });
+
+  it('set passes the flags through, parses --max-open-ai-prs, and notes a blocklist ban', async () => {
+    const policy = { ...POLICY, aiPolicy: 'banned', blocklisted: true, reviewedByUser: true };
+    mockPolicySet.mockResolvedValue({ repo: REPO, policy });
+    await buildProgram('policy').parseAsync([
+      'node',
+      'cli',
+      'policy',
+      'set',
+      '--repo',
+      REPO,
+      '--ai-policy',
+      'allowed',
+      '--max-open-ai-prs',
+      '2',
+      '--commit-rules',
+      'dco-signoff',
+    ]);
+    expect(mockPolicySet).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: REPO, aiPolicy: 'allowed', maxOpenAiPRs: 2, commitRules: 'dco-signoff' }),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('  AI policy: banned (aiPolicyBlocklist)');
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '  Still banned: the repo is in aiPolicyBlocklist (remove it with setup --set aiPolicyBlocklist=...).',
+    );
+  });
+
+  it('set prints the record without the blocklist note when the repo is not listed', async () => {
+    mockPolicySet.mockResolvedValue({
+      repo: REPO,
+      policy: {
+        ...POLICY,
+        commitRules: [],
+        maxOpenAiPRs: undefined,
+        disclosureText: undefined,
+        sources: undefined,
+        reviewedByUser: true,
+      },
+    });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'set', '--repo', REPO, '--cla', 'none']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\n${REPO} (set by you, 2026-11-01)`);
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('Still banned'));
+  });
+
+  it('reset prints the deleted or nothing-stored line', async () => {
+    mockPolicyReset.mockResolvedValueOnce({ repo: REPO, deleted: true });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'reset', '--repo', REPO]);
+    expect(mockPolicyReset).toHaveBeenCalledWith({ repo: REPO });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Deleted the policy for ${REPO}.`);
+
+    mockPolicyReset.mockResolvedValueOnce({ repo: REPO, deleted: false });
+    await buildProgram('policy').parseAsync(['node', 'cli', 'policy', 'reset', '--repo', REPO]);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`No policy stored for ${REPO}.`);
   });
 });

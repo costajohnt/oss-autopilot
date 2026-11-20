@@ -15,6 +15,9 @@
  *    whether AI attribution should be flagged as a violation, encouraged,
  *    or required (#1269 Improvement C).
  *
+ * Production caller: `derivePolicy` in repo-policy.ts (#1953), which turns
+ * both scans into the repo's recorded `aiPolicy`.
+ *
  * The long-term home for this logic is `@oss-scout/core`, where the
  * relevant files are already fetched during vetting. Keeping it here
  * for now lets the agent invoke it directly and gives scout a

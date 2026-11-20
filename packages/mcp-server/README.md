@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 36 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `issue-thread`, `track`, `compliance-score`, `repo-vet`, `strategy`, `eval`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `work-claim`, `work-finish`, `work-release`, `work-list`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Tools** | 37 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `issue-thread`, `track`, `compliance-score`, `repo-vet`, `strategy`, `eval`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `work-claim`, `work-finish`, `work-release`, `work-list`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus`, `policy-get` |
 | **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
 | **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
@@ -151,6 +151,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `guidelines-store` | Persist per-repo guidelines the user has reviewed (`reviewed: true` required; asks the user to approve first, see below; refused when unattended; 8 KB cap; requires Gist mode) | No |
 | `guidelines-reset` | Tombstone the guidelines file for a repo | No |
 | `guidelines-fetch-corpus` | Fetch raw PR comment bundles for the host's `extract-learnings` prompt to consume | No |
+| `policy-get` | Read a repo's contribution policy (AI policy, CLA, commit rules, PR gate); quoted repo text fenced. Setting one is CLI-only (`policy set`) | Yes |
 
 
 ### What the tools will not do on the model's word

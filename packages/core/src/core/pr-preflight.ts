@@ -10,6 +10,7 @@
 
 import type { IssueAvailabilityVerdict, IssueVerification } from './issue-verification.js';
 import type { RepoCapStatus } from './repo-cap.js';
+import { fencePolicyText, summarizePolicy, type RepoPolicy } from './repo-policy.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
 import { isOwnRepo, splitRepo } from './urls.js';
 
@@ -74,6 +75,10 @@ export interface PreflightFacts {
   github: PreflightGitHubFacts | null;
   issue: IssueVerification | null;
   cap: RepoCapStatus | null;
+  /** The repo's contribution policy (`effectivePolicy`: stored record plus the blocklist); null when none is recorded. */
+  policy: RepoPolicy | null;
+  /** The user has no merged PR in the repo. */
+  isFirstContribution: boolean;
 }
 
 /** Past this many commits behind, the drift check warns even when no upstream commit touches the branch's files. */
@@ -290,6 +295,76 @@ export function checkRepoCap(facts: PreflightFacts): PreflightCheck {
   return check(id, 'pass', `${cap.openPRCount} open PR(s) in ${cap.repo} ${limit}`, details);
 }
 
+/** Each rule the policy states that this PR has not met, as the action that meets it. */
+function policyAsks(facts: PreflightFacts, policy: RepoPolicy, repo: string): string[] {
+  const isFirst = facts.isFirstContribution;
+  const login = facts.login?.toLowerCase();
+  const isAssigned = (facts.issue?.assignees ?? []).some((a) => a.toLowerCase() === login);
+  const rules: Array<[boolean, string]> = [
+    [
+      policy.aiPolicy === 'disclosure-required',
+      `${repo} requires an AI-use disclosure: add the line in details.disclosureText to the PR body`,
+    ],
+    [
+      isFirst && policy.aiPolicy === 'unknown',
+      `${repo}'s AI policy is unknown and this is your first PR there: read its CONTRIBUTING and README, then record it with policy set --repo ${repo} --ai-policy <value>`,
+    ],
+    [
+      !isAssigned && policy.prGate === 'claim-first',
+      `${repo} wants the issue claimed first: comment on it and get assigned before opening the PR`,
+    ],
+    [
+      policy.prGate === 'maintainer-label',
+      `${repo} wants a maintainer to accept the issue first: confirm it carries their approval label`,
+    ],
+    [isFirst && policy.cla === 'required', `${repo} requires a signed CLA: sign it when the CLA bot asks on the PR`],
+    [
+      !facts.cap && policy.maxOpenAiPRs !== undefined,
+      `${repo} allows ${policy.maxOpenAiPRs} open AI-assisted PR(s): count yours there before opening another`,
+    ],
+  ];
+  return rules.filter(([applies]) => applies).map(([, ask]) => ask);
+}
+
+/** What the policy forbids outright; null when nothing does. */
+function policyStop(facts: PreflightFacts, policy: RepoPolicy, repo: string): string | null {
+  if (policy.aiPolicy === 'banned') return `${repo} does not accept AI-assisted contributions: do not open this PR`;
+  if (policy.prGate === 'collaborators-only' && facts.github?.canPush !== true) {
+    return `${repo} only takes PRs from collaborators: do not open this PR`;
+  }
+  const max = policy.maxOpenAiPRs;
+  if (max !== undefined && facts.cap && facts.cap.openPRCount >= max) {
+    return `${repo} allows ${max} open AI-assisted PR(s) and you have ${facts.cap.openPRCount}: wait for one to close`;
+  }
+  return null;
+}
+
+function noPolicyCheck(id: string, repo: string, isFirst: boolean): PreflightCheck {
+  if (!isFirst) return check(id, 'pass', `no contribution policy recorded for ${repo}`);
+  return check(
+    id,
+    'warn',
+    `no contribution policy recorded for ${repo} and this is your first PR there: vet the issue or read its CONTRIBUTING, then record it with policy set --repo ${repo}`,
+  );
+}
+
+/**
+ * The repo's contribution policy (#1953): `banned` fails, a rule the PR has
+ * not met warns with the action that meets it. Quoted repo text arrives fenced.
+ */
+export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
+  const id = 'repo-policy';
+  const { repo, policy } = facts;
+  if (!repo) return check(id, 'skipped', 'no upstream repository');
+  if (!policy) return noPolicyCheck(id, repo, facts.isFirstContribution);
+  const details = { ...summarizePolicy(policy), ...fencePolicyText(repo, policy) };
+  const stop = policyStop(facts, policy, repo);
+  if (stop) return check(id, 'fail', stop, details);
+  const asks = policyAsks(facts, policy, repo);
+  if (asks.length > 0) return check(id, 'warn', asks.join('; '), details);
+  return check(id, 'pass', `${repo}: AI policy ${policy.aiPolicy}, PR gate ${policy.prGate}`, details);
+}
+
 /** Every check, in output order. A new check is added here. */
 export const PREFLIGHT_CHECKS: ReadonlyArray<(facts: PreflightFacts) => PreflightCheck> = [
   checkDrift,
@@ -298,6 +373,7 @@ export const PREFLIGHT_CHECKS: ReadonlyArray<(facts: PreflightFacts) => Prefligh
   checkWorkingTree,
   checkCompetingWork,
   checkRepoCap,
+  checkRepoPolicy,
 ];
 
 /** `fail` when any check fails, else `warn` when any warns, else `pass`. Skipped checks do not count. */

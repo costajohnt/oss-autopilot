@@ -72,20 +72,23 @@ The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scout s
 
 **If matched:** (1) recommendation → `skip` with reason `"anti-LLM policy"`; (2) quote the matching language in the summary so the user can verify the match; (3) do NOT proceed even if score is high.
 
-**Ask before persisting the exclusion.** False positives are possible, and `aiPolicyBlocklist` is a permanent, cross-session filter. Present the match to the user and use AskUserQuestion with:
-- "Add `{OWNER}/{REPO}` to the anti-LLM blocklist" — "Never surface issues from this repo again"
-- "Skip this issue but leave the repo searchable" — "Treat as one-off; do not change config"
-- "Undo (false positive)" — "Don't skip; I'll review the match manually"
+**The ban is recorded already.** `vet` stores what it read as the repo's contribution policy (`policy` on `vet --json`, `aiPolicy: "banned"` here), unreviewed, and `search` leaves out every repo with a banned policy or in `aiPolicyBlocklist`. False positives are possible, so present the match to the user and use AskUserQuestion with:
+- "Confirm the ban" — "Record it as reviewed; never surface issues from this repo again"
+- "Undo (false positive)" — "Record that the repo accepts AI-assisted contributions"
+- "Decide later" — "Leave the unreviewed record; the repo stays out of search"
 
-Only if the user picks the first option, run the config update (concatenate — `--set aiPolicyBlocklist=…` replaces the whole value):
+Run the matching command (both are refused in unattended runs; there, leave the record as is):
 
 ```bash
-CURRENT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json | jq -r '.data.config.aiPolicyBlocklist // ""')
-NEW="${CURRENT:+$CURRENT,}{OWNER}/{REPO}"
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set aiPolicyBlocklist="$NEW"
+# Confirm the ban
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy set --repo "{OWNER}/{REPO}" --ai-policy banned --json
+# Undo (false positive)
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy set --repo "{OWNER}/{REPO}" --ai-policy allowed --json
 ```
 
-Hidden signals (policy PRs, hidden comments) aren't document-scannable — note manually when observed and offer to add the repo to the blocklist with the same confirmation prompt above.
+A record set this way is never overwritten by a later vet. It cannot lift a ban from `aiPolicyBlocklist`; that list is edited with `setup --set aiPolicyBlocklist=...`.
+
+Hidden signals (policy PRs, hidden comments) aren't document-scannable — note manually when observed and offer to record the ban with the same confirmation prompt above, passing `--source "<what you saw>"`.
 
 ## Search Process
 

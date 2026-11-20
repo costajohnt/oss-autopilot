@@ -32,6 +32,19 @@ interface PrPreflightCliOptions {
   local?: boolean;
 }
 
+/** Options commander parses for `policy set`. */
+interface PolicySetCliOptions {
+  json?: boolean;
+  repo: string;
+  aiPolicy?: string;
+  disclosureText?: string;
+  cla?: string;
+  prGate?: string;
+  commitRules?: string;
+  maxOpenAiPrs?: number;
+  source?: string;
+}
+
 interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
   name: string;
@@ -79,14 +92,15 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    verify-issue, issue-thread, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
- *    pr-template, repo-cap, pr-preflight, repo-vet, detect-formatters, work (claim/finish/release/list).
+ *    pr-template, repo-cap, pr-preflight, repo-vet, detect-formatters, work (claim/finish/release/list),
+ *    policy (get/set).
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, eval, track, comments,
- *    startup, dismiss, undismiss, stats, and the five
+ *    startup, dismiss, undismiss, stats, policy reset, and the five
  *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
@@ -2357,6 +2371,82 @@ Load it with:
         });
     },
   },
+
+  // ── Repo contribution policy (#1953) ─────────────────────────────────
+  {
+    name: 'policy',
+    // State only: no GitHub call.
+    localOnly: true,
+    register(program) {
+      const group = program
+        .command('policy')
+        .description('Per-repo contribution policy: AI policy, disclosure, CLA, commit rules, PR gate (#1953)');
+
+      group
+        .command('get')
+        .description(
+          'Show the policy that applies to a repo (aiPolicyBlocklist read as a ban; quoted repo text fenced)',
+        )
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { repo: string; json?: boolean }) => {
+          const { PolicyGetOutputSchema } = await import('./formatters/json.js');
+          const { runPolicyGet } = await import('./commands/policy.js');
+          await executeAction(options, () => runPolicyGet({ repo: options.repo }), printPolicy, PolicyGetOutputSchema);
+        });
+
+      group
+        .command('set')
+        .description('Record the policy you confirmed for a repo (merged over what is stored; refused when unattended)')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--ai-policy <value>', 'allowed | disclosure-required | banned | unknown')
+        .option('--disclosure-text <text>', 'The disclosure line the repo asks for')
+        .option('--cla <value>', 'none | required | unknown')
+        .option('--pr-gate <value>', 'none | claim-first | maintainer-label | collaborators-only | unknown')
+        .option(
+          '--commit-rules <ids>',
+          'Comma-separated: conventional-commits, dco-signoff, no-closing-keyword-in-commit ("" clears)',
+        )
+        .option('--max-open-ai-prs <n>', 'Open AI-assisted PRs the repo allows at once (0 clears)', Number)
+        .option('--source <text>', 'Where the rule came from, e.g. a maintainer comment (stored as a short quote)')
+        .option('--json', 'Output as JSON')
+        .action(async (options: PolicySetCliOptions) => {
+          const { PolicyGetOutputSchema } = await import('./formatters/json.js');
+          const { runPolicySet } = await import('./commands/policy.js');
+          // Commander camel-cases --max-open-ai-prs as maxOpenAiPrs.
+          const { maxOpenAiPrs, ...rest } = options;
+          await executeAction(
+            options,
+            () => runPolicySet({ ...rest, maxOpenAiPRs: maxOpenAiPrs }),
+            (data) => {
+              printPolicy(data);
+              if (data.policy?.blocklisted && data.policy.aiPolicy === 'banned') {
+                console.log(
+                  '  Still banned: the repo is in aiPolicyBlocklist (remove it with setup --set aiPolicyBlocklist=...).',
+                );
+              }
+            },
+            PolicyGetOutputSchema,
+          );
+        });
+
+      group
+        .command('reset')
+        .description('Delete the stored policy for a repo (refused when unattended)')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { repo: string; json?: boolean }) => {
+          const { runPolicyReset } = await import('./commands/policy.js');
+          await executeAction(
+            options,
+            () => runPolicyReset({ repo: options.repo }),
+            (data) => {
+              console.log(data.deleted ? `Deleted the policy for ${data.repo}.` : `No policy stored for ${data.repo}.`);
+            },
+          );
+        });
+    },
+  },
 ];
 
 const BODY_FILE_HELP =
@@ -2412,6 +2502,23 @@ async function readGuidelinesContent(options: GuidelinesStoreCliOptions): Promis
     });
   }
   return options.content ?? readStdin();
+}
+
+/** Text mode for `policy get` / `policy set`. Quoted repo text stays fenced. */
+function printPolicy(data: import('./commands/policy.js').PolicyGetOutput): void {
+  const { policy } = data;
+  if (!policy) {
+    console.log(`No contribution policy recorded for ${data.repo}.`);
+    return;
+  }
+  const reviewed = policy.reviewedByUser ? 'set by you' : 'read from repo docs, not reviewed';
+  console.log(`\n${data.repo} (${reviewed}, ${policy.updatedAt.slice(0, 10)})`);
+  console.log(`  AI policy: ${policy.aiPolicy}${policy.blocklisted ? ' (aiPolicyBlocklist)' : ''}`);
+  console.log(`  CLA: ${policy.cla}   PR gate: ${policy.prGate}`);
+  if (policy.commitRules.length > 0) console.log(`  Commit rules: ${policy.commitRules.join(', ')}`);
+  if (policy.maxOpenAiPRs !== undefined) console.log(`  Max open AI-assisted PRs: ${policy.maxOpenAiPRs}`);
+  if (policy.disclosureText) console.log(`  Disclosure: ${policy.disclosureText}`);
+  if (policy.sources) console.log(`  Sources: ${policy.sources}`);
 }
 
 /** Read full stdin content. Used when `guidelines store` content isn't passed inline. */

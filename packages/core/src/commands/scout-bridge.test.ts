@@ -39,6 +39,25 @@ describe('buildScoutState', () => {
     vi.clearAllMocks();
   });
 
+  it('passes stored banned policies to scout with the blocklist, so search drops them (#1953)', () => {
+    const banned = {
+      aiPolicy: 'banned',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: false,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    const state = makeAgentState({
+      config: { aiPolicyBlocklist: ['matplotlib/matplotlib'] },
+      repoPolicies: { 'org/banned': banned, 'org/fine': { ...banned, aiPolicy: 'allowed' } },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    expect(buildScoutState().preferences.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib', 'org/banned']);
+  });
+
   it('should map all standard config fields correctly', () => {
     const state = makeAgentState({
       config: {

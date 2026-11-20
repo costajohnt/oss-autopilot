@@ -24,6 +24,7 @@ import {
   splitRepo,
   type IssueVerification,
 } from '../core/index.js';
+import type { AgentState } from '../core/types.js';
 import { ValidationError } from '../core/errors.js';
 import {
   runPreflightChecks,
@@ -35,6 +36,8 @@ import {
 import { git, parseRemoteOwner, parseRemotesOutput, resolvePushRemote, type GitRemote } from './overnight-push-prep.js';
 import type { RepoCapStatus } from '../core/repo-cap.js';
 import { runRepoCap } from './repo-cap.js';
+import { effectivePolicy } from '../core/repo-policy.js';
+import { isFirstInRepo } from '../core/pick-snapshot.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 export interface PrPreflightOptions {
@@ -292,6 +295,18 @@ function gatherHeadFacts(dir: string, remotes: GitRemote[], login: string | null
   };
 }
 
+/** The repo's contribution policy and whether this is the user's first PR there; read from local state only. */
+function policyFacts(
+  state: Readonly<AgentState>,
+  repo: string | null,
+): Pick<PreflightFacts, 'policy' | 'isFirstContribution'> {
+  if (!repo) return { policy: null, isFirstContribution: false };
+  return {
+    policy: effectivePolicy(state, repo),
+    isFirstContribution: isFirstInRepo(repo, state.repoScores[repo], state.mergedPRs),
+  };
+}
+
 /** Run every preflight check for the branch checked out in `options.dir`. */
 export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPreflightOutput> {
   if (options.base !== undefined && !BRANCH_NAME.test(options.base)) {
@@ -300,7 +315,8 @@ export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPre
   const dir = repoRoot(options.dir ?? process.cwd());
   const remotes = parseRemotesOutput(git(dir, ['remote', '-v']));
   const target = resolveTarget(remotes, options.issue);
-  const login = getStateManager().getState().config.githubUsername || null;
+  const sm = getStateManager();
+  const login = sm.getState().config.githubUsername || null;
   const network = await gatherNetworkFacts(target, options, login);
   const localDefault = localDefaultBranch(dir, target.remote);
   const base = options.base ?? network.github?.defaultBranch ?? localDefault;
@@ -311,6 +327,7 @@ export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPre
     ...gatherDriftFacts(dir, target.remote, base, options.fetch ? 'fetch' : 'no-fetch'),
     base,
     localDefault,
+    ...policyFacts(sm.getState(), target.repo),
   };
   const { repo, remote, issueUrl, branch, mergeBase, ahead, behind } = facts;
   const result = runPreflightChecks(facts);

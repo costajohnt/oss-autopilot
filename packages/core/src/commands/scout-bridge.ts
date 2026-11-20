@@ -4,6 +4,7 @@
  */
 
 import { reposAtCap } from '../core/repo-cap.js';
+import { bannedRepos } from '../core/repo-policy.js';
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
 import {
   activeWorkClaims,
@@ -219,7 +220,9 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
       excludeRepos: [...config.excludeRepos, ...cappedRepos],
       excludeOrgs: config.excludeOrgs ?? [],
       preferredOrgs: config.preferredOrgs ?? [],
-      aiPolicyBlocklist: config.aiPolicyBlocklist,
+      // The blocklist plus every stored `banned` policy (#1953), so a repo vet
+      // found banning AI-assisted PRs drops out of search before any work starts.
+      aiPolicyBlocklist: bannedRepos(state),
       projectCategories: config.projectCategories ?? [],
       minStars: config.minStars,
       maxIssueAgeDays: config.maxIssueAgeDays,
