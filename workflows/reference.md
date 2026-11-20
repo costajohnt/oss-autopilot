@@ -263,6 +263,7 @@ rejected with a did-you-mean suggestion.
 | `pr-compliance-checker` | Validate PRs against opensource.guide |
 | `pre-commit-reviewer` | Review code changes before committing (fallback for PR review toolkit) |
 | `overnight-preparer` | Prepare one fix branch locally for the overnight run, with no external side effects |
+| `learnings-extractor` | Draft per-repo guideline proposals from past PR feedback; holds no tool that can store them |
 | `issue-scout` | Find and vet new issues |
 | `repo-evaluator` | Analyze repository health |
 | `contribution-strategist` | Strategic OSS advice |

@@ -1426,6 +1426,20 @@ describe('StateManager merged PRs', () => {
       });
       expect(stateManager.getGuidelinesReview('other/repo')?.sha256).toBe('bb');
     });
+
+    it('ignores an unreadable review entry on read and keeps the readable ones (#1929)', () => {
+      stateManager.markGuidelinesReviewed('owner/repo', 'aa', '2026-11-19T10:00:00.000Z');
+      const reviews = stateManager.getState().guidelinesReviews as Record<string, unknown>;
+      reviews['bad/entry'] = { reviewedAt: 5 };
+      expect(stateManager.getGuidelinesReview('bad/entry')).toBeUndefined();
+      expect(stateManager.getGuidelinesReview('owner/repo')?.sha256).toBe('aa');
+      stateManager.markGuidelinesReviewed('other/repo', 'bb', '2026-11-19T11:00:00.000Z');
+      expect(Object.keys(stateManager.getState().guidelinesReviews ?? {}).sort()).toEqual([
+        'bad/entry',
+        'other/repo',
+        'owner/repo',
+      ]);
+    });
   });
 });
 

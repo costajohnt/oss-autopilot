@@ -22,7 +22,7 @@ import {
   SearchRotation,
   WorkClaim,
 } from './types.js';
-import { AgentStateSchema, type GuidelinesReview } from './state-schema.js';
+import { AgentStateSchema, GuidelinesReviewSchema, type GuidelinesReview } from './state-schema.js';
 import { activeWorkClaims, finishWorkClaim, workClaimKey } from './work-claims.js';
 import { serializeState } from './state-prune.js';
 import {
@@ -604,9 +604,10 @@ export class StateManager {
     this.autoSave();
   }
 
-  /** The review stamp for `repo`, or undefined when none was ever recorded (#1929). */
+  /** The review stamp for `repo`, or undefined when none is recorded or the entry is unreadable (#1929). */
   getGuidelinesReview(repo: string): GuidelinesReview | undefined {
-    return this.state.guidelinesReviews?.[repo];
+    const parsed = GuidelinesReviewSchema.safeParse(this.state.guidelinesReviews?.[repo]);
+    return parsed.success ? parsed.data : undefined;
   }
 
   /** List repos with non-empty guidelines stored in the Gist. */

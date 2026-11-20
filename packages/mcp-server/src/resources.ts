@@ -6,14 +6,8 @@
  */
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { runStatus, runConfig } from '@oss-autopilot/core/commands';
-import {
-  getStateManager,
-  splitRepo,
-  fenceFetchedPR,
-  fenceFetchedPRTitles,
-  labelGuidelinesContent,
-} from '@oss-autopilot/core';
+import { runStatus, runConfig, runGuidelinesView } from '@oss-autopilot/core/commands';
+import { getStateManager, splitRepo, fenceFetchedPR, fenceFetchedPRTitles } from '@oss-autopilot/core';
 import { ensureGistInit, reloadExternalState } from './tools.js';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
@@ -234,14 +228,14 @@ export function registerResources(server: McpServer): void {
       try {
         const fullRepo = `${String(owner)}/${String(repo)}`;
         await resourceGistInit();
-        const content = getStateManager().getGuidelines(fullRepo);
-        if (!content) {
+        // Same labeled text as the `guidelines-get` tool: provenance note,
+        // review status and the stored text inside the untrusted-content
+        // fence (#1455, #1929). Stored content stays raw.
+        const { agentContent } = await runGuidelinesView({ repo: fullRepo });
+        if (!agentContent) {
           throw new Error(`No guidelines stored for ${fullRepo}`);
         }
-        // Guidelines are LLM-distilled from public PR comments; label the
-        // provenance so the host treats them as guidance, not instructions
-        // (#1455). Stored content stays raw.
-        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: labelGuidelinesContent(content) }] };
+        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: agentContent }] };
       } catch (e) {
         console.error('[MCP] repo-guidelines resource error:', e);
         throw e;

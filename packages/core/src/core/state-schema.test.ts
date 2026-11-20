@@ -641,8 +641,14 @@ describe('guidelinesReviews (#1929)', () => {
     expect(AgentStateSchema.parse({ version: 4, guidelinesReviews: reviews }).guidelinesReviews).toEqual(reviews);
   });
 
-  it('reads a map it cannot parse as no reviews instead of rejecting the state', () => {
-    const parsed = AgentStateSchema.parse({ version: 4, guidelinesReviews: { 'owner/repo': 'yes' } });
+  it('keeps every entry, readable or not, so one bad entry does not cost the others on the next save', () => {
+    const good = { reviewedAt: '2026-11-19T10:00:00.000Z', sha256: 'aa' };
+    const raw = { 'owner/repo': good, 'bad/entry': 'yes', 'newer/client': { ...good, approvedBy: 'x' } };
+    expect(AgentStateSchema.parse({ version: 4, guidelinesReviews: raw }).guidelinesReviews).toEqual(raw);
+  });
+
+  it('reads a map that is not an object as no reviews instead of rejecting the state', () => {
+    const parsed = AgentStateSchema.parse({ version: 4, guidelinesReviews: 'yes' });
     expect(parsed.guidelinesReviews).toBeUndefined();
     expect(parsed.version).toBe(4);
   });

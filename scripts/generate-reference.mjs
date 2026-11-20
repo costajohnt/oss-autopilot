@@ -54,6 +54,7 @@ const AGENT_ORDER = [
   'pr-compliance-checker',
   'pre-commit-reviewer',
   'overnight-preparer',
+  'learnings-extractor',
   'issue-scout',
   'repo-evaluator',
   'contribution-strategist',

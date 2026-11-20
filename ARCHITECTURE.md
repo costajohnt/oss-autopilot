@@ -61,7 +61,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 
 ### Agents (`agents/`)
 
-8 specialized agents handle specific tasks autonomously:
+9 specialized agents handle specific tasks autonomously:
 
 | Agent | Role |
 |-------|------|
@@ -73,6 +73,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `contribution-strategist` | Analyze contribution patterns and advise on strategy |
 | `pre-commit-reviewer` | Fallback code review (when toolkit unavailable) |
 | `overnight-preparer` | Prepare one fix branch locally for `/oss-overnight`; never pushes, posts, or asks |
+| `learnings-extractor` | Draft per-repo guideline proposals from past PR feedback; cannot store them |
 
 ### Skills (`skills/`)
 

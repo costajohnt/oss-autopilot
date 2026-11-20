@@ -876,10 +876,13 @@ export const AgentStateSchema = z
      * caller to assert the user approved the exact text. The hash ties the
      * stamp to that text: a guidelines file rewritten by a client that predates
      * the review requirement no longer matches and reads as unreviewed.
-     * Optional so state written by older clients still parses; a map this
-     * release cannot read counts as no reviews instead of rejecting the state.
+     * Optional so state written by older clients still parses. Entries are
+     * kept as written and validated one at a time on read
+     * (`StateManager.getGuidelinesReview`), so an entry this release cannot
+     * read counts as "not reviewed" for that repo only and is not dropped on
+     * the next save.
      */
-    guidelinesReviews: z.record(z.string(), GuidelinesReviewSchema).optional().catch(undefined),
+    guidelinesReviews: z.record(z.string(), z.unknown()).optional().catch(undefined),
   })
   .passthrough();
 
