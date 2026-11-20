@@ -57,6 +57,7 @@ vi.mock('./formatters/json.js', () => ({
   IssueThreadOutputSchema: { name: 'IssueThreadOutputSchema' },
   PRTemplateOutputSchema: { name: 'PRTemplateOutputSchema' },
   RepoCapStatusSchema: { name: 'RepoCapStatusSchema' },
+  PrPreflightOutputSchema: { name: 'PrPreflightOutputSchema' },
   ParseIssueListOutputSchema: { name: 'ParseIssueListOutputSchema' },
   CheckIntegrationOutputSchema: { name: 'CheckIntegrationOutputSchema' },
   DetectFormattersOutputSchema: { name: 'DetectFormattersOutputSchema' },
@@ -213,6 +214,12 @@ vi.mock('./commands/startup.js', () => ({ runStartup: mockRunStartup }));
 
 const mockRunRepoCap = vi.fn();
 vi.mock('./commands/repo-cap.js', () => ({ runRepoCap: mockRunRepoCap }));
+const mockRunPrPreflight = vi.fn();
+const mockPrintPrPreflight = vi.fn();
+vi.mock('./commands/pr-preflight.js', () => ({
+  runPrPreflight: mockRunPrPreflight,
+  printPrPreflight: mockPrintPrPreflight,
+}));
 const mockRunPRTemplate = vi.fn();
 vi.mock('./commands/pr-template.js', () => ({ runPRTemplate: mockRunPRTemplate }));
 
@@ -283,6 +290,7 @@ import {
   OvernightPushPrepOutputSchema,
   ParseIssueListOutputSchema,
   PRTemplateOutputSchema,
+  PrPreflightOutputSchema,
   RepoCapStatusSchema,
   RepoVetOutputSchema,
   SetupOutputSchema,
@@ -2282,6 +2290,89 @@ describe('repo-cap command', () => {
     mockRunRepoCap.mockResolvedValue(data);
     await buildProgram('repo-cap').parseAsync(['node', 'cli', 'repo-cap', 'o/r', '--json']);
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(RepoCapStatusSchema, data);
+  });
+});
+
+describe('pr-preflight command (#1952)', () => {
+  const data = {
+    verdict: 'warn',
+    checks: [{ id: 'working-tree', status: 'warn', summary: '1 uncommitted change(s)' }],
+  };
+
+  it('defaults to the current directory, no issue and no fetch, and prints through printPrPreflight', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight']);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith({
+      issue: undefined,
+      dir: undefined,
+      base: undefined,
+      fetch: false,
+      local: false,
+    });
+    expect(mockPrintPrPreflight).toHaveBeenCalledWith(data);
+    expect(mockOutputJsonValidated).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('passes the issue, --dir, --base and --fetch through and validates the JSON output', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+    const issue = 'https://github.com/o/r/issues/7';
+
+    await buildProgram('pr-preflight').parseAsync([
+      'node',
+      'cli',
+      'pr-preflight',
+      issue,
+      '--dir',
+      '/work/wt',
+      '--base',
+      'develop',
+      '--fetch',
+      '--json',
+    ]);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith({
+      issue,
+      dir: '/work/wt',
+      base: 'develop',
+      fetch: true,
+      local: false,
+    });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, data);
+    expect(mockPrintPrPreflight).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--local is passed through', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--local']);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith(expect.objectContaining({ local: true, fetch: false }));
+  });
+
+  it('exits non-zero on a fail verdict and still emits the output', async () => {
+    const failed = { ...data, verdict: 'fail' };
+    mockRunPrPreflight.mockResolvedValue(failed);
+
+    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--json']);
+    const exitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    expect(exitCode).toBe(1);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, failed);
+  });
+
+  it('routes a thrown error to the JSON error envelope', async () => {
+    mockRunPrPreflight.mockRejectedValue(new Error('Not a git working tree: /x'));
+
+    await expect(
+      buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--dir', '/x', '--json']),
+    ).rejects.toThrow();
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('Not a git working tree: /x', expect.anything());
   });
 });
 

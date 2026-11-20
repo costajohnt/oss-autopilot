@@ -65,6 +65,7 @@ const SCHEMAS = new Map<string, ZodType>(
     move: json.MoveOutputSchema,
     'pr-template': json.PRTemplateOutputSchema,
     'repo-cap': json.RepoCapStatusSchema,
+    'pr-preflight': json.PrPreflightOutputSchema,
     'repo-vet': json.RepoVetOutputSchema,
     'compliance-score': json.ComplianceScoreOutputSchema,
     'parse-issue-list': json.ParseIssueListOutputSchema,

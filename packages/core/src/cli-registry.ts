@@ -23,6 +23,15 @@ interface SearchCliOptions {
   excludeFile?: string;
 }
 
+/** Options commander parses for `pr-preflight`. */
+interface PrPreflightCliOptions {
+  json?: boolean;
+  dir?: string;
+  base?: string;
+  fetch?: boolean;
+  local?: boolean;
+}
+
 interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
   name: string;
@@ -70,7 +79,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    verify-issue, issue-thread, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
- *    pr-template, repo-cap, repo-vet, detect-formatters, work (claim/finish/release/list).
+ *    pr-template, repo-cap, pr-preflight, repo-vet, detect-formatters, work (claim/finish/release/list).
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
@@ -1786,6 +1795,42 @@ export const commands: CLICommandDef[] = [
             },
             RepoCapStatusSchema,
           );
+        });
+    },
+  },
+
+  // ── PR Preflight (#1952) ─────────────────────────────────────────────
+  {
+    name: 'pr-preflight',
+    // Skips the auth gate, not GitHub: without a token the network checks come back `skipped`.
+    localOnly: true,
+    register(program) {
+      program
+        .command('pr-preflight [issue]')
+        .description(
+          'Gate before opening a PR: upstream drift, base and head branch, working tree, competing work on the issue, repo cap',
+        )
+        .option('--dir <path>', 'Local clone or worktree to check (default: current directory)')
+        .option('--base <branch>', 'Branch the PR will target (default: the upstream default branch)')
+        .option('--fetch', 'Fetch the upstream target branch first instead of reporting a stale ref')
+        .option('--local', 'Skip every GitHub read: local checks and numbers only')
+        .option('--json', 'Output as JSON')
+        .action(async (issue: string | undefined, options: PrPreflightCliOptions) => {
+          const { PrPreflightOutputSchema } = await import('./formatters/json.js');
+          const { runPrPreflight, printPrPreflight } = await import('./commands/pr-preflight.js');
+          const run = async () => {
+            const data = await runPrPreflight({
+              issue,
+              dir: options.dir,
+              base: options.base,
+              fetch: options.fetch === true,
+              local: options.local === true,
+            });
+            // A caller that only sees the exit code still stops on a failed gate; the output prints in full.
+            if (data.verdict === 'fail') process.exitCode = 1;
+            return data;
+          };
+          await executeAction(options, run, printPrPreflight, PrPreflightOutputSchema);
         });
     },
   },

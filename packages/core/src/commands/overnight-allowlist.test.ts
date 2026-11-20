@@ -229,6 +229,7 @@ const PROCEDURE = [
   `${CLI} local-repos --json`,
   `${CLI} issue-thread https://github.com/o/r/issues/7 --json`,
   `${CLI} guidelines mark-extracted --repo o/r`,
+  `${CLI} pr-preflight https://github.com/o/r/issues/7 --dir /home/u/.oss-autopilot/worktrees/o-r-issue-7 --fetch --json`,
   `gh pr view ${PR} --json headRepositoryOwner,headRefName`,
   'gh repo view me/r --json parent',
   'gh run view 123 --log-failed',
