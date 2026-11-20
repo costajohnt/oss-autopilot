@@ -33,7 +33,7 @@ import * as path from 'node:path';
 import type { Octokit } from '@octokit/rest';
 import { classifyCloseReason, classifySelfClose, type CloseContext } from '../core/close-reason.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
-import { fetchMergedPRsSince } from '../core/github-stats.js';
+import { fetchMergedPRsSince, type LedgerFetchConfig } from '../core/github-stats.js';
 import { getOctokit, requireGitHubToken, getStateManager, parseGitHubUrl } from '../core/index.js';
 import { isGraphqlRateLimited } from '../core/pr-graphql.js';
 import { getFirstMaintainerResponseAt, MAINTAINER_RESPONSE_RULE } from '../core/review-analysis.js';
@@ -297,7 +297,7 @@ function countFilled(entries: Array<StoredMergedPR | StoredClosedPR>) {
  */
 async function fetchMergedHistory(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: LedgerFetchConfig,
   warnings: string[],
 ): Promise<StoredMergedPR[]> {
   let history: Awaited<ReturnType<typeof fetchMergedPRsSince>>;

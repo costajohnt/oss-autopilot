@@ -7,7 +7,9 @@ import type { Octokit } from '@octokit/rest';
 import { firstMaintainerResponseFromDigest, lastReviewStateFromDigest } from '../core/daily-logic.js';
 import { fetchMergedPRsSince, MERGED_LEDGER_TRUNCATED_MESSAGE, type PRsSinceResult } from '../core/github-stats.js';
 import type { getStateManager } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import { debug, warn } from '../core/logger.js';
+import type { RepoMetadata } from '../core/pr-monitor.js';
 import { findRepoTransfers } from '../core/repo-score-manager.js';
 import type { DailyDigest, MergedPR, StoredMergedPR } from '../core/types.js';
 import type { DailyWarning } from '../formatters/json.js';
@@ -16,10 +18,7 @@ import { recordWarning } from './daily-warnings.js';
 const MODULE = 'daily';
 
 type StateManagerLike = ReturnType<typeof getStateManager>;
-type LedgerStateManager = Pick<
-  StateManagerLike,
-  'getMergedPRs' | 'getClosedPRs' | 'renameRepo' | 'evictClosedPRs' | 'evictUntrackedOrgPRs'
->;
+type LedgerStateManager = Pick<StateManagerLike, 'getMergedPRs' | 'getClosedPRs' | 'renameRepo' | 'evictClosedPRs'>;
 
 /**
  * Bring the stored merged/closed ledgers in line with what GitHub reports now.
@@ -33,10 +32,6 @@ type LedgerStateManager = Pick<
  *    `closedWithoutMergeCount` back to a ledger that still holds them (#1923).
  *    This runs every day, so state inflated before the fix heals on the next
  *    run, as does an entry another machine's older copy brought back.
- * 3. Drop merged and closed rows, and the repoScores entries, of repositories
- *    in `config.untrackedOrgs` (#1924). The fetches no longer return them;
- *    this removes what earlier versions stored, and what another machine's
- *    older copy brings back.
  *
  * @param searchedPRs - every merged/closed PR the count searches returned
  * @param openPRs - the user's currently open PRs, as just fetched
@@ -51,8 +46,57 @@ export function syncLedgersWithGitHub(
     stateManager.renameRepo(from, to);
   }
   stateManager.evictClosedPRs(openPRs.map((pr) => pr.url));
-  const untracked = stateManager.evictUntrackedOrgPRs();
-  if (untracked > 0) warn(MODULE, `Removed ${untracked} ledger PR(s) in untracked organisations.`);
+}
+
+/**
+ * Write the star counts and languages a repository read returned, then drop
+ * what is stored about repositories whose PRs are never tracked (#1924):
+ * those in `config.untrackedOrgs`, and those this read reported private.
+ * The fetches no longer return either kind; this removes what earlier
+ * versions stored, and what another machine's older copy brings back.
+ *
+ * Only an explicit `isPrivate: true` in `repoMetadata` counts as private. A
+ * repository missing from the map (404, network error, aborted chunk, or the
+ * whole fetch failing) or with no flag is left alone, so deleted, renamed and
+ * transferred repositories keep their rows.
+ */
+export function applyRepoMetadata(
+  stateManager: Pick<StateManagerLike, 'updateRepoScore' | 'evictExcludedRepos'>,
+  repoMetadata: ReadonlyMap<string, RepoMetadata>,
+  warnings: DailyWarning[],
+): void {
+  let failures = 0;
+  const privateRepos: string[] = [];
+  for (const [repo, { stars, language, isPrivate }] of repoMetadata) {
+    if (isPrivate === true) {
+      // Evicted below; writing its stars first would only recreate the entry.
+      privateRepos.push(repo);
+      continue;
+    }
+    try {
+      stateManager.updateRepoScore(repo, { stargazersCount: stars, language });
+    } catch (error) {
+      failures++;
+      warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
+    }
+  }
+  if (failures > 0) {
+    warnings.push({
+      phase: 'repo-scores',
+      operation: 'update repo metadata',
+      message: `${failures} of ${repoMetadata.size} metadata update(s) failed. This may indicate corrupted state.`,
+    });
+    warn(MODULE, `[METADATA_UPDATES_FAILED] ${failures} of ${repoMetadata.size} metadata update(s) failed.`);
+  }
+
+  const evicted = stateManager.evictExcludedRepos(privateRepos);
+  if (evicted.untrackedOrgRows + evicted.privateRows + evicted.repos > 0) {
+    warn(
+      MODULE,
+      `Removed PRs that are never tracked: ${evicted.untrackedOrgRows} ledger row(s) in untracked organisations, ` +
+        `${evicted.privateRows} in private repositories, ${evicted.repos} repo score(s).`,
+    );
+  }
 }
 
 /**
@@ -169,6 +213,9 @@ export function storeMergedLedger(
   }));
   if (rows.length > 0) stateManager.addMergedPRs(rows);
 
+  // A ledger larger than the public total is expected while rows GitHub no
+  // longer lists (or private ones not yet evicted) remain; each such row can
+  // mask one missing public PR until it is gone.
   const stored = stateManager.getMergedPRs().length;
   const missing = (input.allTimeCount ?? 0) - stored;
   if (missing > 0) {

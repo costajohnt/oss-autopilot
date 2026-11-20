@@ -307,55 +307,6 @@ describe('fetchUserPRCounts caching', () => {
     expect(result.monthlyOpenedCounts['2025-06']).toBe(2);
     expect(result.monthlyOpenedCounts['2025-07']).toBe(1);
   });
-  describe('private repositories and untracked organisations are left out (#1924)', () => {
-    it('asks only for public PRs outside the untracked organisations', async () => {
-      const octokit = makeOctokit([]);
-
-      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['Acme']);
-      await fetchUserClosedPRCounts(octokit, 'testuser', undefined, ['Acme']);
-
-      const queries = octokit.search.issuesAndPullRequests.mock.calls.map(([args]: [SearchArgs]) => args.q);
-      expect(queries).toEqual([
-        'is:pr is:merged is:public author:testuser -user:testuser -org:Acme',
-        'is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme',
-      ]);
-    });
-
-    it('does not count, list or total an untracked organisation PR the search returns anyway', async () => {
-      const orgs = ['a', 'b', 'c', 'd', 'ACME'];
-      const octokit = makeOctokit(
-        [
-          makeMergedItem('acme', 'internal', '2025-06-01T00:00:00Z'),
-          makeMergedItem('org', 'repo', '2025-06-02T00:00:00Z'),
-        ],
-        2,
-      );
-
-      const merged = await fetchUserMergedPRCounts(octokit, 'testuser', undefined, orgs);
-      const closed = await fetchUserClosedPRCounts(octokit, 'testuser', undefined, orgs);
-
-      expect(merged.repos.size).toBe(1);
-      expect(merged.repos.has('org/repo')).toBe(true);
-      expect(merged.searchedPRs.map((pr) => pr.url)).toEqual(['https://github.com/org/repo/pull/1']);
-      expect(merged.monthlyCounts).toEqual({ '2025-06': 1 });
-      expect(closed.repos.size).toBe(1);
-      expect(closed.repos.has('org/repo')).toBe(true);
-      // Five organisations do not fit in the query, so the total is an overcount: unknown.
-      expect(merged.totalCount).toBeUndefined();
-      expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).not.toContain('-org:');
-    });
-
-    it('does not serve counts cached under a different untrackedOrgs list', async () => {
-      const octokit = makeOctokit([makeMergedItem('acme', 'internal', '2025-06-01T00:00:00Z')]);
-
-      const before = await fetchUserMergedPRCounts(octokit, 'testuser');
-      const after = await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['acme']);
-
-      expect(before.repos.size).toBe(1);
-      expect(after.repos.size).toBe(0);
-      expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(2);
-    });
-  });
 });
 
 describe('fetchUserPRCounts star filtering', () => {
@@ -459,6 +410,65 @@ describe('fetchUserPRCounts star filtering', () => {
     expect(result.repos.size).toBe(1);
     expect(result.repos.has('big-org/popular')).toBe(true);
   });
+
+  describe('private repositories and untracked organisations are left out (#1924)', () => {
+    it('asks only for public PRs outside the untracked organisations', async () => {
+      const octokit = makeOctokit([]);
+
+      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['Acme']);
+      await fetchUserClosedPRCounts(octokit, 'testuser', undefined, ['Acme']);
+
+      const queries = octokit.search.issuesAndPullRequests.mock.calls.map(([args]: [SearchArgs]) => args.q);
+      expect(queries).toEqual([
+        'is:pr is:merged is:public author:testuser -user:testuser -org:Acme',
+        'is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme',
+      ]);
+    });
+
+    it('does not count, list or total an untracked organisation PR the search returns anyway', async () => {
+      const orgs = ['not a login', 'ACME'];
+      const octokit = makeOctokit(
+        [
+          makeMergedItem('acme', 'internal', '2025-06-01T00:00:00Z'),
+          makeMergedItem('org', 'repo', '2025-06-02T00:00:00Z'),
+        ],
+        2,
+      );
+
+      const merged = await fetchUserMergedPRCounts(octokit, 'testuser', undefined, orgs);
+      const closed = await fetchUserClosedPRCounts(octokit, 'testuser', undefined, orgs);
+
+      expect(merged.repos.size).toBe(1);
+      expect(merged.repos.has('org/repo')).toBe(true);
+      expect(merged.searchedPRs.map((pr) => pr.url)).toEqual(['https://github.com/org/repo/pull/1']);
+      expect(merged.monthlyCounts).toEqual({ '2025-06': 1 });
+      expect(closed.repos.size).toBe(1);
+      expect(closed.repos.has('org/repo')).toBe(true);
+      // The list cannot go in the query, so the total is an overcount: unknown.
+      expect(merged.totalCount).toBeUndefined();
+      expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).not.toContain('-org:');
+    });
+
+    it('reuses the cached counts when the same organisations are listed in another order or case', async () => {
+      const octokit = makeOctokit([makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')]);
+
+      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['acme', 'Beta']);
+      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['beta', 'ACME']);
+
+      expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not serve counts cached under a different untrackedOrgs list', async () => {
+      const octokit = makeOctokit([makeMergedItem('acme', 'internal', '2025-06-01T00:00:00Z')]);
+
+      const before = await fetchUserMergedPRCounts(octokit, 'testuser');
+      const after = await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['acme']);
+
+      expect(before.repos.size).toBe(1);
+      expect(after.repos.size).toBe(0);
+      expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 describe('externalPRScope (#1924)', () => {
@@ -473,8 +483,16 @@ describe('externalPRScope (#1924)', () => {
     });
   });
 
+  it('puts no cap on the number of organisations (ten -org: terms were accepted by a live search)', () => {
+    const orgs = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+
+    const scope = externalPRScope('me', orgs);
+
+    expect(scope.isExact).toBe(true);
+    expect(scope.query.split(' -org:')).toHaveLength(11);
+  });
+
   it.each([
-    ['more organisations than GitHub allows NOT operators for', ['a', 'b', 'c', 'd', 'e']],
     ['an organisation name that is not a login', ['acme corp']],
     ['a list too long for the query limit', ['a'.repeat(60), 'b'.repeat(60), 'c'.repeat(60)]],
   ])('leaves the organisations out and says the scope is not exact for %s', (_label, orgs) => {

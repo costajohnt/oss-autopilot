@@ -65,7 +65,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       renameRepo: vi.fn(),
       tryReconcilePRCounts: vi.fn(),
       evictClosedPRs: vi.fn(),
-      evictUntrackedOrgPRs: vi.fn(() => 0),
+      evictExcludedRepos: vi.fn(() => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 })),
       getMergedPRWatermark: vi.fn(),
       setLastStrategyAt: vi.fn(),
       save: vi.fn(),

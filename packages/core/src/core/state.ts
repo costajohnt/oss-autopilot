@@ -1019,13 +1019,14 @@ export class StateManager {
 
   /**
    * Remove ledger rows and repoScores entries for repositories in
-   * `config.untrackedOrgs` (#1924). See repoScoring.evictUntrackedOrgPRs.
-   * @returns the number of ledger rows removed
+   * `config.untrackedOrgs` and for `privateRepos`, which must hold only
+   * repositories GitHub reported private in this run (#1924). See
+   * repoScoring.evictExcludedRepos.
    */
-  evictUntrackedOrgPRs(): number {
-    const { rows, repos } = repoScoring.evictUntrackedOrgPRs(this.state);
-    if (rows + repos > 0) this.autoSave();
-    return rows;
+  evictExcludedRepos(privateRepos: Iterable<string>): repoScoring.EvictedRepos {
+    const evicted = repoScoring.evictExcludedRepos(this.state, privateRepos);
+    if (evicted.untrackedOrgRows + evicted.privateRows + evicted.repos > 0) this.autoSave();
+    return evicted;
   }
 
   /** Returns the most recent close date, used as a watermark for incremental fetching. */

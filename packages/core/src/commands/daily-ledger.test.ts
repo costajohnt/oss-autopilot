@@ -9,7 +9,7 @@ import { fetchMergedPRsSince } from '../core/github-stats.js';
 import { StateManager } from '../core/state.js';
 import type { MergedPR } from '../core/types.js';
 import type { DailyWarning } from '../formatters/json.js';
-import { fetchMergedLedgerGap, storeMergedLedger, syncLedgersWithGitHub } from './daily-ledger.js';
+import { applyRepoMetadata, fetchMergedLedgerGap, storeMergedLedger } from './daily-ledger.js';
 
 // Calls through; wrapped only so a test can see which fetch daily goes to.
 vi.mock('../core/github-stats.js', async (importOriginal) => {
@@ -250,7 +250,7 @@ describe('untracked organisations and private repositories stay out of the ledge
     it('are removed by the daily upkeep, with their scores, and the totals follow', () => {
       expect(sm.getStats()).toMatchObject({ mergedPRs: 2, closedPRs: 1 });
 
-      syncLedgersWithGitHub(sm, [], []);
+      applyRepoMetadata(sm, new Map(), []);
 
       expect(storedUrls(sm)).toEqual([publicRepo.html_url]);
       expect(sm.getClosedPRs()).toEqual([]);
@@ -259,11 +259,11 @@ describe('untracked organisations and private repositories stay out of the ledge
     });
 
     it('stay removed on the next upkeep, which changes nothing more', () => {
-      syncLedgersWithGitHub(sm, [], []);
+      applyRepoMetadata(sm, new Map(), []);
       const after = structuredClone(sm.getState());
 
-      expect(sm.evictUntrackedOrgPRs()).toBe(0);
-      syncLedgersWithGitHub(sm, [], []);
+      expect(sm.evictExcludedRepos([])).toEqual({ untrackedOrgRows: 0, privateRows: 0, repos: 0 });
+      applyRepoMetadata(sm, new Map(), []);
 
       expect(sm.getState()).toEqual(after);
     });
@@ -274,11 +274,89 @@ describe('untracked organisations and private repositories stay out of the ledge
     ])('are all kept when untrackedOrgs is %s', (_label, untrackedOrgs) => {
       sm.updateConfig({ untrackedOrgs });
 
-      syncLedgersWithGitHub(sm, [], []);
+      applyRepoMetadata(sm, new Map(), []);
 
       expect(storedUrls(sm)).toHaveLength(2);
       expect(sm.getClosedPRs()).toHaveLength(1);
       expect(Object.keys(sm.getState().repoScores)).toContain('Acme/internal');
     });
+  });
+});
+
+describe('repositories GitHub reports private leave the ledger (#1924)', () => {
+  const at = daysAgo(2);
+  const SECRET = 'org/secret';
+  const secretRow = { url: `https://github.com/${SECRET}/pull/2`, title: 'stored', mergedAt: at };
+  const secretClosed = { url: `https://github.com/${SECRET}/pull/4`, title: 'stored', closedAt: at };
+  const publicRow = { url: prUrl(3), title: 'stored', mergedAt: at };
+  let sm: StateManager;
+
+  beforeEach(() => {
+    sm = new StateManager(true);
+    sm.updateConfig({ githubUsername: 'me' });
+    sm.addMergedPRs([secretRow, publicRow]);
+    sm.addClosedPRs([secretClosed]);
+    sm.updateRepoScore(SECRET, { stargazersCount: 500 });
+    sm.updateRepoScore('org/repo', { stargazersCount: 500 });
+  });
+
+  it('removes the rows and the score of a repository read as private, and the totals follow', () => {
+    expect(sm.getStats()).toMatchObject({ mergedPRs: 2, closedPRs: 1 });
+    const metadata = new Map([
+      [SECRET, { stars: 500, language: 'Go', isPrivate: true }],
+      ['org/repo', { stars: 500, language: 'Go', isPrivate: false }],
+    ]);
+
+    applyRepoMetadata(sm, metadata, []);
+
+    expect(storedUrls(sm)).toEqual([publicRow.url]);
+    expect(sm.getClosedPRs()).toEqual([]);
+    expect(Object.keys(sm.getState().repoScores)).toEqual(['org/repo']);
+    expect(sm.getStats()).toMatchObject({ mergedPRs: 1, closedPRs: 0 });
+
+    const after = structuredClone(sm.getState());
+    applyRepoMetadata(sm, metadata, []);
+    expect(sm.getState()).toEqual(after);
+  });
+
+  it.each([
+    [
+      'could not be read (404 or error: absent from the result)',
+      new Map([['org/repo', { stars: 500, language: null }]]),
+    ],
+    ['came back without a visibility flag', new Map([[SECRET, { stars: 500, language: 'Go' }]])],
+    ['is public', new Map([[SECRET, { stars: 500, language: 'Go', isPrivate: false }]])],
+    ['was not read at all because the whole fetch failed', new Map()],
+  ])('keeps everything when the repository %s', (_label, metadata) => {
+    applyRepoMetadata(sm, metadata, []);
+
+    expect(storedUrls(sm)).toHaveLength(2);
+    expect(sm.getClosedPRs()).toHaveLength(1);
+    expect(Object.keys(sm.getState().repoScores)).toContain(SECRET);
+    expect(sm.getStats()).toMatchObject({ mergedPRs: 2, closedPRs: 1 });
+  });
+
+  it('writes stars and language, and records a warning when an update throws', () => {
+    const warnings: DailyWarning[] = [];
+    const updateRepoScore = vi.fn((repo: string) => {
+      if (repo === 'org/bad') throw new Error('corrupt');
+    });
+    const evictExcludedRepos = vi.fn(() => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 }));
+    const metadata = new Map([
+      ['org/good', { stars: 7, language: 'Go' }],
+      ['org/bad', { stars: 1, language: null }],
+    ]);
+
+    applyRepoMetadata({ updateRepoScore, evictExcludedRepos }, metadata, warnings);
+
+    expect(updateRepoScore).toHaveBeenCalledWith('org/good', { stargazersCount: 7, language: 'Go' });
+    expect(evictExcludedRepos).toHaveBeenCalledWith([]);
+    expect(warnings).toEqual([
+      {
+        phase: 'repo-scores',
+        operation: 'update repo metadata',
+        message: '1 of 2 metadata update(s) failed. This may indicate corrupted state.',
+      },
+    ]);
   });
 });

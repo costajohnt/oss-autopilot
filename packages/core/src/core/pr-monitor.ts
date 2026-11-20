@@ -85,6 +85,18 @@ const MODULE = 'pr-monitor';
 
 const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
 
+/** What one repository read gives the daily run; see PRMonitor.fetchRepoMetadata. */
+export interface RepoMetadata {
+  stars: number;
+  language: string | null;
+  /**
+   * GitHub's `private` flag for the repository. Undefined when the response
+   * did not carry a boolean; never a guess. Repositories that could not be
+   * read are absent from the result altogether.
+   */
+  isPrivate?: boolean;
+}
+
 export interface PRCheckFailure {
   prUrl: string;
   error: string;
@@ -657,14 +669,14 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch metadata (star count and primary language) for a list of repositories.
-   * Both fields come from the same `repos.get()` call — zero additional API cost.
+   * Fetch metadata (star count, primary language, visibility) for a list of repositories.
+   * All fields come from the same `repos.get()` call — zero additional API cost.
    */
-  async fetchRepoMetadata(repos: string[]): Promise<Map<string, { stars: number; language: string | null }>> {
+  async fetchRepoMetadata(repos: string[]): Promise<Map<string, RepoMetadata>> {
     if (repos.length === 0) return new Map();
 
     debug(MODULE, `Fetching repo metadata for ${repos.length} repos...`);
-    const results = new Map<string, { stars: number; language: string | null }>();
+    const results = new Map<string, RepoMetadata>();
     const cache = getHttpCache();
 
     // Deduplicate repos to avoid fetching the same repo twice
@@ -691,11 +703,18 @@ export class PRMonitor {
                 repo: name,
                 headers,
               }) as Promise<{
-                data: { stargazers_count: number; language: string | null };
+                data: { stargazers_count: number; language: string | null; private?: unknown };
                 headers: Record<string, string>;
               }>,
           );
-          const metadata = { stars: data.stargazers_count, language: data.language ?? null };
+          const metadata: RepoMetadata = {
+            stars: data.stargazers_count,
+            language: data.language ?? null,
+            // The whole response body is what the ETag cache stores, so a 304
+            // answers from a body that carries the flag too. Anything but a
+            // boolean (an unexpected body) reads as unknown.
+            isPrivate: typeof data.private === 'boolean' ? data.private : undefined,
+          };
           return { repo, metadata };
         }),
       );

@@ -88,6 +88,7 @@ import { fetchRecentPRLists } from './daily-recent-prs.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
 import { batchOnFreshBaseline, filterDismissedIssues, reloadOrWarn } from './daily-dismiss-filter.js';
 import {
+  applyRepoMetadata,
   fetchMergedLedgerGap,
   resetStaleClosedCounts,
   storeMergedLedger,
@@ -577,7 +578,7 @@ async function updateRepoScores(
 
   // Fetch metadata (stars + language) for all scored repos — async, so outside the batch above
   const allRepos = Object.keys(stateManager.getState().repoScores);
-  let repoMetadata: Map<string, { stars: number; language: string | null }>;
+  let repoMetadata: Awaited<ReturnType<PRMonitor['fetchRepoMetadata']>>;
   try {
     repoMetadata = await prMonitor.fetchRepoMetadata(allRepos);
   } catch (error) {
@@ -592,26 +593,8 @@ async function updateRepoScores(
   // Batch metadata + trust sync mutations for a single disk write
   try {
     batchOnFreshBaseline(stateManager, () => {
-      let metadataUpdateFailures = 0;
-      for (const [repo, { stars, language }] of repoMetadata) {
-        try {
-          stateManager.updateRepoScore(repo, { stargazersCount: stars, language });
-        } catch (error) {
-          metadataUpdateFailures++;
-          warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
-        }
-      }
-      if (metadataUpdateFailures > 0) {
-        warnings.push({
-          phase: 'repo-scores',
-          operation: 'update repo metadata',
-          message: `${metadataUpdateFailures} of ${repoMetadata.size} metadata update(s) failed. This may indicate corrupted state.`,
-        });
-        warn(
-          MODULE,
-          `[METADATA_UPDATES_FAILED] ${metadataUpdateFailures} of ${repoMetadata.size} metadata update(s) failed.`,
-        );
-      }
+      // Stars and languages in, then untracked and private repositories out (#1924).
+      applyRepoMetadata(stateManager, repoMetadata, warnings);
 
       // Auto-sync trustedProjects from repos with merged PRs
       let trustSyncFailures = 0;

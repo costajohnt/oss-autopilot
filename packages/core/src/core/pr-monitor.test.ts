@@ -3085,6 +3085,24 @@ describe('fetchRepoMetadata (#216, #677)', () => {
     expect(result.get('org/docs-only')).toEqual({ stars: 100, language: null });
   });
 
+  it('reports visibility only from a boolean in the response, and nothing for a repo that failed (#1924)', async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { stargazers_count: 1, language: null, private: true } })
+      .mockResolvedValueOnce({ data: { stargazers_count: 2, language: null, private: false } })
+      .mockResolvedValueOnce({ data: { stargazers_count: 3, language: null } })
+      .mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }));
+    vi.mocked(getOctokit).mockReturnValueOnce({ repos: { get } } as never);
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRepoMetadata(['o/private', 'o/public', 'o/unknown', 'o/gone']);
+
+    expect(result.get('o/private')?.isPrivate).toBe(true);
+    expect(result.get('o/public')?.isPrivate).toBe(false);
+    expect(result.get('o/unknown')?.isPrivate).toBeUndefined();
+    expect(result.has('o/gone')).toBe(false);
+  });
+
   it('should return empty map for empty repo list', async () => {
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRepoMetadata([]);

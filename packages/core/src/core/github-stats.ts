@@ -97,8 +97,6 @@ const MAX_SEARCH_QUERY_CHARS = 256;
  * state qualifiers (`is:pr is:closed is:unmerged`) and two date bounds.
  */
 const SCOPE_QUERY_BUDGET = MAX_SEARCH_QUERY_CHARS - 96;
-/** GitHub allows five NOT operators in one search; `-user:` is the first. */
-const MAX_ORG_EXCLUSIONS = 4;
 /** An organisation login that is safe to put in a search query. */
 const ORG_LOGIN_RE = /^[\w.-]+$/;
 
@@ -126,10 +124,11 @@ export interface ExternalPRScope {
 export function externalPRScope(username: string, untrackedOrgs: readonly string[] = []): ExternalPRScope {
   const base = `is:public author:${username} -user:${username}`;
   const exclusions = untrackedOrgs.map((org) => ` -org:${org}`).join('');
+  // No cap on the number of exclusions: a live search with ten `-org:` terms
+  // was accepted and returned a count. GitHub's documented limit of five
+  // operators is about the AND / OR / NOT keywords, not `-qualifier` terms.
   const isExact =
-    untrackedOrgs.length <= MAX_ORG_EXCLUSIONS &&
-    untrackedOrgs.every((org) => ORG_LOGIN_RE.test(org)) &&
-    base.length + exclusions.length <= SCOPE_QUERY_BUDGET;
+    untrackedOrgs.every((org) => ORG_LOGIN_RE.test(org)) && base.length + exclusions.length <= SCOPE_QUERY_BUDGET;
   if (!isExact) {
     debug(MODULE, 'untrackedOrgs do not fit in a search query; filtering results instead, totals are not comparable.');
   }
@@ -237,7 +236,9 @@ async function fetchUserPRCounts<R>(
   const cache = getHttpCache();
   const minStarsSuffix = starFilter ? `:stars${starFilter.minStars}` : '';
   // v4: public repositories only, untracked organisations excluded (#1924).
-  const orgsSuffix = untrackedOrgs.length > 0 ? `:-${untrackedOrgs.join(',').toLowerCase()}` : '';
+  // Sorted, so reordering the setting does not discard a fresh cache entry.
+  const orgKey = untrackedOrgs.map((org) => org.toLowerCase()).sort((a, b) => a.localeCompare(b));
+  const orgsSuffix = orgKey.length > 0 ? `:-${orgKey.join(',')}` : '';
   const cacheKey = `pr-counts:v4:${label}:${githubUsername}${minStarsSuffix}${orgsSuffix}`;
   const scope = externalPRScope(githubUsername, untrackedOrgs);
   const cached = cache.getIfFresh(cacheKey, PR_COUNTS_CACHE_TTL_MS);
