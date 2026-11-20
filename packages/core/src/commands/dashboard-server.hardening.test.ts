@@ -73,7 +73,8 @@ function portOf(server: net.Server | undefined): number {
 /** Try to hold `count` ports starting at an OS-chosen base; null if any is taken. */
 async function tryHoldRun(count: number): Promise<{ base: number; holders: net.Server[] } | null> {
   const first = await listenLoopback(0);
-  const base = portOf(first ?? undefined);
+  if (!first) return null;
+  const base = portOf(first);
   const offsets = Array.from({ length: count - 1 }, (_, index) => index + 1);
   const rest = await Promise.all(offsets.map((offset) => listenLoopback(base + offset)));
   const holders = [first, ...rest];
@@ -94,7 +95,9 @@ async function holdConsecutivePorts(count: number): Promise<{ base: number; hold
       return run;
     }
   }
-  throw new Error('could not find a run of free loopback ports');
+  throw new Error(
+    'no run of ' + count + ' consecutive free loopback ports in 20 attempts (ports taken or base near 65535)',
+  );
 }
 
 interface Reply {
@@ -280,7 +283,9 @@ describe('dashboard server over a real loopback socket (#1940)', { timeout: 30_0
     });
   });
 
-  describe('port retry', () => {
+  // Exact-port assertions need a just-released port to stay free until the
+  // server binds it; another process can win that race, so retry the test.
+  describe('port retry', { retry: 2 }, () => {
     it('moves past ports in use and wires the PID file, Host and Origin checks to the bound port', async () => {
       const { base, holders } = await holdConsecutivePorts(3);
       await closeServer(holders[2]);
