@@ -145,13 +145,13 @@ describe('assembleFetchedPR issue link (#1863)', () => {
   });
 });
 
+function approvalBy(login: string, days: number, body = '') {
+  return { body, user: { login }, state: 'APPROVED', submitted_at: daysAgo(days), id: days };
+}
+
 describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () => {
   const question = { user: { login: 'maintainer' }, body: 'Can you add a test for the empty case?' };
   const noChecks = { status: 'unknown' as const, failingCheckNames: [], failingCheckConclusions: new Map() };
-
-  function approvalBy(login: string, days: number, body = '') {
-    return { body, user: { login }, state: 'APPROVED', submitted_at: daysAgo(days), id: days };
-  }
 
   it('someone else approving before the question does not settle it', async () => {
     const pr = await assembleFetchedPR(
