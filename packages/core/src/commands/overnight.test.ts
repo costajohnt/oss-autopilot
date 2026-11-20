@@ -569,6 +569,8 @@ describe('schedule', () => {
       expect(rules.some((r) => r.startsWith(`Bash(${shell} `))).toBe(false);
     }
     expect(rules).toContain('Bash(gh pr view *)');
+    // Raw `gh issue view` output is unfenced; the fenced read is `node ... issue-thread` (#1932).
+    expect(rules.some((r) => r.startsWith('Bash(gh issue'))).toBe(false);
     expect(rules).toContain('Bash(git rebase *)');
     expect(rules).not.toContain('Bash');
     expect(rules).not.toContain('Bash(*)');

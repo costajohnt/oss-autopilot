@@ -67,7 +67,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    calls `outputJsonValidated` directly — so a drifted shape throws at
  *    the `--json` boundary instead of silently shipping (#1105).
  *    Commands: manifest, daily, status, strategy, search, features,
- *    verify-issue, skip-add, list-move-tier, list-mark-done,
+ *    verify-issue, issue-thread, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
  *    pr-template, repo-cap, repo-vet, detect-formatters, work (claim/finish/release/list).
@@ -617,6 +617,39 @@ export const commands: CLICommandDef[] = [
               }
             },
             VerifyIssueOutputSchema,
+          );
+        });
+    },
+  },
+
+  // ── Issue Thread ───────────────────────────────────────────────────────
+  {
+    name: 'issue-thread',
+    register(program) {
+      program
+        .command('issue-thread <issue-url>')
+        .description('Read an issue title, body and comments, each fenced as untrusted content (#1932)')
+        .option('--json', 'Output as JSON')
+        .action(async (issueUrl: string, options: { json?: boolean }) => {
+          const { IssueThreadOutputSchema } = await import('./formatters/json.js');
+          const { runIssueThread } = await import('./commands/issue-thread.js');
+          await executeAction(
+            options,
+            () => runIssueThread({ issueUrl }),
+            (data) => {
+              // Fences stay on in text mode: an agent that drops --json must
+              // still get stranger-written text inside its fence.
+              console.log(`\n${data.owner}/${data.repo}#${data.number} [${data.state}]: ${data.title}`);
+              console.log(`\n${data.body}`);
+              for (const comment of data.comments) {
+                console.log(`\n${comment.createdAt}\n${comment.body}`);
+              }
+              if (!data.warnings) return;
+              for (const warning of data.warnings) {
+                console.log(`\nWarning: ${warning.message}`);
+              }
+            },
+            IssueThreadOutputSchema,
           );
         });
     },

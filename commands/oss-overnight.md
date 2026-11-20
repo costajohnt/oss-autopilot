@@ -95,7 +95,13 @@ OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number
 
 The issue title is left out on purpose. Anyone can write it, and this line is
 an instruction to an agent that runs unattended with Bash and Write. The
-preparer reads the issue itself, through the fenced `gh issue view` path.
+preparer reads the issue itself with the CLI's `issue-thread <url> --json`,
+which returns the title, body and every comment inside a `<github-content>`
+fence with author and author association (#1932). Raw `gh issue view` output
+is not fenced, so the scheduled run's allowlist no longer includes it. The
+fence marks stranger-written text as data; it does not stop an agent that
+obeys it anyway, so the split-user handoff below stays the real boundary for
+implement mode.
 
 After it returns:
 
@@ -245,7 +251,8 @@ fails, so the plist pre-approves exactly the tools this command uses and
 nothing that mutates remote state: file tools, Task, git subcommands except
 `push` (in both the bare and the `git -C <dir>` form, since a preparer's
 worktree is never its cwd and `cd <dir> && git` is denied), the read side of `gh` (`pr view/checks/diff/list`, `run view/list`,
-`issue view`, `repo view`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
+`repo view`; no `gh issue view`, whose raw output is unfenced: issue threads
+are read with the CLI's `issue-thread`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
 and test suites. No `bash`, `sh`, or `npx`. A deny list (`--disallowedTools`,
 deny beats allow) additionally names `git push` and `git -C <dir> push`, every `gh pr`/`gh issue`
 write, `gh run rerun`, `gh api`, the npm/pnpm registry writes

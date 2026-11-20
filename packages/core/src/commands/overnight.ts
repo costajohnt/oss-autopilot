@@ -650,7 +650,8 @@ export const LAUNCHD_LABEL = 'com.oss-autopilot.overnight';
  * The allowlist is the enforcement half of the no-side-effects gate, so it is
  * enumerated, not wildcarded: every git subcommand except `push`, only the
  * read side of `gh` (no `create`/`comment`/`merge`/`close`/`rerun`, no `gh api`
- * because it can POST), and no `bash`/`sh`/`npx` shell escapes. `node`, `pnpm`
+ * because it can POST, no `issue view` because its raw output is unfenced and
+ * the `issue-thread` CLI command is the fenced read, #1932), and no `bash`/`sh`/`npx` shell escapes. `node`, `pnpm`
  * and `npm` stay because the CLI bundle and a repo's test suite are already
  * arbitrary code; the credential-bearing writes are what the list keeps out.
  * Stronger isolation (a dedicated user with no push credentials, or a
@@ -681,7 +682,6 @@ const GH_READ_SUBCOMMANDS = [
   'pr list',
   'run view',
   'run list',
-  'issue view',
   'repo view',
   'auth status',
 ];
