@@ -8,7 +8,8 @@
 import * as fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { createMcpHandler } from '@modelcontextprotocol/server';
 
 const { mockRunPost, mockRunClaim, mockRunGuidelinesStore } = vi.hoisted(() => ({
   mockRunPost: vi.fn(),
@@ -25,9 +26,10 @@ vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
 
 import { getStateManager } from '@oss-autopilot/core';
 import { runConfig, runSetup } from '@oss-autopilot/core/commands';
-import { APPROVAL_TIMEOUT_MS, createServer } from './server.js';
+import { createServer } from './server.js';
 import {
   ALLOW_UNCONFIRMED_ENV as ALLOW_UNCONFIRMED,
+  APPROVAL_TIMEOUT_MS,
   assertMcpSettable,
   assertMcpSettablePairs,
   mcpSettableKeys,
@@ -63,6 +65,11 @@ async function connect(capabilities: Record<string, unknown> = {}, answer: unkno
   await client.connect(clientTransport);
   open.push(client);
   return { client, asked };
+}
+
+/** Wait on real I/O until the form is out: signing its requestState is real async crypto the fake clock does not drive. */
+async function formSent(asked: Session['asked']): Promise<void> {
+  while (asked.length === 0) await new Promise((resolve) => setImmediate(resolve));
 }
 
 function text(result: ToolCallResult): string {
@@ -348,6 +355,7 @@ describe('user approval before a GitHub write (#1936)', () => {
       );
       let isSettled = false;
       void pending.then(() => (isSettled = true));
+      await formSent(asked);
       await vi.advanceTimersByTimeAsync(APPROVAL_TIMEOUT_MS - 1);
       expect(asked).toHaveLength(1);
       expect(isSettled).toBe(false);
@@ -496,5 +504,131 @@ describe('what the approval form shows (#1936)', () => {
     expect(result.isError).toBeFalsy();
     expect(asked[0].message).toContain('│ line one\n│ \tindented\r\n│ love \u{2764}\u{FE0F}');
     expect(mockRunPost).toHaveBeenCalledWith({ url: ISSUE, message });
+  });
+});
+
+/** One `post` round on a 2026-era host: the answer and state ride as protocol params, beside the tool arguments. */
+function call(client: Client, args: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return client.callTool({ name: 'post', arguments: args, ...extra }, { allowInputRequired: true }) as Promise<
+    ToolCallResult & { requestState?: string }
+  >;
+}
+
+describe('an approval covers only the arguments the user saw (#2015)', () => {
+  // A 2026-era host answers a form on a second tools/call that carries the
+  // answer, the server's requestState and the arguments again. Served the way
+  // the SDK serves HTTP: a fresh server from createServer() for every request.
+  const ACCEPTED = { approval: APPROVED };
+  const ARGS = { url: ISSUE, message: 'Thanks, fixed in the last push.' };
+  let servers = 0;
+
+  async function connectModern(): Promise<Client> {
+    const handler = createMcpHandler(() => {
+      servers += 1;
+      return createServer();
+    });
+    const transport = new StreamableHTTPClientTransport(new URL('http://127.0.0.1/mcp'), {
+      fetch: (url, init) => handler.fetch(new Request(url, init)),
+    });
+    const client = new Client(
+      { name: 'trust-client', version: '0.0.0' },
+      {
+        capabilities: FORM_HOST,
+        versionNegotiation: { mode: { pin: '2026-07-28' } },
+        inputRequired: { autoFulfill: false },
+      },
+    );
+    await client.connect(transport);
+    open.push(client);
+    return client;
+  }
+
+  async function askFirst(client: Client): Promise<string> {
+    const first = await call(client, ARGS);
+    expect(first.resultType).toBe('input_required');
+    expect(typeof first.requestState).toBe('string');
+    expect(mockRunPost).not.toHaveBeenCalled();
+    return first.requestState!;
+  }
+
+  it('posts when the answer comes back with the same arguments, on a different server instance', async () => {
+    const client = await connectModern();
+    const requestState = await askFirst(client);
+    const before = servers;
+    // The same arguments in another key order are the same arguments.
+    const reordered = { message: ARGS.message, url: ARGS.url };
+    const result = await call(client, reordered, { inputResponses: ACCEPTED, requestState });
+    // The follow-up was served by a new instance: the signing key is per process, not per server.
+    expect(servers).toBeGreaterThan(before);
+    expect(result.isError).toBeFalsy();
+    expect(mockRunPost).toHaveBeenCalledExactlyOnceWith(ARGS);
+  });
+
+  it.each([
+    ['changed text', { ...ARGS, message: 'Something the user never saw.' }],
+    ['a changed target', { ...ARGS, url: 'https://github.com/owner/repo/issues/2' }],
+  ])('refuses %s and posts nothing', async (_label, changed) => {
+    const client = await connectModern();
+    const requestState = await askFirst(client);
+    const result = await call(client, changed, { inputResponses: ACCEPTED, requestState });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/approval does not match these arguments/);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('refuses an answer that comes without the requestState', async () => {
+    const client = await connectModern();
+    await askFirst(client);
+    const result = await call(client, ARGS, { inputResponses: ACCEPTED });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/approval does not match these arguments/);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('refuses a requestState minted for other arguments, even of the same tool', async () => {
+    const client = await connectModern();
+    const other = await call(client, { ...ARGS, message: 'Something else.' });
+    const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState: other.requestState });
+    expect(result.isError).toBe(true);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['altered', (state: string) => state.slice(0, -1) + (state.endsWith('A') ? 'E' : 'A')],
+    ['re-signed by someone else', (state: string) => `${state.slice(0, state.lastIndexOf('.'))}.${'A'.repeat(43)}`],
+    ['not one of ours', () => 'v1.e30.AAAA'],
+  ])('refuses a requestState that was %s', async (_label, tamper) => {
+    const client = await connectModern();
+    const requestState = tamper(await askFirst(client));
+    const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/approval does not match these arguments/);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('refuses the same answer re-sent, so one approval posts once', async () => {
+    const client = await connectModern();
+    const requestState = await askFirst(client);
+    const first = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(first.isError).toBeFalsy();
+    const again = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(again.isError).toBe(true);
+    expect(text(again)).toMatch(/this approval was already used/);
+    expect(mockRunPost).toHaveBeenCalledOnce();
+  });
+
+  it('refuses an answer that comes back after the approval timeout', async () => {
+    const client = await connectModern();
+    const requestState = await askFirst(client);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + APPROVAL_TIMEOUT_MS + 2000);
+      const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toMatch(/approval does not match these arguments/);
+      expect(mockRunPost).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
