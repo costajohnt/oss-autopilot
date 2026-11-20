@@ -44,7 +44,7 @@ OSS Autopilot checks every open PR you have on GitHub and sorts them into what n
 
 - Node.js 22 or newer
 - [GitHub CLI](https://cli.github.com/) installed and logged in (`gh auth login`), or a `GITHUB_TOKEN` in your environment
-- For the plugin: [Claude Code](https://claude.com/claude-code), plus `npm` and network access on first run (see below)
+- For the plugin: [Claude Code](https://claude.com/claude-code)
 
 CI runs on Ubuntu and macOS. Windows is untested.
 
@@ -63,7 +63,7 @@ Restart Claude Code, then:
 
 Setup asks for your GitHub username, the languages and labels you care about, and how many PRs you want open at once. After that, run `/oss` whenever you want to check in.
 
-**About the first run.** The plugin ships as source. The first `/setup-oss` or `/oss` installs dependencies and builds the CLI inside the plugin directory, so it needs `npm` (or `pnpm`) and a network connection, and it takes longer than later runs. If the build fails, see [Troubleshooting](#troubleshooting).
+**About the first run.** The marketplace install ships the CLI and dashboard prebuilt, taken from the published `@oss-autopilot/core` package. Nothing is installed or built in the plugin directory. The bundled MCP server is fetched by `npx` at a pinned version the first time Claude Code starts it.
 
 ## Other ways to run it
 
@@ -300,13 +300,15 @@ brew install gh        # macOS; see https://cli.github.com for other platforms
 gh auth login
 ```
 
-**The plugin's first-run build failed**
+**`BUILD_FAILED` when a command starts**
+
+Installed from the marketplace: the prebuilt CLI bundle is missing from the plugin directory. Reinstall the plugin.
+
+Running a source checkout (`claude --plugin-dir .`): the bundle is built from `pnpm-lock.yaml` and needs pnpm. There is no `npm install` fallback.
 
 ```bash
-find ~/.claude/plugins -name "oss-autopilot" -type d    # locate the plugin
-cd <that path>/packages/core
-npm install
-npm run bundle
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm --filter @oss-autopilot/core run bundle
 ```
 
 **My PRs do not show up**

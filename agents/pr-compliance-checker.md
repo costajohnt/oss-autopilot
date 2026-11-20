@@ -200,7 +200,7 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy get --repo
 | `allowed` | Treat presence of AI attribution as acceptable. Do NOT flag it. |
 | `unknown`, or `data.policy` is null | Classify from the repo's docs instead (below). |
 
-**Fallback when no policy is recorded or `aiPolicy` is `unknown`:** read the target repo's docs (CONTRIBUTING.md / README / CODE_OF_CONDUCT) and classify the project's AI-assistance regime. The deterministic patterns are documented as reference scans in `packages/core/src/core/anti-llm-policy.ts` (`scanForAntiLLMPolicy` and `scanAIDisclosureRequirement` from #911 / #1269); the function names tell you what to grep for.
+**Fallback when no policy is recorded or `aiPolicy` is `unknown`:** read the target repo's docs (CONTRIBUTING.md / README / CODE_OF_CONDUCT) and classify the project's AI-assistance regime. The deterministic patterns are documented as reference scans in `anti-llm-policy.ts` in the oss-autopilot repository source (core package; not shipped with the plugin) (`scanForAntiLLMPolicy` and `scanAIDisclosureRequirement` from #911 / #1269); the function names tell you what to grep for.
 
 | Regime detected | Rule |
 |---|---|

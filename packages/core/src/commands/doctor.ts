@@ -151,6 +151,15 @@ function resolveBundlePaths(): { bundlePath: string; sourcePath: string } {
 }
 
 /**
+ * Remediation text depends on the install layout. A source checkout (cli.ts
+ * present) rebuilds from pnpm-lock.yaml only (#1935). A prebuilt install (the
+ * plugin's marketplace tree, or the npm package) has nothing to build from.
+ */
+const SOURCE_CHECKOUT_REBUILD =
+  'From the repo root run `pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle`';
+const PREBUILT_REINSTALL = 'Update or reinstall the oss-autopilot plugin (or the @oss-autopilot/core package)';
+
+/**
  * Try `fs.statSync`; if the file is merely missing (ENOENT), return null.
  * For other fs errors (EACCES, ELOOP, ENOTDIR, …) surface the error so the
  * caller can report it instead of misdiagnosing it as "file missing."
@@ -194,7 +203,7 @@ export function checkBundleUpToDate(options?: { bundlePath?: string; sourcePath?
       name: 'CLI bundle',
       status: 'warning',
       message: 'Neither cli.ts nor cli.bundle.cjs could be located',
-      remediation: 'Reinstall the package or check your install location',
+      remediation: `${PREBUILT_REINSTALL}, or check your install location`,
     };
   }
   if (!bundleStat) {
@@ -202,7 +211,7 @@ export function checkBundleUpToDate(options?: { bundlePath?: string; sourcePath?
       name: 'CLI bundle',
       status: 'warning',
       message: 'dist/cli.bundle.cjs not built yet',
-      remediation: 'Run `pnpm run bundle` to build the CLI bundle',
+      remediation: SOURCE_CHECKOUT_REBUILD,
     };
   }
   if (sourceStat && sourceStat.mtimeMs > bundleStat.mtimeMs) {
@@ -210,7 +219,7 @@ export function checkBundleUpToDate(options?: { bundlePath?: string; sourcePath?
       name: 'CLI bundle',
       status: 'warning',
       message: 'Source files are newer than dist/cli.bundle.cjs',
-      remediation: 'Run `pnpm run bundle` to rebuild',
+      remediation: SOURCE_CHECKOUT_REBUILD,
     };
   }
   return { name: 'CLI bundle', status: 'ok', message: 'Bundle present and up-to-date' };
@@ -260,7 +269,10 @@ export function checkStateFile(options?: { statePathOverride?: string }): Doctor
 export type ScoutImporter = () => Promise<unknown>;
 const defaultScoutImporter: ScoutImporter = () => import('@oss-scout/core');
 
-export async function checkScoutResolvable(importer: ScoutImporter = defaultScoutImporter): Promise<DoctorCheck> {
+export async function checkScoutResolvable(
+  importer: ScoutImporter = defaultScoutImporter,
+  options?: { sourceCheckout?: boolean },
+): Promise<DoctorCheck> {
   // The scout package is ESM-exports-only, so `require.resolve` fails even
   // when it's installed. `import()` goes through the ESM resolver, which
   // honors `exports` maps correctly. Dynamic import only loads the package
@@ -282,6 +294,10 @@ export async function checkScoutResolvable(importer: ScoutImporter = defaultScou
       code === 'ERR_INVALID_PACKAGE_CONFIG' ||
       err instanceof SyntaxError;
     const reinstallRequired = isNotFound || isCorruptInstall;
+    const isSourceCheckout = options?.sourceCheckout ?? fs.existsSync(resolveBundlePaths().sourcePath);
+    const reinstallHint = isSourceCheckout
+      ? 'Reinstall dependencies from the lockfile: `pnpm install --frozen-lockfile`'
+      : PREBUILT_REINSTALL;
     return {
       name: '@oss-scout/core resolvable',
       status: 'error',
@@ -289,7 +305,7 @@ export async function checkScoutResolvable(importer: ScoutImporter = defaultScou
         ? `@oss-scout/core cannot be loaded (install issue): ${errorMessage(err)}`
         : `@oss-scout/core failed to load: ${errorMessage(err)}`,
       remediation: reinstallRequired
-        ? 'Reinstall dependencies (`pnpm install` or `npm install`)'
+        ? reinstallHint
         : 'Scout loaded but threw during initialization — report this as a bug in oss-scout with the error above',
     };
   }

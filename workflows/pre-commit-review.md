@@ -246,9 +246,10 @@ Only "Run it" permits running the command, and only the exact text shown. If the
 
 1. **Detect tooling** from lint/format configs gathered in sub-step 2. Check in order — **use the first match that supports auto-fix**:
    - `package.json` scripts: prefer fix-oriented scripts first: `lint:fix`, `format`, `fmt`. A plain `lint` script (without `:fix`) typically only reports issues — only use it as a last resort and note it will report but not auto-fix. **Important:** `npm run` scripts typically run on the entire project. Only use a script if it accepts file arguments via `--` passthrough (e.g., `npm run format -- {changed files}`). If the script does not accept file arguments, skip it and fall back to running the underlying tool directly on changed files.
-   - `biome.json` / `biome.jsonc` → `npx biome check --write {changed files}`
-   - `.prettierrc*` or `prettier` in devDependencies → `npx prettier --write {changed files}`
-   - `.eslintrc*` or `eslint.config.*` → `npx eslint --fix {changed files}`
+   - `biome.json` / `biome.jsonc` → `npx --no-install biome check --write {changed files}`
+   - `.prettierrc*` or `prettier` in devDependencies → `npx --no-install prettier --write {changed files}`
+   - `.eslintrc*` or `eslint.config.*` → `npx --no-install eslint --fix {changed files}`
+   - `--no-install` makes `npx` use the project's own installed version and fail instead of downloading one. If it fails because the tool is not installed, report that and skip the formatter; do not drop the flag.
    - `Makefile` with `fmt` or `format` target → `make fmt` or `make format` (project-wide by design; no file list)
    - `Cargo.toml` → `cargo fmt` (project-wide by design; no file list)
    - `pyproject.toml` with `[tool.ruff]` or `[tool.black]` → `ruff format {changed files}` or `black {changed files}`

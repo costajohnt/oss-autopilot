@@ -94,14 +94,14 @@ fi
 # missing-tool case as a build failure with a clear remediation hint
 # rather than letting npm explode mid-stream.
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "BUILD_FAILED: pnpm is required for the dashboard build (workspace:* dep). Install: npm install -g pnpm"
+  echo "BUILD_FAILED: pnpm is required for the dashboard build (workspace:* dep). Install: corepack enable, or npm install -g pnpm@10.27.0"
   exit 2
 fi
 
-remediation="cd ${PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build"
+remediation="cd ${PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build"
 if (
   cd "${PLUGIN_ROOT}" &&
-    pnpm install --silent &&
+    pnpm install --silent --frozen-lockfile --ignore-scripts &&
     pnpm --silent --filter @oss-autopilot/core run build &&
     pnpm --silent --filter @oss-autopilot/dashboard run build
 ) >&2; then

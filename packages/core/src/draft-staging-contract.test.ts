@@ -29,6 +29,7 @@ const PROMPT_DIRS = ['commands', 'workflows', 'agents', 'skills'];
 /** Key: `<file> <path prefix>`. Value: why this `/tmp` use is scratch, not a draft. */
 const ALLOWED_TMP: Record<string, string> = {
   'commands/oss-dashboard.md /tmp/oss-dashboard-build.log': 'build log, only tailed to show an error',
+  'commands/oss-dashboard.md /tmp/oss-dashboard-cli-build.log': 'build log, only tailed to show an error',
   'commands/oss-search.md /tmp/oss-search-cli-build.log': 'build log, only tailed to show an error',
   'commands/setup-oss.md /tmp/oss-setup-cli-build.log': 'build log, only tailed to show an error',
   'commands/oss.md /tmp/oss-startup-stderr.log': 'stderr of the startup command, read for diagnostics only',

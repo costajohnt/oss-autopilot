@@ -10,8 +10,13 @@ updates:
       - "/"
     schedule:
       interval: "weekly"
+    # Marketplace installs only change when a release publishes the prebuilt
+    # `directory` branch, and `chore` never triggers a release. Production
+    # (runtime) dependency updates use `fix` so they ship; development ones
+    # stay `chore` (#1935).
     commit-message:
-      prefix: "chore"
+      prefix: "fix"
+      prefix-development: "chore"
     groups:
       dev-dependencies:
         dependency-type: "development"

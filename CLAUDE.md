@@ -33,7 +33,7 @@ If `gh` is not installed or authenticated:
 
 After restart, `/oss` and `/setup-oss` commands will be available.
 
-The CLI auto-builds on first run (requires Node.js 22+ and npm).
+The marketplace install ships the CLI prebuilt (requires Node.js 22+). Nothing is installed or built on first run.
 
 ---
 
@@ -63,7 +63,7 @@ The system has three layers:
 - **`--json` contract**: Every CLI command supports `--json`, outputting `{ success: boolean, data?: T, error?: string, timestamp: string }` (see `packages/core/src/formatters/json.ts`). The plugin layer parses this structured output.
 - **State lives in `~/.oss-autopilot/`**, not in the repo. This separates user data from plugin code.
 - **GitHub auth**: The CLI checks for a token via `$GITHUB_TOKEN` env var (preferred) or `gh auth token` CLI fallback. Commands that don't need GitHub access are marked `localOnly` in the command registry.
-- **pnpm monorepo**: Development uses pnpm workspaces. Plugin auto-build scopes `npm install` to `packages/core/` (end users don't need pnpm).
+- **pnpm monorepo**: Development uses pnpm workspaces. Marketplace installs get the prebuilt `directory` branch (`.claude-plugin/marketplace.json` points at it), so end users need neither pnpm nor npm. `scripts/build-cli-if-stale.sh` builds only in a source checkout, from `pnpm-lock.yaml` (`pnpm install --frozen-lockfile --ignore-scripts`), and fails closed without pnpm: never add an unlocked `npm install` fallback (#1935).
 
 ### File Structure
 
@@ -184,7 +184,7 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 
 - Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor), `fix:` (patch), `chore:` (no release). Releasable commits (`feat:`, `fix:`) become CHANGELOG entries, so write them descriptively
 - On push to main, release-please opens or updates a release PR that bumps all version-bearing files (configured in `release-please-config.json`)
-- Merge the release-please PR to create a GitHub release, which triggers npm publish
+- Merge the release-please PR to create a GitHub release, which triggers npm publish and then rebuilds the prebuilt `directory` branch. Marketplace users receive changes only at that point, so anything users need (commands, agents, runtime dependency bumps) must land under a releasable prefix; Dependabot uses `fix:` for production dependencies for this reason
 - `.mcp.json` pins the plugin's MCP server to `@oss-autopilot/mcp@<version>` (not `@latest`). The release-please workflow re-pins it on the release PR branch via `node scripts/sync-mcp-pin.mjs`, and CI fails if the pin differs from `packages/mcp-server/package.json`. If it ever drifts, run that script and commit `.mcp.json`
 - `packages/mcp-server/BUNDLED_CORE_VERSION` records the core version the MCP bundle inlines. It is a release trigger, not a runtime constant (the bundle gets core's version from `packages/core/package.json` at build time via `scripts/bundle.mjs`): the release-please workflow rewrites it on every release PR that bumps core, and on a core-only release that commit is what queues the MCP release. Never edit it by hand
 - `packages/core/src/version-sources-contract.test.ts` fails when any stored copy of the core or MCP version (manifest, `plugin.json`, the marker, `server.json`, the `.mcp.json` pin) disagrees with its `package.json`. A release PR is red on it until the workflow has pushed its pin and marker commits

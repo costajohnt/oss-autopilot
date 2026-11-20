@@ -27,6 +27,8 @@ pnpm run build
 pnpm test
 ```
 
+To try your checkout as the plugin, run `claude --plugin-dir .`. Marketplace installs get a prebuilt tree (the `directory` branch), but a checkout builds its own CLI bundle: `scripts/build-cli-if-stale.sh` rebuilds it when sources or `pnpm-lock.yaml` change, using `pnpm install --frozen-lockfile --ignore-scripts`. It needs pnpm on `PATH` and never falls back to `npm install`. If you change dependencies, run `pnpm install` yourself and commit the updated `pnpm-lock.yaml`.
+
 ### Project Structure
 
 ```
@@ -119,6 +121,10 @@ Releases are automated via [release-please](https://github.com/googleapis/releas
 1. Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor bump), `fix:` (patch bump), `chore:` (no release)
 2. On merge to main, release-please opens or updates a release PR that bumps versions and generates the changelog
 3. A maintainer merges the release-please PR to create a GitHub release
+
+Marketplace users receive changes only when a release publishes the prebuilt `directory` branch, so a fix that sits on main under a `chore:` commit never reaches them. For that reason Dependabot opens production dependency updates as `fix:` and development ones as `chore:`.
+
+What existing installs see: Claude Code caches the plugin per version, so an install keeps its current tree until a release changes the plugin version, then `/plugin update` replaces it with the prebuilt tree. Nothing breaks in between.
 
 ## Maintainer Guide
 

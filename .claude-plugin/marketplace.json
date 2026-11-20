@@ -16,7 +16,11 @@
   "plugins": [
     {
       "name": "oss-autopilot",
-      "source": "./",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/costajohnt/oss-autopilot.git",
+        "ref": "directory"
+      },
       "description": "AI-powered autopilot for managing open source contributions - track PRs, respond to maintainers, discover issues, and maintain contribution velocity"
     }
   ]

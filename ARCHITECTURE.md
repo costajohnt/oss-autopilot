@@ -156,7 +156,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 pnpm run bundle  # from packages/core/; runs the repo-root scripts/bundle.mjs (esbuild, plus a plugin that keeps only zod's `en` locale out of the ~40 it re-exports)
 ```
 
-The bundle is a single CommonJS file (gitignored, auto-generated). Commands rebuild it on demand via `scripts/build-cli-if-stale.sh` when the sources or `package.json` are newer than the bundle.
+The bundle is a single CommonJS file (gitignored, auto-generated). Marketplace installs receive it prebuilt on the `directory` branch. In a source checkout, commands rebuild it on demand via `scripts/build-cli-if-stale.sh` when the sources, `package.json` or `pnpm-lock.yaml` are newer than the bundle, installing only from the frozen lockfile.
 
 ## Core Domain Layer (`packages/core/src/core/`)
 
