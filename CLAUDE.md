@@ -185,6 +185,8 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 - On push to main, release-please opens or updates a release PR that bumps all version-bearing files (configured in `release-please-config.json`)
 - Merge the release-please PR to create a GitHub release, which triggers npm publish
 - `.mcp.json` pins the plugin's MCP server to `@oss-autopilot/mcp@<version>` (not `@latest`). The release-please workflow re-pins it on the release PR branch via `node scripts/sync-mcp-pin.mjs`, and CI fails if the pin differs from `packages/mcp-server/package.json`. If it ever drifts, run that script and commit `.mcp.json`
+- `packages/mcp-server/BUNDLED_CORE_VERSION` records the core version the MCP bundle inlines. It is a release trigger, not a runtime constant (the bundle gets core's version from `packages/core/package.json` at build time via `scripts/bundle.mjs`): the release-please workflow rewrites it on every release PR that bumps core, and on a core-only release that commit is what queues the MCP release. Never edit it by hand
+- `packages/core/src/version-sources-contract.test.ts` fails when any stored copy of the core or MCP version (manifest, `plugin.json`, the marker, `server.json`, the `.mcp.json` pin) disagrees with its `package.json`. A release PR is red on it until the workflow has pushed its pin and marker commits
 - **release-please force-updates its branch** (`release-please--branches--main`) on every push to main. `git pull --rebase` will print a `forced update` notice for that ref — that's expected, ignore it. The notice never affects your branch.
 
 ## AI Attribution Rule (CRITICAL)
