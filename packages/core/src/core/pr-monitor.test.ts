@@ -3564,10 +3564,10 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
   });
 });
 
-// Every other PRMonitor test uses an Octokit without `graphql`, so
-// batchFetchPRDetails routes everything to REST and the batched path that real
-// `daily` runs take never executes. This drives fetchUserOpenPRs through the
-// GraphQL batch and checks the assembled FetchedPR carries the batch signals.
+// Most PRMonitor tests in this file use an Octokit without `graphql`, so
+// batchFetchPRDetails routes everything to REST. The batched path that real
+// `daily` runs take is covered in pr-monitor.graphql-path.test.ts; this one
+// checks a single assembled FetchedPR carries the batch signals.
 describe('fetchUserOpenPRs assembles PRs from the batched GraphQL path', () => {
   it('builds FetchedPR from the GraphQL node without REST enrichment calls', async () => {
     vi.mocked(getStateManager).mockReturnValue(

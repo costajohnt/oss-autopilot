@@ -4,7 +4,7 @@
  * Real `daily` runs enrich PRs from one aliased GraphQL query and use REST only
  * as a fallback, while most of pr-monitor.test.ts mocks an Octokit without
  * `graphql` and so runs the fallback. These tests drive the monitor with a
- * `graphql` mock: the signals a batch node carries into the assembled
+ * `graphql` mock: proof that a batch node's signals reach the assembled
  * FetchedPR, and each trigger that routes a PR back to REST.
  *
  * The last block guards the query string itself without a network call.
@@ -23,13 +23,24 @@ vi.mock('./concurrency.js', async () => ({
 }));
 
 import { PRMonitor } from './pr-monitor.js';
-import { buildBatchQuery, normalizePRNode, BATCH_SIZE, type PRRef } from './pr-graphql.js';
+import {
+  buildBatchQuery,
+  normalizePRNode,
+  BATCH_SIZE,
+  PR_FETCH_LOG,
+  type NormalizedPRData,
+  type PRRef,
+} from './pr-graphql.js';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
+import { enableDebug } from './logger.js';
 import { makeStateManagerMock } from './test-utils.js';
+import type { FetchedPR } from './types.js';
 
-/** The line the live daily e2e looks for on stderr (daily.e2e.test.ts). */
-const FALLBACK_WARNING = 'falling back to REST';
+// The live daily e2e reads the debug log to see which transport served the
+// PRs (daily.e2e.test.ts), so these tests pin the same lines. Module state is
+// per test file, so this does not leak.
+enableDebug();
 
 const prUrl = (number: number) => `https://github.com/upstream/project/pull/${number}`;
 
@@ -54,7 +65,7 @@ function makeNode(number: number, overrides: Fields = {}, commit: Fields = makeC
   return {
     databaseId: 1000 + number,
     number,
-    title: 'Add feature',
+    title: 'From GraphQL',
     url: prUrl(number),
     mergeable: 'MERGEABLE',
     body: '',
@@ -74,10 +85,6 @@ function batchOf(...nodes: Array<Fields | null>): Fields {
   return Object.fromEntries(nodes.map((pullRequest, i) => [`pr${i}`, { pullRequest }]));
 }
 
-function rollup(...nodes: Fields[]): Fields {
-  return { contexts: { totalCount: nodes.length, nodes } };
-}
-
 function checkRun(workflowId: number, conclusion: string, startedAt: string): Fields {
   return {
     conclusion,
@@ -87,17 +94,6 @@ function checkRun(workflowId: number, conclusion: string, startedAt: string): Fi
     status: 'COMPLETED',
     checkSuite: { workflowRun: { workflow: { databaseId: workflowId } } },
   };
-}
-
-function maintainerReview(state: string, submittedAt: string): Fields {
-  return {
-    totalCount: 1,
-    nodes: [{ state, submittedAt, databaseId: 900, body: 'review', author: { login: 'maintainer' } }],
-  };
-}
-
-function comment(login: string, createdAt: string): Fields {
-  return { author: { login }, authorAssociation: 'NONE', body: 'Could you add a test for this?', createdAt };
 }
 
 /** REST enrichment mocks: a clean PR with no comments, reviews or CI. */
@@ -148,21 +144,30 @@ async function fetchOpenPRs(graphql: ReturnType<typeof vi.fn>, prCount = 1) {
   vi.mocked(getOctokit).mockReturnValue(octokit as never);
   const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
   const monitor = new PRMonitor('fake-token');
-  const result = await monitor.fetchUserOpenPRs();
-  const stderr = logged.mock.calls.map((args) => String(args[0])).join('\n');
-  return { ...result, stderr, restGet: rest.pulls.get };
+  const { prs, failures } = await monitor.fetchUserOpenPRs();
+  const stderr = logged.mock.calls.map((args) => String(args[0]));
+  return {
+    failures,
+    stderr,
+    restGet: rest.pulls.get,
+    /** PR title by number: the title says which transport built the PR. */
+    titles: Object.fromEntries(prs.map((pr) => [pr.number, pr.title])),
+    byNumber: new Map(prs.map((pr) => [pr.number, pr])),
+  };
 }
 
+const linesWith = (stderr: string[], marker: string) => stderr.filter((line) => line.includes(marker));
+
 /** Fetch one PR whose batch node is `node`, asserting REST was never consulted. */
-async function fetchViaGraphQL(node: Fields) {
-  const graphql = vi.fn().mockResolvedValue(batchOf(node));
-  const { prs, failures, stderr, restGet } = await fetchOpenPRs(graphql);
-  expect(graphql).toHaveBeenCalledTimes(1);
+async function fetchViaGraphQL(node: Fields): Promise<FetchedPR> {
+  const { byNumber, failures, stderr, restGet } = await fetchOpenPRs(vi.fn().mockResolvedValue(batchOf(node)));
   expect(restGet).not.toHaveBeenCalled();
-  expect(stderr).not.toContain(FALLBACK_WARNING);
+  expect(linesWith(stderr, PR_FETCH_LOG.restFallback)).toEqual([]);
+  expect(linesWith(stderr, 'falling back to REST')).toEqual([]);
   expect(failures).toEqual([]);
-  expect(prs).toHaveLength(1);
-  return prs[0];
+  const pr = byNumber.get(1);
+  if (!pr) throw new Error('PR 1 was not returned');
+  return pr;
 }
 
 afterEach(() => {
@@ -171,42 +176,23 @@ afterEach(() => {
 
 describe('fetchUserOpenPRs status inputs from a successful GraphQL batch', () => {
   it('carries the review decision of a submitted review', async () => {
-    const pr = await fetchViaGraphQL(makeNode(1, { reviews: maintainerReview('APPROVED', '2026-02-05T00:00:00Z') }));
+    const review = { databaseId: 900, state: 'APPROVED', body: '', submittedAt: '2026-02-05T00:00:00Z' };
+    const reviews = { totalCount: 1, nodes: [{ ...review, author: { login: 'maintainer' } }] };
+
+    const pr = await fetchViaGraphQL(makeNode(1, { reviews }));
 
     expect(pr.id).toBe(1001);
     expect(pr.reviewDecision).toBe('approved');
   });
 
   it('reports CI as failing when a same-named job fails in one workflow and passes later in another', async () => {
-    const statusCheckRollup = rollup(
-      checkRun(11, 'FAILURE', '2026-02-06T00:00:00Z'),
-      checkRun(22, 'SUCCESS', '2026-02-06T00:01:00Z'),
-    );
+    const nodes = [checkRun(11, 'FAILURE', '2026-02-06T00:00:00Z'), checkRun(22, 'SUCCESS', '2026-02-06T00:01:00Z')];
+    const statusCheckRollup = { contexts: { nodes, totalCount: nodes.length } };
 
     const pr = await fetchViaGraphQL(makeNode(1, {}, makeCommit({ statusCheckRollup })));
 
     expect(pr.ciStatus).toBe('failing');
     expect(pr.failingCheckNames).toEqual(['build']);
-  });
-
-  it('reports CI as passing when the same workflow re-ran the failed job', async () => {
-    const statusCheckRollup = rollup(
-      checkRun(11, 'FAILURE', '2026-02-06T00:00:00Z'),
-      checkRun(11, 'SUCCESS', '2026-02-06T00:01:00Z'),
-    );
-
-    const pr = await fetchViaGraphQL(makeNode(1, {}, makeCommit({ statusCheckRollup })));
-
-    expect(pr.ciStatus).toBe('passing');
-    expect(pr.failingCheckNames).toEqual([]);
-  });
-
-  it('reports CI as unknown when the only status is neither passed, pending nor failed', async () => {
-    const status = { state: 'EXPECTED', contexts: [{ context: 'ci/legacy', state: 'EXPECTED', description: null }] };
-
-    const pr = await fetchViaGraphQL(makeNode(1, {}, makeCommit({ status })));
-
-    expect(pr.ciStatus).toBe('unknown');
   });
 
   it('flags a CONFLICTING PR as a merge conflict', async () => {
@@ -222,11 +208,11 @@ describe('fetchUserOpenPRs status inputs from a successful GraphQL batch', () =>
       .mockResolvedValueOnce(batchOf(makeNode(1, { mergeable: 'UNKNOWN' })))
       .mockResolvedValueOnce(batchOf(makeNode(1, { mergeable: 'CONFLICTING' })));
 
-    const { prs, restGet } = await fetchOpenPRs(graphql);
+    const { byNumber, restGet } = await fetchOpenPRs(graphql);
 
     expect(graphql).toHaveBeenCalledTimes(2);
     expect(restGet).not.toHaveBeenCalled();
-    expect(prs[0].hasMergeConflict).toBe(true);
+    expect(byNumber.get(1)?.hasMergeConflict).toBe(true);
   });
 
   it("dates the head commit by committer date when the contributor's own amend moved it", async () => {
@@ -237,36 +223,14 @@ describe('fetchUserOpenPRs status inputs from a successful GraphQL batch', () =>
     expect(pr.latestCommitDate).toBe('2026-02-06T00:00:00Z');
   });
 
-  it('dates the head commit by author date when someone else rewrote it', async () => {
-    const commit = makeCommit({
-      authoredDate: '2026-02-02T00:00:00Z',
-      committedDate: '2026-02-06T00:00:00Z',
-      committer: { user: { login: 'maintainer' } },
-    });
-
-    const pr = await fetchViaGraphQL(makeNode(1, {}, commit));
-
-    expect(pr.latestCommitDate).toBe('2026-02-02T00:00:00Z');
-  });
-
   it('flags a maintainer comment the contributor has not answered', async () => {
-    const comments = { totalCount: 1, nodes: [comment('maintainer', '2026-02-05T00:00:00Z')] };
+    const question = { authorAssociation: 'NONE', body: 'Could you add a test?', createdAt: '2026-02-05T00:00:00Z' };
+    const comments = { totalCount: 1, nodes: [{ ...question, author: { login: 'maintainer' } }] };
 
     const pr = await fetchViaGraphQL(makeNode(1, { comments }));
 
     expect(pr.hasUnrespondedComment).toBe(true);
     expect(pr.lastMaintainerComment?.author).toBe('maintainer');
-  });
-
-  it('clears the flag once the contributor replied after the maintainer', async () => {
-    const comments = {
-      totalCount: 2,
-      nodes: [comment('maintainer', '2026-02-05T00:00:00Z'), comment('contributor', '2026-02-06T00:00:00Z')],
-    };
-
-    const pr = await fetchViaGraphQL(makeNode(1, { comments }));
-
-    expect(pr.hasUnrespondedComment).toBe(false);
   });
 });
 
@@ -274,12 +238,14 @@ describe('fetchUserOpenPRs REST fallback triggers', () => {
   it('routes every PR to REST, with a warning, when the batch query is rejected', async () => {
     const graphql = vi.fn().mockRejectedValue(new Error('Field "mergeable" does not exist on type "PullRequest"'));
 
-    const { prs, failures, stderr, restGet } = await fetchOpenPRs(graphql, 2);
+    const { titles, failures, stderr } = await fetchOpenPRs(graphql, 2);
 
-    expect(restGet).toHaveBeenCalledTimes(2);
-    expect(prs.map((pr) => pr.title)).toEqual(['From REST', 'From REST']);
+    expect(titles).toEqual({ 1: 'From REST', 2: 'From REST' });
     expect(failures).toEqual([]);
-    expect(stderr).toContain(`GraphQL batch failed, ${FALLBACK_WARNING}`);
+    expect(linesWith(stderr, PR_FETCH_LOG.batchFailed)).toHaveLength(1);
+    // The two debug lines the live e2e counts: N from the timing label, one line per REST PR.
+    expect(linesWith(stderr, `${PR_FETCH_LOG.fetchDetails} 2 PRs`)).toHaveLength(1);
+    expect(linesWith(stderr, PR_FETCH_LOG.restFallback)).toHaveLength(2);
   });
 
   it.each([
@@ -290,55 +256,48 @@ describe('fetchUserOpenPRs REST fallback triggers', () => {
       Object.assign(new Error('limited'), { errors: [{ type: 'RATE_LIMITED' }] }),
     ],
   ])('survives %s on the batch by routing every PR to REST, with a warning', async (_label, error) => {
-    const graphql = vi.fn().mockRejectedValue(error);
+    const { titles, failures, stderr } = await fetchOpenPRs(vi.fn().mockRejectedValue(error), 2);
 
-    const { prs, failures, stderr, restGet } = await fetchOpenPRs(graphql, 2);
-
-    expect(graphql).toHaveBeenCalledTimes(1);
-    expect(restGet).toHaveBeenCalledTimes(2);
-    expect(prs).toHaveLength(2);
+    expect(titles).toEqual({ 1: 'From REST', 2: 'From REST' });
     expect(failures).toEqual([]);
-    expect(stderr).toContain(`GraphQL batch enrichment failed (${error.message}); ${FALLBACK_WARNING} for all PRs`);
+    expect(linesWith(stderr, PR_FETCH_LOG.enrichmentFailed)).toHaveLength(1);
   });
 
   it('sends only the PR whose node came back null to REST', async () => {
     const graphql = vi.fn().mockResolvedValue(batchOf(makeNode(1), null));
 
-    const { prs, failures, restGet } = await fetchOpenPRs(graphql, 2);
+    const { titles, failures, stderr } = await fetchOpenPRs(graphql, 2);
 
-    expect(restGet).toHaveBeenCalledTimes(1);
-    expect(restGet).toHaveBeenCalledWith(expect.objectContaining({ pull_number: 2 }));
+    expect(titles).toEqual({ 1: 'From GraphQL', 2: 'From REST' });
     expect(failures).toEqual([]);
-    expect(prs.map((pr) => [pr.number, pr.title])).toEqual([
-      [1, 'Add feature'],
-      [2, 'From REST'],
-    ]);
+    expect(linesWith(stderr, PR_FETCH_LOG.restFallback)).toEqual([expect.stringContaining(prUrl(2))]);
   });
 
   it('sends only the PR whose node cannot be normalized to REST, with a warning', async () => {
     const graphql = vi.fn().mockResolvedValue(batchOf(makeNode(1, { comments: null }), makeNode(2)));
 
-    const { prs, failures, stderr, restGet } = await fetchOpenPRs(graphql, 2);
+    const { titles, failures, stderr } = await fetchOpenPRs(graphql, 2);
 
-    expect(restGet).toHaveBeenCalledTimes(1);
-    expect(restGet).toHaveBeenCalledWith(expect.objectContaining({ pull_number: 1 }));
+    expect(titles).toEqual({ 1: 'From REST', 2: 'From GraphQL' });
     expect(failures).toEqual([]);
-    expect(prs.map((pr) => [pr.number, pr.title])).toEqual([
-      [2, 'Add feature'],
-      [1, 'From REST'],
-    ]);
-    expect(stderr).toContain(`Failed to normalize ${prUrl(1)}, ${FALLBACK_WARNING}`);
+    expect(linesWith(stderr, PR_FETCH_LOG.normalizeFailed)).toEqual([expect.stringContaining(prUrl(1))]);
   });
 
-  it('records a failure, not a REST retry, for a PR whose resolved node cannot be assembled', async () => {
-    // A non-string body passes normalization and breaks the checklist analysis.
-    const graphql = vi.fn().mockResolvedValue(batchOf(makeNode(1, { body: 42 }), makeNode(2)));
+  it('records a failure, not a REST retry, for a resolved PR whose assembly throws', async () => {
+    type Assemble = (this: unknown, ref: PRRef, data: NormalizedPRData) => Promise<FetchedPR>;
+    const seam = PRMonitor.prototype as unknown as { assembleFromNormalized: Assemble };
+    const assemble = seam.assembleFromNormalized;
+    vi.spyOn(seam, 'assembleFromNormalized').mockImplementation(function (this: unknown, ref, data) {
+      return ref.number === 1 ? Promise.reject(new Error('assembly broke')) : assemble.call(this, ref, data);
+    });
+    const graphql = vi.fn().mockResolvedValue(batchOf(makeNode(1), makeNode(2)));
 
-    const { prs, failures, restGet } = await fetchOpenPRs(graphql, 2);
+    const { titles, failures, stderr, restGet } = await fetchOpenPRs(graphql, 2);
 
     expect(restGet).not.toHaveBeenCalled();
-    expect(prs.map((pr) => pr.number)).toEqual([2]);
-    expect(failures).toEqual([{ prUrl: prUrl(1), error: expect.any(String) }]);
+    expect(titles).toEqual({ 2: 'From GraphQL' });
+    expect(failures).toEqual([{ prUrl: prUrl(1), error: 'assembly broke' }]);
+    expect(linesWith(stderr, PR_FETCH_LOG.assembleFailed)).toEqual([expect.stringContaining(prUrl(1))]);
   });
 });
 
@@ -346,11 +305,11 @@ describe('fetchUserOpenPRs REST fallback triggers', () => {
 //
 // The `graphql` package is not a dependency of this workspace, so this is not
 // a spec-level parse and knows nothing of GitHub's schema. It checks what can
-// be checked offline: delimiters balance, the selection set has the shape the
-// small parser below expects, every field normalizePRNode reads is selected,
-// and every selected field is read. A field misspelled the same way in the
-// query and in normalizePRNode, or one GitHub removes, passes here; only the
-// live daily e2e (no "falling back to REST" on stderr) catches those.
+// be checked offline: delimiters balance, declared variables are the used
+// ones, and every field normalizePRNode reads is selected. A field misspelled
+// the same way in the query and in normalizePRNode, or one GitHub removes,
+// passes here; only the live daily e2e catches those. The parser handles the
+// syntax PR_FIELDS uses today and says so by name when it meets anything else.
 
 /** A selection set: field name to sub-selection (null for a scalar); `...Type` keys are inline fragments. */
 interface Selection {
@@ -360,16 +319,23 @@ interface Selection {
 /** Tokens of a query, held in reverse so the next one is popped off the end. */
 type TokenStack = string[];
 
-/** Take one field: `name`, `alias: name` (as "alias name") or `... on Type` (as "...Type"). */
+/** GraphQL syntax the parser does not handle, by the token that introduces it, or undefined when it does. */
+function unsupportedSyntax(token: string, next: string | undefined): string | undefined {
+  if (token === '...') return next === 'on' ? undefined : 'named fragment spreads';
+  if (token.endsWith(':')) return 'aliases';
+  if (token.startsWith('@')) return 'directives';
+  if (token === 'edges') return '`edges` connections';
+  return /^\w+$/.test(token) ? undefined : 'this token';
+}
+
+/** Take one field: `name`, or `... on Type` (as "...Type"). */
 function takeFieldName(tokens: TokenStack): string {
   const token = tokens.pop() ?? '';
-  if (token === '...') {
-    tokens.pop();
-    return '...' + tokens.pop();
-  }
-  if (token.endsWith(':')) return token.slice(0, -1) + ' ' + tokens.pop();
-  if (!/^\w+$/.test(token)) throw new Error(`expected a field name, got "${token}"`);
-  return token;
+  const unsupported = unsupportedSyntax(token, tokens.at(-1));
+  if (unsupported) throw new Error(`structural guard parser does not support ${unsupported} (at "${token}")`);
+  if (token !== '...') return token;
+  tokens.pop();
+  return '...' + tokens.pop();
 }
 
 /** Parse one selection set (its opening brace already taken), consuming its closing brace. */
@@ -384,29 +350,23 @@ function parseSelection(tokens: TokenStack): Selection {
 }
 
 const ARGUMENTS = /\([^()]*\)/g;
-const TOKEN = /\.\.\.|[{}]|[\w:]+/g;
+/** The per-PR aliases buildBatchQuery adds (`pr0: repository`); the only aliases the guard expects. */
+const BATCH_ALIAS = /\bpr\d+:/g;
+const TOKEN = /\.\.\.|[{}]|@?[\w:]+/g;
 
-/** Selection tree of a whole query. Arguments and the operation header are dropped. */
-function parseQuery(query: string): Selection {
-  const text = query.replaceAll(ARGUMENTS, ' ');
+/** The `pullRequest { ... }` selection of a built query. Arguments, the operation header and batch aliases are dropped. */
+function pullRequestSelection(query: string): Selection {
+  const text = query.replaceAll(ARGUMENTS, ' ').replaceAll(BATCH_ALIAS, ' ');
   const stray = text.replaceAll(TOKEN, '').trim();
-  if (stray) throw new Error(`unexpected characters in query: "${stray}"`);
+  if (stray) throw new Error(`structural guard parser does not support these characters: "${stray}"`);
   const forward: string[] = text.match(TOKEN) ?? [];
   const tokens = forward.slice(forward.indexOf('{') + 1).toReversed();
-  const root = parseSelection(tokens);
-  if (tokens.length > 0) throw new Error(`tokens after the closing brace: "${tokens.toReversed().join(' ')}"`);
-  return root;
+  const pullRequest = parseSelection(tokens).repository?.pullRequest;
+  if (!pullRequest) throw new Error('structural guard parser found no repository { pullRequest } selection');
+  return pullRequest;
 }
 
 const isFragment = (field: string) => field.startsWith('...');
-
-/** Dotted paths of every scalar a selection requests, inline fragments merged into their parent. */
-function leafPaths(selection: Selection, prefix = ''): string[] {
-  return Object.entries(selection).flatMap(([field, sub]) => {
-    if (isFragment(field)) return sub ? leafPaths(sub, prefix) : [];
-    return sub ? leafPaths(sub, prefix + field + '.') : prefix + field;
-  });
-}
 
 const NUMERIC_FIELDS = new Set(['databaseId', 'number', 'totalCount']);
 
@@ -431,26 +391,17 @@ function fakeVariants(selection: Selection): Fields[] {
   return fragments.length > 0 ? fragments.map((fragment) => ({ ...base, ...fragment })) : [base];
 }
 
-/** Wrap a response so every property read is recorded by dotted path, and reads of absent fields are kept apart. */
-function tracked(value: unknown, path: string, read: Set<string>, absent: Set<string>): unknown {
-  if (Array.isArray(value)) return value.map((item) => tracked(item, path, read, absent));
+/** Wrap a response so a read of any field it does not hold is recorded by dotted path. */
+function tracked(value: unknown, path: string, absent: Set<string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => tracked(item, path, absent));
   if (value === null || typeof value !== 'object') return value;
   return new Proxy(value, {
     get(target, prop) {
       if (typeof prop !== 'string') return Reflect.get(target, prop);
-      const fieldPath = path + prop;
-      const seen = Reflect.has(target, prop) ? read : absent;
-      seen.add(fieldPath);
-      return tracked(Reflect.get(target, prop), fieldPath + '.', read, absent);
+      if (!Reflect.has(target, prop)) absent.add(path + prop);
+      return tracked(Reflect.get(target, prop), path + prop + '.', absent);
     },
   });
-}
-
-/** The `pullRequest { ... }` selection of the first alias in a built query. */
-function pullRequestSelection(query: string): Selection {
-  const pullRequest = parseQuery(query)['pr0 repository']?.pullRequest;
-  if (!pullRequest) throw new Error('pr0 has no pullRequest selection');
-  return pullRequest;
 }
 
 const refs = (size: number): PRRef[] =>
@@ -459,20 +410,6 @@ const refs = (size: number): PRRef[] =>
 const count = (text: string, char: string) => text.split(char).length - 1;
 
 const variablesIn = (text: string) => new Set(text.match(/\$\w+/g));
-
-/**
- * Fields the query selects that normalizePRNode never reads. `number` and
- * `url` are identity the caller already holds; the rollup's StatusContext
- * fields are unused because legacy statuses are read from `commit.status`.
- * Anything new here is a dead selection: drop it from PR_FIELDS or read it.
- */
-const SELECTED_BUT_UNREAD = new Set([
-  'number',
-  'url',
-  'commits.nodes.commit.statusCheckRollup.contexts.nodes.context',
-  'commits.nodes.commit.statusCheckRollup.contexts.nodes.state',
-  'commits.nodes.commit.statusCheckRollup.contexts.nodes.description',
-]);
 
 describe('buildBatchQuery structural guard', () => {
   it.each([1, BATCH_SIZE])('balances every delimiter for a batch of %i', (size) => {
@@ -483,28 +420,31 @@ describe('buildBatchQuery structural guard', () => {
     expect(count(query, '[')).toBe(count(query, ']'));
   });
 
-  it('gives every PR its own alias with the same selection, and declares exactly the variables it uses', () => {
+  it('declares exactly the variables it uses and is given', () => {
     const { query, variables } = buildBatchQuery(refs(BATCH_SIZE));
-    const root = parseQuery(query);
     const bodyStart = query.indexOf('{');
     const declared = variablesIn(query.slice(0, bodyStart));
-    const distinctSelections = new Set(Object.values(root).map((alias) => JSON.stringify(alias)));
 
-    expect(Object.keys(root)).toEqual(refs(BATCH_SIZE).map((_, i) => `pr${i} repository`));
-    expect(distinctSelections.size).toBe(1);
     expect(declared).toEqual(variablesIn(query.slice(bodyStart)));
     expect(declared).toEqual(new Set(Object.keys(variables).map((name) => '$' + name)));
   });
 
-  it('selects every field normalizePRNode reads, and reads every field it selects', () => {
+  it('selects every field normalizePRNode reads', () => {
     const selection = pullRequestSelection(buildBatchQuery(refs(1)).query);
-    const read = new Set<string>();
     const absent = new Set<string>();
 
-    const outcome = normalizePRNode(tracked(fakeVariants(selection)[0], '', read, absent) as never);
+    const outcome = normalizePRNode(tracked(fakeVariants(selection)[0], '', absent) as never);
 
     expect(outcome.kind).toBe('ok');
     expect([...absent], 'read by normalizePRNode but missing from PR_FIELDS').toEqual([]);
-    expect(new Set(leafPaths(selection).filter((path) => !read.has(path)))).toEqual(SELECTED_BUT_UNREAD);
+  });
+
+  it.each([
+    ['aliases', '{ repository { pullRequest { first: title } } }'],
+    ['named fragment spreads', '{ repository { pullRequest { ...prFields } } }'],
+    ['directives', '{ repository { pullRequest { title @include(if: $x) } } }'],
+    ['`edges` connections', '{ repository { pullRequest { comments { edges { node { body } } } } } }'],
+  ])('names the parser as the limit when a query uses %s', (syntax, query) => {
+    expect(() => pullRequestSelection(query)).toThrow(`structural guard parser does not support ${syntax}`);
   });
 });

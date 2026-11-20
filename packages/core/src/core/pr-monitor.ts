@@ -47,6 +47,7 @@ import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import {
   batchFetchPRDetails,
   MERGEABLE_RETRY_DELAY_MS,
+  PR_FETCH_LOG,
   type PRRef,
   type NormalizedPRData,
   type BatchPRResult,
@@ -346,7 +347,7 @@ export class PRMonitor {
     // the common case in a handful of ~1-point queries; anything it can't resolve
     // (connection cap overflow, missing node, GraphQL outage) falls back to the
     // per-PR REST path via the worker pool.
-    await timed('pr-monitor', `Fetch details for ${refs.length} PRs`, async () => {
+    await timed('pr-monitor', `${PR_FETCH_LOG.fetchDetails} ${refs.length} PRs`, async () => {
       let batch: BatchPRResult;
       try {
         batch = await batchFetchPRDetails(this.octokit, refs);
@@ -354,7 +355,7 @@ export class PRMonitor {
         // A fatal batch-level GraphQL error (rate limit / auth). Don't crash the
         // run — route every PR to the REST path, which surfaces per-PR failures
         // exactly as the pre-GraphQL implementation did.
-        warn(MODULE, `GraphQL batch enrichment failed (${errorMessage(error)}); falling back to REST for all PRs`);
+        warn(MODULE, `${PR_FETCH_LOG.enrichmentFailed} (${errorMessage(error)}); falling back to REST for all PRs`);
         batch = { resolved: new Map(), restFallbackUrls: refs.map((r) => r.url) };
       }
 
@@ -366,7 +367,7 @@ export class PRMonitor {
           prs.push(await this.assembleFromNormalized(ref, data));
         } catch (error) {
           const errMsg = errorMessage(error);
-          warn('pr-monitor', `Error assembling ${url}: ${errMsg}`);
+          warn('pr-monitor', `${PR_FETCH_LOG.assembleFailed} ${url}: ${errMsg}`);
           failures.push({ prUrl: url, error: errMsg });
         }
       }
@@ -376,7 +377,7 @@ export class PRMonitor {
         batch.restFallbackUrls,
         async (url) => {
           try {
-            debug('pr-monitor', `Fetching details for ${url} (REST fallback)`);
+            debug('pr-monitor', `Fetching details for ${url} ${PR_FETCH_LOG.restFallback}`);
             const pr = await this.fetchPRDetails(url, warnings);
             if (pr) prs.push(pr);
           } catch (error) {

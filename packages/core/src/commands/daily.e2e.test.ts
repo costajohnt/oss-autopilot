@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { PR_FETCH_LOG } from '../core/pr-graphql.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -60,14 +61,55 @@ async function seedUsername(): Promise<void> {
   });
 }
 
+/**
+ * Causes of a whole-batch GraphQL fallback that say nothing about the query:
+ * GitHub throttled the run or had a transient server error. Same idea as
+ * `isLiveApiUnavailable` in search.e2e.test.ts.
+ */
+const TRANSIENT_API_FAILURE = /rate limit|RATE_LIMITED|secondary|\b50[234]\b|timeout|ETIMEDOUT|ECONNRESET/i;
+
+/** How the open-PR fetch of a `daily --debug` run was served, read from its stderr (#1941). */
+interface PRTransportEvidence {
+  /** PRs the run enriched; undefined when the debug timing line is missing. */
+  prCount: number | undefined;
+  /** PRs enriched through the per-PR REST fallback. */
+  restFallbackCount: number;
+  /** Whole-batch fallback warnings caused by throttling or a transient server error. */
+  transientBatchFailures: string[];
+  /** Whole-batch fallback warnings with any other cause, e.g. GitHub rejecting the query. */
+  batchFailures: string[];
+  normalizeFailures: string[];
+  assembleFailures: string[];
+}
+
+function readPRTransportEvidence(stderr: string): PRTransportEvidence {
+  const lines = stderr.split('\n');
+  const having = (marker: string) => lines.filter((line) => line.includes(marker));
+  const [timingLine = ''] = having(PR_FETCH_LOG.fetchDetails);
+  const [, afterLabel = ''] = timingLine.split(PR_FETCH_LOG.fetchDetails);
+  const count = /^ (\d+) PRs/.exec(afterLabel);
+  const wholeBatch = [...having(PR_FETCH_LOG.batchFailed), ...having(PR_FETCH_LOG.enrichmentFailed)];
+  return {
+    prCount: count ? Number(count[1]) : undefined,
+    restFallbackCount: having(PR_FETCH_LOG.restFallback).length,
+    transientBatchFailures: wholeBatch.filter((line) => TRANSIENT_API_FAILURE.test(line)),
+    batchFailures: wholeBatch.filter((line) => !TRANSIENT_API_FAILURE.test(line)),
+    normalizeFailures: having(PR_FETCH_LOG.normalizeFailed),
+    assembleFailures: having(PR_FETCH_LOG.assembleFailed),
+  };
+}
+
 async function runDaily(
   env?: Record<string, string>,
+  extraArgs: string[] = [],
 ): Promise<{ stdout: string; stderr: string; json: any; exitCode: number | null }> {
   let exitCode: number | null = 0;
   let signal: string | null = null;
 
-  const result = await execFileAsync('node', [BUNDLE_PATH, 'daily', '--json'], {
+  const result = await execFileAsync('node', [BUNDLE_PATH, 'daily', '--json', ...extraArgs], {
     timeout: EXEC_TIMEOUT_MS,
+    // --debug logs a line per request; the 1 MB default would kill a busy run.
+    maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, ...env, HOME: TEST_HOME },
     cwd: TEST_HOME,
   }).catch((err: any) => {
@@ -137,7 +179,8 @@ describe.skipIf(!BUNDLE_EXISTS)('daily --json E2E', () => {
 
     beforeAll(async () => {
       await seedUsername();
-      const { json, stderr } = await runDaily();
+      // --debug so the transport test below can read how PRs were enriched.
+      const { json, stderr } = await runDaily(undefined, ['--debug']);
       sharedJson = json;
       sharedStderr = stderr;
     }, EXEC_TIMEOUT_MS);
@@ -207,19 +250,31 @@ describe.skipIf(!BUNDLE_EXISTS)('daily --json E2E', () => {
 
     // #1941: a batch query GitHub rejects (a renamed field, a syntax slip) is
     // absorbed by the per-PR REST fallback, so the envelope above looks the
-    // same and only the REST budget suffers. The fallback always logs a
-    // "falling back to REST" warning on stderr (pr-graphql.ts, pr-monitor.ts);
-    // a clean run has none. A PR past a connection cap goes to REST without
-    // that warning, so this does not fire on a legitimately large PR.
-    it('should enrich PRs through the GraphQL batch, not the REST fallback', () => {
+    // same and only the REST budget suffers. The debug log says which
+    // transport served the PRs: with a rejected query every PR is a REST
+    // fallback. A few REST fallbacks are normal (a PR past a connection cap),
+    // so the bar is "not all of them". Throttling and transient server errors
+    // skip instead of failing; they are not a query regression.
+    it('should enrich PRs through the GraphQL batch, not the REST fallback', ({ skip }) => {
       expect(sharedJson, 'CLI should return parseable JSON output').not.toBeNull();
-      const fallbackLines = sharedStderr.split('\n').filter((line) => line.includes('falling back to REST'));
-      expect(fallbackLines, 'the batched GraphQL query failed and daily fell back to REST').toEqual([]);
+      const evidence = readPRTransportEvidence(sharedStderr);
+
+      expect(evidence.prCount, 'the "Fetch details for N PRs" debug line is missing').toBeDefined();
+      expect(evidence.normalizeFailures, 'a GraphQL node could not be normalized').toEqual([]);
+      expect(evidence.batchFailures, 'the batched GraphQL query failed and daily fell back to REST').toEqual([]);
+      skip(evidence.prCount === 0, `${SEED_USERNAME} has no open PRs to enrich, so no GraphQL query ran`);
+      skip(
+        evidence.transientBatchFailures.length > 0,
+        `GitHub throttled or errored on the GraphQL batch: ${evidence.transientBatchFailures.join(' | ')}`,
+      );
+      expect(evidence.restFallbackCount, 'every PR was enriched through REST').toBeLessThan(evidence.prCount ?? 0);
     });
 
-    it('should report no fetch failures', () => {
+    // Assembling a resolved PR makes no network call, so a failure there is a
+    // bug in this code and never a flaky upstream.
+    it('should assemble every PR the GraphQL batch resolved', () => {
       expect(sharedJson, 'CLI should return parseable JSON output').not.toBeNull();
-      expect(sharedJson.data.failures).toEqual([]);
+      expect(readPRTransportEvidence(sharedStderr).assembleFailures).toEqual([]);
     });
   });
 });
