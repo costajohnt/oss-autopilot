@@ -315,6 +315,31 @@ describe('runRepoVet contribution policy (#1953)', () => {
     expect(RepoVetOutputSchema.safeParse(result).success).toBe(true);
   });
 
+  it('honors a stored ban like search and preflight do, whatever this run reads', async () => {
+    const ban = {
+      aiPolicy: 'banned',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: false,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    mockGetStateManager.mockReturnValue({
+      getRepoScore: vi.fn(),
+      getState: () => ({ repoScores: {}, config: { aiPolicyBlocklist: [] }, repoPolicies: { 'owner/repo': ban } }),
+    } as unknown as ReturnType<typeof getStateManager>);
+    const octokit = buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND));
+    vi.mocked(octokit.repos.getContent).mockImplementation((async ({ path }: { path: string }) => {
+      if (path !== 'CONTRIBUTING.md') throw NOT_FOUND;
+      return { data: { type: 'file', content: 'Run the tests before opening a pull request.' } };
+    }) as never);
+    mockGetOctokit.mockReturnValue(octokit);
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+    expect(result.policy?.aiPolicy).toBe('banned');
+  });
+
   it('omits the policy when no doc was found and nothing is recorded', async () => {
     mockGetOctokit.mockReturnValue(buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND)));
     expect('policy' in (await runRepoVet({ repo: 'owner/repo' }))).toBe(false);

@@ -102,16 +102,19 @@ type ScoutCandidate = Awaited<ReturnType<Awaited<ReturnType<typeof createAutopil
 /**
  * The repo's contribution policy as far as vet read it (#1953): scout's
  * CONTRIBUTING text through the policy parsers, plus scout's own anti-LLM scan
- * (which also reads README and CODE_OF_CONDUCT). Null when vet read nothing.
+ * (which also reads README and CODE_OF_CONDUCT). Null when vet read nothing or the
+ * scan result is missing.
  */
 function vetPolicy(candidate: ScoutCandidate): RepoPolicy | null {
   const guidelines = candidate.vettingResult.contributionGuidelines;
-  const scan = candidate.antiLLMPolicy;
+  const scan = candidate.antiLLMPolicy as ScoutCandidate['antiLLMPolicy'] | undefined;
+  // Without scout's README / CODE_OF_CONDUCT scan the AI reading is partial: record nothing.
+  if (!scan) return null;
   const docs = guidelines?.rawContent ? [{ file: 'CONTRIBUTING.md', content: guidelines.rawContent }] : [];
-  if (docs.length === 0 && !scan?.matched) return null;
+  if (docs.length === 0 && !scan.matched) return null;
   const policy = derivePolicy(docs);
   if (guidelines?.claRequired) policy.cla = 'required';
-  if (!scan?.matched || policy.aiPolicy === 'banned') return policy;
+  if (!scan.matched || policy.aiPolicy === 'banned') return policy;
   const line = { file: scan.sourceFile ?? 'repo docs', quotedLine: quote(scan.matchedKeywords.join(', ')) };
   return { ...policy, aiPolicy: 'banned', source: [line, ...policy.source].slice(0, 10) };
 }

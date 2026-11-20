@@ -295,6 +295,11 @@ function gatherHeadFacts(dir: string, remotes: GitRemote[], login: string | null
   };
 }
 
+function repoScoreFor(state: Readonly<AgentState>, repo: string): AgentState['repoScores'][string] | undefined {
+  const lower = repo.toLowerCase();
+  return Object.entries(state.repoScores).find(([key]) => key.toLowerCase() === lower)?.[1];
+}
+
 /** The repo's contribution policy and whether this is the user's first PR there; read from local state only. */
 function policyFacts(
   state: Readonly<AgentState>,
@@ -303,7 +308,8 @@ function policyFacts(
   if (!repo) return { policy: null, isFirstContribution: false };
   return {
     policy: effectivePolicy(state, repo),
-    isFirstContribution: isFirstInRepo(repo, state.repoScores[repo], state.mergedPRs),
+    // State keys keep the casing of the URL they came from; the remote may differ.
+    isFirstContribution: isFirstInRepo(repo, repoScoreFor(state, repo), state.mergedPRs),
   };
 }
 

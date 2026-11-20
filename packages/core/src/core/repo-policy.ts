@@ -61,55 +61,68 @@ export function quote(text: string): string {
 const BEFORE_PR = /\bbefore\s+(?:opening|submitting|sending|creating|starting|working)\b/i;
 const CLAIM_PHRASE = /\b(?:comment\s+on\s+the\s+issue|ask\s+to\s+be\s+assigned|get\s+assigned|be\s+assigned)\b/i;
 const PR_NOUN = String.raw`(?:pull\s+requests|prs|contributions)`;
+/** The clause ends here: no "for large refactors" / "to the vendored directory" scoping it down. */
+const CLAUSE_END = String.raw`\s*(?:[.!;,]|$)`;
 
-/** A line states the gate when it matches every pattern of one rule. */
-const GATE_RULES: ReadonlyArray<{ gate: PrGate; all: readonly RegExp[] }> = [
+/** `keyword` within a few words after a negation: "do not require a CLA", "no need to be assigned". */
+function negated(keyword: string): RegExp {
+  return new RegExp(String.raw`(?:\bno|\bnot|n't|\bwithout)\s+(?:\w+\s+){0,3}?${keyword}`, 'i');
+}
+
+/** A line states the gate when it matches every pattern of `all` and none of `none`. */
+interface LineRule {
+  all: readonly RegExp[];
+  none?: RegExp;
+}
+
+const GATE_RULES: ReadonlyArray<LineRule & { gate: PrGate }> = [
   {
     gate: 'collaborators-only',
     all: [
       new RegExp(
-        String.raw`\bonly\s+accepts?\s+${PR_NOUN}\s+from\s+(?:collaborators|maintainers|team\s+members)\b`,
+        String.raw`\bonly\s+accepts?\s+${PR_NOUN}\s+from\s+(?:collaborators|maintainers|team\s+members)${CLAUSE_END}`,
         'i',
       ),
     ],
   },
   {
     gate: 'collaborators-only',
-    all: [/(?:\bnot|n't)\s+accept\b/i, new RegExp(String.raw`\b(?:external|outside|unsolicited)\s+${PR_NOUN}\b`, 'i')],
+    all: [
+      /(?:\bnot|n't)\s+accept\b/i,
+      new RegExp(String.raw`\b(?:external|outside|unsolicited)\s+${PR_NOUN}${CLAUSE_END}`, 'i'),
+    ],
   },
   {
     gate: 'maintainer-label',
     all: [/\bwait\s+(?:for|until)\s+(?:a\s+)?maintainers?\b/i, /\b(?:label|approv|accept|triag)/i, /\bissue/i],
   },
   { gate: 'maintainer-label', all: [/\blabel/i, /\b(?:accepted|approved|ready)\b/i, BEFORE_PR] },
-  { gate: 'claim-first', all: [CLAIM_PHRASE, BEFORE_PR] },
+  { gate: 'claim-first', all: [CLAIM_PHRASE, BEFORE_PR], none: negated(String.raw`(?:be\s+|get\s+)?assigned`) },
 ];
 
 /** Strictest first: the first gate any doc states wins. */
 const GATE_ORDER: readonly PrGate[] = ['collaborators-only', 'maintainer-label', 'claim-first'];
 
-const DCO = /\bDCO\b|signed?-off-by|signoff/i;
+const DCO = /\bDCO\b|signed?-off-by|sign-?off/i;
+const DCO_NEGATED = negated('(?:DCO|sign(?:ed)?-?off)');
 
-/** Commit rules: a CONTRIBUTING requirement of `category` whose line matches `evidence`, or a line matching all of `all`. */
-const COMMIT_RULE_MATCHERS: ReadonlyArray<{
-  rule: string;
-  category?: string;
-  evidence?: RegExp;
-  all?: readonly RegExp[];
-}> = [
-  { rule: 'conventional-commits', category: 'commit_format', evidence: /conventional\s+commits?/i },
-  // extractRequirements reports cla_dco once per doc, so a CLA line can hide the DCO one: also scan lines.
-  { rule: 'dco-signoff', category: 'cla_dco', evidence: DCO, all: [DCO] },
-  {
-    rule: 'no-closing-keyword-in-commit',
-    all: [/\b(?:do\s+not|don't|never)\s+(?:use|include|put|add)\b/i, /\b(?:fixes|closes|resolves)\b/i, /\bcommit/i],
-  },
-];
+/** Commit rules: a CONTRIBUTING requirement of `category` whose line matches `evidence`, or a line matching `all`. */
+const COMMIT_RULE_MATCHERS: ReadonlyArray<Partial<LineRule> & { rule: string; category?: string; evidence?: RegExp }> =
+  [
+    { rule: 'conventional-commits', category: 'commit_format', evidence: /conventional\s+commits?/i },
+    // extractRequirements reports cla_dco once per doc, so a CLA line can hide the DCO one: also scan lines.
+    { rule: 'dco-signoff', category: 'cla_dco', evidence: DCO, all: [DCO], none: DCO_NEGATED },
+    {
+      rule: 'no-closing-keyword-in-commit',
+      all: [/\b(?:do\s+not|don't|never)\s+(?:use|include|put|add)\b/i, /\b(?:fixes|closes|resolves)\b/i, /\bcommit/i],
+    },
+  ];
 
 const CLA_EVIDENCE = /\bCLA\b|contributor\s+license\s+agreement/i;
+const CLA_NEGATED = negated(String.raw`(?:CLA\b|contributor\s+license)`);
 
-function lineMatchingAll(text: string, patterns: readonly RegExp[]): string | null {
-  return text.split(/\r?\n/).find((line) => patterns.every((p) => p.test(line))) ?? null;
+function lineMatching(text: string, rule: LineRule): string | null {
+  return text.split(/\r?\n/).find((line) => rule.all.every((p) => p.test(line)) && !rule.none?.test(line)) ?? null;
 }
 
 interface Hit {
@@ -148,19 +161,24 @@ function scanAi(doc: PolicyDoc, found: Found): void {
 function scanCommitRules(doc: PolicyDoc, requirements: ReturnType<typeof extractRequirements>, found: Found): void {
   for (const matcher of COMMIT_RULE_MATCHERS) {
     if (found.commitRules.some((r) => r.rule === matcher.rule)) continue;
-    const req = requirements.find((r) => r.category === matcher.category && matcher.evidence?.test(r.evidence));
-    const line = req?.evidence ?? (matcher.all ? lineMatchingAll(doc.content, matcher.all) : null);
+    const req = requirements.find(
+      (r) => r.category === matcher.category && matcher.evidence?.test(r.evidence) && !matcher.none?.test(r.evidence),
+    );
+    const line =
+      req?.evidence ?? (matcher.all ? lineMatching(doc.content, { all: matcher.all, none: matcher.none }) : null);
     if (line) found.commitRules.push({ rule: matcher.rule, file: doc.file, line });
   }
 }
 
 function scanRequirements(doc: PolicyDoc, found: Found): void {
   const requirements = extractRequirements(doc.content);
-  const cla = requirements.find((r) => r.category === 'cla_dco' && CLA_EVIDENCE.test(r.evidence));
+  const cla = requirements.find(
+    (r) => r.category === 'cla_dco' && CLA_EVIDENCE.test(r.evidence) && !CLA_NEGATED.test(r.evidence),
+  );
   if (cla && !found.cla) found.cla = { file: doc.file, line: cla.evidence };
   scanCommitRules(doc, requirements, found);
-  for (const { gate, all } of GATE_RULES) {
-    const line = lineMatchingAll(doc.content, all);
+  for (const { gate, ...rule } of GATE_RULES) {
+    const line = lineMatching(doc.content, rule);
     if (line && !found.gates.has(gate)) found.gates.set(gate, { file: doc.file, line });
   }
 }
@@ -196,23 +214,6 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
   };
 }
 
-/** The stored record for `repo`, or null when there is none or it does not parse. */
-export function storedPolicy(state: PolicyState, repo: string): RepoPolicy | null {
-  const parsed = RepoPolicySchema.safeParse(state.repoPolicies?.[repo.toLowerCase()]);
-  return parsed.success ? parsed.data : null;
-}
-
-/** True when the raw stored entry says the user set it, even when this release cannot parse the rest. */
-export function isUserReviewed(state: PolicyState, repo: string): boolean {
-  const raw = state.repoPolicies?.[repo.toLowerCase()];
-  return typeof raw === 'object' && raw !== null && (raw as { reviewedByUser?: unknown }).reviewedByUser === true;
-}
-
-export function isBlocklisted(state: PolicyState, repo: string): boolean {
-  const lower = repo.toLowerCase();
-  return (state.config.aiPolicyBlocklist ?? []).some((r) => r.toLowerCase() === lower);
-}
-
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
 const UNKNOWN_POLICY: Omit<RepoPolicy, 'updatedAt'> = {
@@ -224,16 +225,56 @@ const UNKNOWN_POLICY: Omit<RepoPolicy, 'updatedAt'> = {
   reviewedByUser: false,
 };
 
+function rawEntry(state: PolicyState, repo: string): Record<string, unknown> | null {
+  const raw = state.repoPolicies?.[repo.toLowerCase()];
+  return typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
+}
+
+/** A stored entry this release cannot parse, e.g. one a newer release wrote with a value added since. */
+export function isUnreadable(state: PolicyState, repo: string): boolean {
+  const raw = state.repoPolicies?.[repo.toLowerCase()];
+  return raw !== undefined && !RepoPolicySchema.safeParse(raw).success;
+}
+
 /**
- * The policy that applies to `repo`: the user's record, else a freshly derived
- * one when given, else the stored unreviewed one. A repo in
- * `config.aiPolicyBlocklist` is banned whatever is stored: the blocklist is the
- * older ban list, still synced to clients that predate policy records, and a
- * record never relaxes it. Null when nothing is known.
+ * The stored record for `repo`, or null when there is none. An entry that does
+ * not parse but says `aiPolicy: 'banned'` still reads as a ban (every other
+ * field unknown): a newer release's record must not lift a ban here.
+ */
+export function storedPolicy(state: PolicyState, repo: string): RepoPolicy | null {
+  const raw = rawEntry(state, repo);
+  const parsed = RepoPolicySchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  if (raw?.aiPolicy !== 'banned') return null;
+  return { ...UNKNOWN_POLICY, aiPolicy: 'banned', reviewedByUser: raw.reviewedByUser === true, updatedAt: EPOCH };
+}
+
+/** True when the raw stored entry says the user set it, even when this release cannot parse the rest. */
+export function isUserReviewed(state: PolicyState, repo: string): boolean {
+  return rawEntry(state, repo)?.reviewedByUser === true;
+}
+
+export function isBlocklisted(state: PolicyState, repo: string): boolean {
+  const lower = repo.toLowerCase();
+  return (state.config.aiPolicyBlocklist ?? []).some((r) => r.toLowerCase() === lower);
+}
+
+/** The record to apply before the blocklist: the user's, a stored ban, a fresh reading, the stored one. */
+function basePolicy(stored: RepoPolicy | null, fresh: RepoPolicy | undefined): RepoPolicy | null {
+  // A ban vet recorded stays until the user says otherwise; a later reading that misses it does not clear it.
+  if (stored?.reviewedByUser || stored?.aiPolicy === 'banned') return stored;
+  return fresh ?? stored;
+}
+
+/**
+ * The policy that applies to `repo`: the user's record, else a stored ban,
+ * else a freshly derived one when given, else the stored unreviewed one. A repo
+ * in `config.aiPolicyBlocklist` is banned whatever is stored: the blocklist is
+ * the older ban list, still synced to clients that predate policy records, and
+ * a record never relaxes it. Null when nothing is known.
  */
 export function effectivePolicy(state: PolicyState, repo: string, fresh?: RepoPolicy): RepoPolicy | null {
-  const stored = storedPolicy(state, repo);
-  const base = (stored?.reviewedByUser ? stored : (fresh ?? stored)) ?? null;
+  const base = basePolicy(storedPolicy(state, repo), fresh);
   if (!isBlocklisted(state, repo)) return base;
   const policy = base ?? { ...UNKNOWN_POLICY, updatedAt: EPOCH };
   return {
@@ -243,14 +284,30 @@ export function effectivePolicy(state: PolicyState, repo: string, fresh?: RepoPo
   };
 }
 
-/** Repos with an effective `banned` policy: the blocklist as written, then stored bans (lowercase) it does not cover. */
+/** Stored `banned` records (lowercase keys), reviewed or not. */
+export function storedBans(state: PolicyState): Array<{ repo: string; reviewedByUser: boolean }> {
+  const bans: Array<{ repo: string; reviewedByUser: boolean }> = [];
+  if (!state.repoPolicies) return bans;
+  const repos = Object.keys(state.repoPolicies);
+  for (const repo of repos) {
+    const policy = storedPolicy(state, repo);
+    if (policy?.aiPolicy === 'banned') bans.push({ repo, reviewedByUser: policy.reviewedByUser });
+  }
+  return bans;
+}
+
+/**
+ * Repos search leaves out: the blocklist as written, then bans the user
+ * confirmed. A ban vet read from the docs but nobody reviewed stays searchable
+ * (a heuristic must not shrink discovery on its own); vet still says skip.
+ */
 export function bannedRepos(state: PolicyState): string[] {
   const blocklist = state.config.aiPolicyBlocklist ?? [];
   const listed = new Set(blocklist.map((r) => r.toLowerCase()));
-  const stored = Object.keys(state.repoPolicies ?? {}).filter(
-    (repo) => !listed.has(repo) && storedPolicy(state, repo)?.aiPolicy === 'banned',
-  );
-  return [...blocklist, ...stored];
+  const reviewed = storedBans(state)
+    .filter((b) => b.reviewedByUser && !listed.has(b.repo))
+    .map((b) => b.repo);
+  return [...blocklist, ...reviewed];
 }
 
 export function summarizePolicy(policy: RepoPolicy): RepoPolicySummary {

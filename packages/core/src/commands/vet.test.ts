@@ -51,6 +51,7 @@ function policyCandidate(rawContent?: string) {
     reasonsToSkip: [],
     projectHealth: {},
     vettingResult: rawContent ? { contributionGuidelines: { rawContent } } : {},
+    antiLLMPolicy: { matched: false, matchedKeywords: [], sourceFile: null },
   };
 }
 
@@ -95,6 +96,35 @@ describe('runVet: repo contribution policy (#1953)', () => {
     expect(mockSetRepoPolicy).not.toHaveBeenCalled();
     expect(result.policy).toMatchObject({ aiPolicy: 'allowed', reviewedByUser: true });
     expect(result.recommendation).not.toBe('skip');
+  });
+
+  it('records nothing when scout returned no anti-LLM scan result', async () => {
+    mockGetState.mockReturnValue({ config: {} });
+    mockVetIssue.mockResolvedValue({ ...policyCandidate(BAN), antiLLMPolicy: undefined });
+
+    await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).not.toHaveBeenCalled();
+  });
+
+  it('keeps a stored unreviewed ban when a later reading finds none, and still says skip', async () => {
+    const ban = {
+      aiPolicy: 'banned',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: false,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    mockGetState.mockReturnValue({ config: {}, repoPolicies: { 'owner/repo': ban } });
+    mockVetIssue.mockResolvedValue(policyCandidate('Run npm test before opening a pull request.'));
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).not.toHaveBeenCalled();
+    expect(result.policy).toMatchObject({ aiPolicy: 'banned', reviewedByUser: false });
+    expect(result.recommendation).toBe('skip');
   });
 
   it('shows a blocklisted repo as banned even when vet read nothing', async () => {

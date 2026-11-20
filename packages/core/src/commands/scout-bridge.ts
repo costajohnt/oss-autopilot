@@ -220,8 +220,8 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
       excludeRepos: [...config.excludeRepos, ...cappedRepos],
       excludeOrgs: config.excludeOrgs ?? [],
       preferredOrgs: config.preferredOrgs ?? [],
-      // The blocklist plus every stored `banned` policy (#1953), so a repo vet
-      // found banning AI-assisted PRs drops out of search before any work starts.
+      // The blocklist plus every `banned` policy the user confirmed (#1953).
+      // Bans vet read from the docs alone stay searchable; vet still says skip.
       aiPolicyBlocklist: bannedRepos(state),
       projectCategories: config.projectCategories ?? [],
       minStars: config.minStars,

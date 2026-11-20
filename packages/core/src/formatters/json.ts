@@ -877,12 +877,15 @@ export const PrPreflightOutputSchema = z.object({
   checks: z.array(PrPreflightCheckSchema),
 });
 
+const PolicyBanSchema = z.object({ repo: z.string(), reviewedByUser: z.boolean() });
+
 export const SearchOutputSchema = z.object({
   candidates: z.array(SearchCandidateSchema),
   excludedRepos: z.array(z.string()),
   aiPolicyBlocklist: z.array(z.string()),
   hiddenOwnPRCount: z.number().int().nonnegative(),
   reposAtCap: z.array(z.string()),
+  policyBannedRepos: z.array(PolicyBanSchema).optional(),
   rateLimitWarning: z.string().optional(),
   // Skip file unreadable — search ran with an empty skip list (#1448).
   // Optional: absent on clean runs.
@@ -1488,7 +1491,7 @@ export interface SearchCandidate {
 export interface SearchOutput {
   candidates: SearchCandidate[];
   excludedRepos: string[];
-  /** Repos filtered from search results for banning AI-assisted contributions: `config.aiPolicyBlocklist` plus stored `banned` policies (#108, #1953). */
+  /** Repos filtered from search results for banning AI-assisted contributions: `config.aiPolicyBlocklist` plus bans the user confirmed with `policy set` (#108, #1953). */
   aiPolicyBlocklist: string[];
   /** Candidates dropped because the authenticated user already has an open PR
    * linked to the issue (#1354). Surfaced as a count so the filter is visible. */
@@ -1496,6 +1499,12 @@ export interface SearchOutput {
   /** Repos left out of discovery because they are at the per-repo open-PR
    * cap (`maxOpenPRsColdRepo` / `maxOpenPRsPerRepo`); empty when none. */
   reposAtCap: string[];
+  /**
+   * Stored `banned` contribution policies (#1953). Reviewed ones are in
+   * `aiPolicyBlocklist` and filtered; unreviewed ones (vet read them from the
+   * docs) stay searchable, and their candidates carry `policy`. Absent when none.
+   */
+  policyBannedRepos?: Array<{ repo: string; reviewedByUser: boolean }>;
   /** Set when the seen-set write could not be pushed to the Gist (#1629);
    * the local cache has it but the next startup's Gist refetch will drop it. */
   gistSyncWarning?: string;

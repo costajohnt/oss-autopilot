@@ -548,6 +548,17 @@ describe('runPrPreflight: repo contribution policy (#1953)', () => {
     expect(summaryOf(data, 'repo-policy')).toContain('does not accept AI-assisted contributions');
   });
 
+  it('finds a merged history under a differently cased repoScores key', async () => {
+    mocks.getState.mockReturnValue({
+      config: { githubUsername: 'me', excludeRepos: [] },
+      repoScores: { 'Up/Proj': { repo: 'Up/Proj', mergedPRCount: 3 } },
+    });
+
+    const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: true });
+
+    expect(statusOf(data, 'repo-policy')).toBe('pass');
+  });
+
   it('warns on a first contribution with no recorded policy', async () => {
     mocks.getState.mockReturnValue({ config: { githubUsername: 'me', excludeRepos: [] }, repoScores: {} });
 

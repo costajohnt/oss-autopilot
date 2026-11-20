@@ -7,8 +7,10 @@ import {
   bannedRepos,
   derivePolicy,
   effectivePolicy,
+  isUnreadable,
   isUserReviewed,
   quote,
+  storedBans,
   storedPolicy,
   type RepoPolicy,
 } from './repo-policy.js';
@@ -114,6 +116,12 @@ describe('derivePolicy: CLA and commit rules', () => {
   it('a CONTRIBUTING silent on the CLA reads as none', () => {
     expect(fromFixture('silent').cla).toBe('none');
   });
+
+  it('reads negations as the absence of the rule', () => {
+    expect(fromFixture('no-cla').cla).toBe('none');
+    expect(fromFixture('no-signoff').commitRules).toEqual([]);
+    expect(fromFixture('no-assignment').prGate).toBe('none');
+  });
 });
 
 describe('quote', () => {
@@ -157,16 +165,27 @@ describe('effectivePolicy and the aiPolicyBlocklist', () => {
     expect(effectivePolicy(state(), 'up/proj')).toBeNull();
   });
 
-  it('bannedRepos joins the blocklist as written with stored bans', () => {
+  it('bannedRepos joins the blocklist as written with the bans the user confirmed', () => {
     const s = state({
       blocklist: ['Org/Listed'],
       policies: {
         'org/listed': { ...REVIEWED, aiPolicy: 'banned' },
-        'org/stored': { ...REVIEWED, aiPolicy: 'banned', reviewedByUser: false },
+        'org/stored': { ...REVIEWED, aiPolicy: 'banned' },
+        'org/unreviewed': { ...REVIEWED, aiPolicy: 'banned', reviewedByUser: false },
         'org/fine': REVIEWED,
       },
     });
     expect(bannedRepos(s)).toEqual(['Org/Listed', 'org/stored']);
+    expect(storedBans(s)).toEqual([
+      { repo: 'org/listed', reviewedByUser: true },
+      { repo: 'org/stored', reviewedByUser: true },
+      { repo: 'org/unreviewed', reviewedByUser: false },
+    ]);
+  });
+
+  it('a stored unreviewed ban survives a fresh reading that finds none', () => {
+    const s = state({ policies: { 'up/proj': { ...REVIEWED, aiPolicy: 'banned', reviewedByUser: false } } });
+    expect(effectivePolicy(s, 'up/proj', fromFixture('silent'))?.aiPolicy).toBe('banned');
   });
 });
 
@@ -174,6 +193,16 @@ describe('stored records', () => {
   it('reads keys case-insensitively and treats an unparsable entry as absent', () => {
     expect(storedPolicy(state({ policies: { 'up/proj': REVIEWED } }), 'UP/Proj')).toEqual(REVIEWED);
     expect(storedPolicy(state({ policies: { 'up/proj': { aiPolicy: 'from-the-future' } } }), 'up/proj')).toBeNull();
+    expect(isUnreadable(state({ policies: { 'up/proj': { aiPolicy: 'from-the-future' } } }), 'up/proj')).toBe(true);
+    expect(isUnreadable(state({ policies: { 'up/proj': REVIEWED } }), 'up/proj')).toBe(false);
+  });
+
+  it('still reads a ban from an entry a newer release wrote that does not fully parse', () => {
+    const s = state({
+      policies: { 'up/proj': { aiPolicy: 'banned', reviewedByUser: true, prGate: 'from-the-future' } },
+    });
+    expect(effectivePolicy(s, 'up/proj')).toMatchObject({ aiPolicy: 'banned', reviewedByUser: true });
+    expect(bannedRepos(s)).toEqual(['up/proj']);
   });
 
   it('isUserReviewed reads the raw flag, so a record this release cannot parse is still protected', () => {

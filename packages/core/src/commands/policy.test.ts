@@ -98,6 +98,31 @@ describe('policy set', () => {
     await expect(runPolicySet({ repo: 'not-a-repo' })).rejects.toThrow(/owner\/repo/);
   });
 
+  it('requires --ai-policy to edit an unreviewed vet reading, so one field cannot bless a heuristic ban', async () => {
+    await recordVetPolicy(REPO, vetPolicy());
+    await expect(runPolicySet({ repo: REPO, cla: 'required' })).rejects.toThrow(/Pass --ai-policy/);
+    expect(fake.state.repoPolicies[REPO]).toMatchObject({ reviewedByUser: false });
+    const out = await runPolicySet({ repo: REPO, aiPolicy: 'banned', cla: 'required' });
+    expect(out.policy).toMatchObject({ aiPolicy: 'banned', cla: 'required', reviewedByUser: true });
+    // Once reviewed, a one-field edit is fine.
+    const edited = await runPolicySet({ repo: REPO, cla: 'none' });
+    expect(edited.policy?.cla).toBe('none');
+  });
+
+  it('refuses to overwrite an entry a newer release wrote with defaults', async () => {
+    const newer = { aiPolicy: 'banned', reviewedByUser: true, prGate: 'from-the-future' };
+    fake.state.repoPolicies = { [REPO]: newer };
+    await expect(runPolicySet({ repo: REPO, aiPolicy: 'allowed' })).rejects.toThrow(/newer oss-autopilot release/);
+    expect(fake.state.repoPolicies[REPO]).toEqual(newer);
+  });
+
+  it('recordVetPolicy leaves an entry a newer release wrote alone', async () => {
+    const newer = { aiPolicy: 'allowed', reviewedByUser: false, prGate: 'from-the-future' };
+    fake.state.repoPolicies = { [REPO]: newer };
+    await recordVetPolicy(REPO, vetPolicy());
+    expect(fake.state.repoPolicies[REPO]).toEqual(newer);
+  });
+
   it('cannot lift a ban from aiPolicyBlocklist', async () => {
     fake.state.config.aiPolicyBlocklist = ['up/proj'];
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'allowed' });

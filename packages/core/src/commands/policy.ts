@@ -17,6 +17,7 @@ import {
   effectivePolicy,
   fencePolicyText,
   isBlocklisted,
+  isUnreadable,
   isUserReviewed,
   quote,
   isSamePolicy,
@@ -150,6 +151,33 @@ function applySet(current: RepoPolicy, options: PolicySetOptions, now: string): 
 }
 
 /**
+ * The stored record `set` merges over, or null. Refuses two cases where a merge
+ * would record something the user never looked at: an entry this release
+ * cannot parse (a newer release wrote it; merging would replace it with
+ * defaults), and an unreviewed vet reading edited without `--ai-policy` (one
+ * field edited would mark the heuristic's AI reading as reviewed).
+ */
+function storedRecordToEdit(
+  state: ReturnType<ReturnType<typeof getStateManager>['getState']>,
+  options: PolicySetOptions,
+) {
+  if (isUnreadable(state, options.repo)) {
+    throw new ValidationError(
+      `The stored policy for ${options.repo} was written by a newer oss-autopilot release and cannot be edited here. ` +
+        `Update, or delete it with policy reset --repo ${options.repo} and set it again.`,
+    );
+  }
+  const stored = storedPolicy(state, options.repo);
+  if (stored && !stored.reviewedByUser && options.aiPolicy === undefined) {
+    throw new ValidationError(
+      `The stored policy for ${options.repo} was read from the repo docs (aiPolicy: ${stored.aiPolicy}) and nobody has ` +
+        'reviewed it. Pass --ai-policy with the value you confirmed, so setting another field does not approve that reading.',
+    );
+  }
+  return stored;
+}
+
+/**
  * Record the user's policy for `repo`, merged over what is stored. Refused
  * unattended, and the result is `reviewedByUser: true`, so vet never
  * overwrites it. It cannot lift a `config.aiPolicyBlocklist` ban.
@@ -158,9 +186,10 @@ export async function runPolicySet(options: PolicySetOptions): Promise<PolicyWri
   validateRepoIdentifier(options.repo);
   assertAttended('set a repo contribution policy');
   const sm = getStateManager();
+  const stored = storedRecordToEdit(sm.getState(), options);
   const date = new Date();
   const now = date.toISOString();
-  const current = storedPolicy(sm.getState(), options.repo) ?? {
+  const current = stored ?? {
     aiPolicy: 'unknown',
     cla: 'unknown',
     commitRules: [],
@@ -204,9 +233,12 @@ async function writeVetPolicy(repo: string, derived: RepoPolicy): Promise<void> 
   const sm = getStateManager();
   sm.reloadIfChanged();
   const state = sm.getState();
-  if (isUserReviewed(state, repo)) return;
+  // Never replace the user's record or one a newer release wrote.
+  if (isUserReviewed(state, repo) || isUnreadable(state, repo)) return;
   const stored = storedPolicy(state, repo);
   if (stored && isSamePolicy(stored, derived)) return;
+  // A recorded ban stays until the user says otherwise: a later reading that misses it does not lift it.
+  if (stored?.aiPolicy === 'banned' && derived.aiPolicy !== 'banned') return;
   const write = (): void => {
     if (!isUserReviewed(sm.getState(), repo)) sm.setRepoPolicy(repo, derived);
   };
