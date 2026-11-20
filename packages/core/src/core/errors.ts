@@ -179,6 +179,20 @@ export class GistFileSizeError extends ConfigurationError {
 }
 
 /**
+ * The search for the existing state Gist could not settle whether one exists:
+ * the Gist list is longer than the search window, or the only Gist carrying
+ * the state description is public. A {@link ConfigurationError} because
+ * retrying cannot fix it and creating a new Gist would fork state across
+ * machines (#1926); the message says which Gist ID to write to the gist-id file.
+ */
+export class GistDiscoveryError extends ConfigurationError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GistDiscoveryError';
+  }
+}
+
+/**
  * Extract a human-readable message from an unknown error value.
  */
 export function errorMessage(e: unknown): string {
