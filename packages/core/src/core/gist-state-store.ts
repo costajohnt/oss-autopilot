@@ -167,6 +167,7 @@ export interface OctokitLike {
 interface GistListItem {
   id: string;
   description: string | null;
+  public: boolean;
 }
 
 /** Shape of a full Gist response (subset). */
@@ -900,28 +901,29 @@ export class GistStateStore {
   }
 
   /**
-   * Search the authenticated user's Gists for one with the well-known description.
-   * Pages through up to 10 pages (100 Gists per page) to find it.
+   * Search the authenticated user's Gists for the private one with the
+   * well-known description. Pages through up to 10 pages (100 Gists per page).
+   *
+   * Returns `null` only when the search ran to the end of the list. Every
+   * error propagates, and a list longer than the search window throws: the
+   * callers create a new Gist on `null`, so a failed or incomplete search
+   * read as "no Gist exists" would fork this machine onto an empty one (#1926).
    */
   private async searchForGist(): Promise<string | null> {
-    try {
-      const maxPages = 10;
-      for (let page = 1; page <= maxPages; page++) {
-        const { data: gists } = await this.octokit.gists.list({ per_page: 100, page });
-        if (gists.length === 0) break;
+    const maxPages = 10;
+    for (let page = 1; page <= maxPages; page++) {
+      const { data: gists } = await this.octokit.gists.list({ per_page: 100, page });
+      if (gists.length === 0) return null;
 
-        const match = gists.find((g) => g.description === GIST_DESCRIPTION);
-        if (match) {
-          return match.id;
-        }
+      const match = gists.find((g) => g.description === GIST_DESCRIPTION && !g.public);
+      if (match) {
+        return match.id;
       }
-    } catch (err) {
-      // A rate-limited search must not read as "no Gist found" — bootstrap
-      // would proceed to create a duplicate Gist while throttled (#1367).
-      if (isRateLimitError(err)) throw err;
-      warn(MODULE, 'Failed to search Gists by description', err);
     }
-    return null;
+    throw new Error(
+      `No "${GIST_DESCRIPTION}" Gist in the first ${maxPages * 100} Gists and more may remain unsearched; ` +
+        `refusing to create a new one. Write the state Gist's ID to ${getGistIdPath()} to link it.`,
+    );
   }
 
   /**

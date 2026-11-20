@@ -223,7 +223,7 @@ describe('GistStateStore', () => {
       octokit.gists.get.mockRejectedValueOnce(new Error('Not Found'));
       // Search finds a different Gist
       octokit.gists.list.mockResolvedValue({
-        data: [{ id: searchId, description: GIST_DESCRIPTION }],
+        data: [{ id: searchId, description: GIST_DESCRIPTION, public: false }],
       });
       // GET for found ID succeeds
       octokit.gists.get.mockResolvedValueOnce(makeGistResponse(searchId, stateJson));
@@ -249,7 +249,7 @@ describe('GistStateStore', () => {
       octokit.gists.list.mockResolvedValue({
         data: [
           { id: 'other-gist', description: 'unrelated' },
-          { id: gistId, description: GIST_DESCRIPTION },
+          { id: gistId, description: GIST_DESCRIPTION, public: false },
         ],
       });
       octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
@@ -285,7 +285,7 @@ describe('GistStateStore', () => {
 
       // Page 2: contains target
       octokit.gists.list.mockResolvedValueOnce({
-        data: [{ id: gistId, description: GIST_DESCRIPTION }],
+        data: [{ id: gistId, description: GIST_DESCRIPTION, public: false }],
       });
 
       octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
@@ -342,6 +342,54 @@ describe('GistStateStore', () => {
 
       // Should have written local state cache
       expect(fs.existsSync(path.join(tmpDir, 'state-cache.json'))).toBe(true);
+    });
+  });
+
+  describe('bootstrap: a failed or incomplete search never creates a Gist (#1926)', () => {
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({ id: `other-${i}`, description: null, public: false }));
+
+    it.each(['bootstrap', 'bootstrapWithMigration'] as const)(
+      '%s degrades when the search fails after the preflight succeeded',
+      async (method) => {
+        octokit.gists.list.mockResolvedValueOnce({ data: [] });
+        octokit.gists.list.mockRejectedValueOnce(Object.assign(new Error('Server Error'), { status: 500 }));
+        octokit.gists.create.mockResolvedValue(makeGistResponse('forked-gist', makeStateJson()));
+
+        const store = new GistStateStore(octokit);
+        const result = await store[method](createFreshState());
+
+        expect(result.degraded).toBe(true);
+        expect(octokit.gists.create).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(tmpDir, 'gist-id'))).toBe(false);
+      },
+    );
+
+    it('degrades when the Gist list is longer than the search window', async () => {
+      octokit.gists.list.mockResolvedValue({ data: fullPage });
+      octokit.gists.create.mockResolvedValue(makeGistResponse('forked-gist', makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+      // 1 preflight + 10 search pages
+      expect(octokit.gists.list).toHaveBeenCalledTimes(11);
+      expect(octokit.gists.create).not.toHaveBeenCalled();
+    });
+
+    it('does not adopt a public Gist that carries the state description', async () => {
+      octokit.gists.list.mockResolvedValueOnce({ data: [] });
+      octokit.gists.list.mockResolvedValueOnce({
+        data: [{ id: 'public-lookalike', description: GIST_DESCRIPTION, public: true }],
+      });
+      octokit.gists.list.mockResolvedValueOnce({ data: [] });
+      octokit.gists.create.mockResolvedValue(makeGistResponse('newly-created', makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.gistId).toBe('newly-created');
+      expect(octokit.gists.get).not.toHaveBeenCalled();
     });
   });
 
@@ -929,7 +977,7 @@ describe('GistStateStore', () => {
       const cachedState = JSON.parse(makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' }));
       fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), JSON.stringify(cachedState, null, 2));
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
-      octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION }] });
+      octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION, public: false }] });
       octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, makeStateJson()));
       const request = vi.fn().mockRejectedValue(Object.assign(new Error('Server Error'), { status: 502 }));
       const store = new GistStateStore({ ...octokit, request });
@@ -946,7 +994,7 @@ describe('GistStateStore', () => {
     it('halts bootstrap with GistFileSizeError when raw_url is refused, without re-searching', async () => {
       const gistId = 'trunc-refused';
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
-      octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION }] });
+      octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION, public: false }] });
       octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, makeStateJson()));
       const request = vi.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
       const store = new GistStateStore({ ...octokit, request });
@@ -1235,7 +1283,7 @@ describe('GistStateStore', () => {
 
       // No local gist-id, but search finds one
       octokit.gists.list.mockResolvedValue({
-        data: [{ id: searchGistId, description: GIST_DESCRIPTION }],
+        data: [{ id: searchGistId, description: GIST_DESCRIPTION, public: false }],
       });
       octokit.gists.get.mockResolvedValue(makeGistResponse(searchGistId, existingStateJson));
 
