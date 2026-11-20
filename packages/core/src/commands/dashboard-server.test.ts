@@ -776,7 +776,7 @@ describe('dashboard-server', () => {
         // Stored in the casing the user typed; matched to GitHub's canonical pr.url.
         config: {
           shelvedPRUrls: ['https://github.com/O/R/pull/13'],
-          shelvedPRInfo: { 'o/r#13': { at: '2026-01-21T00:00:00.000Z', reason: 'needs_response' } },
+          shelvedPRInfo: { 'o/r#13': { at: '2026-01-21T00:00:00.000Z', reasons: ['needs_response'] } },
         },
         lastDigest: digest,
       });

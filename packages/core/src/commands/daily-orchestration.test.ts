@@ -52,7 +52,7 @@ const mockSave = vi.fn();
 const mockReloadIfChanged = vi.fn(() => false);
 const mockIsPRShelved = vi.fn();
 const mockUnshelvePR = vi.fn();
-const mockSetShelvedPRReason = vi.fn();
+const mockFillShelvedPRReasons = vi.fn();
 const mockGetStats = vi.fn();
 const mockGetIssueDismissedAt = vi.fn();
 const mockUndismissIssue = vi.fn();
@@ -110,7 +110,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       save: mockSave,
       isPRShelved: mockIsPRShelved,
       unshelvePR: mockUnshelvePR,
-      setShelvedPRReason: mockSetShelvedPRReason,
+      fillShelvedPRReasons: mockFillShelvedPRReasons,
       getStats: mockGetStats,
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
@@ -477,8 +477,8 @@ describe('executeDailyCheck() — PR partitioning', () => {
     const result = await executeDailyCheck('test-token');
 
     expect(mockUnshelvePR).not.toHaveBeenCalled();
-    // The reason was unknown at shelve time: this run records it for later runs to compare.
-    expect(mockSetShelvedPRReason).toHaveBeenCalledWith(criticalPR.url, 'failing_ci');
+    // The reasons were unknown at shelve time: this run records them for later runs to compare.
+    expect(mockFillShelvedPRReasons).toHaveBeenCalledWith(criticalPR.url, ['failing_ci']);
     expect(result.digest.autoUnshelvedPRs).toHaveLength(0);
     expect(result.digest.shelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
     // Hidden everywhere the brief lists work: not Needs Addressing, not actionable, not active.
@@ -509,7 +509,10 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(result.digest.needsAddressingPRs).toContain(criticalPR.url);
   });
 
-  it('auto-unshelves a PR shelved while healthy once its CI fails, with no maintainer activity (#1922)', async () => {
+  it('auto-unshelves a PR recorded as healthy at shelve time once its CI fails, with no maintainer activity (#1922)', async () => {
+    // Accepted tradeoff: the record comes from the last digest, which can be
+    // stale. A PR whose CI was already failing when it was shelved, but that
+    // the digest still showed as healthy, is unshelved once by this rule.
     const criticalPR = makePR({
       repo: 'owner/repo',
       number: 9,
@@ -522,7 +525,7 @@ describe('executeDailyCheck() — PR partitioning', () => {
     mockIsPRShelved.mockReturnValue(true);
     const state = makeDefaultState();
     (state.config as Record<string, unknown>).shelvedPRInfo = {
-      'owner/repo#9': { at: '2026-01-21T00:00:00.000Z', reason: 'none' },
+      'owner/repo#9': { at: '2026-01-21T00:00:00.000Z', reasons: [] },
     };
     mockGetState.mockReturnValue(state);
 

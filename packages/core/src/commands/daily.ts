@@ -17,7 +17,7 @@ import {
   renderGistWarning,
   CRITICAL_STATUSES,
   shouldAutoUnshelve,
-  shelveReasonOf,
+  shelveReasonsOf,
   withoutShelvedNeedsAddressing,
   applyStatusOverrides,
   computeRepoSignals,
@@ -704,8 +704,8 @@ function partitionPRs(
             autoUnshelvedPRs.push(toShelvedPRRef(pr));
             activePRs.push(pr);
           } else {
-            // Still shelved: keep the recorded reason current (#1922).
-            stateManager.setShelvedPRReason(pr.url, shelveReasonOf(pr));
+            // Still shelved: record its reasons if the shelve could not (#1922).
+            stateManager.fillShelvedPRReasons(pr.url, shelveReasonsOf(pr));
             shelvedPRs.push(toShelvedPRRef(pr));
           }
         } else if (pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status)) {

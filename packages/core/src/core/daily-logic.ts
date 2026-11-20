@@ -52,33 +52,38 @@ import type {
 export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
 
 /**
- * The action reason a shelve record stores and compares (#1922): the PR's
- * primary reason while it needs addressing, `none` when it does not.
+ * The action reasons a shelve record stores and compares (#1922): every
+ * reason the PR has while it needs addressing, none when it does not. A PR
+ * that carries only a primary reason yields that one.
  */
-export function shelveReasonOf(pr: Pick<FetchedPR, 'status' | 'actionReason'>): string {
-  return CRITICAL_STATUSES.has(pr.status) ? (pr.actionReason ?? 'needs_addressing') : 'none';
+export function shelveReasonsOf(pr: Pick<FetchedPR, 'status' | 'actionReason' | 'actionReasons'>): string[] {
+  if (!CRITICAL_STATUSES.has(pr.status)) return [];
+  if (pr.actionReasons?.length) return pr.actionReasons;
+  return [pr.actionReason ?? 'needs_addressing'];
 }
 
 /**
  * Whether an explicitly shelved PR goes back to active (#1922). It must need
  * addressing, and something must be new since it was shelved: maintainer
- * activity after the shelve, or an action reason other than the recorded one.
- * A PR shelved while it already needed addressing stays shelved until then.
- * A record without a reason (the PR was not in the digest at shelve time)
- * only unshelves on maintainer activity; the daily run then fills the reason
+ * activity after the shelve, or an action reason not among the recorded ones.
+ * A PR shelved while it already needed addressing stays shelved until then,
+ * also when one of its recorded reasons clears or comes back.
+ * A record without reasons (the PR was not in the digest at shelve time)
+ * only unshelves on maintainer activity; the daily run then fills the reasons
  * in. Without a shelve record (shelved before `config.shelvedPRInfo` existed)
  * or a known maintainer-activity time, needing addressing alone unshelves it.
  *
  * @param shelvedPRInfo - `config.shelvedPRInfo`, keyed by `issueRefKey`
  */
 export function shouldAutoUnshelve(
-  pr: Pick<FetchedPR, 'url' | 'status' | 'actionReason' | 'lastMaintainerActivityAt'>,
+  pr: Pick<FetchedPR, 'url' | 'status' | 'actionReason' | 'actionReasons' | 'lastMaintainerActivityAt'>,
   shelvedPRInfo: AgentState['config']['shelvedPRInfo'] | undefined,
 ): boolean {
   if (!CRITICAL_STATUSES.has(pr.status)) return false;
   const info = shelvedPRInfo?.[issueRefKey(pr.url) ?? pr.url];
   if (!info || !pr.lastMaintainerActivityAt) return true;
-  if (info.reason !== undefined && info.reason !== shelveReasonOf(pr)) return true;
+  const known = info.reasons;
+  if (known && shelveReasonsOf(pr).some((reason) => !known.includes(reason))) return true;
   const activityMs = Date.parse(pr.lastMaintainerActivityAt);
   const shelvedMs = Date.parse(info.at);
   // An unparseable date resurfaces the PR instead of hiding it.

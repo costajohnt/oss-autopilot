@@ -105,7 +105,7 @@ export { HttpCache, getHttpCache, cachedRequest, type CacheEntry } from './http-
 export {
   CRITICAL_STATUSES,
   shouldAutoUnshelve,
-  shelveReasonOf,
+  shelveReasonsOf,
   withoutShelvedNeedsAddressing,
   applyStatusOverrides,
   computeRepoSignals,

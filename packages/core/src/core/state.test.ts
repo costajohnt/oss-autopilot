@@ -335,18 +335,18 @@ describe('shelvePR / unshelvePR / isPRShelved', () => {
     expect(stateManager.isPRShelved(url2)).toBe(true);
   });
 
-  it('records the shelve time and reason, re-records on a repeat shelve and drops the record on unshelve (#1922)', () => {
+  it('records the shelve time and reasons, re-records on a repeat shelve and drops the record on unshelve (#1922)', () => {
     const url = 'https://github.com/owner/repo/pull/1';
     const old = '2020-01-01T00:00:00.000Z';
-    stateManager.shelvePR(url, 'failing_ci');
+    stateManager.shelvePR(url, ['failing_ci']);
     const first = stateManager.getState().config.shelvedPRInfo['owner/repo#1'];
-    expect(first.reason).toBe('failing_ci');
+    expect(first.reasons).toEqual(['failing_ci']);
     expect(Date.parse(first.at)).toBeGreaterThan(Date.parse(old));
 
     first.at = old;
     expect(stateManager.shelvePR(url)).toBe(false);
     const second = stateManager.getState().config.shelvedPRInfo['owner/repo#1'];
-    expect(second.reason).toBeUndefined();
+    expect(second.reasons).toBeUndefined();
     expect(Date.parse(second.at)).toBeGreaterThan(Date.parse(old));
     expect(stateManager.getState().config.shelvedPRUrls).toEqual([url]);
 
@@ -354,14 +354,23 @@ describe('shelvePR / unshelvePR / isPRShelved', () => {
     expect(stateManager.getState().config.shelvedPRInfo).toEqual({});
   });
 
-  it('setShelvedPRReason updates the record of a shelved PR only (#1922)', () => {
+  it('fillShelvedPRReasons fills an unset record once and never changes it after (#1922)', () => {
     const url = 'https://github.com/owner/repo/pull/1';
-    stateManager.setShelvedPRReason(url, 'failing_ci');
+    const reasons = () => stateManager.getState().config.shelvedPRInfo['owner/repo#1']?.reasons;
+    stateManager.fillShelvedPRReasons(url, ['failing_ci']);
     expect(stateManager.getState().config.shelvedPRInfo).toEqual({});
 
     stateManager.shelvePR(url);
-    stateManager.setShelvedPRReason('https://github.com/Owner/Repo/pull/1', 'failing_ci');
-    expect(stateManager.getState().config.shelvedPRInfo['owner/repo#1'].reason).toBe('failing_ci');
+    stateManager.fillShelvedPRReasons('https://github.com/Owner/Repo/pull/1', ['failing_ci']);
+    expect(reasons()).toEqual(['failing_ci']);
+    stateManager.fillShelvedPRReasons(url, []);
+    stateManager.fillShelvedPRReasons(url, ['merge_conflict']);
+    expect(reasons()).toEqual(['failing_ci']);
+
+    // Healthy at shelve time is a recorded (empty) set, not an unset one.
+    stateManager.shelvePR(url, []);
+    stateManager.fillShelvedPRReasons(url, ['failing_ci']);
+    expect(reasons()).toEqual([]);
   });
 
   it('matches a shelved PR regardless of URL casing or a trailing slash (#1922)', () => {

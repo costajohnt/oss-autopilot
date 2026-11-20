@@ -309,7 +309,7 @@ export const StatusOverrideSchema = z.object({
 // ── 5. Config schema ─────────────────────────────────────────────────
 
 /** What was true of a PR when it was shelved; see `config.shelvedPRInfo`. */
-const ShelvedPRInfoSchema = z.object({ at: z.string(), reason: z.string().optional() });
+const ShelvedPRInfoSchema = z.object({ at: z.string(), reasons: z.array(z.string()).optional() });
 
 export const AgentConfigSchema = z
   .object({
@@ -401,14 +401,15 @@ export const AgentConfigSchema = z
 
     /**
      * `issueRefKey` of a shelved PR -> what was true when it was shelved
-     * (#1922): `at` is the ISO shelve time, `reason` the PR's action reason
-     * then (`shelveReasonOf`; `none` when it needed nothing). The daily run
-     * auto-unshelves a shelved PR that needs addressing only for maintainer
-     * activity newer than `at` or a reason other than `reason`, so shelving a
-     * PR that already needs addressing sticks. `reason` is unset when the PR
-     * was not in the last digest at shelve time; the next daily run fills it
-     * in. Entries shelved before the key existed have no record and keep the
-     * old rule (unshelved as soon as they need addressing).
+     * (#1922): `at` is the ISO shelve time, `reasons` every action reason the
+     * PR had then (`shelveReasonsOf`; empty when it needed nothing). The daily
+     * run auto-unshelves a shelved PR that needs addressing only for
+     * maintainer activity newer than `at` or a reason not in `reasons`, so
+     * shelving a PR that already needs addressing sticks. `reasons` is unset
+     * when the PR was not in the last digest at shelve time; the next daily
+     * run fills it in, and nothing changes it after that. Entries shelved
+     * before the key existed have no record and keep the old rule (unshelved
+     * as soon as they need addressing).
      */
     shelvedPRInfo: z.record(z.string(), ShelvedPRInfoSchema).default({}),
 

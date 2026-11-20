@@ -152,7 +152,7 @@ function isShelvedForDisplay(pr: ShelvePartitionPR, config: ShelveConfig): boole
 }
 
 type ShelvePartitionPR = Pick<FetchedPR, 'url'> &
-  Partial<Pick<FetchedPR, 'stalenessTier' | 'status' | 'actionReason' | 'lastMaintainerActivityAt'>>;
+  Partial<Pick<FetchedPR, 'stalenessTier' | 'status' | 'actionReason' | 'actionReasons' | 'lastMaintainerActivityAt'>>;
 type ShelveConfig = Pick<AgentState['config'], 'shelvedPRUrls' | 'shelvedPRInfo'>;
 
 /**
