@@ -17,7 +17,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { parseGitHubUrl, extractOwnerRepo, isOwnRepo, isUntrackedOrg } from './urls.js';
-import { DEFAULT_CONCURRENCY, rethrowRejections, runWorkerPool } from './concurrency.js';
+import { DEFAULT_CONCURRENCY, rethrowRejections, runWorkerPool, sleep } from './concurrency.js';
 import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
 import {
   ConfigurationError,
@@ -43,7 +43,13 @@ import {
   fetchReviewedPRActivity as fetchReviewedPRActivityImpl,
 } from './reviewed-prs-fetch.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
-import { batchFetchPRDetails, type PRRef, type NormalizedPRData, type BatchPRResult } from './pr-graphql.js';
+import {
+  batchFetchPRDetails,
+  MERGEABLE_RETRY_DELAY_MS,
+  type PRRef,
+  type NormalizedPRData,
+  type BatchPRResult,
+} from './pr-graphql.js';
 import {
   type PRCountsResult,
   fetchUserMergedPRCounts as fetchUserMergedPRCountsImpl,
@@ -61,13 +67,15 @@ export { determineStatus } from './status-determination.js';
 
 /**
  * Check if a PR has a merge conflict based on GitHub's mergeable flag and mergeable_state.
- * Returns true when mergeable is explicitly false or the mergeable_state is 'dirty'.
+ * Returns true when mergeable is explicitly false or the mergeable_state is 'dirty',
+ * and null when GitHub has not computed mergeability yet (neither clean nor conflicted).
  *
  * @param mergeable - GitHub's mergeable flag (null when not yet computed)
  * @param mergeableState - GitHub's mergeable_state string
  */
-export function hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
-  return mergeable === false || mergeableState === 'dirty';
+export function hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean | null {
+  if (mergeable === false || mergeableState === 'dirty') return true;
+  return mergeable === null ? null : false;
 }
 
 const MODULE = 'pr-monitor';
@@ -472,6 +480,20 @@ export class PRMonitor {
 
     const ghPR = prResponse.data;
     const reviews = reviewsResult.items;
+
+    // GitHub computes mergeability lazily: the first `pulls.get` starts the job
+    // and can answer null. Ask once more after a short delay (#1915).
+    let mergeConflict = hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
+    if (mergeConflict === null) {
+      await sleep(MERGEABLE_RETRY_DELAY_MS);
+      try {
+        const { data } = await this.octokit.pulls.get({ owner, repo, pull_number: number });
+        mergeConflict = hasMergeConflict(data.mergeable, data.mergeable_state);
+      } catch (err) {
+        if (isRateLimitOrAuthError(err)) throw err;
+        warn(MODULE, `Mergeability re-query failed for ${owner}/${repo}#${number}: ${errorMessage(err)}`);
+      }
+    }
     const activityEvents = await this.fetchActivityEvents(owner, repo, number);
 
     const ciStatus = await getCIStatus(this.octokit, owner, repo, ghPR.head.sha);
@@ -495,7 +517,7 @@ export class PRMonitor {
         body: ghPR.body || '',
         createdAt: ghPR.created_at,
         updatedAt: ghPR.updated_at,
-        hasMergeConflict: hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state),
+        hasMergeConflict: this.resolveMergeConflict(prUrl, mergeConflict),
         comments,
         reviews,
         reviewComments,
@@ -505,6 +527,17 @@ export class PRMonitor {
       config,
       commitInfo,
     );
+  }
+
+  /**
+   * Settle a merge-conflict answer GitHub left unknown after the re-query by
+   * reusing the previous run's value, so a known conflict is not hidden behind
+   * a waiting status for a run (#1915). No previous value means no conflict.
+   */
+  private resolveMergeConflict(prUrl: string, fresh: boolean | null): boolean {
+    if (fresh !== null) return fresh;
+    const previous = this.stateManager.getState().lastDigest?.openPRs.find((pr) => pr.url === prUrl);
+    return previous?.hasMergeConflict ?? false;
   }
 
   /**
@@ -579,7 +612,7 @@ export class PRMonitor {
         body: data.body,
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
-        hasMergeConflict: data.hasMergeConflict,
+        hasMergeConflict: this.resolveMergeConflict(ref.url, data.hasMergeConflict),
         comments: data.comments,
         reviews: data.reviews,
         reviewComments: data.reviewComments,
