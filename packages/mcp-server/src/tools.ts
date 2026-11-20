@@ -569,7 +569,8 @@ export function registerTools(server: McpServer): void {
         concurrency: z.number().optional().describe('Max parallel vet operations (default: 5)'),
         prune: z.boolean().optional().describe('After vetting, remove completed/skipped items from the file'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false },
+      // Destructive: prune rewrites the issue list file.
+      annotations: { readOnlyHint: false, destructiveHint: true },
     },
     wrapTool(runVetList),
   );
@@ -1075,7 +1076,7 @@ export function registerTools(server: McpServer): void {
     'guidelines-store',
     {
       description:
-        'Persist per-repo guidelines extracted from PR review feedback, after the user has read and approved the exact text (reviewed: true is required; refused in unattended runs). Overwrites any existing guidelines for the repo. Content is capped at 8 KB. Requires Gist persistence — fails with GUIDELINES_NOT_AVAILABLE in local mode.',
+        'Persist per-repo guidelines extracted from PR review feedback, after the user has read and approved the exact text (reviewed: true is required; the server shows the user the text and stores it only after they approve; refused when the host cannot show that form, and in unattended runs). Overwrites any existing guidelines for the repo. Content is capped at 8 KB. Requires Gist persistence — fails with GUIDELINES_NOT_AVAILABLE in local mode.',
       inputSchema: z.object({
         repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
         content: z
@@ -1087,10 +1088,19 @@ export function registerTools(server: McpServer): void {
           .boolean()
           .describe('Must be true: the user was shown this exact content and approved it. Never set it on your own.'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    wrapTool((args: { repo: string; content: string; reviewed: boolean }) =>
-      runGuidelinesStore({ repo: args.repo, content: args.content, reviewed: args.reviewed }),
+    // The text came from other people's PR comments and later sessions read it
+    // back, so the user sees exactly what is stored (#1929, #1936).
+    requireApproval(
+      hostCapabilities,
+      'store guidelines',
+      'oss-autopilot guidelines store --repo <owner/repo> --reviewed (content on stdin)',
+      (args: { repo: string; content: string }) =>
+        `Store these guidelines for ${args.repo}, replacing any it has now?\n\n${args.content}`,
+      wrapTool((args: { repo: string; content: string; reviewed: boolean }) =>
+        runGuidelinesStore({ repo: args.repo, content: args.content, reviewed: args.reviewed }),
+      ),
     ),
   );
 

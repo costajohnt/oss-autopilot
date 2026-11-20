@@ -10,12 +10,17 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
-const { mockRunPost, mockRunClaim } = vi.hoisted(() => ({ mockRunPost: vi.fn(), mockRunClaim: vi.fn() }));
+const { mockRunPost, mockRunClaim, mockRunGuidelinesStore } = vi.hoisted(() => ({
+  mockRunPost: vi.fn(),
+  mockRunClaim: vi.fn(),
+  mockRunGuidelinesStore: vi.fn(),
+}));
 
 vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@oss-autopilot/core/commands')>()),
   runPost: mockRunPost,
   runClaim: mockRunClaim,
+  runGuidelinesStore: mockRunGuidelinesStore,
 }));
 
 import { getStateManager } from '@oss-autopilot/core';
@@ -69,6 +74,7 @@ const config = () => getStateManager().getState().config;
 beforeEach(() => {
   mockRunPost.mockReset().mockResolvedValue({ commentUrl: 'https://github.com/owner/repo/issues/1#c1', url: ISSUE });
   mockRunClaim.mockReset().mockResolvedValue({ commentUrl: 'https://github.com/owner/repo/issues/1#c2' });
+  mockRunGuidelinesStore.mockReset().mockResolvedValue({ repo: 'owner/repo', byteSize: 7, stored: true });
 });
 
 afterEach(async () => {
@@ -168,14 +174,29 @@ describe('settings an agent may not write through MCP (#1934)', () => {
 });
 
 describe('user approval before a GitHub write (#1936)', () => {
-  /** Sample arguments per GitHub-writing tool, with the core function it would reach. */
-  const WRITERS: Record<string, { args: Record<string, unknown>; run: typeof mockRunPost; shows: string[] }> = {
+  /** Sample arguments per gated tool, with the core function it would reach and the CLI command it names. */
+  const WRITERS: Record<
+    string,
+    { args: Record<string, unknown>; run: typeof mockRunPost; shows: string[]; cli: string }
+  > = {
     post: {
       args: { url: ISSUE, message: 'Thanks, fixed in the last push.' },
       run: mockRunPost,
       shows: [ISSUE, 'Thanks, fixed in the last push.'],
+      cli: 'oss-autopilot post ',
     },
-    claim: { args: { issueUrl: ISSUE }, run: mockRunClaim, shows: [ISSUE, 'the default message'] },
+    claim: {
+      args: { issueUrl: ISSUE },
+      run: mockRunClaim,
+      shows: [ISSUE, 'the default message'],
+      cli: 'oss-autopilot claim ',
+    },
+    'guidelines-store': {
+      args: { repo: 'owner/repo', content: 'be nice', reviewed: true },
+      run: mockRunGuidelinesStore,
+      shows: ['owner/repo', 'be nice'],
+      cli: 'oss-autopilot guidelines store ',
+    },
   };
   const writers = Object.entries(WRITERS);
 
@@ -183,7 +204,7 @@ describe('user approval before a GitHub write (#1936)', () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
     const annotated = tools.filter((tool) => tool.annotations?.destructiveHint && tool.annotations.openWorldHint);
-    expect(new Set(annotated.map((tool) => tool.name))).toEqual(new Set(Object.keys(WRITERS)));
+    expect(Object.keys(WRITERS)).toEqual(expect.arrayContaining(annotated.map((tool) => tool.name)));
   });
 
   it.each(writers)('%s shows the user the target and the text, and runs once they approve', async (name, writer) => {
@@ -245,7 +266,7 @@ describe('user approval before a GitHub write (#1936)', () => {
       const { client } = await connect(capabilities);
       const result = await client.callTool({ name, arguments: writer.args });
       expect(result.isError).toBe(true);
-      expect(text(result)).toContain(`oss-autopilot ${name} `);
+      expect(text(result)).toContain(writer.cli);
       expect(text(result)).toContain(ALLOW_UNCONFIRMED);
       expect(writer.run).not.toHaveBeenCalled();
     },

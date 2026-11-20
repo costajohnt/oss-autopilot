@@ -143,10 +143,7 @@ const ALLOWED_KEYS = new Set(Object.keys(ALLOWED));
 // `requireApproval` (mcp-server/src/trust-boundary.ts) or be listed here.
 
 /** Guarded commands an MCP tool may call without `requireApproval`. Value: why. */
-const MCP_APPROVAL_EXEMPT: Record<string, string> = {
-  runGuidelinesStore:
-    "writes the user's own state Gist, not someone else's repository; gated by `reviewed: true` and the review record (#1929)",
-};
+const MCP_APPROVAL_EXEMPT: Record<string, string> = {};
 
 const EXPORTED_FUNCTION = /^export (?:async )?function (\w+)\(/;
 

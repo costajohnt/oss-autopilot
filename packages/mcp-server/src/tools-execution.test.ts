@@ -119,6 +119,8 @@ describe('tool execution', () => {
   let client: Client;
 
   beforeAll(async () => {
+    // guidelines-store asks for approval; this client cannot show the form.
+    vi.stubEnv('OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES', '1');
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -127,6 +129,7 @@ describe('tool execution', () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await client.close();
   });
 

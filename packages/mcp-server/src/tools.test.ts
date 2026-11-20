@@ -47,8 +47,8 @@ const EXPECTED_TOOLS = [
 
 // The full table (#1936): a new tool has to be classified here before the
 // suite passes. `read` tools change nothing; `local` tools write only the
-// user's own state (local file or state Gist); `removes` tools drop stored
-// data; `github` tools write to other people's repositories under the
+// user's own state (local file or state Gist); `removes` tools drop or
+// overwrite stored data; `github` tools write to other people's repositories under the
 // user's identity and must go through requireApproval (trust-boundary.ts).
 const READ = { readOnlyHint: true };
 const LOCAL = { readOnlyHint: false, destructiveHint: false };
@@ -61,7 +61,8 @@ const EXPECTED_ANNOTATIONS: Record<(typeof EXPECTED_TOOLS)[number], Record<strin
   search: LOCAL,
   features: READ,
   vet: LOCAL,
-  'vet-list': LOCAL,
+  // prune rewrites the issue list file.
+  'vet-list': REMOVES,
   'verify-issue': READ,
   'issue-thread': READ,
   // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
@@ -90,7 +91,8 @@ const EXPECTED_ANNOTATIONS: Record<(typeof EXPECTED_TOOLS)[number], Record<strin
   'state-unlink': LOCAL,
   'guidelines-list': READ,
   'guidelines-get': READ,
-  'guidelines-store': LOCAL,
+  // Overwrites the repo's guidelines; asks the user through requireApproval.
+  'guidelines-store': REMOVES,
   'guidelines-reset': REMOVES,
   'guidelines-fetch-corpus': LOCAL,
 };
