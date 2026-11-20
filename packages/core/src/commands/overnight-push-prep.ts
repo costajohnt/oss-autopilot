@@ -37,7 +37,7 @@ import {
 } from '../core/index.js';
 import { assertAttended } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import { getReportsDir } from '../core/paths.js';
+import { getReportsDir, resolveDataDir } from '../core/paths.js';
 import type { OvernightPrepared, OvernightRecord } from '../core/types.js';
 import { handoffDir, importHandoffBundle, loadHandoff } from './overnight-handoff.js';
 import { publishReport, reportDateFor, writePreparedSection } from './overnight.js';
@@ -214,6 +214,18 @@ export function git(worktree: string, args: string[], timeoutMs: number = GIT_TI
   });
 }
 
+/** Where the preparer puts its worktrees (agents/overnight-preparer.md). */
+function worktreesRoot(): string {
+  return path.join(resolveDataDir(), 'worktrees');
+}
+
+/** True when `worktree`, symlinks resolved, sits below the worktrees root. Both must exist. */
+function isPreparerWorktree(worktree: string): boolean {
+  const root = worktreesRoot();
+  if (!fs.existsSync(root)) return false;
+  return fs.realpathSync(worktree).startsWith(fs.realpathSync(root) + path.sep);
+}
+
 function gitStderr(err: unknown): string {
   const stderr = (err as { stderr?: unknown })?.stderr;
   return typeof stderr === 'string' ? stderr.trim() : '';
@@ -366,6 +378,9 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     } else {
       if (!entry.worktree) return skip(entry, 'no worktree recorded');
       if (!fs.existsSync(entry.worktree)) return skip(entry, `worktree ${entry.worktree} does not exist`);
+      // The path came from the preparer's report: never run Git with the token in a directory it named elsewhere.
+      if (!isPreparerWorktree(entry.worktree))
+        return skip(entry, `worktree ${entry.worktree} is not under ${worktreesRoot()}`);
       const found = resolvePushRemote(parseRemotesOutput(git(entry.worktree, ['remote', '-v'])), login);
       if (!found) return skip(entry, `no remote in ${entry.worktree} is owned by ${login}`);
       target = found;

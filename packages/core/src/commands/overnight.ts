@@ -651,14 +651,20 @@ export const LAUNCHD_LABEL = 'com.oss-autopilot.overnight';
  * Tools the headless run may use without a prompt (see commands/oss-overnight.md).
  *
  * The allowlist is the enforcement half of the no-side-effects gate, so it is
- * enumerated, not wildcarded: every git subcommand except `push`, only the
- * read side of `gh` (no `create`/`comment`/`merge`/`close`/`rerun`, no `gh api`
- * because it can POST, no `issue view` because its raw output is unfenced and
- * the `issue-thread` CLI command is the fenced read, #1932), and no `bash`/`sh`/`npx` shell escapes. `node`, `pnpm`
- * and `npm` stay because the CLI bundle and a repo's test suite are already
- * arbitrary code; the credential-bearing writes are what the list keeps out.
- * Stronger isolation (a dedicated user with no push credentials, or a
- * container) is the upgrade path if that trust level is not acceptable.
+ * enumerated, not wildcarded: the git subcommands the procedure uses and never
+ * `push`, only the read side of `gh` (no `create`/`comment`/`merge`/`close`/`rerun`,
+ * no `gh api` because it can POST, no `gh auth` because it prints the token, no
+ * `issue view` because its raw output is unfenced and the `issue-thread` CLI
+ * command is the fenced read, #1932), and no `bash`/`sh`/`npx` shell escapes.
+ *
+ * What it is not (#1937): a sandbox. A rule is a glob over the command string
+ * (`*` is any run of characters, spaces included), so it filters spelling, not
+ * capability. `node`, `pnpm` and `npm` stay because the CLI bundle and a
+ * repo's test suite are already arbitrary code, and `Write` can plant a
+ * script, a git hook or a git alias. The `*` in `git -C * <sub>` also admits
+ * any git subcommand whose arguments end in an allowed word. The deny list
+ * trips on the plain spellings; the boundary is a dedicated user with no push
+ * credentials (commands/oss-overnight.md, "Split users").
  */
 const GIT_SUBCOMMANDS = [
   'clone',
@@ -678,16 +684,7 @@ const GIT_SUBCOMMANDS = [
   'rev-parse',
   'remote',
 ];
-const GH_READ_SUBCOMMANDS = [
-  'pr view',
-  'pr checks',
-  'pr diff',
-  'pr list',
-  'run view',
-  'run list',
-  'repo view',
-  'auth status',
-];
+const GH_READ_SUBCOMMANDS = ['pr view', 'pr checks', 'pr diff', 'pr list', 'run view', 'run list', 'repo view'];
 /**
  * Deny list layered under the allowlist (deny beats allow): even if a future
  * allow rule widens, these never run unattended. `AskUserQuestion` is denied
@@ -758,8 +755,68 @@ export const OVERNIGHT_DISALLOWED_TOOLS = [
   'Bash(node * --eval=*)',
   'Bash(node --print=*)',
   'Bash(node * --print=*)',
+  // Git option forms that run a program or inject config from an allowed
+  // subcommand (#1937). `-c name=value` needs its `=`, so `switch -c <branch>`
+  // still works; the long options match anywhere, quoted or not.
+  'Bash(git -c *)',
+  'Bash(git * -c *=*)',
+  'Bash(git * -x *)',
+  'Bash(git clone -u *)',
+  'Bash(git clone * -u *)',
+  'Bash(git * clone -u *)',
+  'Bash(git * clone * -u *)',
+  'Bash(git *--config*)',
+  'Bash(git *--exec*)',
+  'Bash(git *--upload-pack*)',
+  'Bash(git *--receive-pack*)',
+  'Bash(git *--template*)',
+  'Bash(git *--ext-diff*)',
+  'Bash(git *--output*)',
+  'Bash(git *ext::*)',
+  // Push by another name, and anything that hands out a credential.
+  'Bash(git *send-pack*)',
+  'Bash(git *http-push*)',
+  'Bash(git credential*)',
+  'Bash(git * credential fill*)',
+  'Bash(git *credential-*)',
+  'Bash(gh auth)',
+  'Bash(gh auth *)',
+  'Bash(security *)',
+  // The same registry writes after a leading flag (`pnpm -r publish`).
+  'Bash(npm * publish*)',
+  'Bash(pnpm * publish*)',
+  // Credential files, kept from the file tools. Path rules follow Claude
+  // Code's `Read(~/path)` form; nothing in this repo models their matching.
+  'Read(~/.config/gh/**)',
+  'Read(~/.ssh/**)',
+  'Read(~/.npmrc)',
+  'Read(~/.netrc)',
+  'Read(~/.git-credentials)',
   'AskUserQuestion',
 ].join(',');
+
+/**
+ * Git environment for the scheduled run (#1937): a seat belt under the deny
+ * list, not a boundary, because code the run executes can unset it.
+ * `pushInsteadOf` sends every push to a GitHub URL to a host that cannot
+ * resolve while fetches keep working; a remote with an explicit `pushurl`, or
+ * a URL spelled another way, is not rewritten. `GIT_ALLOW_PROTOCOL` drops the
+ * `ext::` transport, which runs a command. Values are never empty: a plist
+ * entry launchd dropped would make every Git call fail on a missing value.
+ */
+export const PUSH_DISABLED_URL = 'https://push-disabled.invalid/';
+const GITHUB_PUSH_PREFIXES = ['https://github.com/', 'git@github.com:', 'ssh://git@github.com/'];
+export const OVERNIGHT_GIT_ENV: Record<string, string> = {
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_ALLOW_PROTOCOL: 'file:git:http:https:ssh',
+  GIT_CONFIG_COUNT: String(GITHUB_PUSH_PREFIXES.length),
+  ...Object.fromEntries(
+    GITHUB_PUSH_PREFIXES.flatMap((prefix, i) => [
+      [`GIT_CONFIG_KEY_${i}`, `url.${PUSH_DISABLED_URL}.pushInsteadOf`],
+      [`GIT_CONFIG_VALUE_${i}`, prefix],
+    ]),
+  ),
+};
 
 export const OVERNIGHT_ALLOWED_TOOLS = [
   'Read',
@@ -785,6 +842,29 @@ export const OVERNIGHT_ALLOWED_TOOLS = [
 
 function xmlEscape(s: string): string {
   return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function plistEnvLine(key: string, value: string): string {
+  return `    <key>${key}</key><string>${xmlEscape(value)}</string>`;
+}
+
+function gitEnvLines(): string[] {
+  return Object.entries(OVERNIGHT_GIT_ENV).map(([key, value]) => plistEnvLine(key, value));
+}
+
+/**
+ * Pure: whether an installed plist carries the rules and environment this
+ * version renders. The lists are baked in when the plist is written, so a
+ * schedule installed before an upgrade keeps the old ones (`doctor` warns).
+ */
+export function isScheduleCurrent(plist: string): boolean {
+  const required = [
+    `<string>${xmlEscape(OVERNIGHT_ALLOWED_TOOLS)}</string>`,
+    `<string>${xmlEscape(OVERNIGHT_DISALLOWED_TOOLS)}</string>`,
+    plistEnvLine(UNATTENDED_ENV, '1'),
+    ...gitEnvLines(),
+  ];
+  return required.every((part) => plist.includes(part));
 }
 
 /**
@@ -848,7 +928,8 @@ export function renderLaunchdPlist(
     `    <key>PATH</key><string>${xmlEscape(`${path.dirname(process.execPath)}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`)}</string>`,
     // The CLI's own GitHub-writing commands refuse while this is set (see
     // assertAttended): `Bash(node *)` has to stay allowed, so the gate is in code.
-    `    <key>${UNATTENDED_ENV}</key><string>1</string>`,
+    plistEnvLine(UNATTENDED_ENV, '1'),
+    ...gitEnvLines(),
     '  </dict>',
     '</dict>',
     '</plist>',

@@ -35,11 +35,13 @@ import {
   checkGhCli,
   checkGitHubRateLimit,
   checkGitHubToken,
+  checkOvernightSchedule,
   checkScoutResolvable,
   checkStaleData,
   checkStateFile,
   runDoctor,
 } from './doctor.js';
+import { renderLaunchdPlist } from './overnight.js';
 
 const mockExecFile = vi.mocked(execFile);
 const mockGetGitHubTokenAsync = vi.mocked(getGitHubTokenAsync);
@@ -405,6 +407,34 @@ describe('checkStaleData', () => {
     expect(result.remediation).not.toContain('--apply');
     expect(fs.readdirSync(dataDir)).toHaveLength(8);
     fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+});
+
+// ── checkOvernightSchedule ──────────────────────────────────────────────
+
+const plistIn = (dir: string) => path.join(dir, 'overnight.plist');
+
+describe('checkOvernightSchedule', () => {
+  it('is ok when no schedule is installed or the installed one matches this version', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-schedule-'));
+    expect(checkOvernightSchedule(plistIn(dir))).toMatchObject({ status: 'ok', message: /No overnight schedule/ });
+    fs.writeFileSync(plistIn(dir), renderLaunchdPlist({ hour: 4, claudePath: '/bin/claude' }, '/log', '/s.json'));
+    expect(checkOvernightSchedule(plistIn(dir))).toMatchObject({ status: 'ok', message: /matches this version/ });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('warns when the installed schedule carries an older rule set (#1937)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-schedule-'));
+    const current = renderLaunchdPlist({ hour: 4, claudePath: '/bin/claude' }, '/log', '/s.json');
+    // What an older version wrote: one deny rule fewer.
+    fs.writeFileSync(plistIn(dir), current.replace('Bash(gh auth *),', ''));
+    const check = checkOvernightSchedule(plistIn(dir));
+    expect(check.status).toBe('warning');
+    expect(check.remediation).toMatch(/overnight schedule --install/);
+    // An older environment block counts too.
+    fs.writeFileSync(plistIn(dir), current.replace('<key>GIT_ALLOW_PROTOCOL</key>', '<key>X</key>'));
+    expect(checkOvernightSchedule(plistIn(dir)).status).toBe('warning');
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 

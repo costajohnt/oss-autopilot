@@ -108,7 +108,10 @@ function pushCalls(): string[][] {
 }
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'push-prep-'));
+  // Under the worktrees root of the temp HOME: push-prep refuses a worktree anywhere else (#1937).
+  const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+  fs.mkdirSync(root, { recursive: true });
+  tmp = fs.mkdtempSync(path.join(root, 'push-prep-'));
   vi.clearAllMocks();
   mockCheckpoint.mockResolvedValue(null);
 });
@@ -434,6 +437,24 @@ describe('runOvernightPushPrep', () => {
     expect(out.skipped).toBe(3);
     expect(octokit.repos.get).not.toHaveBeenCalled();
     expect(pushCalls()).toEqual([]);
+  });
+
+  it('never runs git in a worktree outside the worktrees root, directly or through a symlink (#1937)', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'push-prep-outside-'));
+    const link = path.join(tmp, 'link');
+    fs.symlinkSync(outside, link);
+    const prepared = [entry({ branch: 'a', worktree: outside }), entry({ branch: 'b', worktree: link })];
+    const sm = fakeStateManager(record(prepared));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit(forkRemotes);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+    fs.rmSync(outside, { recursive: true, force: true });
+
+    expect(out.results.map((r) => r.status)).toEqual(['skipped', 'skipped']);
+    expect(out.results[0].reason).toMatch(/is not under .*\.oss-autopilot[/\\]worktrees$/);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
   });
 
   it('a non-fast-forward is a skip with a reason, never a retry with --force', async () => {

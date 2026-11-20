@@ -50,7 +50,10 @@ const mockExecFileSync = vi.mocked(execFileSync);
 let tmp = '';
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'push-prep-contract-'));
+  // Under the worktrees root of the temp HOME: push-prep refuses a worktree anywhere else (#1937).
+  const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+  fs.mkdirSync(root, { recursive: true });
+  tmp = fs.mkdtempSync(path.join(root, 'push-prep-contract-'));
   state.last = {
     runAt: '2026-09-18T02:00:00.000Z',
     reportPath: path.join(tmp, 'overnight-2026-09-18.md'),

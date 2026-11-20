@@ -11,6 +11,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -20,6 +21,7 @@ import { AgentStateSchema } from '../core/state-schema.js';
 import { errorMessage } from '../core/errors.js';
 import { resolveDataDir } from '../core/paths.js';
 import { WORKTREE_NAME, staleRejectedCopies } from '../core/stale-data.js';
+import { LAUNCHD_LABEL, isScheduleCurrent } from './overnight.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -362,6 +364,28 @@ export function checkStaleData(dataDir: string = resolveDataDir()): DoctorCheck 
   };
 }
 
+/**
+ * The overnight launchd job carries the tool rules and environment of the
+ * version that installed it (#1937): an upgrade that tightens them changes
+ * nothing for a schedule already on disk until it is installed again.
+ */
+export function checkOvernightSchedule(
+  plistPath: string = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`),
+): DoctorCheck {
+  const name = 'Overnight schedule';
+  if (!fs.existsSync(plistPath)) return { name, status: 'ok', message: 'No overnight schedule installed' };
+  if (isScheduleCurrent(fs.readFileSync(plistPath, 'utf8'))) {
+    return { name, status: 'ok', message: 'Installed schedule matches this version' };
+  }
+  return {
+    name,
+    status: 'warning',
+    message: `${plistPath} was written by another version: its tool rules or environment differ from the current ones`,
+    remediation:
+      'Run `overnight schedule --install --hour <hour> --claude-path "$(command -v claude)"` again, then the launchctl command it prints',
+  };
+}
+
 // ── Orchestrator ────────────────────────────────────────────────────────
 
 /**
@@ -418,6 +442,7 @@ export async function runDoctor(): Promise<DoctorOutput> {
     runCheckSafely('CLI bundle', () => checkBundleUpToDate()),
     runCheckSafely('state.json valid', () => checkStateFile()),
     runCheckSafely('Stale data', () => checkStaleData()),
+    runCheckSafely('Overnight schedule', () => checkOvernightSchedule()),
   ]);
 
   const summary = {
