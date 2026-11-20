@@ -36,6 +36,7 @@ import {
   checkGitHubRateLimit,
   checkGitHubToken,
   checkScoutResolvable,
+  checkStaleData,
   checkStateFile,
   runDoctor,
 } from './doctor.js';
@@ -355,6 +356,55 @@ describe('checkGitHubRateLimit', () => {
     const result = await checkGitHubRateLimit();
     expect(result.status).toBe('error');
     expect(result.message).toContain('network down');
+  });
+});
+
+// ── checkStaleData (#1956) ──────────────────────────────────────────────
+
+describe('checkStaleData', () => {
+  it('is ok for a data directory with nothing stale, or none at all', () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
+    fs.writeFileSync(path.join(dataDir, 'state.json.rejected-1'), '{}');
+
+    fs.mkdirSync(path.join(dataDir, 'worktrees', 'octo-repo-1'), { recursive: true });
+    // Not worktrees: a stray file, a directory with another name, a file with a worktree's name.
+    fs.mkdirSync(path.join(dataDir, 'worktrees', 'scratch'));
+    fs.writeFileSync(path.join(dataDir, 'worktrees', '.DS_Store'), '');
+    fs.writeFileSync(path.join(dataDir, 'worktrees', 'octo-repo-2'), '');
+
+    expect(checkStaleData(dataDir)).toMatchObject({ status: 'ok', message: expect.stringContaining('1 overnight') });
+    expect(checkStaleData(path.join(dataDir, 'absent')).status).toBe('ok');
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('warns with the file system error instead of crashing on an unreadable data directory', () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
+    const notADir = path.join(parent, 'file');
+    fs.writeFileSync(notADir, '');
+
+    const result = checkStaleData(notADir);
+
+    expect(result.status).toBe('warning');
+    expect(result.message).toContain(`Could not read ${notADir}`);
+    fs.rmSync(parent, { recursive: true, force: true });
+  });
+
+  it('warns and points at cleanup when rejected copies are past retention', () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
+    for (let ts = 1; ts <= 8; ts++) {
+      const file = path.join(dataDir, `state-cache.json.rejected-${ts}`);
+      fs.writeFileSync(file, '{}');
+      fs.utimesSync(file, ts, ts);
+    }
+
+    const result = checkStaleData(dataDir);
+
+    expect(result.status).toBe('warning');
+    expect(result.message).toContain('2 rejected state copy(ies) past retention');
+    expect(result.remediation).toContain('oss-autopilot cleanup');
+    expect(result.remediation).not.toContain('--apply');
+    expect(fs.readdirSync(dataDir)).toHaveLength(8);
+    fs.rmSync(dataDir, { recursive: true, force: true });
   });
 });
 

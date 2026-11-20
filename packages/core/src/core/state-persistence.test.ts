@@ -780,6 +780,26 @@ describe('loadState rejected-file preservation and recovery metadata (#1371)', (
     expect(result.recovery?.reason).toContain('Error loading state');
   });
 
+  it('prunes rejected copies past retention when it writes a new one (#1956)', () => {
+    for (let ts = 1; ts <= 7; ts++) {
+      const old = path.join(mockTmpDir, `state.json.rejected-${ts}`);
+      fs.writeFileSync(old, 'old');
+      fs.utimesSync(old, ts, ts);
+    }
+    fs.writeFileSync(path.join(mockTmpDir, 'state.json'), 'CORRUPT', { mode: 0o600 });
+
+    const result = loadState();
+
+    // The new copy, the 4 newest old ones and the very oldest stay; the 2 between go.
+    const rejected = listRejectedFiles();
+    expect(rejected).toHaveLength(6);
+    expect(rejected).toContain('state.json.rejected-1');
+    expect(rejected).toContain(path.basename(result.recovery?.rejectedPath ?? ''));
+    expect(rejected).not.toContain('state.json.rejected-2');
+    expect(rejected).not.toContain('state.json.rejected-3');
+    expect(rejected).toContain('state.json.rejected-4');
+  });
+
   it('preserves a .rejected copy and reports fresh recovery when no valid backup exists', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });

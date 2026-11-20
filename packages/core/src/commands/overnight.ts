@@ -26,7 +26,8 @@ import { errorMessage, getStateManager, maybeCheckpoint, parseGitHubUrl, require
 import { UNATTENDED_ENV, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
-import { getReportsDir } from '../core/paths.js';
+import { getReportsDir, resolveDataDir } from '../core/paths.js';
+import { pruneRejectedCopies } from '../core/stale-data.js';
 import type {
   ActionableIssueType,
   EngagementReason,
@@ -330,6 +331,8 @@ function reportPathFor(d: Date): string {
 export async function runOvernight(): Promise<OvernightOutput> {
   const sm = getStateManager();
   const daily = await executeDailyCheck(requireGitHubToken());
+  // The nightly sweep for rejected state copies past retention (#1956); never throws.
+  pruneRejectedCopies(resolveDataDir());
   const now = new Date();
   const runAt = now.toISOString();
   const languageOf = (repo: string) => sm.getRepoScore(repo)?.language;

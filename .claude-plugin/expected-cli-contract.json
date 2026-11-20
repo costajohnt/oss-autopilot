@@ -4,6 +4,7 @@
   "expectedCommands": [
     "checkSetup",
     "claim",
+    "cleanup",
     "comments",
     "compliance-score",
     "config",

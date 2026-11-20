@@ -139,6 +139,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `parse-issue-list` | `parse-list.ts` | Parse a curated issue list file |
 | `orphan-files` (alias: `check-integration`) | `check-integration.ts` | Audit new files on this branch for cross-references |
 | `doctor` | `doctor.ts` | System-health diagnostic — token, bundle, state, scout, rate limit |
+| `cleanup` | `cleanup.ts` | List (and with `--apply` remove) stale overnight worktrees and rejected state copies under `~/.oss-autopilot` |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
 | `guidelines list/view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |

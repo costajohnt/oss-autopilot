@@ -630,6 +630,26 @@ describe('GistStateStore', () => {
       expect(preservedContent).toBe(corruptContent);
     });
 
+    it('prunes rejected copies past retention when it preserves a new one (#1956)', async () => {
+      for (let ts = 1; ts <= 7; ts++) {
+        const old = path.join(tmpDir, `state-cache.json.rejected-${ts}`);
+        fs.writeFileSync(old, 'old');
+        fs.utimesSync(old, ts, ts);
+      }
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'corrupt-gist');
+      octokit.gists.get.mockResolvedValue(makeGistResponse('corrupt-gist', 'not valid json'));
+      octokit.gists.list.mockResolvedValue({ data: [] });
+
+      const store = new GistStateStore(octokit);
+      await expect(store.bootstrap()).rejects.toThrow(GistCorruptError);
+
+      const rejected = fs.readdirSync(tmpDir).filter((f) => f.startsWith('state-cache.json.rejected-'));
+      expect(rejected).toHaveLength(6);
+      expect(rejected).toContain('state-cache.json.rejected-1');
+      expect(rejected).not.toContain('state-cache.json.rejected-3');
+      expect(rejected).toContain('state-cache.json.rejected-4');
+    });
+
     it('rethrows rate-limit errors instead of degrading (#1367)', async () => {
       // The first gists.list call is checkGistScope's probe — let it succeed
       // so the 429 hits the SEARCH step inside the outer try, exercising the

@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
+Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -206,8 +206,16 @@ rejected with a did-you-mean suggestion.
 # Scan for local git repos
 <prefix> local-repos --json [--scan] [--paths <dirs...>]
 
-# System-health diagnostic (token, bundle, state, scout, rate limit)
+# System-health diagnostic (token, bundle, state, scout, rate limit, stale data)
 <prefix> doctor --json
+
+# List stale overnight worktrees and rejected state copies under ~/.oss-autopilot (dry run).
+# --apply removes a worktree only when it is clean (untracked files count), its HEAD is on
+# a remote-tracking branch, it holds no ignored files outside build output, no hidden or
+# reflog-only work, no rebase or merge in progress, and nothing touched it for 14 days.
+# Every kept one is listed with the reason. --apply refuses in an unattended run, and the
+# command lists what failed and exits non-zero.
+<prefix> cleanup --json [--apply]
 
 # Audit new files on this branch for cross-references (old name: check-integration)
 <prefix> orphan-files --json [--base <branch>]
