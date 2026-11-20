@@ -2821,6 +2821,35 @@ describe('fetchUserMergedPRCounts — historical stats filtering', () => {
     };
   }
 
+  it('leaves out untracked organisations and private repositories, for merged and closed counts (#1924)', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({ config: { githubUsername: 'scopeuser', untrackedOrgs: ['acme'] } }),
+    );
+    const issuesAndPullRequests = vi.fn().mockResolvedValue({
+      data: {
+        total_count: 2,
+        items: [
+          makeMergedPRItem('Acme', 'internal', '2025-06-01T00:00:00Z'),
+          makeMergedPRItem('otherorg', 'normal-repo', '2025-07-01T00:00:00Z'),
+        ],
+      },
+    });
+    vi.mocked(getOctokit).mockReturnValueOnce({ search: { issuesAndPullRequests } } as never);
+
+    const monitor = new PRMonitor('fake-token');
+    const merged = await monitor.fetchUserMergedPRCounts();
+    const closed = await monitor.fetchUserClosedPRCounts();
+
+    expect(merged.repos.has('Acme/internal')).toBe(false);
+    expect(merged.repos.has('otherorg/normal-repo')).toBe(true);
+    expect(closed.repos.has('Acme/internal')).toBe(false);
+    expect(closed.repos.has('otherorg/normal-repo')).toBe(true);
+    expect(issuesAndPullRequests.mock.calls.map(([args]) => args.q)).toEqual([
+      'is:pr is:merged is:public author:scopeuser -user:scopeuser -org:acme',
+      'is:pr is:closed is:unmerged is:public author:scopeuser -user:scopeuser -org:acme',
+    ]);
+  });
+
   it('should count merged PRs from excluded repos', async () => {
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
@@ -3054,6 +3083,24 @@ describe('fetchRepoMetadata (#216, #677)', () => {
     const result = await monitor.fetchRepoMetadata(['org/docs-only']);
 
     expect(result.get('org/docs-only')).toEqual({ stars: 100, language: null });
+  });
+
+  it('reports visibility only from a boolean in the response, and nothing for a repo that failed (#1924)', async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { stargazers_count: 1, language: null, private: true } })
+      .mockResolvedValueOnce({ data: { stargazers_count: 2, language: null, private: false } })
+      .mockResolvedValueOnce({ data: { stargazers_count: 3, language: null } })
+      .mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }));
+    vi.mocked(getOctokit).mockReturnValueOnce({ repos: { get } } as never);
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRepoMetadata(['o/private', 'o/public', 'o/unknown', 'o/gone']);
+
+    expect(result.get('o/private')?.isPrivate).toBe(true);
+    expect(result.get('o/public')?.isPrivate).toBe(false);
+    expect(result.get('o/unknown')?.isPrivate).toBeUndefined();
+    expect(result.has('o/gone')).toBe(false);
   });
 
   it('should return empty map for empty repo list', async () => {

@@ -203,6 +203,7 @@ export function makeStateManagerMock(
     getClosedPRWatermark: () => {},
     renameRepo: () => {},
     evictClosedPRs: () => 0,
+    evictExcludedRepos: () => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 }),
     updateConfig: () => {},
     addIssue: () => {},
     addTrustedProject: () => {},
