@@ -50,12 +50,14 @@ describe('version sources (#1947)', () => {
       '.release-please-manifest.json': readJson('.release-please-manifest.json')['packages/mcp-server'],
       'server.json version': server.version,
       'server.json packages[0].version': server.packages[0].version,
-      '.mcp.json pin': readJson('.mcp.json').mcpServers['oss-autopilot'].args,
+      '.mcp.json pin': (readJson('.mcp.json').mcpServers['oss-autopilot'].args as string[]).find((arg) =>
+        arg.startsWith('@oss-autopilot/mcp@'),
+      ),
     }).toEqual({
       '.release-please-manifest.json': mcpVersion,
       'server.json version': mcpVersion,
       'server.json packages[0].version': mcpVersion,
-      '.mcp.json pin': [`@oss-autopilot/mcp@${mcpVersion}`],
+      '.mcp.json pin': `@oss-autopilot/mcp@${mcpVersion}`,
     });
   });
 });
