@@ -22,6 +22,11 @@ function openEnum<const T extends readonly string[]>(_values: T) {
   return z.custom<T[number] | (string & {})>((v) => typeof v === 'string');
 }
 
+/** Narrows an {@link openEnum} value to the values this release knows (#2005). */
+export function isKnownValue<T extends string>(values: readonly T[], value: string): value is T {
+  return (values as readonly string[]).includes(value);
+}
+
 /** Drops the `[k: string]: unknown` index signature `.passthrough()` adds to an inferred type. */
 type KnownKeys<T> = { [K in keyof T as string extends K ? never : K]: T[K] };
 import type { FetchedPR } from './types.js';
@@ -231,7 +236,7 @@ export const TrackedIssueSchema = z.object({
   number: z.number(),
   title: z.string(),
 
-  status: IssueStatusSchema,
+  status: openEnum(IssueStatusSchema.options),
 
   labels: z.array(z.string()),
   createdAt: z.string(),
@@ -249,11 +254,11 @@ export const ShelvedPRRefSchema = z.object({
   title: z.string(),
   repo: z.string(),
   daysSinceActivity: z.number(),
-  status: FetchedPRStatusSchema,
+  status: openEnum(FetchedPRStatusSchema.options),
 });
 
 export const StatusOverrideSchema = z.object({
-  status: FetchedPRStatusSchema,
+  status: openEnum(FetchedPRStatusSchema.options),
   setAt: z.string(),
   lastActivityAt: z.string(),
 });
@@ -268,7 +273,7 @@ export const AgentConfigSchema = z
     setupComplete: z.boolean().default(false),
     setupCompletedAt: z.string().optional(),
 
-    persistence: z.enum(['local', 'gist']).default('local'),
+    persistence: openEnum(['local', 'gist'] as const).default('local'),
 
     maxActivePRs: z.number().default(10),
     /**
@@ -303,7 +308,7 @@ export const AgentConfigSchema = z
 
     languages: z.array(z.string()).default(['typescript', 'javascript']),
     labels: z.array(z.string()).default(['good first issue', 'help wanted']),
-    scope: z.array(IssueScopeSchema).optional(),
+    scope: z.array(openEnum(IssueScopeSchema.options)).optional(),
     excludeRepos: z.array(z.string()).default([]),
     excludeOrgs: z.array(z.string()).optional(),
     /**
@@ -383,11 +388,11 @@ export const AgentConfigSchema = z
 
     skippedIssuesPath: z.string().optional(),
 
-    projectCategories: z.array(ProjectCategorySchema).default([]),
+    projectCategories: z.array(openEnum(ProjectCategorySchema.options)).default([]),
 
     preferredOrgs: z.array(z.string()).default([]),
 
-    diffTool: DiffToolSchema.default('inline'),
+    diffTool: openEnum(DiffToolSchema.options).default('inline'),
     diffToolCustomCommand: z.string().optional(),
 
     /**
@@ -603,7 +608,7 @@ export const FetchedPRSchema = z
     url: z.string(),
     repo: z.string(),
     number: z.number(),
-    status: FetchedPRStatusSchema,
+    status: openEnum(FetchedPRStatusSchema.options),
   })
   .passthrough();
 
@@ -704,7 +709,7 @@ export const OvernightImplementAttemptSchema = z
   .object({
     url: z.string(),
     attemptedAt: z.string(),
-    outcome: z.enum(['prepared', 'blocked']),
+    outcome: openEnum(['prepared', 'blocked'] as const),
     note: z.string().optional(),
   })
   .passthrough();
@@ -806,7 +811,7 @@ export function malformedWorkClaimCount(raw: unknown, parsed: { workClaims: read
  * kept (root, config, repoScores, the outcome ledger and pick snapshots,
  * lastOvernight, searchRotation) are `.passthrough()`; schemas regenerated on
  * every run (lastDigest) or rarely extended still strip. Persisted enums that
- * grow (closeReason, pick source) accept unknown strings via {@link openEnum}.
+ * grow (closeReason, pick source, statuses, config modes; #2005) accept unknown strings via {@link openEnum}.
  * Inferred types drop the passthrough index signature ({@link KnownKeys}) so a
  * misspelled key still fails to compile.
  *

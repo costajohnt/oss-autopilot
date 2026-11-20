@@ -132,6 +132,22 @@ describe('buildScoutState', () => {
     expect(result.savedResults).toEqual([]);
   });
 
+  it('passes only the scopes, categories and persistence mode this release knows (#2005)', () => {
+    const state = makeAgentState({
+      config: {
+        scope: ['beginner', 'expert'],
+        projectCategories: ['devtools', 'gaming'],
+        persistence: 'gist-v2',
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const { preferences } = buildScoutState();
+    expect(preferences.scope).toEqual(['beginner']);
+    expect(preferences.projectCategories).toEqual(['devtools']);
+    expect(preferences.persistence).toBe('local');
+  });
+
   it.each([
     ['off', 'off'],
     ['anchor', 'off'],

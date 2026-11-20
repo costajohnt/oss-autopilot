@@ -114,6 +114,16 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
     expect(createWithGistSpy).not.toHaveBeenCalled();
   });
 
+  it('stays local when the config names a mode a newer release added (#2005)', async () => {
+    fs.writeFileSync(
+      path.join(mockTmpDir, 'state.json'),
+      JSON.stringify({ version: 4, config: { persistence: 'gist-v2' } }),
+      'utf8',
+    );
+    expect(await ensureGistPersistence('token')).toBe('local-mode');
+    expect(createWithGistSpy).not.toHaveBeenCalled();
+  });
+
   it('returns no-token when gist is configured but no token is available', async () => {
     writeGistConfiguredState();
     expect(await ensureGistPersistence(null)).toBe('no-token');

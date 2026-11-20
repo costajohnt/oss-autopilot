@@ -13,7 +13,7 @@ import {
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { MACHINE_PATH_KEYS, getMachinePath, getMachinePathSource, setMachinePath } from '../core/local-config.js';
-import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
+import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
 
@@ -249,7 +249,7 @@ function applyConfigKey(stateManager: StateManager, key: string, value: string):
       if (!(DIFF_TOOLS as readonly string[]).includes(value)) {
         throw new Error(`Invalid diffTool "${value}". Valid options: ${DIFF_TOOLS.join(', ')}`);
       }
-      stateManager.updateConfig({ diffTool: value as DiffTool });
+      stateManager.updateConfig({ diffTool: value });
       break;
     }
     case 'diffToolCustomCommand': {

@@ -13,14 +13,7 @@ import {
 import { ValidationError } from '../core/errors.js';
 import { MACHINE_PATH_KEYS, assertSafeMachinePath, setMachinePath, type MachinePathKey } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
-import {
-  PROJECT_CATEGORIES,
-  type ProjectCategory,
-  ISSUE_SCOPES,
-  type IssueScope,
-  DIFF_TOOLS,
-  type DiffTool,
-} from '../core/types.js';
+import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope, DIFF_TOOLS } from '../core/types.js';
 
 const MODULE = 'setup';
 
@@ -63,9 +56,10 @@ export interface SetupCompleteOutput {
     approachingDormantDays: number;
     languages: string[];
     labels: string[];
-    projectCategories: ProjectCategory[];
+    /** As stored: may hold values a newer release added (#2005). */
+    projectCategories: string[];
     preferredOrgs: string[];
-    scope: IssueScope[];
+    scope: string[];
     persistence: 'local' | 'gist';
   };
 }
@@ -438,7 +432,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               warnings.push(`Invalid diffTool "${value}". Valid: ${DIFF_TOOLS.join(', ')}`);
               break;
             }
-            stateManager.updateConfig({ diffTool: value as DiffTool });
+            stateManager.updateConfig({ diffTool: value });
             results[key] = value;
             break;
           }
@@ -519,7 +513,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         projectCategories: config.projectCategories ?? [],
         preferredOrgs: config.preferredOrgs ?? [],
         scope: config.scope ?? [],
-        persistence: config.persistence ?? 'local',
+        persistence: config.persistence === 'gist' ? 'gist' : 'local',
       },
     };
   }

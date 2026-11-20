@@ -42,7 +42,8 @@ export async function runStateShow(options: { validate?: boolean } = {}): Promis
   const sm = getStateManager();
   const state = sm.getState();
   const output: StateShowOutput = {
-    persistence: state.config.persistence ?? 'local',
+    // An unknown mode a newer release wrote runs as local (#2005).
+    persistence: state.config.persistence === 'gist' ? 'gist' : 'local',
     gistId: state.gistId ?? null,
     gistDegraded: sm.isGistDegraded(),
     lastRunAt: state.lastRunAt,

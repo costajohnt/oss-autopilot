@@ -15,7 +15,7 @@ import {
   requireGitHubToken,
 } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
-import { SearchRotationSchema } from '../core/state-schema.js';
+import { IssueScopeSchema, isKnownValue, ProjectCategorySchema, SearchRotationSchema } from '../core/state-schema.js';
 import { computeStrategy } from '../core/strategy.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
 import { getMachinePath } from '../core/local-config.js';
@@ -222,14 +222,15 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
       githubUsername: config.githubUsername,
       languages: config.languages,
       labels: config.labels,
-      scope: config.scope,
+      // Stored values a newer release added are not passed on (#2005).
+      scope: config.scope?.filter((s) => isKnownValue(IssueScopeSchema.options, s)),
       excludeRepos: [...config.excludeRepos, ...cappedRepos],
       excludeOrgs: config.excludeOrgs ?? [],
       preferredOrgs: config.preferredOrgs ?? [],
       // The blocklist plus every `banned` policy the user confirmed (#1953).
       // Bans vet read from the docs alone stay searchable; vet still says skip.
       aiPolicyBlocklist: bannedRepos(state),
-      projectCategories: config.projectCategories ?? [],
+      projectCategories: (config.projectCategories ?? []).filter((c) => isKnownValue(ProjectCategorySchema.options, c)),
       minStars: config.minStars,
       maxIssueAgeDays: config.maxIssueAgeDays,
       includeDocIssues: config.includeDocIssues,
@@ -245,7 +246,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
       broadPhaseDelayMs: 0,
       skipBroadWhenSufficientResults: config.skipBroadWhenSufficientResults,
       complexIssues: config.complexIssues === 'warm' ? 'warm' : 'off',
-      persistence: config.persistence as 'local' | 'gist',
+      persistence: config.persistence === 'gist' ? 'gist' : 'local',
       slmTriageModel: config.slmTriageModel,
       slmTriageHost: config.slmTriageHost,
       // Scout 0.9.0 made these required on `ScoutPreferences` (their schema

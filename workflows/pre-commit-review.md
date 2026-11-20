@@ -213,6 +213,7 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
 | `sourcetree` | Run `stree .` to open the repo in SourceTree. Tell the user: "Opened in SourceTree — review the diff there." |
 | `vscode` | Run `code --diff` for each changed file against its HEAD version. Tell the user: "Opened diffs in VS Code." |
 | `custom` | Read `data.config.diffToolCustomCommand`. Before the first use in a session, show the user the exact stored command and ask (see below); then run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+| any other value | A newer release added it. Use the `inline` action; never run `diffToolCustomCommand` for it. |
 
 **Custom diff command: confirm before the first run in a session.** The stored command is a setting, and settings sync between machines, so the text may not be what the user typed on this one. Never run it unseen. Print the command verbatim in a code block, then use AskUserQuestion:
   ```
