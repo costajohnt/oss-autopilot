@@ -72,3 +72,47 @@ jobs:
           src/commands/search.e2e.test.ts
           src/commands/daily.e2e.test.ts
           --no-file-parallelism
+
+  # Nothing else watches this workflow (no PR gates on it, release does not
+  # depend on it), so a red nightly was invisible (#1942). A separate job keeps
+  # `issues: write` off the token the test step receives, and its own failure
+  # cannot change the already-failed result of `e2e`.
+  report-failure:
+    name: Report nightly failure
+    needs: e2e
+    # Scheduled runs only: whoever dispatches manually is watching the run.
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: read # names of the failed steps
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          title="Nightly E2E (live GitHub API) is failing"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          # Best effort: the alert still goes out without the step names.
+          failed_steps=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
+            --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join(", ")' || true)
+
+          body="Scheduled nightly e2e run failed: $run_url"
+          body+=$'\n\n'"Failed step(s): ${failed_steps:-unknown, see the run}"
+
+          # Search matches loosely, so pin the exact title. A failed lookup
+          # aborts here (set -e) instead of opening a duplicate.
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$title\" in:title" --json number,title \
+            | jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            body+=$'\n\n'"Later failures are added as comments while this issue stays open. Close it once the nightly is green again."
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
