@@ -182,23 +182,19 @@ export function loadHandoff(dir: string): { record: OvernightRecord; report: str
   };
 }
 
+type PrivateRepo = { repo: string; cleanup: () => void };
+
 /**
- * Fetch `branch` from its bundle into a fresh bare repo under a private temp
- * dir. The bundle is copied through a checked descriptor first, so the tick
- * cannot swap the file between the check and git reading it. The caller
- * pushes from `repo` and must call `cleanup`.
+ * Fetch `branch` into a fresh bare repo under a private temp dir, from the
+ * source `prepare` returns (it may put files in that dir first). The caller
+ * pushes from `repo` and must call `cleanup`. Nothing the tick wrote is the
+ * repository Git runs in: no config, hook or alias of its making is read.
  */
-export function importHandoffBundle(dir: string, branch: string): { repo: string; cleanup: () => void } {
+function importBranch(branch: string, prepare: (tmp: string) => string): PrivateRepo {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-push-prep-'));
   const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
   try {
-    const copy = path.join(tmp, 'in.bundle');
-    const out = fs.openSync(copy, 'wx', 0o600);
-    try {
-      streamUntrusted(path.join(dir, bundleFileFor(branch)), MAX_BUNDLE_BYTES, (c) => fs.writeSync(out, c));
-    } finally {
-      fs.closeSync(out);
-    }
+    const source = prepare(tmp);
     const repo = path.join(tmp, 'repo.git');
     gitRun(['init', '-q', '--bare', repo]);
     gitRun([
@@ -209,7 +205,7 @@ export function importHandoffBundle(dir: string, branch: string): { repo: string
       'fetch',
       '-q',
       '--no-tags',
-      copy,
+      source,
       `+refs/heads/${branch}:refs/heads/${branch}`,
     ]);
     return { repo, cleanup };
@@ -217,4 +213,34 @@ export function importHandoffBundle(dir: string, branch: string): { repo: string
     cleanup();
     throw err;
   }
+}
+
+/**
+ * The handoff's bundle as a private repo. The bundle is copied through a
+ * checked descriptor first, so the tick cannot swap the file between the
+ * check and git reading it.
+ */
+export function importHandoffBundle(dir: string, branch: string): PrivateRepo {
+  return importBranch(branch, (tmp) => {
+    const copy = path.join(tmp, 'in.bundle');
+    const out = fs.openSync(copy, 'wx', 0o600);
+    try {
+      streamUntrusted(path.join(dir, bundleFileFor(branch)), MAX_BUNDLE_BYTES, (c) => fs.writeSync(out, c));
+    } finally {
+      fs.closeSync(out);
+    }
+    return copy;
+  });
+}
+
+/**
+ * A worktree's branch as a private repo, for a box without the handoff
+ * (#1937). The push then never runs in the worktree, whose config the tick
+ * could have written (a credential helper, a pre-push hook, an SSH command).
+ * Where the push goes is the caller's business: a URL rewrite in the worktree
+ * can still change what its remote list shows. `worktree` must be an
+ * absolute path.
+ */
+export function importWorktreeBranch(worktree: string, branch: string): PrivateRepo {
+  return importBranch(branch, () => worktree);
 }

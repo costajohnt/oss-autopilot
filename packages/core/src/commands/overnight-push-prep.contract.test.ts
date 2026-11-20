@@ -34,8 +34,26 @@ vi.mock('../core/index.js', async () => {
     }),
     getOctokit: () => ({
       users: { getAuthenticated: async () => ({ data: { login: 'octocat' } }) },
-      repos: { get: async () => ({ data: { fork: true, owner: { login: 'octocat' }, full_name: 'octocat/widget' } }) },
-      pulls: { get: async () => ({ data: { head: { ref: 'fix-lint' } } }) },
+      repos: {
+        get: async () => ({
+          data: {
+            fork: true,
+            owner: { login: 'octocat' },
+            full_name: 'octocat/widget',
+            parent: { full_name: 'upstream-org/widget' },
+          },
+        }),
+      },
+      pulls: {
+        get: async () => ({
+          data: {
+            head: {
+              ref: 'fix-lint',
+              repo: { name: 'widget', full_name: 'octocat/widget', owner: { login: 'octocat' } },
+            },
+          },
+        }),
+      },
     }),
     requireGitHubToken: () => 'tok',
     maybeCheckpoint: async () => 'Gist checkpoint push failed after retry',
@@ -50,7 +68,10 @@ const mockExecFileSync = vi.mocked(execFileSync);
 let tmp = '';
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'push-prep-contract-'));
+  // Under the worktrees root of the temp HOME: push-prep refuses a worktree anywhere else (#1937).
+  const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+  fs.mkdirSync(root, { recursive: true });
+  tmp = fs.mkdtempSync(path.join(root, 'push-prep-contract-'));
   state.last = {
     runAt: '2026-09-18T02:00:00.000Z',
     reportPath: path.join(tmp, 'overnight-2026-09-18.md'),
