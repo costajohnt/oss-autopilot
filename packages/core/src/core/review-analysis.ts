@@ -76,19 +76,18 @@ export function determineReviewDecision(reviews: VerdictReview[]): ReviewDecisio
 }
 
 /**
- * Date of the latest approval that still stands (see {@link standingVerdicts}),
- * or undefined when nobody's standing verdict is APPROVED. A maintainer comment
- * newer than this was written after the PR was approved, so the approval does
- * not answer it (#1920).
+ * When `login`'s standing approval (see {@link standingVerdicts}) was
+ * submitted, or undefined when that account has no standing APPROVED verdict.
+ * Logins compare case-insensitively. Lets the status logic tell whether the
+ * author of an unanswered comment approved at or after writing it (#1920).
  */
-export function getLatestApprovalDate(reviews: VerdictReview[]): string | undefined {
-  let latest: string | undefined;
-  for (const review of standingVerdicts(reviews)) {
-    const at = review.submitted_at;
-    if (review.state !== 'APPROVED' || !at) continue;
-    if (!latest || Date.parse(at) > Date.parse(latest)) latest = at;
-  }
-  return latest;
+export function getStandingApprovalDate(reviews: VerdictReview[], login: string | undefined): string | undefined {
+  const wanted = login?.toLowerCase();
+  if (!wanted) return undefined;
+  const approval = standingVerdicts(reviews).find(
+    (review) => review.state === 'APPROVED' && review.user?.login?.toLowerCase() === wanted,
+  );
+  return approval?.submitted_at ?? undefined;
 }
 
 /**

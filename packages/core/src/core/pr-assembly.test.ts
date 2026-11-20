@@ -146,12 +146,16 @@ describe('assembleFetchedPR issue link (#1863)', () => {
 });
 
 describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () => {
-  const approval = { user: { login: 'drive-by' }, state: 'APPROVED', body: '', submitted_at: daysAgo(10), id: 1 };
   const question = { user: { login: 'maintainer' }, body: 'Can you add a test for the empty case?' };
+  const noChecks = { status: 'unknown' as const, failingCheckNames: [], failingCheckConclusions: new Map() };
 
-  it('a question after the approval needs a response', async () => {
+  function approvalBy(login: string, days: number, body = '') {
+    return { body, user: { login }, state: 'APPROVED', submitted_at: daysAgo(days), id: days };
+  }
+
+  it('someone else approving before the question does not settle it', async () => {
     const pr = await assembleFetchedPR(
-      signals({ reviews: [approval], comments: [{ ...question, created_at: daysAgo(5) }] }),
+      signals({ reviews: [approvalBy('drive-by', 10)], comments: [{ ...question, created_at: daysAgo(5) }] }),
       CONFIG,
       undefined,
     );
@@ -161,12 +165,12 @@ describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () =
     expect(pr.actionReasons).toEqual(['needs_response']);
   });
 
-  it('a question after the approval needs a response when the PR has no CI checks', async () => {
+  it('someone else approving before the question does not settle it when the PR has no CI checks', async () => {
     const pr = await assembleFetchedPR(
       signals({
-        reviews: [approval],
+        reviews: [approvalBy('drive-by', 10)],
         comments: [{ ...question, created_at: daysAgo(5) }],
-        ciStatus: { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() },
+        ciStatus: noChecks,
       }),
       CONFIG,
       undefined,
@@ -174,9 +178,19 @@ describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () =
     expect(pr.actionReason).toBe('needs_response');
   });
 
-  it('an unanswered comment older than the approval stays pending_merge', async () => {
+  it('someone else approving after the question does not settle it', async () => {
     const pr = await assembleFetchedPR(
-      signals({ reviews: [approval], comments: [{ ...question, created_at: daysAgo(15) }] }),
+      signals({ reviews: [approvalBy('drive-by', 10)], comments: [{ ...question, created_at: daysAgo(15) }] }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.reviewDecision).toBe('approved');
+    expect(pr.actionReason).toBe('needs_response');
+  });
+
+  it('the commenter approving after their question settles it', async () => {
+    const pr = await assembleFetchedPR(
+      signals({ reviews: [approvalBy('maintainer', 10)], comments: [{ ...question, created_at: daysAgo(15) }] }),
       CONFIG,
       undefined,
     );
@@ -185,19 +199,54 @@ describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () =
     expect(pr.actionReasons).toBeUndefined();
   });
 
-  it("the approving review's own note stays pending_merge (#1507)", async () => {
+  it('matches the commenter to their approval case-insensitively', async () => {
     const pr = await assembleFetchedPR(
-      signals({ reviews: [{ ...approval, body: 'Nice work. I will merge this after the release is cut.' }] }),
+      signals({ reviews: [approvalBy('Maintainer', 10)], comments: [{ ...question, created_at: daysAgo(15) }] }),
       CONFIG,
       undefined,
     );
+    expect(pr.waitReason).toBe('pending_merge');
+  });
+
+  it("the approving review's own note stays pending_merge (#1507)", async () => {
+    const note = 'Nice work. I will merge this after the release is cut.';
+    const pr = await assembleFetchedPR(signals({ reviews: [approvalBy('maintainer', 10, note)] }), CONFIG, undefined);
     expect(pr.hasUnrespondedComment).toBe(true);
     expect(pr.waitReason).toBe('pending_merge');
   });
 
+  it('the approver asking a separate question after approving needs a response', async () => {
+    const pr = await assembleFetchedPR(
+      signals({ reviews: [approvalBy('maintainer', 10)], comments: [{ ...question, created_at: daysAgo(5) }] }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.actionReason).toBe('needs_response');
+  });
+
+  it("the commenter's later approval does not settle it once that approval is dismissed", async () => {
+    const pr = await assembleFetchedPR(
+      signals({
+        reviews: [
+          approvalBy('drive-by', 20),
+          approvalBy('maintainer', 10),
+          { user: { login: 'maintainer' }, state: 'DISMISSED', body: '', submitted_at: daysAgo(9), id: 99 },
+        ],
+        comments: [{ ...question, created_at: daysAgo(15) }],
+      }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.reviewDecision).toBe('approved');
+    expect(pr.actionReason).toBe('needs_response');
+  });
+
   it.each(['Thanks!', 'LGTM'])('a pure acknowledgment after the approval (%s) stays pending_merge', async (body) => {
     const pr = await assembleFetchedPR(
-      signals({ reviews: [approval], comments: [{ body, user: { login: 'maintainer' }, created_at: daysAgo(5) }] }),
+      signals({
+        reviews: [approvalBy('drive-by', 10)],
+        comments: [{ body, user: { login: 'maintainer' }, created_at: daysAgo(5) }],
+      }),
       CONFIG,
       undefined,
     );
@@ -208,7 +257,7 @@ describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () =
   it('a question after the approval that the author answered stays pending_merge', async () => {
     const pr = await assembleFetchedPR(
       signals({
-        reviews: [approval],
+        reviews: [approvalBy('drive-by', 10)],
         comments: [
           { ...question, created_at: daysAgo(5) },
           { user: { login: 'contributor' }, body: 'Added in the latest push.', created_at: daysAgo(4) },
@@ -220,27 +269,11 @@ describe('assembleFetchedPR approved PR with a maintainer comment (#1920)', () =
     expect(pr.waitReason).toBe('pending_merge');
   });
 
-  it('a question after a dismissed later approval is measured against the approval that stands', async () => {
-    const pr = await assembleFetchedPR(
-      signals({
-        reviews: [
-          approval,
-          { user: { login: 'other' }, state: 'APPROVED', body: '', submitted_at: daysAgo(3), id: 2 },
-          { user: { login: 'other' }, state: 'DISMISSED', body: '', submitted_at: daysAgo(2), id: 2 },
-        ],
-        comments: [{ ...question, created_at: daysAgo(5) }],
-      }),
-      CONFIG,
-      undefined,
-    );
-    expect(pr.actionReason).toBe('needs_response');
-  });
-
   it('a standing changes request still wins over another reviewer approving', async () => {
     const pr = await assembleFetchedPR(
       signals({
         reviews: [
-          approval,
+          approvalBy('drive-by', 10),
           { user: { login: 'maintainer' }, state: 'CHANGES_REQUESTED', body: '', submitted_at: daysAgo(5), id: 2 },
         ],
       }),

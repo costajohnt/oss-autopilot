@@ -1,6 +1,7 @@
 /**
- * Tests for determineStatus(): which unanswered maintainer comments an approval
- * settles (#1507, #1920), and the precedence of the status branches around it.
+ * Tests for determineStatus(): which unanswered maintainer comments their
+ * author's approval settles (#1507, #1920), and the precedence of the status
+ * branches around it.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -11,7 +12,10 @@ const APPROVED_AT = '2026-02-07T10:00:00Z';
 const BEFORE_APPROVAL = '2026-02-06T10:00:00Z';
 const AFTER_APPROVAL = '2026-02-08T10:00:00Z';
 
-/** An approved, passing PR with an unanswered maintainer comment; each test sets the dates. */
+/**
+ * An approved, passing PR with an unanswered comment whose author approved at
+ * APPROVED_AT; each test sets the comment date.
+ */
 function approvedWithComment(overrides: Partial<DetermineStatusInput> = {}) {
   return determineStatus({
     ciStatus: 'passing',
@@ -22,7 +26,7 @@ function approvedWithComment(overrides: Partial<DetermineStatusInput> = {}) {
     daysSinceActivity: 2,
     dormantThreshold: 30,
     approachingThreshold: 25,
-    latestApprovalDate: APPROVED_AT,
+    commenterApprovalDate: APPROVED_AT,
     ...overrides,
   });
 }
@@ -35,16 +39,16 @@ const NEEDS_RESPONSE = {
   actionReasons: ['needs_response'],
 };
 
-describe('determineStatus: an approval settles only comments no newer than it (#1920)', () => {
+describe("determineStatus: only the commenter's own later approval settles a comment (#1920)", () => {
   it.each(['passing', 'unknown'] as const)(
-    'a maintainer comment after the approval needs a response (CI %s)',
+    "a comment after its author's approval needs a response (CI %s)",
     (ciStatus) => {
       expect(approvedWithComment({ ciStatus, lastMaintainerCommentDate: AFTER_APPROVAL })).toEqual(NEEDS_RESPONSE);
     },
   );
 
   it.each(['passing', 'unknown'] as const)(
-    'a comment older than the approval stays pending_merge (CI %s)',
+    "a comment older than its author's approval stays pending_merge (CI %s)",
     (ciStatus) => {
       expect(approvedWithComment({ ciStatus, lastMaintainerCommentDate: BEFORE_APPROVAL })).toEqual(PENDING_MERGE);
     },
@@ -61,26 +65,26 @@ describe('determineStatus: an approval settles only comments no newer than it (#
   });
 
   it.each([
-    ['no approval date', { latestApprovalDate: undefined, lastMaintainerCommentDate: BEFORE_APPROVAL }],
-    ['an unparseable approval date', { latestApprovalDate: 'garbage', lastMaintainerCommentDate: BEFORE_APPROVAL }],
+    ['no approval by the commenter', { commenterApprovalDate: undefined, lastMaintainerCommentDate: BEFORE_APPROVAL }],
+    ['an unparseable approval date', { commenterApprovalDate: 'garbage', lastMaintainerCommentDate: BEFORE_APPROVAL }],
     ['no comment date', { lastMaintainerCommentDate: undefined }],
   ])('fails closed to needs_response with %s', (_name, overrides) => {
     expect(approvedWithComment(overrides)).toEqual(NEEDS_RESPONSE);
   });
 
-  it('a commit pushed after the later comment still reads changes_addressed', () => {
+  it('a commit pushed after the unsettled comment still reads changes_addressed', () => {
     expect(
       approvedWithComment({ lastMaintainerCommentDate: AFTER_APPROVAL, latestCommitDate: '2026-02-09T10:00:00Z' }),
     ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
   });
 
-  it('a later comment and a merge conflict report both reasons, response first', () => {
+  it('an unsettled comment and a merge conflict report both reasons, response first', () => {
     const result = approvedWithComment({ lastMaintainerCommentDate: AFTER_APPROVAL, hasMergeConflict: true });
     expect(result.actionReason).toBe('needs_response');
     expect(result.actionReasons).toEqual(['needs_response', 'merge_conflict']);
   });
 
-  it('an older comment settled by the approval adds no needs_response beside a merge conflict', () => {
+  it('a settled comment adds no needs_response beside a merge conflict', () => {
     const result = approvedWithComment({ lastMaintainerCommentDate: BEFORE_APPROVAL, hasMergeConflict: true });
     expect(result.actionReason).toBe('merge_conflict');
     expect(result.actionReasons).toEqual(['merge_conflict']);
@@ -101,12 +105,12 @@ describe('determineStatus: precedence of the primary status', () => {
       'failing_ci',
     ],
     ['comment addressed by a commit', { ...commented, latestCommitDate: COMMIT_AFTER }, 'changes_addressed'],
-    ['comment settled by the approval', { ...commented, latestApprovalDate: COMMENT }, 'pending_merge'],
-    ['comment newer than the approval', commented, 'needs_response'],
-    ['comment newer than the approval beats failing CI', { ...commented, ...failing }, 'needs_response'],
+    ['comment settled by the approval', { ...commented, commenterApprovalDate: COMMENT }, 'pending_merge'],
+    ['comment not settled by an approval', commented, 'needs_response'],
+    ['unsettled comment beats failing CI', { ...commented, ...failing }, 'needs_response'],
     [
       'comment settled by the approval, but CI failing',
-      { ...commented, ...failing, latestApprovalDate: COMMENT },
+      { ...commented, ...failing, commenterApprovalDate: COMMENT },
       'needs_response',
     ],
     ['comment beats a changes-requested review', { ...commented, ...changesRequested }, 'needs_response'],
@@ -131,7 +135,7 @@ describe('determineStatus: precedence of the primary status', () => {
   ];
 
   it.each(rows)('%s', (_name, overrides, expected) => {
-    const result = approvedWithComment({ latestApprovalDate: BEFORE_APPROVAL, ...overrides });
+    const result = approvedWithComment({ commenterApprovalDate: BEFORE_APPROVAL, ...overrides });
     expect(result.actionReason ?? result.waitReason).toBe(expected);
   });
 });
