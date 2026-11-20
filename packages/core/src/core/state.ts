@@ -1017,6 +1017,18 @@ export class StateManager {
     return evicted;
   }
 
+  /**
+   * Remove ledger rows and repoScores entries for repositories in
+   * `config.untrackedOrgs` and for `privateRepos`, which must hold only
+   * repositories GitHub reported private in this run (#1924). See
+   * repoScoring.evictExcludedRepos.
+   */
+  evictExcludedRepos(privateRepos: Iterable<string>): repoScoring.EvictedRepos {
+    const evicted = repoScoring.evictExcludedRepos(this.state, privateRepos);
+    if (evicted.untrackedOrgRows + evicted.privateRows + evicted.repos > 0) this.autoSave();
+    return evicted;
+  }
+
   /** Returns the most recent close date, used as a watermark for incremental fetching. */
   getClosedPRWatermark(): string | undefined {
     return this.state.closedPRs?.[0]?.closedAt || undefined;

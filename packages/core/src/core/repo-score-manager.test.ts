@@ -13,6 +13,7 @@ import {
   findRepoTransfers,
   renameRepo,
   evictClosedPRs,
+  evictExcludedRepos,
 } from './repo-score-manager.js';
 import { makeAgentState, makeRepoScore } from './test-utils.js';
 
@@ -864,5 +865,98 @@ describe('evictClosedPRs', () => {
     const state = makeAgentState({});
     expect(evictClosedPRs(state, [`${PR}/1`])).toBe(0);
     expect(state.closedPRs).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// evictExcludedRepos (#1924)
+// ---------------------------------------------------------------------------
+
+const stored = (repo: string, n: number) => `https://github.com/${repo}/pull/${n}`;
+
+const ledgerState = (untrackedOrgs: string[] | undefined) =>
+  makeAgentState({
+    config: { untrackedOrgs },
+    mergedPRs: [
+      { url: stored('Acme/internal', 1), title: 'employer', mergedAt: '2025-03-02T00:00:00Z' },
+      { url: stored('org/repo', 2), title: 'oss', mergedAt: '2025-03-01T00:00:00Z' },
+    ],
+    closedPRs: [
+      { url: stored('acme/tools', 3), title: 'employer', closedAt: '2025-03-02T00:00:00Z' },
+      { url: stored('org/repo', 4), title: 'oss', closedAt: '2025-03-01T00:00:00Z' },
+    ],
+    repoScores: {
+      'Acme/internal': makeRepoScore({ repo: 'Acme/internal', mergedPRCount: 1 }),
+      'acme/tools': makeRepoScore({ repo: 'acme/tools', closedWithoutMergeCount: 1 }),
+      'acme/counted-only': makeRepoScore({ repo: 'acme/counted-only', mergedPRCount: 7 }),
+      'org/repo': makeRepoScore({
+        repo: 'org/repo',
+        mergedPRCount: 1,
+        closedWithoutMergeCount: 1,
+        stargazersCount: 1000,
+      }),
+    },
+  });
+
+describe('evictExcludedRepos', () => {
+  it('removes merged and closed rows and the scores of untracked organisations, whatever the case', () => {
+    const state = ledgerState(['ACME']);
+
+    expect(evictExcludedRepos(state, [])).toEqual({ untrackedOrgRows: 2, privateRows: 0, repos: 3 });
+
+    expect(state.mergedPRs?.map((pr) => pr.title)).toEqual(['oss']);
+    expect(state.closedPRs?.map((pr) => pr.title)).toEqual(['oss']);
+    expect(Object.keys(state.repoScores)).toEqual(['org/repo']);
+    // Totals follow: only the tracked repository is left to count.
+    expect(getStats(state)).toMatchObject({ mergedPRs: 1, closedPRs: 1 });
+  });
+
+  it('removes the rows and score of a repository reported private, and the totals follow', () => {
+    const state = ledgerState([]);
+    state.repoScores['Acme/internal'].stargazersCount = 1000;
+    expect(getStats(state)).toMatchObject({ mergedPRs: 2 });
+
+    expect(evictExcludedRepos(state, ['acme/INTERNAL'])).toEqual({ untrackedOrgRows: 0, privateRows: 1, repos: 1 });
+
+    expect(state.mergedPRs?.map((pr) => pr.title)).toEqual(['oss']);
+    expect(state.closedPRs).toHaveLength(2);
+    expect(Object.keys(state.repoScores)).not.toContain('Acme/internal');
+    expect(getStats(state)).toMatchObject({ mergedPRs: 1 });
+  });
+
+  it('counts a row once, as private, when its repository is both private and in an untracked organisation', () => {
+    const state = ledgerState(['acme']);
+
+    expect(evictExcludedRepos(state, ['Acme/internal'])).toEqual({ untrackedOrgRows: 1, privateRows: 1, repos: 3 });
+  });
+
+  it('keeps a score entry that has no PR counts and no ledger rows (written by issue discovery)', () => {
+    const state = ledgerState(['acme']);
+    state.repoScores['acme/discovered'] = makeRepoScore({ repo: 'acme/discovered' });
+    state.repoScores['org/secret'] = makeRepoScore({ repo: 'org/secret' });
+
+    evictExcludedRepos(state, ['org/secret']);
+
+    expect(Object.keys(state.repoScores)).toEqual(['org/repo', 'acme/discovered', 'org/secret']);
+  });
+
+  it('finds nothing to remove on a second pass', () => {
+    const state = ledgerState(['acme']);
+    evictExcludedRepos(state, ['org/repo']);
+    const after = structuredClone(state);
+
+    expect(evictExcludedRepos(state, ['org/repo'])).toEqual({ untrackedOrgRows: 0, privateRows: 0, repos: 0 });
+    expect(state).toEqual(after);
+  });
+
+  it.each([
+    ['empty', []],
+    ['unset', undefined],
+  ])('removes nothing when untrackedOrgs is %s and no repository is private', (_label, untrackedOrgs) => {
+    const state = ledgerState(untrackedOrgs);
+    const before = structuredClone(state);
+
+    expect(evictExcludedRepos(state, [])).toEqual({ untrackedOrgRows: 0, privateRows: 0, repos: 0 });
+    expect(state).toEqual(before);
   });
 });

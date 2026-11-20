@@ -125,6 +125,22 @@ describe('recent-PR fetchers on partial search results (#1928)', () => {
     );
   });
 
+  it('keeps untracked organisations out of both queries too, through the shared scope (#1924)', async () => {
+    const merged = octokitWithPages([{ total_count: 0, items: [] }]);
+    const closed = octokitWithPages([{ total_count: 0, items: [] }]);
+    const withOrgs = { ...config, untrackedOrgs: ['Acme'] };
+
+    await fetchRecentlyMergedPRs(merged.octokit, withOrgs);
+    await fetchRecentlyClosedPRs(closed.octokit, withOrgs);
+
+    expect(merged.search.mock.calls[0][0].q).toMatch(
+      /^is:pr is:merged is:public author:testuser -user:testuser -org:Acme updated:>=\d{4}-\d{2}-\d{2}$/,
+    );
+    expect(closed.search.mock.calls[0][0].q).toMatch(
+      /^is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme updated:>=\d{4}-\d{2}-\d{2}$/,
+    );
+  });
+
   it('returns each PR once when an update moved it onto the next page as well', async () => {
     const { octokit } = octokitWithPages([
       { total_count: 120, items: mergedItems(100) },

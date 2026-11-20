@@ -62,6 +62,9 @@ const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockGetMergedPRs = vi.fn((): StoredMergedPR[] => []);
 const mockRenameRepo = vi.fn();
 const mockEvictClosedPRs = vi.fn();
+const mockGetMergedPRWatermark = vi.fn((): string | undefined => undefined);
+// Search client behind the merged-ledger gap fetch (#1924); empty unless a test routes it.
+const mockSearchPRs = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
@@ -108,6 +111,8 @@ vi.mock('../core/index.js', async (importOriginal) => {
       renameRepo: mockRenameRepo,
       tryReconcilePRCounts: vi.fn(),
       evictClosedPRs: mockEvictClosedPRs,
+      evictExcludedRepos: vi.fn(() => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 })),
+      getMergedPRWatermark: mockGetMergedPRWatermark,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
@@ -136,6 +141,8 @@ vi.mock('../core/index.js', async (importOriginal) => {
       reloadIfChanged: mockReloadIfChanged,
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
+    // The merged-ledger gap fetch (#1924) searches through this client.
+    getOctokit: vi.fn(() => ({ search: { issuesAndPullRequests: mockSearchPRs } })),
     formatRelativeTime: vi.fn(() => '2 days ago'),
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,
@@ -265,6 +272,8 @@ beforeEach(() => {
   mockFetchRecentlyMergedPRs.mockResolvedValue([]);
   mockGenerateDigest.mockReturnValue(makeDigest());
   mockGetMergedPRs.mockReturnValue([]);
+  mockGetMergedPRWatermark.mockReturnValue(undefined);
+  mockSearchPRs.mockResolvedValue({ data: { total_count: 0, items: [] } });
 
   // Default issue conversation response (no issues)
   mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [], lookupFailures: 0, warnings: [] });
@@ -1206,6 +1215,93 @@ describe('executeDailyCheck() — scout pass removal (#1458)', () => {
 // ---------------------------------------------------------------------------
 // executeDailyCheck() — outcome ledger persistence (#1461)
 // ---------------------------------------------------------------------------
+
+/** A merged-PR search item, as the merged-ledger gap fetch receives it. */
+function gapItem(number: number, mergedAt: string) {
+  return {
+    html_url: `https://github.com/org/repo/pull/${number}`,
+    title: `Gap PR ${number}`,
+    created_at: '2026-01-05T00:00:00Z',
+    closed_at: mergedAt,
+    pull_request: { merged_at: mergedAt },
+  };
+}
+
+describe('executeDailyCheck() — merged-ledger gap (#1924)', () => {
+  const WATERMARK = '2026-01-10T00:00:00Z';
+  const recent = {
+    url: 'https://github.com/org/repo/pull/20',
+    repo: 'org/repo',
+    number: 20,
+    title: 'Recent PR',
+    mergedAt: '2026-01-24T12:00:00Z',
+  };
+
+  beforeEach(() => {
+    mockGetMergedPRWatermark.mockReturnValue(WATERMARK);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([recent]);
+  });
+
+  it('stores the merges between the newest ledger entry and the seven-day list after a long pause', async () => {
+    const items = [gapItem(11, '2026-01-11T00:00:00Z'), gapItem(12, '2026-01-12T00:00:00Z')];
+    mockSearchPRs.mockResolvedValue({ data: { total_count: 2, items } });
+
+    const result = await executeDailyCheck('test-token');
+
+    const [stored] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(stored.map((pr) => pr.url)).toEqual([recent.url, items[0].html_url, items[1].html_url]);
+    expect(mockSearchPRs.mock.calls[0][0].q).toBe(
+      'is:pr is:merged is:public author:testuser -user:testuser updated:>2026-01-09T00:00:00Z',
+    );
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('stores no merged PRs, recent ones included, and warns when the gap is larger than one run fetches', async () => {
+    mockSearchPRs.mockResolvedValue({ data: { total_count: 1001, items: [gapItem(11, '2026-01-11T00:00:00Z')] } });
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      {
+        phase: 'fetch',
+        operation: 'fetch merged PRs for the ledger',
+        message: expect.stringContaining('Run `ledger-backfill`'),
+      },
+    ]);
+  });
+
+  it('stores no merged PRs when the gap fetch fails, so the next run starts from the same entry', async () => {
+    mockSearchPRs.mockRejectedValue(new Error('search down'));
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch merged PRs for the ledger', message: 'search down' },
+    ]);
+  });
+
+  it('warns when the ledger is short of the all-time merged count from the count search', async () => {
+    mockFetchUserMergedPRCounts.mockResolvedValue({ ...makeMergedResult(), totalCount: 12 });
+    mockGetMergedPRs.mockReturnValue([
+      { url: recent.url, title: recent.title, mergedAt: recent.mergedAt },
+      { url: 'https://github.com/org/repo/pull/9', title: 'Old', mergedAt: WATERMARK },
+    ]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.warnings).toEqual([
+      {
+        phase: 'analytics',
+        operation: 'check merged-PR ledger',
+        message:
+          'The merged-PR ledger holds 2 of the 12 merged PRs GitHub reports (10 missing). ' +
+          'Run `ledger-backfill` to fetch them.',
+      },
+    ]);
+  });
+});
 
 describe('executeDailyCheck() — outcome ledger (#1461)', () => {
   const mergedPR = {

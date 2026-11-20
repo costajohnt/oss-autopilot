@@ -4,14 +4,19 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { StateManager } from '../core/state.js';
 
-const mocks = vi.hoisted(() => ({ graphql: vi.fn(), state: { current: undefined as unknown } }));
+const mocks = vi.hoisted(() => ({
+  graphql: vi.fn(),
+  /** Search API behind the merged-history walk (#1924); unused while the state has no username. */
+  search: vi.fn(),
+  state: { current: undefined as unknown },
+}));
 
 vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
     getStateManager: () => mocks.state.current,
-    getOctokit: () => ({ graphql: mocks.graphql }),
+    getOctokit: () => ({ graphql: mocks.graphql, search: { issuesAndPullRequests: mocks.search } }),
     requireGitHubToken: () => 'token',
   };
 });
@@ -269,6 +274,100 @@ describe('runLedgerBackfill (#1824)', () => {
     mocks.graphql.mockResolvedValue({});
     const list = writeList(`- [o/r#1](${MERGED}) - t\n  - **Pursue (8/10)** - ok\n  - **Done** - PR [#1](${MERGED})\n`);
     expect((await runLedgerBackfill({ issueListPath: list })).filled.pick).toBe(0);
+  });
+});
+
+/** A merged PR the ledger does not hold, older than its newest entry. */
+const HOLE = 'https://github.com/o/r/pull/7';
+const searchItem = (url: string, mergedAt: string) => ({
+  html_url: url,
+  title: 'from search',
+  created_at: '2025-12-01T00:00:00Z',
+  closed_at: mergedAt,
+  pull_request: { merged_at: mergedAt },
+});
+
+describe('runLedgerBackfill merged history (#1924)', () => {
+  let sm: StateManager;
+
+  beforeEach(() => {
+    sm = freshLedger();
+    sm.updateConfig({ githubUsername: 'me' });
+    mocks.graphql.mockResolvedValue({ p0: node(), p1: node(), p2: node() });
+  });
+
+  it('adds a merged PR older than the newest ledger entry and enriches it in the same run', async () => {
+    const items = [searchItem(HOLE, '2025-12-20T00:00:00Z'), searchItem(MERGED, '2026-01-02T00:00:00Z')];
+    mocks.search.mockResolvedValue({ data: { total_count: 2, items } });
+
+    const result = await runLedgerBackfill();
+
+    expect(result.mergedAdded).toBe(1);
+    expect(result.queried).toBe(3);
+    expect(sm.getMergedPRs().map((pr) => pr.url)).toEqual([MERGED, HOLE]);
+    expect(sm.getMergedPRs()[1].backfilledAt).toBeDefined();
+    // All time, no result limit: no date bound in the query.
+    expect(mocks.search.mock.calls[0][0].q).toBe('is:pr is:merged is:public author:me -user:me');
+
+    const rerun = await runLedgerBackfill();
+    expect(rerun.mergedAdded).toBe(0);
+  });
+
+  it('moves a PR recorded as closed into the merged ledger when GitHub lists it as merged', async () => {
+    mocks.search.mockResolvedValue({ data: { total_count: 1, items: [searchItem(CLOSED, '2026-01-03T00:00:00Z')] } });
+
+    await runLedgerBackfill();
+
+    expect(sm.getMergedPRs().map((pr) => pr.url)).toContain(CLOSED);
+    expect(sm.getClosedPRs()).toEqual([]);
+  });
+
+  it('adds neither an untracked organisation PR nor a private repository PR', async () => {
+    sm.updateConfig({ untrackedOrgs: ['acme'] });
+    const employer = searchItem('https://github.com/Acme/internal/pull/1', '2025-12-21T00:00:00Z');
+    const privateRepo = searchItem('https://github.com/o/secret/pull/2', '2025-12-22T00:00:00Z');
+    // GitHub applies `is:public`; the stand-in does too, and ignores `-org:`.
+    mocks.search.mockImplementation(({ q }: { q: string }) => {
+      const items = q.includes('is:public') ? [employer] : [employer, privateRepo];
+      return Promise.resolve({ data: { total_count: items.length, items } });
+    });
+
+    const result = await runLedgerBackfill();
+
+    expect(mocks.search.mock.calls[0][0].q).toBe('is:pr is:merged is:public author:me -user:me -org:acme');
+    expect(result.mergedAdded).toBe(0);
+    expect(sm.getMergedPRs().map((pr) => pr.url)).toEqual([MERGED]);
+  });
+
+  it('adds nothing and warns when the history walk fails, and still backfills the entries it has', async () => {
+    mocks.search.mockRejectedValue(new Error('search down'));
+
+    const result = await runLedgerBackfill();
+
+    expect(result.mergedAdded).toBe(0);
+    expect(result.warnings).toContain('merged PR history fetch failed, no missing PRs were added: search down');
+    expect(result.queried).toBe(2);
+    expect(sm.getMergedPRs()).toHaveLength(1);
+  });
+
+  it('adds nothing and warns when the walk cannot get past a page cap', async () => {
+    // 300 results of 301, none with a creation date to continue from.
+    const items = Array.from({ length: 100 }, () => ({
+      ...searchItem(HOLE, '2025-12-20T00:00:00Z'),
+      created_at: null,
+    }));
+    mocks.search.mockResolvedValue({ data: { total_count: 301, items } });
+
+    const result = await runLedgerBackfill();
+
+    expect(result.mergedAdded).toBe(0);
+    expect(result.warnings).toContain('merged PR history could not be walked to the end; no missing PRs were added');
+  });
+
+  it('rethrows a rate limit from the history walk', async () => {
+    mocks.search.mockRejectedValue(Object.assign(new Error('rate limited'), { status: 429 }));
+
+    await expect(runLedgerBackfill()).rejects.toThrow('rate limited');
   });
 });
 

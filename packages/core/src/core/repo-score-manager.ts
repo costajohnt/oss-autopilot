@@ -10,7 +10,7 @@
 
 import { AgentState, RepoScore, RepoScoreUpdate, StoredMergedPR, StoredClosedPR, isBelowMinStars } from './types.js';
 import { debug, warn } from './logger.js';
-import { parseGitHubUrl } from './urls.js';
+import { parseGitHubUrl, isUntrackedOrg } from './urls.js';
 
 const MODULE = 'scoring';
 
@@ -272,6 +272,107 @@ function countByRepo(prs: ReadonlyArray<{ url: string }>): Map<string, number> {
     counts.set(repo, (counts.get(repo) ?? 0) + 1);
   }
   return counts;
+}
+
+/** Why a repository's PRs are never tracked; see {@link evictExcludedRepos}. */
+type ExclusionReason = 'untracked-org' | 'private';
+
+/** What {@link evictExcludedRepos} removed. */
+export interface EvictedRepos {
+  /** Ledger rows removed because their owner is in `config.untrackedOrgs`. */
+  untrackedOrgRows: number;
+  /** Ledger rows removed because GitHub reported their repository private. */
+  privateRows: number;
+  /** repoScores entries deleted, for either reason. */
+  repos: number;
+}
+
+/** Running result of one {@link evictExcludedRepos} pass over the ledgers. */
+interface ExcludedRows {
+  /** Rows dropped, per reason. */
+  counts: Record<ExclusionReason, number>;
+  /** Lowercased `owner/repo` of every dropped row. */
+  repoKeys: Set<string>;
+}
+
+/** The ledger rows to keep; the ones dropped are tallied in `excluded`. */
+function keepTrackedRows<T extends { url: string }>(
+  prs: readonly T[],
+  reasonFor: (repo: string) => ExclusionReason | undefined,
+  excluded: ExcludedRows,
+): T[] {
+  return prs.filter((pr) => {
+    const parsed = parseGitHubUrl(pr.url);
+    if (!parsed) return true;
+    const repo = `${parsed.owner}/${parsed.repo}`.toLowerCase();
+    const reason = reasonFor(repo);
+    if (!reason) return true;
+    excluded.counts[reason]++;
+    excluded.repoKeys.add(repo);
+    return false;
+  });
+}
+
+/**
+ * Delete the repoScores entries of excluded repositories that had ledger rows
+ * or carry PR counts. Returns how many were deleted.
+ */
+function deleteExcludedScores(
+  state: AgentState,
+  reasonFor: (repo: string) => ExclusionReason | undefined,
+  reposWithRows: ReadonlySet<string>,
+): number {
+  const doomed = Object.values(state.repoScores).filter((score) => {
+    const hasPRs = score.mergedPRCount > 0 || score.closedWithoutMergeCount > 0;
+    return (hasPRs || reposWithRows.has(score.repo.toLowerCase())) && reasonFor(score.repo) !== undefined;
+  });
+  for (const score of doomed) delete state.repoScores[score.repo];
+  return doomed.length;
+}
+
+/**
+ * Remove what is stored about repositories whose PRs are never tracked
+ * (#1924), so they are no longer counted, shown or synced:
+ *
+ * - repositories in `config.untrackedOrgs` (the user's employer);
+ * - repositories in `privateRepos`. The caller must pass only repositories a
+ *   successful GitHub read reported `private: true` in this run. A repository
+ *   that could not be read (404, network error) or whose visibility is not
+ *   known is not private for this purpose: a deleted, renamed or transferred
+ *   repository keeps its rows.
+ *
+ * Earlier versions stored both kinds through the dashboard's ledger fetch and
+ * counted them in the count searches. For each such repository the merged and
+ * closed ledger rows go, and so does its repoScores entry when it had ledger
+ * rows or carries PR counts. An entry without either was written by issue
+ * discovery, which untracked organisations do not affect, and stays; deleting
+ * it would only make discovery write it again.
+ *
+ * Idempotent; changes nothing when there are no untracked organisations and
+ * no private repositories.
+ */
+export function evictExcludedRepos(state: AgentState, privateRepos: Iterable<string>): EvictedRepos {
+  const orgs = state.config.untrackedOrgs ?? [];
+  const privateSet = new Set<string>();
+  for (const repo of privateRepos) privateSet.add(repo.toLowerCase());
+
+  const reasonFor = (repo: string): ExclusionReason | undefined => {
+    if (privateSet.has(repo.toLowerCase())) return 'private';
+    return isUntrackedOrg(repo.split('/', 1)[0], orgs) ? 'untracked-org' : undefined;
+  };
+
+  const excluded: ExcludedRows = { counts: { 'untracked-org': 0, private: 0 }, repoKeys: new Set() };
+  const keptMerged = keepTrackedRows(state.mergedPRs ?? [], reasonFor, excluded);
+  const keptClosed = keepTrackedRows(state.closedPRs ?? [], reasonFor, excluded);
+  if (excluded.repoKeys.size > 0) {
+    state.mergedPRs = keptMerged;
+    state.closedPRs = keptClosed;
+  }
+  return {
+    untrackedOrgRows: excluded.counts['untracked-org'],
+    privateRows: excluded.counts.private,
+    repos: deleteExcludedScores(state, reasonFor, excluded.repoKeys),
+  };
 }
 
 /**
