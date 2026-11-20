@@ -11,10 +11,28 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getStateManager } from '../core/index.js';
-import { UNATTENDED_ENV, errorMessage } from '../core/errors.js';
+import { UNATTENDED_ENV, ValidationError, errorMessage } from '../core/errors.js';
 import { isOwnRepo } from '../core/urls.js';
 import { getMachinePath, getMachinePathSource, setMachinePath } from '../core/local-config.js';
 import { warn } from '../core/logger.js';
+
+/**
+ * The issue list this machine is configured to use, for commands whose
+ * `--list-path` is optional. Workflows call those commands without the flag
+ * so a stored path is never pasted into shell text. Resolved by
+ * {@link detectIssueListPath}: configured lists only, with its checks; never
+ * a file found in the current directory.
+ */
+export function configuredIssueListPath(): string {
+  const location = detectIssueListPath();
+  if (!location) {
+    throw new ValidationError(
+      'No usable issue list is configured: none is set, or the configured path is relative, missing, or in a ' +
+        'checkout that is not yours. Set one via `oss-autopilot setup --set issueListPath=<absolute path>` or pass --list-path.',
+    );
+  }
+  return location.path;
+}
 
 export interface IssueListLocation {
   path: string;

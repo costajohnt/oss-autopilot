@@ -822,7 +822,7 @@ export const commands: CLICommandDef[] = [
         .command('list-move-tier <issue-url>')
         .description('Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)')
         .requiredOption('--tier <tier>', 'Target tier: pursue, maybe, or skip')
-        .requiredOption('--list-path <file>', 'Path to the markdown issue list')
+        .option('--list-path <file>', 'Path to the markdown issue list (defaults to the configured issueListPath)')
         .option('--json', 'Output as JSON')
         .action(async (issueUrl, options) => {
           const { ListMoveTierOutputSchema } = await import('./formatters/json.js');
@@ -866,7 +866,7 @@ export const commands: CLICommandDef[] = [
         .description('Mark an issue line in a curated list as done with strikethrough + Done sub-bullet (#1299)')
         .requiredOption('--pr-url <url>', 'PR URL to record on the Done sub-bullet')
         .requiredOption('--pr-status <text>', 'Trailing status, e.g. "merged" or "CI passing"')
-        .requiredOption('--list-path <file>', 'Path to the markdown issue list')
+        .option('--list-path <file>', 'Path to the markdown issue list (defaults to the configured issueListPath)')
         .option('--json', 'Output as JSON')
         .action(async (issueUrl, options) => {
           const { ListMarkDoneOutputSchema } = await import('./formatters/json.js');

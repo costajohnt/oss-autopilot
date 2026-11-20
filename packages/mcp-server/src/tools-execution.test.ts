@@ -40,6 +40,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runComments: vi.fn(),
   runPost: vi.fn(),
   runClaim: vi.fn(),
+  DEFAULT_CLAIM_MESSAGE: 'default claim text',
   runConfig: vi.fn(),
   runInit: vi.fn(),
   runSetup: vi.fn(),
@@ -74,6 +75,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     labelGuidelinesContent: actual.labelGuidelinesContent,
     // Real title fence (#1931): the wrapTool assertion below exercises it.
     fenceTitlesDeep: actual.fenceTitlesDeep,
+    // Real unattended check: post and claim run it before anything else (#1936).
+    assertAttended: actual.assertAttended,
     errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
     getStateManager: vi.fn().mockReturnValue({
       getState: vi.fn().mockReturnValue({
@@ -117,6 +120,8 @@ describe('tool execution', () => {
   let client: Client;
 
   beforeAll(async () => {
+    // guidelines-store asks for approval; this client cannot show the form.
+    vi.stubEnv('OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES', '1');
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -125,6 +130,7 @@ describe('tool execution', () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await client.close();
   });
 
@@ -513,6 +519,9 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
   let client: Client;
 
   beforeAll(async () => {
+    // This client cannot show an approval form; the gated tools run on the
+    // opt-in (the approval itself is covered in trust-boundary.test.ts).
+    vi.stubEnv('OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES', '1');
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -521,6 +530,7 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await client.close();
   });
 

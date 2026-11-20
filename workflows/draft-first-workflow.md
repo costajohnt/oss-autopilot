@@ -697,7 +697,7 @@ Options:
 If yes, run the deterministic `list-mark-done` CLI command (#1299) — it strikes through the issue line, appends the `**Done**` sub-bullet, and strikes through the repo heading if all issues under it are now done. Idempotent on a re-run.
 
 ```bash
-<prefix> list-mark-done <issue-url> --pr-url <pr-url> --pr-status "<brief-status>" --list-path <issueListPath> --json
+<prefix> list-mark-done <issue-url> --pr-url <pr-url> --pr-status "<brief-status>" --json
 ```
 
 Example invocation:
@@ -705,15 +705,16 @@ Example invocation:
 ```bash
 <prefix> list-mark-done https://github.com/suitenumerique/meet/issues/804 \
   --pr-url https://github.com/suitenumerique/meet/pull/42 \
-  --pr-status "CI passing" \
-  --list-path /Users/me/issues.md --json
+  --pr-status "CI passing" --json
 ```
+
+The command reads the configured issue list path itself. Do not pass `--list-path` with a stored path: a path pasted into shell text runs any `$(...)` it contains.
 
 Inspect the JSON output before announcing anything:
 
 - `success: true` with `data.marked: true` → the file was updated. Continue to step 2. Note that `data.remainingUnderRepo` reports issues left under THIS repo's heading only — for the whole-list `remainingCount` in step 2, use `availableCount - 1` from the session-start `data.issueList`.
 - `success: true` with `data.marked: false` and `data.reason: "already marked done"` → idempotent re-run. Tell the user the line was already struck. Use the same whole-list `remainingCount` calculation (don't double-decrement).
-- `success: false` with the error mentioning "Issue URL not found" → STOP. Do NOT announce the list was updated and do NOT advance to step 2. Surface the error to the user with the URL and `--list-path` you used; ask whether to retry with a different path/URL or fall back to a manual edit.
+- `success: false` with the error mentioning "Issue URL not found" → STOP. Do NOT announce the list was updated and do NOT advance to step 2. Surface the error to the user with the URL and the error message; ask whether to retry with a different path/URL or fall back to a manual edit.
 
 Do NOT hand-edit the list file with the Edit tool; the deterministic command avoids drift between this prose and the marker logic.
 

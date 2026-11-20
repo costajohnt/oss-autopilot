@@ -97,6 +97,7 @@ export {
   GistDiscoveryError,
   GistFileSizeError,
   GIST_FILE_SIZE_REMEDY,
+  assertAttended,
   errorMessage,
   getHttpStatusCode,
   isRateLimitError,

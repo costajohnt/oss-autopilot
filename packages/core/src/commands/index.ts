@@ -67,7 +67,7 @@ export { runComments } from './comments.js';
 /** Post a comment to a GitHub issue or PR. */
 export { runPost } from './comments.js';
 /** Post a claim comment on a GitHub issue. */
-export { runClaim } from './comments.js';
+export { runClaim, DEFAULT_CLAIM_MESSAGE } from './comments.js';
 
 // ── Configuration & Setup ───────────────────────────────────────────────────
 

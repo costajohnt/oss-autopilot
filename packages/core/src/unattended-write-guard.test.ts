@@ -20,6 +20,12 @@
  * shorthand), `octokit.paginate('POST ...')`, a `gh` or `git push` built from
  * non-literal arguments, a shell-string `exec`, and writes made by dependencies.
  *
+ * A second gate (#1936) covers the MCP tools: a tool that reaches a command
+ * guarded this way must ask the user through `requireApproval`, or be exempt
+ * by name. It parses `tools.ts`, requires the handler argument of each
+ * `registerTool` call to be the `requireApproval(...)` call itself, and only
+ * sees commands named inside that `registerTool` call.
+ *
  * `packages/dashboard` is not scanned: it is a browser SPA with no GitHub
  * client; its POSTs go to the local dashboard server, whose handlers are in core.
  */
@@ -27,6 +33,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import path from 'node:path';
+import * as ts from 'typescript';
 
 const PACKAGES_DIR = path.resolve(__dirname, '../..');
 const SCAN_ROOTS = ['core/src', 'mcp-server/src'];
@@ -132,6 +139,62 @@ const FINDINGS = SCAN_ROOTS.flatMap((root) => scanRoot(root));
 const UNGUARDED = FINDINGS.filter((finding) => !finding.guarded);
 const ALLOWED_KEYS = new Set(Object.keys(ALLOWED));
 
+// ── MCP approval gate (#1936) ─────────────────────────────────────────
+// A command that refuses unattended is one that needs a person. When an MCP
+// tool reaches such a command, the tool must ask that person through
+// `requireApproval` (mcp-server/src/trust-boundary.ts) or be listed here.
+
+/** Guarded commands an MCP tool may call without `requireApproval`. Value: why. */
+const MCP_APPROVAL_EXEMPT: Record<string, string> = {};
+
+const EXPORTED_FUNCTION = /^export (?:async )?function (\w+)\(/;
+
+/** Exported functions with `assertAttended(...)` as a direct body statement. */
+function attendedOnlyFunctions(raw: string): string[] {
+  const lines = raw.split('\n');
+  return lines.flatMap((line, index) => {
+    const name = EXPORTED_FUNCTION.exec(line)?.[1];
+    if (name === undefined) return [];
+    const end = lines.indexOf('}', index);
+    return lines.slice(index, end).some((bodyLine) => DIRECT_GUARD.test(bodyLine)) ? [name] : [];
+  });
+}
+
+/**
+ * The attended-only commands each `server.registerTool(...)` call references
+ * when its handler argument is not itself a `requireApproval(...)` call. A
+ * gate nested deeper, or mentioned only in a comment, does not count.
+ */
+function ungatedToolCommands(toolsSource: string, attendedOnly: string[]): string[] {
+  const file = ts.createSourceFile('tools.ts', toolsSource, ts.ScriptTarget.Latest, true);
+  const ungated: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === 'server.registerTool') {
+      const handler = node.arguments[2];
+      const gated =
+        handler !== undefined && ts.isCallExpression(handler) && handler.expression.getText(file) === 'requireApproval';
+      if (!gated) {
+        const words = new Set(node.getText(file).match(/\w+/g));
+        ungated.push(...attendedOnly.filter((name) => words.has(name)));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return ungated;
+}
+
+const COMMANDS_DIR = path.join(PACKAGES_DIR, 'core/src/commands');
+const ATTENDED_ONLY = fs
+  .readdirSync(COMMANDS_DIR)
+  .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+  .flatMap((file) => attendedOnlyFunctions(fs.readFileSync(path.join(COMMANDS_DIR, file), 'utf8')));
+const MCP_EXEMPT_NAMES = new Set(Object.keys(MCP_APPROVAL_EXEMPT));
+const UNGATED_TOOL_COMMANDS = ungatedToolCommands(
+  fs.readFileSync(path.join(PACKAGES_DIR, 'mcp-server/src/tools.ts'), 'utf8'),
+  ATTENDED_ONLY,
+);
+
 /** Scanner fixtures: the unguarded calls in a source text, and a one-function file with this body. */
 const unguardedCalls = (source: string): string[] =>
   scanSource('x.ts', source)
@@ -162,6 +225,49 @@ describe('unattended write guard (#1945)', () => {
   it('has no stale allowlist entries', () => {
     const stale = Object.keys(ALLOWED).filter((key) => UNGUARDED.every((finding) => finding.key !== key));
     expect(stale, 'ALLOWED entry no longer matches an unguarded write; remove it.').toEqual([]);
+  });
+
+  describe('MCP approval gate (#1936)', () => {
+    it('finds the commands that refuse unattended', () => {
+      expect(ATTENDED_ONLY).toEqual(expect.arrayContaining(['runPost', 'runClaim', 'runGuidelinesStore']));
+    });
+
+    it('every MCP tool that reaches one asks the user through requireApproval or is exempt', () => {
+      const violations = UNGATED_TOOL_COMMANDS.filter((name) => !MCP_EXEMPT_NAMES.has(name));
+      expect(
+        violations,
+        'An MCP tool calls a command that refuses unattended, without requireApproval(...) in its registerTool call. ' +
+          'Wrap the handler (see the post tool), or add the command to MCP_APPROVAL_EXEMPT with the reason.',
+      ).toEqual([]);
+    });
+
+    it('has no stale exemptions', () => {
+      const stale = [...MCP_EXEMPT_NAMES].filter((name) => !UNGATED_TOOL_COMMANDS.includes(name));
+      expect(stale, 'MCP_APPROVAL_EXEMPT entry no longer matches an ungated tool; remove it.').toEqual([]);
+    });
+
+    it('flags a tool registered without the gate and accepts one with it', () => {
+      const bare = "server.registerTool('merge', {}, wrapTool(runMerge));";
+      const gated = "server.registerTool('merge', {}, requireApproval(server, 'merge', preview, wrapTool(runMerge)));";
+      const source = "export async function runMerge() {\n  assertAttended('merge');\n  await x();\n}\n";
+      expect(attendedOnlyFunctions(source)).toEqual(['runMerge']);
+      expect(ungatedToolCommands(bare, ['runMerge'])).toEqual(['runMerge']);
+      expect(ungatedToolCommands(gated, ['runMerge'])).toEqual([]);
+    });
+
+    it.each([
+      ['named only in a comment', "server.registerTool('merge', {}, /* requireApproval( */ wrapTool(runMerge));"],
+      [
+        'wrapped inside another call',
+        "server.registerTool('merge', {}, wrapTool(requireApproval(server, 'merge', p, runMerge)));",
+      ],
+      [
+        'in the options instead of the handler',
+        "server.registerTool('merge', { x: requireApproval(a) }, wrapTool(runMerge));",
+      ],
+    ])('does not count the gate %s', (_label, source) => {
+      expect(ungatedToolCommands(source, ['runMerge'])).toEqual(['runMerge']);
+    });
   });
 
   describe('scanner', () => {

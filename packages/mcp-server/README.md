@@ -95,6 +95,8 @@ npx @oss-autopilot/mcp@latest --http --port 3001
 
 The server listens at `http://127.0.0.1:3001/mcp` and accepts POST requests.
 
+The HTTP transport is stateless, so it cannot show the user an approval form: `post`, `claim` and `guidelines-store` refuse there unless the server is started with `OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES=1` (see [below](#what-the-tools-will-not-do-on-the-models-word)).
+
 #### Authentication
 
 HTTP mode requires a bearer token on every request (stdio mode does not — it inherits the parent process identity). On first `--http` startup, the server generates a random 32-byte token and writes it to `~/.oss-autopilot/mcp.token` with `0600` permissions. The path and "newly generated" marker are logged to stderr at startup.
@@ -115,7 +117,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 |------|-------------|-----------|
 | `daily` | Run daily PR monitoring check with prioritized summary | No |
 | `status` | Show current PR tracking status | Yes |
-| `search` | Search GitHub for contributable issues | Yes |
+| `search` | Search GitHub for contributable issues; records the issues it showed in state | No |
 | `features` | Find feature-scoped opportunities in repos with 3+ merged PRs (relationship-anchored) | Yes |
 | `vet` | Analyze an issue for contribution suitability; records the vet-time prediction and issue traits (labels, author association, competing PRs, first PR in the repo) for calibration | No |
 | `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting; also returns the issue author, author association and comment count | Yes |
@@ -127,11 +129,11 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `strategy` | On-demand contribution strategy snapshot via `computeStrategy()` (#1243) | Yes |
 | `eval` | Calibration and outcome report from the outcome ledger (#1825) | Yes |
 | `comments` | Fetch and display PR comments | Yes |
-| `post` | Post a comment on an issue or PR | No |
-| `claim` | Claim an issue by posting a comment | No |
-| `config` | Get or set configuration values | No |
+| `post` | Post a comment on an issue or PR; asks the user to approve first (see below) | No |
+| `claim` | Claim an issue by posting a comment; asks the user to approve first (see below) | No |
+| `config` | Get or set configuration values (not `diffToolCustomCommand` or `diffTool=custom`, see below) | No |
 | `init` | Initialize with a GitHub username | No |
-| `setup` | Configure preferences (languages, interests) | No |
+| `setup` | Configure preferences (languages, interests); same two settings refused | No |
 | `check-setup` | Check if setup is complete | Yes |
 | `startup` | Run startup checks (auth, state, config) | No |
 | `dismiss` | Dismiss an issue from notifications | No |
@@ -146,9 +148,17 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `state-unlink` | Disconnect from Gist persistence and switch to local-only mode | No |
 | `guidelines-list` | List repos that have stored guidelines (always empty in local mode) | Yes |
 | `guidelines-get` | Read per-repo learning guidelines extracted from past PR feedback | Yes |
-| `guidelines-store` | Persist per-repo guidelines the user has reviewed (`reviewed: true` required; refused when unattended; 8 KB cap; requires Gist mode) | No |
+| `guidelines-store` | Persist per-repo guidelines the user has reviewed (`reviewed: true` required; asks the user to approve first, see below; refused when unattended; 8 KB cap; requires Gist mode) | No |
 | `guidelines-reset` | Tombstone the guidelines file for a repo | No |
 | `guidelines-fetch-corpus` | Fetch raw PR comment bundles for the host's `extract-learnings` prompt to consume | No |
+
+
+### What the tools will not do on the model's word
+
+Tool arguments come from a model that also reads text written by strangers, so two rules are enforced in the server rather than in the tool descriptions.
+
+- **`post`, `claim` and `guidelines-store` ask the user.** `post` and `claim` write a public comment under your GitHub account and carry `destructiveHint` and `openWorldHint`; `guidelines-store` overwrites a repo's stored guidelines and carries `destructiveHint`. When the host can show an MCP elicitation form, the server sends it the target and the exact text with its length, and writes only if you tick the box and accept; declining, cancelling, leaving the box empty or not answering within two minutes refuses the call. The answer travels host to server, so the model cannot supply it. Text containing invisible formatting or control characters (bidi controls, zero-width characters, variation selectors other than one after an emoji, and the like) is refused, because the form could not show it faithfully. A host that cannot show a form (no elicitation, URL-only elicitation, or the stateless HTTP transport, which never knows the client's capabilities) is refused, and the refusal names the CLI command to run instead, unless the server was started with `OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES=1`. With that set, such a host runs the tools on its own permission prompt alone: do not auto-approve them there. All three refuse outright while `OSS_AUTOPILOT_UNATTENDED` is set.
+- **Settings that become commands are terminal-only.** `diffToolCustomCommand` is a command line the pre-commit review runs, and `diffTool=custom` switches it on. `config` and `setup` refuse both; set them yourself with `oss-autopilot setup --set diffTool=custom --set diffToolCustomCommand="<command>"`. The review workflow also shows the stored command and asks before its first run in a session.
 
 ## Resources Reference
 

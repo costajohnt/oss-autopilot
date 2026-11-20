@@ -19,13 +19,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { ENTRY_LINE_RE, ENTRY_MARKER_RE, lineMentionsUrl } from './curated-list.js';
+import { configuredIssueListPath } from './locate-issue-list.js';
 
 export interface MarkDoneOptions {
   issueUrl: string;
   prUrl: string;
   /** Free-text trailing status, e.g. "CI passing", "merged". */
   prStatus: string;
-  listPath: string;
+  /** Defaults to the configured issueListPath. */
+  listPath?: string;
 }
 
 export interface MarkDoneOutput {
@@ -221,7 +223,7 @@ export function markIssueAsDone(
 
 /** Read → transform → write atomically (tmp + rename) so a crash mid-write can't corrupt the file. */
 export async function runMarkIssueListItemDone(options: MarkDoneOptions): Promise<MarkDoneOutput> {
-  const filePath = path.resolve(options.listPath);
+  const filePath = path.resolve(options.listPath ?? configuredIssueListPath());
 
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);

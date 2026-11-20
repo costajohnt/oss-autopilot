@@ -212,7 +212,17 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
 | `inline` | Run the appropriate diff command based on `changeSource` and **output the full diff as a markdown code block in your text response** |
 | `sourcetree` | Run `stree .` to open the repo in SourceTree. Tell the user: "Opened in SourceTree — review the diff there." |
 | `vscode` | Run `code --diff` for each changed file against its HEAD version. Tell the user: "Opened diffs in VS Code." |
-| `custom` | Read `data.config.diffToolCustomCommand` and run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+| `custom` | Read `data.config.diffToolCustomCommand`. Before the first use in a session, show the user the exact stored command and ask (see below); then run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+
+**Custom diff command: confirm before the first run in a session.** The stored command is a setting, and settings sync between machines, so the text may not be what the user typed on this one. Never run it unseen. Print the command verbatim in a code block, then use AskUserQuestion:
+  ```
+  Question: "Run this stored diff command? It runs on your machine with the repo path appended."
+  Header: "Diff command"
+  Options:
+    - "Run it" — Use this command for the rest of the session
+    - "Show the diff inline instead" — Do not run it; print the diff here
+  ```
+Only "Run it" permits running the command, and only the exact text shown. If the stored command differs later in the session, ask again. On "Show the diff inline instead", use the `inline` action and tell the user they can change the setting with `oss-autopilot setup --set diffToolCustomCommand="<command>"` or `--set diffTool=inline`. The command can only be set from a terminal: the MCP `config` and `setup` tools refuse `diffToolCustomCommand` and `diffTool=custom`.
 
 - **If the diff command or external tool fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly (the user has explicitly chosen to proceed without reviewing the raw diff).
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
