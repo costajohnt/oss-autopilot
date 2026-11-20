@@ -65,6 +65,21 @@ const approvalSchema = z.object({
   approve: z.boolean().describe('Send this under my GitHub account'),
 });
 
+/**
+ * Characters that change how text displays without showing themselves:
+ * direction overrides and isolates (U+202A-U+202E, U+2066-U+2069) and
+ * zero-width characters (U+200B-U+200D, U+FEFF). Stripping them would post
+ * text other than what the user approved, so a preview containing one is
+ * refused instead. Ceiling: emoji sequences joined by U+200D are refused too.
+ */
+const HIDDEN_CHARACTERS = /[\u202A-\u202E\u2066-\u2069\u200B-\u200D\uFEFF]/u;
+
+/** "N characters", counted in code points, for an approval preview header. */
+export function characterCount(text: string): string {
+  const count = [...text].length;
+  return `${count} character${count === 1 ? '' : 's'}`;
+}
+
 function refusal(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true as const };
 }
@@ -105,6 +120,15 @@ export function requireApproval<A, R>(
     } catch (e) {
       return refusal(errorMessage(e));
     }
+    const shown = preview(args);
+    const hidden = HIDDEN_CHARACTERS.exec(shown);
+    if (hidden) {
+      const code = hidden[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0');
+      return refusal(
+        `Refusing to ${action}: the text contains an invisible character (U+${code}) that changes how it displays, ` +
+          'so the user could not see what would be sent. Remove it and try again.',
+      );
+    }
     if (!canShowForm(hostCapabilities())) {
       if (process.env[ALLOW_UNCONFIRMED_ENV] === '1') return handler(args);
       return refusal(
@@ -117,7 +141,7 @@ export function requireApproval<A, R>(
     if (answer.kind === 'missing') {
       return inputRequired({
         inputRequests: {
-          [APPROVAL_KEY]: inputRequired.elicit({ message: preview(args), requestedSchema: approvalSchema }),
+          [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema }),
         },
       });
     }

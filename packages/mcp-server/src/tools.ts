@@ -63,7 +63,13 @@ import {
   GIST_FILE_SIZE_REMEDY,
   ConfigurationError,
 } from '@oss-autopilot/core';
-import { assertMcpSettable, assertMcpSettablePairs, mcpSettableKeys, requireApproval } from './trust-boundary.js';
+import {
+  assertMcpSettable,
+  assertMcpSettablePairs,
+  characterCount,
+  mcpSettableKeys,
+  requireApproval,
+} from './trust-boundary.js';
 
 // ── GitHub URL validation (#1053) ─────────────────────────────────────
 // Previously every `url` / `prUrl` / `issueUrl` was `z.string()` with no
@@ -694,7 +700,7 @@ export function registerTools(server: McpServer): void {
       'post a comment',
       'oss-autopilot post <url> "<message>"',
       (args: Parameters<typeof runPost>[0]) =>
-        `Post this comment on ${args.url} under your GitHub account?\n\n${args.message}`,
+        `Post this comment (${characterCount(args.message)}) on ${args.url} under your GitHub account?\n\n${args.message}`,
       wrapTool(runPost),
     ),
   );
@@ -716,8 +722,10 @@ export function registerTools(server: McpServer): void {
       'claim an issue',
       'oss-autopilot claim <issue-url> ["<message>"]',
       (args: Parameters<typeof runClaim>[0]) =>
-        `Claim ${args.issueUrl} by posting this comment under your GitHub account?\n\n` +
-        (args.message || '(the default message, which asks the maintainers to assign the issue to you)'),
+        args.message
+          ? `Claim ${args.issueUrl} by posting this comment (${characterCount(args.message)}) under your GitHub account?\n\n${args.message}`
+          : `Claim ${args.issueUrl} by posting the default message under your GitHub account?\n\n` +
+            '(the default message, which asks the maintainers to assign the issue to you)',
       wrapTool(runClaim),
     ),
   );
@@ -1097,7 +1105,7 @@ export function registerTools(server: McpServer): void {
       'store guidelines',
       'oss-autopilot guidelines store --repo <owner/repo> --reviewed (content on stdin)',
       (args: { repo: string; content: string }) =>
-        `Store these guidelines for ${args.repo}, replacing any it has now?\n\n${args.content}`,
+        `Store these guidelines (${characterCount(args.content)}) for ${args.repo}, replacing any it has now?\n\n${args.content}`,
       wrapTool((args: { repo: string; content: string; reviewed: boolean }) =>
         runGuidelinesStore({ repo: args.repo, content: args.content, reviewed: args.reviewed }),
       ),

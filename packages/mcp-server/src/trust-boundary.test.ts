@@ -217,6 +217,44 @@ describe('user approval before a GitHub write (#1936)', () => {
     expect(writer.run).toHaveBeenCalledWith(writer.args);
   });
 
+  it.each([
+    ['post', { url: ISSUE, message: 'héllo 👋' }, '(7 characters)'],
+    ['claim', { issueUrl: ISSUE, message: 'mine' }, '(4 characters)'],
+    ['guidelines-store', { repo: 'owner/repo', content: 'x', reviewed: true }, '(1 character)'],
+  ])('%s shows the length in the header', async (name, args, count) => {
+    const { client, asked } = await connect(FORM_HOST, APPROVED);
+    await client.callTool({ name, arguments: args });
+    expect(asked[0].message.split('\n')[0]).toContain(count);
+  });
+
+  const HIDDEN = ['\u202A', '\u202E', '\u2066', '\u2069', '\u200B', '\u200D', '\uFEFF'];
+  const hiddenCases = HIDDEN.flatMap((char) => [
+    ['post', { url: ISSUE, message: `fine${char}text` }, mockRunPost, char] as const,
+    ['claim', { issueUrl: ISSUE, message: `mine${char}` }, mockRunClaim, char] as const,
+    [
+      'guidelines-store',
+      { repo: 'owner/repo', content: `${char}rules`, reviewed: true },
+      mockRunGuidelinesStore,
+      char,
+    ] as const,
+  ]);
+
+  it.each(hiddenCases)('%s refuses text with an invisible character (%#)', async (name, args, run, char) => {
+    const code = `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
+    for (const [capabilities, optIn] of [
+      [FORM_HOST, ''],
+      [{}, '1'],
+    ] as const) {
+      vi.stubEnv(ALLOW_UNCONFIRMED, optIn);
+      const { client, asked } = await connect(capabilities, APPROVED);
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain(`invisible character (${code})`);
+      expect(asked).toEqual([]);
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('claim shows a custom message verbatim', async () => {
     const { client, asked } = await connect(FORM_HOST, APPROVED);
     await client.callTool({ name: 'claim', arguments: { issueUrl: ISSUE, message: 'I can take this one.' } });
