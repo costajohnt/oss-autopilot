@@ -99,15 +99,15 @@ Store the file content in session context as `contributingGuidelines` for reuse 
 
 #### 2. Extract actionable requirements
 
-AI policy, AI disclosure, CLA, commit rules and the gate before a PR (claim the issue first, wait for a maintainer label, collaborators only) are not extracted here: `vet` records them as the repo's contribution policy, and the `repo-policy` check of `pr-preflight` enforces them. Read the commit rules once for the commit message:
+When the repo has a recorded contribution policy, its AI policy, AI disclosure, CLA, the commit rules it lists and the gate before a PR (claim the issue first, wait for a maintainer label, collaborators only) are not extracted here: `vet` records them, and the `repo-policy` check of `pr-preflight` enforces them. Read the policy once:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy get --repo "{upstream-owner}/{upstream-repo}" --json
 ```
 
-`data.policy.commitRules` lists ids (`conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`); `data.policy` is null when nothing is recorded.
+`data.policy.commitRules` lists ids (`conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`). When `data.policy` is null, or `data.policy.aiPolicy` is `unknown`, nothing usable was recorded: extract the **CLA/DCO** row below from the file too.
 
-Read the file and extract a checklist of the other **actionable requirements**, things a contributor must do before submitting a PR. Typical categories:
+Read the file and extract a checklist of the **actionable requirements**, things a contributor must do before submitting a PR. Typical categories:
 
 | Category | Examples |
 |----------|----------|
@@ -115,6 +115,8 @@ Read the file and extract a checklist of the other **actionable requirements**, 
 | **Documentation** | "Update the user manual", "Add JSDoc comments", "Update README" |
 | **Changelog** | "Add a CHANGELOG entry", "Update CHANGES.md" |
 | **Code style** | "Run `cargo fmt`", "Run `npm run lint`", "Follow the style guide" |
+| **Commit format** | Conventions `commitRules` does not cover: "Prefix the subject with the package name", "Sign your commits" (GPG/SSH signing), "Wrap the body at 72 columns" |
+| **CLA/DCO** | Only when no policy is recorded (above): "Sign the CLA", "Add a Signed-off-by line" |
 | **Branch** | "Branch from `develop`", "Target the `next` branch" |
 | **Scope** | "One feature per PR", "Keep PRs small" |
 
@@ -129,6 +131,7 @@ For each extracted requirement, check whether the current changes satisfy it:
 - **Changelog:** Add a changelog/changeset entry when (a) a bot or CI check requires it on this PR, or (b) CONTRIBUTING requires it (CONTRIBUTING alone is sufficient; recent merges never override it). Only when CONTRIBUTING is silent, check 3 recent merged PRs of the same kind (`gh pr list --repo {upstream-owner}/{upstream-repo} --state merged --limit 3 --json files`) and add one if they include one. Many repos generate changelogs from PR titles at release time. Otherwise mark it "N/A", not a gap.
 - **Code style:** Run the project's formatter/linter command if discoverable (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If the command is not discoverable, mark as "Unable to verify automatically — manual check needed."
 - **Commit rules:** Does the planned commit message follow every id in `data.policy.commitRules` (Conventional Commits format, a `Signed-off-by:` line, no `Fixes #N` style keyword in the commit message)?
+- **Commit format:** Does the planned commit message (and signing setup) match the other conventions extracted above?
 - **Branch target:** Parse the required branch name from the guidelines (e.g., "branch from `develop`") and compare against the current base branch. If they differ, mark as a gap.
 
 #### 4. Present compliance checklist

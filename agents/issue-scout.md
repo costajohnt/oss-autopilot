@@ -72,12 +72,12 @@ The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scout s
 
 **If matched:** (1) recommendation → `skip` with reason `"anti-LLM policy"`; (2) quote the matching language in the summary so the user can verify the match; (3) do NOT proceed even if score is high.
 
-**The ban is recorded already.** `vet` stores what it read as the repo's contribution policy (`policy` on `vet --json`, `aiPolicy: "banned"` here), unreviewed, and `search` leaves out every repo with a banned policy or in `aiPolicyBlocklist`. False positives are possible, so present the match to the user and use AskUserQuestion with:
+**The ban is recorded, unreviewed.** `vet` stores what it read as the repo's contribution policy (`policy` on `vet --json`, `aiPolicy: "banned"` with `reviewedByUser: false`) and recommends `skip`. An unreviewed ban does NOT drop the repo from `search`: `search` leaves out only `aiPolicyBlocklist` and bans the user confirmed, and lists the rest in `policyBannedRepos` (candidates from those repos carry `policy`). False positives are possible, so present the match to the user and use AskUserQuestion with:
 - "Confirm the ban" — "Record it as reviewed; never surface issues from this repo again"
+- "Skip this issue but leave the repo searchable" — "Treat as one-off; leave the unreviewed record as is"
 - "Undo (false positive)" — "Record that the repo accepts AI-assisted contributions"
-- "Decide later" — "Leave the unreviewed record; the repo stays out of search"
 
-Run the matching command (both are refused in unattended runs; there, leave the record as is):
+Run the matching command for the first or last option (both are refused in unattended runs; there, leave the record as is):
 
 ```bash
 # Confirm the ban

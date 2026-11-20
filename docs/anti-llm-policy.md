@@ -77,7 +77,7 @@ If the scan flagged a repo that actually welcomes AI help:
 
 1. Verify the phrase in-context by reading the source file the excerpt cites.
 2. If it's a false positive, file an issue in this repo with the exact matching text.
-3. Record the repo's real policy: `oss-autopilot policy set --repo owner/repo --ai-policy allowed`. `vet` stores what the scan found as the repo's contribution policy, unreviewed, and search leaves banned repos out; a policy you set is never overwritten by a later vet.
+3. Record the repo's real policy: `oss-autopilot policy set --repo owner/repo --ai-policy allowed`. `vet` stores what the scan found as the repo's contribution policy, unreviewed, and recommends skip; search leaves out only bans you confirmed and lists unreviewed ones in `policyBannedRepos`. A policy you set is never overwritten by a later vet.
 4. If the repo is in `aiPolicyBlocklist`, `policy set` cannot lift that ban: remove it from the list instead.
 
    ```bash

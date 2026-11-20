@@ -198,7 +198,20 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy get --repo
 | `banned` | Flag AI attribution as a `Critical` issue. The maintainer does not accept AI-assisted contributions. |
 | `disclosure-required` | Flag the ABSENCE of the disclosure in `disclosureText` as `Critical` when the contribution involved AI. Presence of attribution is correct. |
 | `allowed` | Treat presence of AI attribution as acceptable. Do NOT flag it. |
-| `unknown`, or `data.policy` is null | Default rule — flag AI attribution as a `Recommended` issue (verify the target repo accepts this before merge), and say no policy is recorded for the repo. |
+| `unknown`, or `data.policy` is null | Classify from the repo's docs instead (below). |
+
+**Fallback when no policy is recorded or `aiPolicy` is `unknown`:** read the target repo's docs (CONTRIBUTING.md / README / CODE_OF_CONDUCT) and classify the project's AI-assistance regime. The deterministic patterns are documented as reference scans in `packages/core/src/core/anti-llm-policy.ts` (`scanForAntiLLMPolicy` and `scanAIDisclosureRequirement` from #911 / #1269); the function names tell you what to grep for.
+
+| Regime detected | Rule |
+|---|---|
+| **Anti-LLM** — phrases like "no AI-generated", "ban Copilot", "AI contributions will be closed" | Flag AI attribution as a `Critical` issue. The maintainer does not accept AI-assisted contributions. |
+| **Disclosure mandatory** — "must disclose AI", "required to indicate AI assistance", "PRs using AI must be labeled" | Flag the ABSENCE of AI attribution as `Critical` when the contribution involved AI. Presence of attribution is correct. |
+| **Disclosure recommended / invited** — "should disclose", "we ask you to indicate AI", "feel free to mention AI tools" | Treat presence of AI attribution as acceptable. Do NOT flag it. |
+| **No explicit policy** | Default rule — flag AI attribution as a `Recommended` issue (verify the target repo accepts this before merge). |
+
+When the repo's docs are unfetchable (network failure, repo without CONTRIBUTING.md), state that explicitly in the report instead of silently falling through to the default — the user should know the rule was inferred without evidence.
+
+Precision over recall: a false positive on either side actively misleads the user. If a phrase doesn't combine an explicit verb (`must`, `ban`, `disclose`, `should`) with an AI/LLM noun, do NOT classify the regime.
 
 ## Principles
 - Constructive, not critical.
