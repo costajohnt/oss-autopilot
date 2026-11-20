@@ -432,6 +432,8 @@ describe('what the approval form shows (#1936)', () => {
     '\u{2764}\u{FE0F}\u{FE0F}',
     '\u{3164}',
     '\u{2028}',
+    'a\u{D800}b',
+    '\u{DC00}',
   ];
   const hiddenCases = HIDDEN.flatMap((char) => [
     ['post', { url: ISSUE, message: `fine${char}text` }, mockRunPost, char] as const,

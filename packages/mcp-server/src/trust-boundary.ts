@@ -70,12 +70,13 @@ const approvalSchema = z.object({
  * bidi controls, zero-width characters, word joiner, soft hyphen, tag
  * characters), default-ignorable code points (variation selectors, combining
  * grapheme joiner, Hangul fillers), line and paragraph separators,
- * private-use and unassigned code points, and C0/C1 controls other than tab,
- * newline and carriage return. Stripping them would post text other than what
+ * private-use and unassigned code points, lone surrogates (\p{Cs}: the
+ * target is ES2022, where String#isWellFormed is not typed), and C0/C1
+ * controls other than tab, newline and carriage return. Stripping them would post text other than what
  * the user approved, so a preview containing one is refused instead.
  * Ceiling: \p{Cf} includes U+200D, so emoji ZWJ sequences are refused too.
  */
-const HIDDEN_CHARACTERS = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/u;
+const HIDDEN_CHARACTERS = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/u;
 /** The one variation selector allowed: a single U+FE0E or U+FE0F right after a pictograph (as in ❤️). */
 const EMOJI_PRESENTATION = /(\p{Extended_Pictographic})[\u{FE0E}\u{FE0F}]/gu;
 
