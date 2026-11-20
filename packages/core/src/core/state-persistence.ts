@@ -543,8 +543,9 @@ function isSameIdentity(a: StateFileIdentity, b: StateFileIdentity): boolean {
 /**
  * Result of {@link loadState}: the loaded state, the file's identity for
  * change detection, and (only when the main file was rejected) recovery
- * details. `fileId` is null when there is no baseline to compare against:
- * no state file yet, or fresh state that replaces a rejected file.
+ * details. `fileId` is null only when there was no state file to take a
+ * baseline from. Fresh state that replaces a rejected file keeps the
+ * rejected file's identity, so an intervening valid write is not clobbered.
  */
 export interface LoadStateResult {
   state: AgentState;
@@ -656,6 +657,8 @@ export function loadState(): LoadStateResult {
   migrateFromLegacyLocation();
 
   const statePath = getStatePath();
+  // Outside the try so the fresh-state recovery in the catch keeps it (#2006).
+  let fileId: StateFileIdentity | null = null;
 
   try {
     if (fs.existsSync(statePath)) {
@@ -665,7 +668,7 @@ export function loadState(): LoadStateResult {
       // caller can recover from by reloading. Taken after the read, the same
       // race pairs stale content with the new identity and the save silently
       // overwrites the other writer.
-      let fileId = statFileIdentity(statePath);
+      fileId = statFileIdentity(statePath);
       const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
       assertNotNewerVersion(raw, 'state file');
@@ -709,7 +712,7 @@ export function loadState(): LoadStateResult {
           return { state: restoredState, fileId: statFileIdentity(statePath), recovery };
         }
         warn(MODULE, 'No valid backup found, starting fresh');
-        return { state: createFreshState(), fileId: null, recovery: { source: 'fresh', rejectedPath, reason } };
+        return { state: createFreshState(), fileId, recovery: { source: 'fresh', rejectedPath, reason } };
       }
 
       // Save migrated state only after validation succeeds
@@ -750,7 +753,7 @@ export function loadState(): LoadStateResult {
       return { state: restoredState, fileId: statFileIdentity(statePath), recovery };
     }
     warn(MODULE, 'No valid backup found, starting fresh');
-    return { state: createFreshState(), fileId: null, recovery: { source: 'fresh', rejectedPath, reason } };
+    return { state: createFreshState(), fileId, recovery: { source: 'fresh', rejectedPath, reason } };
   }
 
   debug(MODULE, 'No existing state found, initializing...');
@@ -805,8 +808,7 @@ function cleanupBackups(): void {
  * differs from the one the caller last loaded or saved, throws
  * `ConcurrencyError` instead of overwriting. This prevents the classic
  * read-modify-write lost-update race across processes (see issues #1030,
- * #2006). Pass `null` to disable the check (no file at load, or fresh
- * state replacing a rejected file).
+ * #2006). Pass `null` to disable the check (no file at load).
  *
  * The check runs *inside* the advisory lock so the compare-and-swap is
  * atomic with respect to the write.
@@ -910,16 +912,11 @@ export function reloadStateIfChanged(lastLoaded: StateFileIdentity | null): Load
     return null;
   }
   if (lastLoaded !== null && isSameIdentity(current, lastLoaded)) return null;
-  const result = loadStateForReload();
-  if (result === null) return null;
-  // Re-stat only on the recovery paths. There loadState rewrote the file
-  // itself (backup restore) or returned null (fresh state), and a current
-  // identity stops a reload on every request. On the clean path the baseline
-  // was taken BEFORE the read on purpose: replacing it with a later stat would
-  // pair the content we hold with a newer writer's identity, and the next save
-  // would overwrite that writer without a ConcurrencyError. A baseline that
-  // is merely old costs one more reload, which converges. A failed stat here
-  // just triggers another reload next cycle.
-  if (result.recovery) result.fileId = statFileIdentity(statePath);
-  return result;
+  // No re-stat here: loadState's baseline was taken BEFORE its read (or
+  // after its own backup restore), and replacing it with a later stat would
+  // pair the content we hold with a newer writer's identity, so the next
+  // save would overwrite that writer without a ConcurrencyError. That holds
+  // for the fresh-state recovery too (#2006). A baseline that is merely old
+  // costs one more reload, which converges.
+  return loadStateForReload();
 }

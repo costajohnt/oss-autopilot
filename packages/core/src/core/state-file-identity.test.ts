@@ -156,6 +156,30 @@ describe('saveState compare-and-swap uses file identity (#2006)', () => {
     expect(diskUsername()).toBe('alice-4');
   });
 
+  it.each([
+    ['fails schema validation', JSON.stringify({ version: 4, config: 'not-an-object' })],
+    ['does not parse', '{ not json'],
+  ])('keeps the rejected file as the baseline when state.json %s and no backup exists', (_label, corrupt) => {
+    fs.writeFileSync(stateFile(), corrupt, { mode: 0o600 });
+    const loaded = loadState();
+    expect(loaded.recovery?.source).toBe('fresh');
+    expect(loaded.fileId).not.toBeNull();
+
+    // Another process writes a valid state.json before our first save.
+    atomicWriteFileSync(stateFile(), serializeState(withUsername('bob-repaired-it')), 0o600);
+
+    expect(() => saveState(loaded.state, loaded.fileId)).toThrow(ConcurrencyError);
+    expect(diskUsername()).toBe('bob-repaired-it');
+  });
+
+  it('a fresh-state recovery saves over the rejected file when nobody else wrote', () => {
+    fs.writeFileSync(stateFile(), '{ not json', { mode: 0o600 });
+    const sm = new StateManager(false);
+    expect(sm.getLoadRecovery()?.source).toBe('fresh');
+    sm.updateConfig({ githubUsername: 'alice' });
+    expect(diskUsername()).toBe('alice');
+  });
+
   it('a fresh install saves first time and own consecutive saves never conflict', () => {
     const sm = new StateManager(false);
     expect(fs.existsSync(stateFile())).toBe(false);
