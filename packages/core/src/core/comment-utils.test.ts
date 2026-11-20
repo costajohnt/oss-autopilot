@@ -141,6 +141,26 @@ describe('isAcknowledgmentComment', () => {
     expect(isAcknowledgmentComment('Can you add tests')).toBe(false);
     expect(isAcknowledgmentComment('I disagree with this approach')).toBe(false);
   });
+
+  it('should reject short requests that also contain an acknowledgment keyword (#1916)', () => {
+    expect(isAcknowledgmentComment("Thanks! Please rebase and I'll merge.")).toBe(false);
+    expect(isAcknowledgmentComment('Looks good, please squash')).toBe(false);
+    expect(isAcknowledgmentComment('Thanks, but this needs tests.')).toBe(false);
+    expect(isAcknowledgmentComment('LGTM, just fix the lint failure')).toBe(false);
+  });
+
+  it('should keep thanks for an update or a change as acknowledgments (#1916)', () => {
+    expect(isAcknowledgmentComment('Thanks for the update!')).toBe(true);
+    expect(isAcknowledgmentComment('Thanks for the change!')).toBe(true);
+    expect(isAcknowledgmentComment('Thanks, please update the docs')).toBe(false);
+    expect(isAcknowledgmentComment('Looks good, but change the default')).toBe(false);
+  });
+
+  it('should match request words on word boundaries only (#1916)', () => {
+    // "address" contains "add", "butter" contains "but"
+    expect(isAcknowledgmentComment('Thanks, I will look at the address parsing')).toBe(true);
+    expect(isAcknowledgmentComment('Thanks for the butter')).toBe(true);
+  });
 });
 
 describe('isReactionOnlyComment (#1862)', () => {
