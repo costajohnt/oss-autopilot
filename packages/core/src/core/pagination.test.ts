@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { paginateAll, paginateAllDetailed } from './pagination.js';
+import { paginateAll, paginateAllDetailed, paginateSearch } from './pagination.js';
 
 describe('paginateAll', () => {
   it('should fetch single page when results < perPage', async () => {
@@ -99,5 +99,71 @@ describe('paginateAllDetailed', () => {
     expect(result.items).toEqual([]);
     expect(result.truncated).toBe(false);
     expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('paginateSearch (#1928)', () => {
+  const fullPage = Array.from({ length: 100 }, (_, i) => i);
+
+  it('reads one page when it holds every result', async () => {
+    const fetchPage = vi.fn().mockResolvedValue({ data: { total_count: 2, incomplete_results: false, items: [1, 2] } });
+
+    const result = await paginateSearch(fetchPage);
+
+    expect(result).toEqual({ items: [1, 2], totalCount: 2, truncated: false });
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads and merges further pages until total_count is reached', async () => {
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { total_count: 103, items: fullPage } })
+      .mockResolvedValueOnce({ data: { total_count: 103, items: [100, 101, 102] } });
+
+    const result = await paginateSearch(fetchPage);
+
+    expect(result.items).toHaveLength(103);
+    expect(result.items.at(-1)).toBe(102);
+    expect(result.truncated).toBe(false);
+    expect(fetchPage).toHaveBeenNthCalledWith(2, 2);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not ask for another page when a full page is the whole result', async () => {
+    const fetchPage = vi.fn().mockResolvedValue({ data: { total_count: 100, items: fullPage } });
+
+    const result = await paginateSearch(fetchPage);
+
+    expect(result.truncated).toBe(false);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops at the page cap and reports the rest as truncated', async () => {
+    const fetchPage = vi.fn().mockResolvedValue({ data: { total_count: 950, items: fullPage } });
+
+    const result = await paginateSearch(fetchPage);
+
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+    expect(result).toMatchObject({ totalCount: 950, truncated: true });
+    expect(result.items).toHaveLength(300);
+  });
+
+  it('treats incomplete_results as truncated even when every counted result was read', async () => {
+    const fetchPage = vi.fn().mockResolvedValue({ data: { total_count: 1, incomplete_results: true, items: [1] } });
+
+    const result = await paginateSearch(fetchPage);
+
+    expect(result.truncated).toBe(true);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates a page error unchanged', async () => {
+    const error = new Error('API rate limit exceeded');
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { total_count: 500, items: fullPage } })
+      .mockRejectedValueOnce(error);
+
+    await expect(paginateSearch(fetchPage)).rejects.toBe(error);
   });
 });

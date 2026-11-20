@@ -31,7 +31,7 @@ import {
   isQuoteReplyTo,
   isStatusNudge,
 } from './comment-utils.js';
-import { paginateAll, paginateAllDetailed } from './pagination.js';
+import { paginateAll, paginateAllDetailed, paginateSearch } from './pagination.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './dates.js';
@@ -140,8 +140,8 @@ export interface FetchCommentedIssuesResult {
    */
   lookupFailures: number;
   /**
-   * Non-fatal problems for the run's warning channel: a claimed or open-PR
-   * issue that is gone, a comment thread too long to read to the end, an
+   * Non-fatal problems for the run's warning channel: a comment search that
+   * returned a partial list (#1928), a claimed or open-PR issue that is gone, a comment thread too long to read to the end, an
    * engagement time that does not parse, engaged issues with new activity
    * left unread because the comment-fetch cap bit. Each means the result
    * may be missing or misreporting something the user can act on.
@@ -248,19 +248,21 @@ export class IssueConversationMonitor {
 
     debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
 
-    // Search for open issues the user has commented on, updated within window
-    // Single page (100) is sufficient for most users; log if truncated.
-    const { data } = await this.octokit.search.issuesAndPullRequests({
-      q: `commenter:${username} type:issue state:open updated:>=${since}`,
-      sort: 'updated',
-      order: 'desc',
-      per_page: 100,
-    });
-
-    if (data.total_count > 100) {
-      warn(
-        MODULE,
-        `Search returned ${data.total_count} results but only first 100 were fetched. Some commented issues may be missing.`,
+    // Search for open issues the user has commented on, updated within window.
+    // Own repos and self-authored issues are dropped below either way;
+    // excluding them in the query keeps them from using up page slots (#1928).
+    const search = await paginateSearch((page) =>
+      this.octokit.search.issuesAndPullRequests({
+        page,
+        q: `commenter:${username} type:issue state:open updated:>=${since} -user:${username} -author:${username}`,
+        sort: 'updated',
+        order: 'desc',
+        per_page: 100,
+      }),
+    );
+    if (search.truncated) {
+      warnings.push(
+        `Commented-issue search is partial: read the ${search.items.length} most recently updated of ${search.totalCount} result(s). Replies on the other issues you commented on are not checked this run.`,
       );
     }
 
@@ -269,7 +271,7 @@ export class IssueConversationMonitor {
     const candidates: Candidate[] = [];
     const seenKeys = new Set<string>();
     const searchCandidates = new Map<string, Candidate>();
-    for (const item of data.items) {
+    for (const item of search.items) {
       // Defensive: skip pull requests in case type:issue qualifier is unreliable
       if (item.pull_request) continue;
 

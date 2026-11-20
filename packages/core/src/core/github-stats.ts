@@ -8,6 +8,7 @@ import { extractOwnerRepo, parseGitHubUrl, isOwnRepo, isUntrackedOrg } from './u
 import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';
+import { paginateSearch } from './pagination.js';
 
 const MODULE = 'github-stats';
 
@@ -364,6 +365,11 @@ export function fetchUserClosedPRCounts(
  * vanishes from any `closed:>=X` filter even though the API returns a correct
  * `closed_at`. `updated` is the sort key, so it is always indexed. We narrow to
  * the real window here with `dateOf`.
+ *
+ * Reads up to `SEARCH_MAX_PAGES` pages. When the list is still partial (more
+ * results than were read, or GitHub flagged the search incomplete), the
+ * message is logged and pushed to `truncations`, so the caller can report it
+ * and hold back anything that reads "not in this list" as a fact (#1928).
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
@@ -386,6 +392,7 @@ async function fetchRecentPRs<T>(
     closed_at: string | null;
     pull_request?: { merged_at?: string | null };
   }) => string | null | undefined,
+  truncations?: string[],
 ): Promise<T[]> {
   if (!config.githubUsername) {
     warn(MODULE, `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
@@ -398,16 +405,24 @@ async function fetchRecentPRs<T>(
 
   debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
-  const { data } = await octokit.search.issuesAndPullRequests({
-    q: query.replace('{username}', config.githubUsername).replace('{since}', since),
-    sort: 'updated',
-    order: 'desc',
-    per_page: 100,
-  });
+  const { items, totalCount, truncated } = await paginateSearch((page) =>
+    octokit.search.issuesAndPullRequests({
+      page,
+      q: query.replaceAll('{username}', config.githubUsername).replace('{since}', since),
+      sort: 'updated',
+      order: 'desc',
+      per_page: 100,
+    }),
+  );
+  if (truncated) {
+    const message = `Recently ${label} PR search is partial: read the ${items.length} most recently updated of ${totalCount} result(s). Some recently ${label} PRs may be missing this run.`;
+    warn(MODULE, message);
+    truncations?.push(message);
+  }
 
   const results: T[] = [];
 
-  for (const item of data.items) {
+  for (const item of items) {
     const parsed = parseGitHubUrl(item.html_url);
     if (!parsed) {
       warn(MODULE, `Could not parse GitHub URL from API response: ${item.html_url}`);
@@ -439,11 +454,12 @@ export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
   config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
+  truncations?: string[],
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
     octokit,
     config,
-    'is:pr is:closed is:unmerged is:public author:{username} updated:>={since}',
+    'is:pr is:closed is:unmerged is:public author:{username} -user:{username} updated:>={since}',
     'closed',
     days,
     (item, { repo, number }) => ({
@@ -457,6 +473,7 @@ export async function fetchRecentlyClosedPRs(
       issueUrl: closingIssueUrl(item.body, item.html_url),
     }),
     (item) => item.closed_at,
+    truncations,
   );
 }
 
@@ -468,11 +485,12 @@ export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
   config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
+  truncations?: string[],
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(
     octokit,
     config,
-    'is:pr is:merged is:public author:{username} updated:>={since}',
+    'is:pr is:merged is:public author:{username} -user:{username} updated:>={since}',
     'merged',
     days,
     (item, { repo, number }) => {
@@ -495,6 +513,7 @@ export async function fetchRecentlyMergedPRs(
       };
     },
     (item) => item.pull_request?.merged_at || item.closed_at,
+    truncations,
   );
 }
 

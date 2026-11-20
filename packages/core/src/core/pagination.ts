@@ -58,3 +58,57 @@ export async function paginateAll<T>(
   const { items } = await paginateAllDetailed(fetchPage, perPage, maxPages);
   return items;
 }
+
+/** The part of a Search API response {@link paginateSearch} reads. */
+export interface SearchPage<T> {
+  total_count: number;
+  incomplete_results?: boolean;
+  items: T[];
+}
+
+/** Result of {@link paginateSearch}. */
+export interface PaginateSearchResult<T> {
+  items: T[];
+  /** `total_count` from the last page read. */
+  totalCount: number;
+  /**
+   * True when the items are not the whole result: the page cap was reached
+   * with more results left, or GitHub flagged a page `incomplete_results`
+   * (the search timed out server-side). Callers must surface this and must
+   * not read "absent from the items" as "does not exist" (#1928).
+   */
+  truncated: boolean;
+}
+
+/**
+ * Page cap for {@link paginateSearch}. The Search API gets unreliable at deep
+ * pages and allows 30 requests a minute, so callers narrow the query rather
+ * than raise this.
+ */
+export const SEARCH_MAX_PAGES = 3;
+
+/**
+ * Read a Search API query page by page until every result is read or the
+ * page cap is reached. Errors from `fetchPage` propagate unchanged.
+ *
+ * @param fetchPage Function that fetches a single page given a page number
+ * @param maxPages Maximum pages to fetch (default {@link SEARCH_MAX_PAGES})
+ * @param perPage Items per page (default 100)
+ */
+export async function paginateSearch<T>(
+  fetchPage: (page: number) => Promise<{ data: SearchPage<T> }>,
+  maxPages = SEARCH_MAX_PAGES,
+  perPage = 100,
+): Promise<PaginateSearchResult<T>> {
+  const items: T[] = [];
+  let totalCount = 0;
+  let isIncomplete = false;
+  for (let page = 1; page <= maxPages; page++) {
+    const { data } = await fetchPage(page);
+    items.push(...data.items);
+    totalCount = data.total_count;
+    if (data.incomplete_results) isIncomplete = true;
+    if (data.items.length < perPage || items.length >= totalCount) break;
+  }
+  return { items, totalCount, truncated: isIncomplete || items.length < totalCount };
+}

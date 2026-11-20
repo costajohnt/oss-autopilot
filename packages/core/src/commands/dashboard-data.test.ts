@@ -1116,6 +1116,18 @@ describe('fetchDashboardData', () => {
     await expect(fetchDashboardData('test-token')).rejects.toThrow('API rate limit exceeded');
   });
 
+  it('puts a partial recent-PR search in the partial-data banner (#1928)', async () => {
+    const message = 'Recently closed PR search is partial: read the 300 most recently updated of 450 result(s).';
+    mockFetchRecentlyClosedPRs.mockImplementation((_days: number, truncations: string[]) => {
+      truncations.push(message);
+      return Promise.resolve([]);
+    });
+
+    const result = await fetchDashboardData('test-token');
+
+    expect(result.partialFailures).toEqual([message]);
+  });
+
   it('degrades gracefully when fetchRecentlyMergedPRs fails', async () => {
     mockFetchRecentlyMergedPRs.mockRejectedValue(new Error('network error'));
 

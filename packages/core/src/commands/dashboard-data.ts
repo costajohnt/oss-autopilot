@@ -374,6 +374,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     };
   };
 
+  const recentPRTruncations: string[] = [];
   const [
     { prs, failures, warnings: fetchWarnings },
     recentlyClosedPRs,
@@ -384,8 +385,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     newClosedPRs,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
-    prMonitor.fetchRecentlyClosedPRs().catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
-    prMonitor.fetchRecentlyMergedPRs().catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
+    prMonitor
+      .fetchRecentlyClosedPRs(7, recentPRTruncations)
+      .catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
+    prMonitor
+      .fetchRecentlyMergedPRs(7, recentPRTruncations)
+      .catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
     prMonitor
       .fetchUserMergedPRCounts(starFilter)
       .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>())),
@@ -447,6 +452,8 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       warn(MODULE, message);
     }
   }
+  // Same for a partial recent-PR list (#1928); the fetcher already logged it.
+  partialFailures.push(...recentPRTruncations);
 
   // Wrap all state mutations in a batch for a single disk write.
   // try-catch: save errors should not crash the dashboard data fetch.
