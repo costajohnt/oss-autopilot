@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import { PassThrough } from 'node:stream';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -26,13 +27,18 @@ const {
   findRunningDashboardServer,
 } = await import('./dashboard-process.js');
 
-/** Answer the next probe with this HTTP status, or with a connection error when null. */
-function stubProbe(statusCode: number | null): void {
+/** Answer the next probe with this response body, or with a connection error when null. */
+function stubProbe(body: string | null): void {
   mockHttpGet.mockImplementation((_url: string, _options: unknown, onResponse: (res: unknown) => void) => {
-    if (statusCode !== null) queueMicrotask(() => onResponse({ statusCode, resume: vi.fn() }));
+    if (body !== null) {
+      const res = new PassThrough();
+      queueMicrotask(() => onResponse(res));
+      res.end(body);
+    }
     return {
+      destroy: vi.fn(),
       on: (event: string, listener: () => void) => {
-        if (event === 'error' && statusCode === null) queueMicrotask(listener);
+        if (event === 'error' && body === null) queueMicrotask(listener);
       },
     };
   });
@@ -152,33 +158,34 @@ describe('liveness probe (#1927)', () => {
     delete process.env.__OSS_TEST_DATA_DIR;
   });
 
-  it('probes /api/health and counts a non-200 response as alive', async () => {
-    stubProbe(429);
+  it('probes /api/health and reads a reply naming the recorded PID as alive', async () => {
+    stubProbe(JSON.stringify({ ok: true, pid: otherPid }));
 
-    expect(await isDashboardServerRunning(3000)).toBe(true);
+    expect(await isDashboardServerRunning(3000, otherPid)).toBe(true);
     expect(mockHttpGet.mock.calls[0][0]).toBe('http://127.0.0.1:3000/api/health');
   });
 
-  it('reads a connection error as not running', async () => {
-    stubProbe(null);
+  it.each([
+    ['a different pid', JSON.stringify({ ok: true, pid: otherPid + 1 })],
+    ['no pid', JSON.stringify({ ok: true })],
+    ['a JSON null body', 'null'],
+    ['a non-JSON body', '<html>some other app</html>'],
+    ['an oversized body', 'x'.repeat(5000)],
+    ['a connection error', null],
+  ])('does not take a reply with %s for our server, and never signals the PID', async (_label, body) => {
+    stubProbe(body);
 
-    expect(await isDashboardServerRunning(3000)).toBe(false);
+    expect(await isDashboardServerRunning(3000, otherPid)).toBe(false);
+    expect(await findRunningDashboardServer()).toBeNull();
+    expect(killSpy).not.toHaveBeenCalledWith(otherPid, 'SIGTERM');
+    expect(readDashboardServerInfo()).toBeNull();
   });
 
-  it('keeps a live server that answers the probe with an error status', async () => {
-    stubProbe(403);
+  it('keeps a live server whose health reply names the recorded PID', async () => {
+    stubProbe(JSON.stringify({ ok: true, pid: otherPid }));
 
     expect(await findRunningDashboardServer()).toEqual({ port: 3000, url: 'http://oss.localhost:3000' });
-    expect(killSpy).not.toHaveBeenCalledWith(otherPid, 'SIGTERM');
     expect(readDashboardServerInfo()?.pid).toBe(otherPid);
-  });
-
-  it('stops a live but unresponsive server before dropping its PID file', async () => {
-    stubProbe(null);
-
-    expect(await findRunningDashboardServer()).toBeNull();
-    expect(killSpy).toHaveBeenCalledWith(otherPid, 'SIGTERM');
-    expect(readDashboardServerInfo()).toBeNull();
   });
 
   it('removeOwnDashboardServerInfo leaves a PID file recorded by another process', () => {

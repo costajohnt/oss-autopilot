@@ -292,9 +292,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       // ── API routes ─────────────────────────────────────────────────────
       // Liveness probe for isDashboardServerRunning (#1927). Deliberately
       // outside the rate limiters and free of state reloads so a busy or
-      // throttled server still answers.
+      // throttled server still answers. The pid lets the prober tell this
+      // server from another program listening on the same port.
       if (url === '/api/health' && method === 'GET') {
-        sendJson(res, 200, { ok: true });
+        sendJson(res, 200, { ok: true, pid: process.pid });
         return;
       }
 

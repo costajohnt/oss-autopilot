@@ -879,6 +879,22 @@ describe('runStartup behavior', () => {
     fetchSpy.mockRestore();
   });
 
+  it('reports a 202 as a refresh that started, not one that finished (#1927)', async () => {
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(3));
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
+    // The CSRF prime, then the 202 a `Prefer: respond-async` refresh gets.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(okResponse())
+      .mockResolvedValueOnce(new Response('{"refreshing":true}', { status: 202 }));
+
+    const result = await runStartup();
+
+    expect(result.daily?.briefSummary).toContain('Dashboard refresh started');
+    expect(result.daily?.briefSummary).not.toContain('Dashboard refreshed');
+    fetchSpy.mockRestore();
+  });
+
   it('should still succeed when dashboard refresh fails (#830)', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const daily = makeDailyOutput(3);

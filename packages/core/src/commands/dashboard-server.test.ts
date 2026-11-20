@@ -2142,7 +2142,7 @@ describe('dashboard-server', () => {
       // still reads as alive (#1927).
       const health = await sendRequest('GET', '/api/health');
       expect(health.statusCode).toBe(200);
-      expect(JSON.parse(health.body)).toEqual({ ok: true });
+      expect(JSON.parse(health.body)).toEqual({ ok: true, pid: process.pid });
     });
 
     it('should return 429 with Retry-After for POST /api/action when rate-limited', async () => {
@@ -2232,10 +2232,13 @@ describe('dashboard-server', () => {
       expect(JSON.parse(result.body)).toEqual({ refreshing: true });
 
       // The background failure is not lost: it surfaces as staleness on the next read.
-      await vi.waitFor(async () => {
-        const data = await sendRequest('GET', '/api/data');
-        expect(data.headers['x-dashboard-stale-reason']).toContain('background-refresh-failed: GitHub API error');
-      });
+      await vi.waitFor(
+        async () => {
+          const data = await sendRequest('GET', '/api/data');
+          expect(data.headers['x-dashboard-stale-reason']).toContain('background-refresh-failed: GitHub API error');
+        },
+        { timeout: 5000 },
+      );
 
       // A later successful refresh clears it for the tests that follow.
       vi.mocked(fetchDashboardData).mockResolvedValue({
@@ -2408,7 +2411,7 @@ describe('dashboard-server', () => {
   describe('health probe', () => {
     it('isDashboardServerRunning should return false for unreachable port', async () => {
       // Use a port that is almost certainly not in use
-      const result = await isDashboardServerRunning(19_999);
+      const result = await isDashboardServerRunning(19_999, process.pid);
       expect(result).toBe(false);
     });
 
