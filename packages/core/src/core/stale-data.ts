@@ -1,9 +1,10 @@
 /**
  * Retention for the rejected state copies under `~/.oss-autopilot` (#1956).
  *
- * `state.json.rejected-<ms>` (state-persistence.ts) and
- * `state-cache.json.rejected-<ms>` (gist-state-store.ts) preserve a state
- * file that failed validation so the user can recover it by hand. Nothing
+ * `state.json.rejected-<ms>` (state-persistence.ts),
+ * `state-cache.json.rejected-<ms>` (gist-state-store.ts) and
+ * `local-config.json.rejected-<ms>` (local-config.ts) preserve a file that
+ * failed validation so the user can recover it by hand. Nothing
  * reads them back, and one bad night can write dozens.
  *
  * Kept: the newest {@link REJECTED_KEEP} of each kind, the oldest of each kind
@@ -29,7 +30,7 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 /** Directory names the overnight preparer gives its worktrees: `<owner>-<repo>-<n>`, `...-issue-<n>`. */
 export const WORKTREE_NAME = /^[\w.-]+-\d+$/;
 
-const REJECTED_PATTERN = /^(state|state-cache)\.json\.rejected-(\d+)$/;
+const REJECTED_PATTERN = /^(state|state-cache|local-config)\.json\.rejected-(\d+)$/;
 
 /** True when `child`, with every symlink resolved, sits strictly inside `parent`. */
 export function isInside(parent: string, child: string): boolean {

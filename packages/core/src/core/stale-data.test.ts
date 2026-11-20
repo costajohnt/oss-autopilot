@@ -109,6 +109,20 @@ describe('staleRejectedCopies', () => {
     expect(staleRejectedCopies(ctx.dataDir, NOW)).toEqual([]);
   });
 
+  it('prunes local-config.json copies by the same rules and never touches local-config.json', () => {
+    const kept: string[] = [];
+    for (let i = 0; i < REJECTED_KEEP; i++) kept.push(writeCopy('local-config.json', OLD_DAYS + i));
+    const stale = writeCopy('local-config.json', 50);
+    kept.push(writeCopy('local-config.json', 90));
+    const live = path.join(ctx.dataDir, 'local-config.json');
+    fs.writeFileSync(live, '{}');
+    fs.utimesSync(live, 0, 0);
+
+    expect(staleRejectedCopies(ctx.dataDir, NOW)).toEqual([stale]);
+    expect(pruneRejectedCopies(ctx.dataDir, NOW).removed).toEqual([stale]);
+    expect(kept.every((file) => fs.existsSync(file)) && fs.existsSync(live)).toBe(true);
+  });
+
   it('ignores names the code does not write, directories and symlinks', () => {
     for (let i = 0; i < REJECTED_KEEP; i++) writeCopy('state.json', 1 + i);
     const outside = path.join(ctx.tmp, 'outside.json');
