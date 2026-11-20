@@ -1394,6 +1394,24 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Cleanup (#1956) ────────────────────────────────────────────────────
+  {
+    name: 'cleanup',
+    localOnly: true,
+    register(program) {
+      program
+        .command('cleanup')
+        .description('List stale overnight worktrees and rejected state copies; --apply removes the safe ones')
+        .option('--apply', 'Remove what the dry run lists (clean, pushed, idle worktrees only)')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { apply?: boolean; json?: boolean }) => {
+          const { runCleanup, printCleanup } = await import('./commands/cleanup.js');
+          const run = () => Promise.resolve(runCleanup({ apply: options.apply === true }));
+          await executeAction(options, run, printCleanup);
+        });
+    },
+  },
+
   // ── Local Repos ────────────────────────────────────────────────────────
   {
     name: 'local-repos',

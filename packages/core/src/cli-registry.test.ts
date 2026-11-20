@@ -204,6 +204,10 @@ vi.mock('./commands/check-integration.js', () => ({ runCheckIntegration: mockRun
 const mockRunDoctor = vi.fn();
 vi.mock('./commands/doctor.js', () => ({ runDoctor: mockRunDoctor }));
 
+const mockRunCleanup = vi.fn();
+const mockPrintCleanup = vi.fn();
+vi.mock('./commands/cleanup.js', () => ({ runCleanup: mockRunCleanup, printCleanup: mockPrintCleanup }));
+
 const mockRunStartup = vi.fn();
 vi.mock('./commands/startup.js', () => ({ runStartup: mockRunStartup }));
 
@@ -2118,6 +2122,30 @@ describe('doctor command', () => {
     await buildProgram('doctor').parseAsync(['node', 'cli', 'doctor', '--json']);
 
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(DoctorOutputSchema, data);
+  });
+});
+
+describe('cleanup command (#1956)', () => {
+  const data = { applied: false, worktrees: [], rejectedCopies: [] };
+
+  it('is a dry run by default and prints through printCleanup', async () => {
+    mockRunCleanup.mockReturnValue(data);
+
+    await buildProgram('cleanup').parseAsync(['node', 'cli', 'cleanup']);
+
+    expect(mockRunCleanup).toHaveBeenCalledWith({ apply: false });
+    expect(mockPrintCleanup).toHaveBeenCalledWith(data);
+    expect(mockOutputJson).not.toHaveBeenCalled();
+  });
+
+  it('--apply --json deletes and emits the JSON envelope', async () => {
+    mockRunCleanup.mockReturnValue({ ...data, applied: true });
+
+    await buildProgram('cleanup').parseAsync(['node', 'cli', 'cleanup', '--apply', '--json']);
+
+    expect(mockRunCleanup).toHaveBeenCalledWith({ apply: true });
+    expect(mockOutputJson).toHaveBeenCalledWith({ ...data, applied: true });
+    expect(mockPrintCleanup).not.toHaveBeenCalled();
   });
 });
 

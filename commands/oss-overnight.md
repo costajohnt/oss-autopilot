@@ -22,6 +22,8 @@ question and never touches GitHub beyond reads.
 - **Prepared work stays local.** A prepared branch lives in a worktree under
   `~/.oss-autopilot/worktrees/`. The morning `/oss` run is where you push it,
   through the normal draft-approval workflow.
+  Nothing in this command removes a worktree; the user runs `cleanup` (dry
+  run) and `cleanup --apply` to drop the clean, pushed, idle ones.
 
 ## Step 1: Run the check and write the report
 

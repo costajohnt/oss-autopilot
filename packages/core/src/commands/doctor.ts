@@ -18,6 +18,9 @@ import { promisify } from 'node:util';
 import { getGitHubTokenAsync, getOctokit, getStatePath } from '../core/index.js';
 import { AgentStateSchema } from '../core/state-schema.js';
 import { errorMessage } from '../core/errors.js';
+import { resolveDataDir } from '../core/paths.js';
+import { REJECTED_KEEP, staleRejectedCopies } from '../core/stale-data.js';
+import { cleanWorktrees } from './cleanup.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -328,6 +331,25 @@ export async function checkGitHubRateLimit(preloadedToken?: string | null): Prom
   }
 }
 
+/**
+ * Stale data under the data directory (#1956): overnight worktrees and
+ * rejected state copies that `cleanup` would remove. Read-only.
+ */
+export function checkStaleData(dataDir: string = resolveDataDir()): DoctorCheck {
+  const name = 'Stale data';
+  const worktrees = cleanWorktrees(dataDir, { apply: false });
+  const removable = worktrees.filter((w) => w.action === 'would-remove').length;
+  const rejected = staleRejectedCopies(dataDir).length;
+  const message = `${worktrees.length} overnight worktree(s), ${removable} safe to remove; ${rejected} rejected state copy(ies) past retention (newest ${REJECTED_KEEP} kept)`;
+  if (removable + rejected === 0) return { name, message, status: 'ok' };
+  return {
+    name,
+    message,
+    status: 'warning',
+    remediation: 'Run `oss-autopilot cleanup` to list them and `oss-autopilot cleanup --apply` to remove them',
+  };
+}
+
 // ── Orchestrator ────────────────────────────────────────────────────────
 
 /**
@@ -383,6 +405,7 @@ export async function runDoctor(): Promise<DoctorOutput> {
     runCheckSafely('@oss-scout/core resolvable', () => checkScoutResolvable()),
     runCheckSafely('CLI bundle', () => checkBundleUpToDate()),
     runCheckSafely('state.json valid', () => checkStateFile()),
+    runCheckSafely('Stale data', () => checkStaleData()),
   ]);
 
   const summary = {

@@ -53,8 +53,10 @@
  */
 
 import * as fs from 'node:fs';
+import path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-schema.js';
+import { pruneRejectedCopies } from './stale-data.js';
 import { serializeState } from './state-prune.js';
 import {
   atomicWriteFileSync,
@@ -102,6 +104,7 @@ function preserveRejectedGistContent(raw: string, gistId: string): string | null
   try {
     const rejectedPath = `${getStateCachePath()}.rejected-${Date.now()}`;
     fs.writeFileSync(rejectedPath, raw, { encoding: 'utf8', mode: 0o600 });
+    pruneRejectedCopies(path.dirname(rejectedPath));
     return rejectedPath;
   } catch (err) {
     warn(

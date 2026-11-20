@@ -197,7 +197,8 @@ export function compareUrlFor(target: RemoteOwnerRepo, prHead: string, prepBranc
   return `https://github.com/${target.owner}/${target.repo}/compare/${prHead}...${prepBranch}`;
 }
 
-function git(worktree: string, args: string[]): string {
+/** Run `git -C <worktree> <args>` and return its stdout. Also the runner `cleanup` uses. */
+export function git(worktree: string, args: string[]): string {
   return execFileSync('git', ['-C', worktree, ...args], {
     encoding: 'utf8',
     timeout: GIT_TIMEOUT_MS,

@@ -36,6 +36,7 @@ import {
   checkGitHubRateLimit,
   checkGitHubToken,
   checkScoutResolvable,
+  checkStaleData,
   checkStateFile,
   runDoctor,
 } from './doctor.js';
@@ -355,6 +356,36 @@ describe('checkGitHubRateLimit', () => {
     const result = await checkGitHubRateLimit();
     expect(result.status).toBe('error');
     expect(result.message).toContain('network down');
+  });
+});
+
+// ── checkStaleData (#1956) ──────────────────────────────────────────────
+
+describe('checkStaleData', () => {
+  it('is ok for a data directory with nothing stale, or none at all', () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
+    fs.writeFileSync(path.join(dataDir, 'state.json.rejected-1'), '{}');
+
+    expect(checkStaleData(dataDir).status).toBe('ok');
+    expect(checkStaleData(path.join(dataDir, 'absent')).status).toBe('ok');
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('warns and points at cleanup when rejected copies are past retention', () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-'));
+    for (let ts = 1; ts <= 8; ts++) {
+      const file = path.join(dataDir, `state-cache.json.rejected-${ts}`);
+      fs.writeFileSync(file, '{}');
+      fs.utimesSync(file, ts, ts);
+    }
+
+    const result = checkStaleData(dataDir);
+
+    expect(result.status).toBe('warning');
+    expect(result.message).toContain('3 rejected state copy(ies) past retention');
+    expect(result.remediation).toContain('cleanup --apply');
+    expect(fs.readdirSync(dataDir)).toHaveLength(8);
+    fs.rmSync(dataDir, { recursive: true, force: true });
   });
 });
 
