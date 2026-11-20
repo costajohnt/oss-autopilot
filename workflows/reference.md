@@ -11,7 +11,8 @@ All commands support `--json` flag for structured output.
 <!-- The line below is generated from the bundled CLI's `manifest --json`
      output by scripts/generate-reference.mjs (#1289). To change the list,
      toggle the `localOnly` flag on a command in cli-registry.ts and run
-     `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
+     `bash scripts/build-cli-if-stale.sh "$PWD"; [ $? -le 1 ] && pnpm run generate:reference`
+     (the helper exits 1 after a successful rebuild, so 0 and 1 both mean go).
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
 Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
@@ -196,7 +197,7 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 ```
 
 The canonical list of config keys lives in
-`packages/core/src/core/config-registry.ts`. Run `config --list-keys` to see
+`config-registry.ts` in the oss-autopilot repository source (core package; not shipped with the plugin). Run `config --list-keys` to see
 the live list (including which command accepts each key). Unknown keys are
 rejected with a did-you-mean suggestion.
 

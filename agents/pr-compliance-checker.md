@@ -185,7 +185,7 @@ Use AskUserQuestion to offer assistance.
 
 See "AI Attribution Rule" in `workflows/reference.md` for the default policy.
 
-Before flagging, read the target repo's docs (CONTRIBUTING.md / README / CODE_OF_CONDUCT) and classify the project's AI-assistance regime. The deterministic patterns are documented as reference scans in `packages/core/src/core/anti-llm-policy.ts` (`scanForAntiLLMPolicy` and `scanAIDisclosureRequirement` from #911 / #1269); the function names tell you what to grep for.
+Before flagging, read the target repo's docs (CONTRIBUTING.md / README / CODE_OF_CONDUCT) and classify the project's AI-assistance regime. The deterministic patterns are documented as reference scans in `anti-llm-policy.ts` in the oss-autopilot repository source (core package; not shipped with the plugin) (`scanForAntiLLMPolicy` and `scanAIDisclosureRequirement` from #911 / #1269); the function names tell you what to grep for.
 
 | Regime detected | Rule |
 |---|---|

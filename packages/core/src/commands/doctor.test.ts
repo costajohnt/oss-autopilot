@@ -191,7 +191,8 @@ describe('checkBundleUpToDate', () => {
 
     const result = checkBundleUpToDate({ bundlePath, sourcePath });
     expect(result.status).toBe('warning');
-    expect(result.remediation).toMatch(/pnpm run bundle/);
+    expect(result.remediation).toMatch(/pnpm install --frozen-lockfile --ignore-scripts && pnpm .* run bundle/);
+    expect(result.remediation).not.toMatch(/\bnpm\b/);
   });
 
   it('reports warning when bundle is missing but source exists', () => {
@@ -201,6 +202,7 @@ describe('checkBundleUpToDate', () => {
     const result = checkBundleUpToDate({ bundlePath, sourcePath });
     expect(result.status).toBe('warning');
     expect(result.message).toMatch(/not built yet/);
+    expect(result.remediation).toMatch(/pnpm install --frozen-lockfile --ignore-scripts/);
   });
 
   it('reports ok when bundle exists and source does not (npm install scenario)', () => {
@@ -217,6 +219,9 @@ describe('checkBundleUpToDate', () => {
       sourcePath: path.join(tmpBase, 'absent-source'),
     });
     expect(result.status).toBe('warning');
+    // Prebuilt install: nothing to build from, so no build command.
+    expect(result.remediation).toMatch(/update or reinstall the oss-autopilot plugin/i);
+    expect(result.remediation).not.toMatch(/pnpm|npm install/);
   });
 });
 
@@ -290,6 +295,18 @@ describe('checkScoutResolvable', () => {
     expect(result.status).toBe('error');
     expect(result.message).toMatch(/install issue/i);
     expect(result.remediation).toMatch(/reinstall/i);
+  });
+
+  it('points a source checkout at the frozen lockfile and a prebuilt install at a reinstall', async () => {
+    const notFound = Object.assign(new Error("Cannot find package '@oss-scout/core'"), {
+      code: 'ERR_MODULE_NOT_FOUND',
+    });
+    const fail = () => Promise.reject(notFound);
+    const source = await checkScoutResolvable(fail, { sourceCheckout: true });
+    expect(source.remediation).toBe('Reinstall dependencies from the lockfile: `pnpm install --frozen-lockfile`');
+    const prebuilt = await checkScoutResolvable(fail, { sourceCheckout: false });
+    expect(prebuilt.remediation).toMatch(/update or reinstall the oss-autopilot plugin/i);
+    expect(prebuilt.remediation).not.toMatch(/pnpm|npm install/);
   });
 
   it('reports error with reinstall remediation on a corrupt install (ERR_PACKAGE_PATH_NOT_EXPORTED)', async () => {

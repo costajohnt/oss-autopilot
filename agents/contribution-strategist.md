@@ -44,7 +44,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 
 The tool always runs — no cadence gate. When `strategy` is null (insufficient history below `STRATEGY_MIN_PRS`), `message` carries the explanation; report it verbatim and stop.
 
-**On failure:** Report the error and stop — do not improvise with raw `gh api` calls or fall back to per-prompt categorization. If the CLI is missing, run `pnpm run bundle` or ask the user to reinstall.
+**On failure:** Report the error and stop — do not improvise with raw `gh api` calls or fall back to per-prompt categorization. If the CLI is missing, ask the user to update or reinstall the plugin (marketplace install) or to run `scripts/build-cli-if-stale.sh` from the repo root (source checkout).
 
 ## Snapshot Shape
 

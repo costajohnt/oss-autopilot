@@ -70,7 +70,7 @@ case $DASHBOARD_HELPER_RC in
   2)
     if grep -q "pnpm is required" /tmp/oss-dashboard-build.log; then
       OSS_DASHBOARD_BUILD_STATUS=missing-pnpm
-      OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: npm install -g pnpm"
+      OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: corepack enable, or npm install -g pnpm@10.27.0"
     else
       OSS_DASHBOARD_BUILD_STATUS=failed
       OSS_DASHBOARD_BUILD_ERROR_TAIL=$(tail -5 /tmp/oss-dashboard-build.log 2>/dev/null | tr '\n' ' ' | tr -s ' ')

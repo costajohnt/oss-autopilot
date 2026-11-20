@@ -122,6 +122,10 @@ Releases are automated via [release-please](https://github.com/googleapis/releas
 2. On merge to main, release-please opens or updates a release PR that bumps versions and generates the changelog
 3. A maintainer merges the release-please PR to create a GitHub release
 
+Marketplace users receive changes only when a release publishes the prebuilt `directory` branch, so a fix that sits on main under a `chore:` commit never reaches them. For that reason Dependabot opens production dependency updates as `fix:` and development ones as `chore:`.
+
+What existing installs see: Claude Code caches the plugin per version, so an install keeps its current tree until a release changes the plugin version, then `/plugin update` replaces it with the prebuilt tree. Nothing breaks in between.
+
 ## Maintainer Guide
 
 This section documents infrastructure settings that are not codified in the repo and would be lost if the repo were forked or transferred.

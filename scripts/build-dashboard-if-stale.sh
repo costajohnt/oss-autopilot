@@ -94,7 +94,7 @@ fi
 # missing-tool case as a build failure with a clear remediation hint
 # rather than letting npm explode mid-stream.
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "BUILD_FAILED: pnpm is required for the dashboard build (workspace:* dep). Install: npm install -g pnpm"
+  echo "BUILD_FAILED: pnpm is required for the dashboard build (workspace:* dep). Install: corepack enable, or npm install -g pnpm@10.27.0"
   exit 2
 fi
 

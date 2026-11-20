@@ -111,7 +111,7 @@ fi
 # (esbuild resolves its platform binary without its postinstall).
 remediation="cd ${PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle"
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "BUILD_FAILED: the CLI bundle in this source checkout is stale and pnpm is not on PATH. Dependencies are only installed from pnpm-lock.yaml, so there is no npm fallback. Install pnpm (npm install -g pnpm), then: ${remediation}. Not developing the plugin? Install it from the marketplace, which ships a prebuilt bundle."
+  echo "BUILD_FAILED: the CLI bundle in this source checkout is stale and pnpm is not on PATH. Dependencies are only installed from pnpm-lock.yaml, so there is no npm fallback. Install pnpm (corepack enable, or npm install -g pnpm@10.27.0), then: ${remediation}. Not developing the plugin? Install it from the marketplace, which ships a prebuilt bundle."
   exit 2
 fi
 if [ ! -f "${PLUGIN_ROOT}/pnpm-lock.yaml" ]; then

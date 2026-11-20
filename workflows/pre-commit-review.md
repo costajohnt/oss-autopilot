@@ -82,7 +82,7 @@ Before dispatching review agents, run the repo's lint and test commands to catch
 
 1. **Detect and run linter/type checker**: Check for `package.json` scripts (`lint`, `typecheck`, `tsc`), `Makefile` targets, or language-specific tooling. Run the detected command(s). If no linter is detected, skip and note: "No linter detected — skipping pre-review lint."
 
-2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. The structured detection lives at `packages/core/src/core/ci-enforced-tools.ts` (`getCIEnforcedTools`) — call it with the well-known config snippets to get back a typed `CIEnforcedTool[]` instead of stitching `cat`/`grep` output in markdown (#1286). The function reads:
+2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. The structured detection lives at `ci-enforced-tools.ts` in the oss-autopilot repository source (core package; not shipped with the plugin) (`getCIEnforcedTools`) — call it with the well-known config snippets to get back a typed `CIEnforcedTool[]` instead of stitching `cat`/`grep` output in markdown (#1286). The function reads:
    - `.pre-commit-config.yaml` — lists hooks that run on every commit/PR. Save the list of repo URLs and hook IDs as `enforcedTools`.
    - `.github/workflows/*.yml` (or `.gitlab-ci.yml`, `Jenkinsfile`, etc.) — look for tool invocations in CI job steps.
    - `Makefile` targets referenced by CI — if CI runs `make lint`, check what `make lint` actually invokes.
@@ -236,9 +236,10 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
 
 1. **Detect tooling** from lint/format configs gathered in sub-step 2. Check in order — **use the first match that supports auto-fix**:
    - `package.json` scripts: prefer fix-oriented scripts first: `lint:fix`, `format`, `fmt`. A plain `lint` script (without `:fix`) typically only reports issues — only use it as a last resort and note it will report but not auto-fix. **Important:** `npm run` scripts typically run on the entire project. Only use a script if it accepts file arguments via `--` passthrough (e.g., `npm run format -- {changed files}`). If the script does not accept file arguments, skip it and fall back to running the underlying tool directly on changed files.
-   - `biome.json` / `biome.jsonc` → `npx biome check --write {changed files}`
-   - `.prettierrc*` or `prettier` in devDependencies → `npx prettier --write {changed files}`
-   - `.eslintrc*` or `eslint.config.*` → `npx eslint --fix {changed files}`
+   - `biome.json` / `biome.jsonc` → `npx --no-install biome check --write {changed files}`
+   - `.prettierrc*` or `prettier` in devDependencies → `npx --no-install prettier --write {changed files}`
+   - `.eslintrc*` or `eslint.config.*` → `npx --no-install eslint --fix {changed files}`
+   - `--no-install` makes `npx` use the project's own installed version and fail instead of downloading one. If it fails because the tool is not installed, report that and skip the formatter; do not drop the flag.
    - `Makefile` with `fmt` or `format` target → `make fmt` or `make format` (project-wide by design; no file list)
    - `Cargo.toml` → `cargo fmt` (project-wide by design; no file list)
    - `pyproject.toml` with `[tool.ruff]` or `[tool.black]` → `ruff format {changed files}` or `black {changed files}`
@@ -340,7 +341,7 @@ On "Done for now":
 
 Before drafting, decide whether a comment is actually needed. When the fix is self-evident from the diff, a comment that restates it wastes the maintainer's attention. Err on the side of skipping — the push is already a response.
 
-> **Source of truth (#1286):** the skip-vs-draft rule lives at `packages/core/src/core/comment-decision.ts` (`shouldDraftResponse`). The same function is consumed by the `pr-responder` agent. The bullets below are the human-facing render of that rule — edit the function first if the rule changes.
+> **Source of truth (#1286):** the skip-vs-draft rule lives at `comment-decision.ts` in the oss-autopilot repository source (core package; not shipped with the plugin) (`shouldDraftResponse`). The same function is consumed by the `pr-responder` agent. The bullets below are the human-facing render of that rule — edit the function first if the rule changes.
 
 **Skip the comment entirely if ALL of these are true:**
 - Every piece of maintainer feedback addressed in this push maps to a concrete code change (e.g. "avoid `T.untyped` here", "add a nil check", "rename this variable")
