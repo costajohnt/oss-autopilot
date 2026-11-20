@@ -99,6 +99,8 @@ export interface CleanupOptions {
   apply: boolean;
 }
 
+const COMMIT_MESSAGE_SUFFIX = '.commit-msg.txt';
+
 function gitOut(worktree: string, args: string[]): string {
   return git(worktree, [...SAFE_GIT, ...args]).trim();
 }
@@ -227,7 +229,20 @@ function remove(report: WorktreeReport): Outcome {
     const reason = removalFailure(err);
     return { report: { ...report, action: 'kept', reason }, error: `${report.path}: ${reason}` };
   }
+  // The preparer's commit message file sits beside the worktree and goes with it.
+  const message = report.path + COMMIT_MESSAGE_SUFFIX;
+  if (isRegularFile(message)) fs.rmSync(message);
   return { report: { ...report, action: 'removed' } };
+}
+
+function isRegularFile(file: string): boolean {
+  return fs.existsSync(file) && fs.lstatSync(file).isFile();
+}
+
+/** `<worktree name>.commit-msg.txt` (agents/overnight-preparer.md): not a worktree, so not judged or reported. */
+function isCommitMessageFile(root: string, name: string): boolean {
+  if (!name.endsWith(COMMIT_MESSAGE_SUFFIX)) return false;
+  return WORKTREE_NAME.test(name.slice(0, -COMMIT_MESSAGE_SUFFIX.length)) && isRegularFile(path.join(root, name));
 }
 
 /** Judge one worktree and, with `apply`, remove it straight away if it may go. */
@@ -239,7 +254,8 @@ function judgeAndRemove(dataDir: string, dir: string, options: CleanupOptions, n
 function scan(dataDir: string, root: string, options: CleanupOptions, now: number): WorktreeScan {
   // A symlinked `worktrees` would have every child resolve outside the data dir.
   if (!fs.existsSync(root) || !fs.lstatSync(root).isDirectory()) return { worktrees: [], errors: [] };
-  const outcomes = fs.readdirSync(root).map((name) => judgeAndRemove(dataDir, path.join(root, name), options, now));
+  const names = fs.readdirSync(root).filter((name) => !isCommitMessageFile(root, name));
+  const outcomes = names.map((name) => judgeAndRemove(dataDir, path.join(root, name), options, now));
   const errors = outcomes.flatMap((outcome) => outcome.error ?? []);
   return { worktrees: outcomes.map((outcome) => outcome.report), errors };
 }

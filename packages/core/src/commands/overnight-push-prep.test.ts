@@ -58,6 +58,9 @@ function fakeStateManager(initial: OvernightRecord | undefined, githubUsername =
   } as unknown as ReturnType<typeof getStateManager> & { setLastOvernight: ReturnType<typeof vi.fn> };
 }
 
+/** The PR's head repository as the API names it: the login's fork, which is where the push must go (#1937). */
+const HEAD_REPO = { name: 'react', full_name: 'OctoCat/react', owner: { login: 'OctoCat' } };
+
 function fakeOctokit(opts: { login?: string; fork?: boolean; head?: string; repoError?: Error } = {}) {
   const octokit = {
     users: { getAuthenticated: vi.fn().mockResolvedValue({ data: { login: opts.login ?? 'octocat' } }) },
@@ -65,19 +68,28 @@ function fakeOctokit(opts: { login?: string; fork?: boolean; head?: string; repo
       get: opts.repoError
         ? vi.fn().mockRejectedValue(opts.repoError)
         : vi.fn().mockResolvedValue({
-            data: { fork: opts.fork ?? true, owner: { login: opts.login ?? 'octocat' }, full_name: 'octocat/react' },
+            data: {
+              fork: opts.fork ?? true,
+              owner: { login: opts.login ?? 'octocat' },
+              full_name: 'octocat/react',
+              parent: { full_name: 'facebook/react' },
+            },
           }),
     },
-    pulls: { get: vi.fn().mockResolvedValue({ data: { head: { ref: opts.head ?? 'fix-lint' } } }) },
+    pulls: { get: vi.fn().mockResolvedValue({ data: { head: { ref: opts.head ?? 'fix-lint', repo: HEAD_REPO } } }) },
   };
   mockGetOctokit.mockReturnValue(octokit as never);
   return octokit;
 }
 
+/** The `git init` and `git fetch` that copy the branch into the private repo the push runs from (#1937). */
+const isImport = (args: string[]): boolean => args[0] === 'init' || args[2] === '-c';
+
 /** `git remote -v` answers with `remotes`; `git push` answers with `push` (a string) or throws it (an Error). */
 function fakeGit(remotes: string, push: string | Error = '') {
   mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
     if (args[2] === 'remote') return remotes;
+    if (isImport(args)) return '';
     if (args[2] === 'push') {
       if (push instanceof Error) throw push;
       return push;
@@ -108,7 +120,10 @@ function pushCalls(): string[][] {
 }
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'push-prep-'));
+  // Under the worktrees root of the temp HOME: push-prep refuses a worktree anywhere else (#1937).
+  const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+  fs.mkdirSync(root, { recursive: true });
+  tmp = fs.mkdtempSync(path.join(root, 'push-prep-'));
   vi.clearAllMocks();
   mockCheckpoint.mockResolvedValue(null);
 });
@@ -295,11 +310,12 @@ describe('runOvernightPushPrep', () => {
     expect(pushCalls()).toEqual([
       [
         '-C',
-        tmp,
+        // Never the worktree: a private repo holding only the branch, pushed to the remote's URL.
+        expect.stringMatching(/oss-push-prep-.+repo\.git$/),
         'push',
         '--no-follow-tags',
         '--',
-        'origin',
+        'https://github.com/OctoCat/react.git',
         'refs/heads/overnight/42-2026-09-18:refs/heads/prep/overnight/42-2026-09-18',
       ],
     ]);
@@ -337,7 +353,7 @@ describe('runOvernightPushPrep', () => {
     expect(second.results).toEqual(first.results);
     expect({ ...secondSaved, pushedAt: undefined }).toEqual({ ...firstSaved, pushedAt: undefined });
     expect(pushCalls()).toHaveLength(2);
-    expect(new Set(pushCalls().map((c) => c.join(' '))).size).toBe(1);
+    expect(new Set(pushCalls().map((c) => c.slice(2).join(' '))).size).toBe(1);
     expect(sm.getLastOvernight()!.prepared).toHaveLength(1);
     const md = fs.readFileSync(reportPath, 'utf8');
     expect(md.match(/pushed to `prep\//g)).toHaveLength(1);
@@ -436,6 +452,129 @@ describe('runOvernightPushPrep', () => {
     expect(pushCalls()).toEqual([]);
   });
 
+  it('never runs git in a worktree outside the worktrees root, directly or through a symlink (#1937)', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'push-prep-outside-'));
+    const link = path.join(tmp, 'link');
+    fs.symlinkSync(outside, link);
+    const prepared = [entry({ branch: 'a', worktree: outside }), entry({ branch: 'b', worktree: link })];
+    const sm = fakeStateManager(record(prepared));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit(forkRemotes);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+    fs.rmSync(outside, { recursive: true, force: true });
+
+    expect(out.results.map((r) => r.status)).toEqual(['skipped', 'skipped']);
+    expect(out.results[0].reason).toMatch(/is not under .*\.oss-autopilot[/\\]worktrees$/);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('a branch that cannot be copied out of the worktree is `failed`, and nothing is pushed (#1937)', async () => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
+      if (args[2] === 'remote') return forkRemotes;
+      throw new Error('boom');
+    }) as never);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('failed');
+    expect(out.results[0].reason).toBe('reading the branch from the worktree failed: boom');
+    expect(pushCalls()).toEqual([]);
+  });
+
+  it.each([
+    ['a pushInsteadOf or pushurl naming another repo the login owns', 'https://github.com/octocat/other.git'],
+    ['a rewrite to a repo with a similar name', 'git@github.com:octocat/react-private.git'],
+  ])('skips when the remote disagrees with the PR head repo: %s (#1937)', async (_case, pushLine) => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    // What `git remote -v` prints after the worktree's own config rewrote the push URL.
+    fakeGit(`origin\thttps://github.com/octocat/react.git (fetch)\norigin\t${pushLine} (push)\n`);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('skipped');
+    expect(out.results[0].reason).toMatch(/^remote origin points at octocat\/\S+, not OctoCat\/react$/);
+    expect(octokit.repos.get).not.toHaveBeenCalled();
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['plain http', 'https://github.com/octocat/react.git'.replace('https', 'http')],
+    ['userinfo in the URL', 'https://someone:secret@github.com/octocat/react.git'],
+    ['ssh on another port', 'ssh://git@github.com:22/octocat/react.git'],
+    ['ssh with the host spelled another way', 'git@GitHub.com:octocat/react.git'],
+  ])('pushes to the URL built from the PR head repo, never the remote string: %s (#1937)', async (_case, url) => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    fakeGit(`origin\t${url} (fetch)\norigin\t${url} (push)\n`);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('pushed');
+    expect(pushCalls()).toHaveLength(1);
+    expect(pushCalls()[0][5]).toBe('https://github.com/OctoCat/react.git');
+    expect(pushCalls()[0].join(' ')).not.toContain(url);
+    // The fork check now also requires the fork's parent to be the PR's repo.
+    expect(octokit.repos.get).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['scp-style', 'git@github.com:octocat/react.git'],
+    ['ssh://', 'ssh://git@github.com/octocat/react'],
+  ])('keeps the ssh transport of an ssh remote, with the URL still built from the target: %s', async (_case, url) => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit(`origin\t${url} (fetch)\norigin\t${url} (push)\n`);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('pushed');
+    // Owner and repo as GitHub names them (`OctoCat`), not as the remote spells them.
+    expect(pushCalls()[0][5]).toBe('git@github.com:OctoCat/react.git');
+  });
+
+  it('picks the login-owned remote that names the target when an earlier one does not', async () => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit('origin\thttps://github.com/octocat/other.git (push)\nfork\thttps://github.com/octocat/react.git (push)\n');
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0]).toMatchObject({ status: 'pushed', remote: 'fork', repo: 'octocat/react' });
+    expect(pushCalls()[0][5]).toBe('https://github.com/OctoCat/react.git');
+  });
+
+  it('skips a fork of some other repository, and a PR whose head repo cannot be read (#1937)', async () => {
+    const prepared = [entry({ branch: 'a' }), entry({ branch: 'b', url: 'https://github.com/facebook/react/pull/43' })];
+    const sm = fakeStateManager(record(prepared));
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    octokit.repos.get.mockResolvedValue({
+      data: { fork: true, owner: { login: 'octocat' }, full_name: 'octocat/react', parent: { full_name: 'x/react' } },
+    });
+    octokit.pulls.get
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint', repo: HEAD_REPO } } })
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint', repo: null } } });
+    fakeGit(forkRemotes);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results.map((r) => r.reason)).toEqual([
+      'octocat/react is not a fork of facebook/react',
+      'could not read the head repository of https://github.com/facebook/react/pull/43',
+    ]);
+    expect(pushCalls()).toEqual([]);
+  });
+
   it('a non-fast-forward is a skip with a reason, never a retry with --force', async () => {
     mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
     fakeOctokit();
@@ -463,6 +602,7 @@ describe('runOvernightPushPrep', () => {
     let calls = 0;
     mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
       if (args[2] === 'remote') return forkRemotes;
+      if (isImport(args)) return '';
       if (++calls === 1) throw Object.assign(new Error('boom'), { stderr: 'fatal: unable to access' });
       return '';
     }) as never);
@@ -502,6 +642,7 @@ describe('runOvernightPushPrep', () => {
     let calls = 0;
     mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
       if (args[2] === 'remote') return forkRemotes;
+      if (isImport(args)) return '';
       if (++calls === 1) throw Object.assign(new Error('boom'), { stderr: 'remote: Permission denied' });
       return '';
     }) as never);
@@ -529,7 +670,7 @@ describe('runOvernightPushPrep', () => {
     const octokit = fakeOctokit();
     // entry b is the first to need a second PR-head lookup: make that one hit the limit
     octokit.pulls.get
-      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint' } } })
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint', repo: HEAD_REPO } } })
       .mockRejectedValueOnce(Object.assign(new Error('API rate limit exceeded'), { status: 403 }));
     fakeGit(forkRemotes);
 
