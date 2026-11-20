@@ -203,7 +203,8 @@ The flow, every time:
 # cla (none | required | unknown), commitRules, prGate (none | claim-first | maintainer-label |
 # collaborators-only | unknown), maxOpenAiPRs. vet records what it reads from CONTRIBUTING unreviewed;
 # set records what the user confirmed (refused unattended; vet never overwrites it). A repo in
-# aiPolicyBlocklist reads as banned whatever is stored. disclosureText and sources come back fenced.
+# aiPolicyBlocklist reads as banned whatever is stored; set --ai-policy banned adds the repo to that list and
+# any other --ai-policy takes it off (reset leaves it). disclosureText and sources come back fenced.
 <prefix> policy get --repo <owner/repo> --json
 <prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
 <prefix> policy reset --repo <owner/repo> --json

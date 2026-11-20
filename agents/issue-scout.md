@@ -80,17 +80,13 @@ The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scout s
 Run the matching command for the first or last option (both are refused in unattended runs; there, leave the record as is):
 
 ```bash
-# Confirm the ban: record it, then add the repo to aiPolicyBlocklist so clients
-# that predate policy records honor it too (concatenate: --set replaces the whole value)
+# Confirm the ban (also adds the repo to aiPolicyBlocklist, so clients that predate policy records honor it)
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy set --repo "{OWNER}/{REPO}" --ai-policy banned --json
-CURRENT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json | jq -r '.data.config.aiPolicyBlocklist // ""')
-NEW="${CURRENT:+$CURRENT,}{OWNER}/{REPO}"
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set aiPolicyBlocklist="$NEW"
-# Undo (false positive)
+# Undo (false positive; also takes the repo off aiPolicyBlocklist, which would otherwise keep banning it)
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" policy set --repo "{OWNER}/{REPO}" --ai-policy allowed --json
 ```
 
-A record set this way is never overwritten by a later vet. It cannot lift a ban from `aiPolicyBlocklist`; that list is edited with `setup --set aiPolicyBlocklist=...`.
+A record set this way is never overwritten by a later vet. `data.blocklistChange` says whether `aiPolicyBlocklist` changed. `policy reset` deletes the record and leaves the blocklist alone.
 
 Hidden signals (policy PRs, hidden comments) aren't document-scannable — note manually when observed and offer to record the ban with the same confirmation prompt above, passing `--source "<what you saw>"`.
 
