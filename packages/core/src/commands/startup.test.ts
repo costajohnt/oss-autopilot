@@ -36,6 +36,18 @@ vi.mock('./dashboard-process.js', () => ({
   recordBrowserOpened: vi.fn(),
 }));
 
+// Path settings are per-machine (#1950): writes go to the local settings
+// file, and with no local value the synced config value is what is read.
+const { setMachinePathSpy } = vi.hoisted(() => ({ setMachinePathSpy: vi.fn() }));
+vi.mock('../core/local-config.js', () => ({
+  getMachinePath: (key: string, synced: Record<string, string | undefined>) => synced[key],
+  getMachinePathSource: (key: string, synced: Record<string, string | undefined>) => {
+    const value = synced[key];
+    return value ? 'synced' : undefined;
+  },
+  setMachinePath: setMachinePathSpy,
+}));
+
 // Mock fs so detectIssueList doesn't hit the real filesystem
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
@@ -429,9 +441,11 @@ describe('detectIssueList', () => {
 
     // Persisted ABSOLUTE (#1577) — a bare filename next to the (now absolute) list.
     expect(result?.skippedIssuesPath).toBe(nodePath.resolve('open-source/skipped-issues.md'));
-    expect(updateConfigSpy).toHaveBeenCalledWith({
-      skippedIssuesPath: nodePath.resolve('open-source/skipped-issues.md'),
-    });
+    expect(setMachinePathSpy).toHaveBeenCalledWith(
+      'skippedIssuesPath',
+      nodePath.resolve('open-source/skipped-issues.md'),
+      'probe',
+    );
   });
 
   it('does NOT re-persist paths already stored as absolute (#1330/#1577)', async () => {
@@ -458,6 +472,7 @@ describe('detectIssueList', () => {
     detectIssueList();
 
     expect(updateConfigSpy).not.toHaveBeenCalled();
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
   });
 
   it('persists an auto-detected list path as absolute so it sticks across CWDs (#1577)', async () => {
@@ -478,9 +493,11 @@ describe('detectIssueList', () => {
 
     expect(result?.source).toBe('auto-detected');
     expect(result?.path).toBe(nodePath.resolve('open-source/potential-issue-list.md'));
-    expect(updateConfigSpy).toHaveBeenCalledWith({
-      issueListPath: nodePath.resolve('open-source/potential-issue-list.md'),
-    });
+    expect(setMachinePathSpy).toHaveBeenCalledWith(
+      'issueListPath',
+      nodePath.resolve('open-source/potential-issue-list.md'),
+      'probe',
+    );
   });
 
   it('upgrades a relative configured issueListPath to absolute in state (#1577)', async () => {
@@ -497,7 +514,7 @@ describe('detectIssueList', () => {
 
     detectIssueList();
 
-    expect(updateConfigSpy).toHaveBeenCalledWith({ issueListPath: nodePath.resolve('state/issues.md') });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('issueListPath', nodePath.resolve('state/issues.md'), 'adopted');
   });
 
   it('returns undefined (not a silent probe fallthrough that finds nothing) when a configured list is missing (#1577)', async () => {
@@ -532,6 +549,7 @@ describe('detectIssueList', () => {
     expect(result?.path).toBe(nodePath.resolve('issues.md'));
     expect(result?.source).toBe('auto-detected');
     expect(updateConfigSpy).not.toHaveBeenCalled();
+    expect(setMachinePathSpy).not.toHaveBeenCalled();
   });
 
   it('anchors a relative configured skippedIssuesPath to the list dir, persisted absolute (#1577)', async () => {
@@ -551,7 +569,7 @@ describe('detectIssueList', () => {
     const result = detectIssueList();
 
     expect(result?.skippedIssuesPath).toBe(expectedSkip);
-    expect(updateConfigSpy).toHaveBeenCalledWith({ skippedIssuesPath: expectedSkip });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', expectedSkip, 'adopted');
   });
 });
 

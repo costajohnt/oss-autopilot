@@ -16,6 +16,7 @@ import type { LinkedPR } from '../core/linked-pr-classification.js';
 import { SearchRotationSchema } from '../core/state-schema.js';
 import { computeStrategy } from '../core/strategy.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
+import { getMachinePath } from '../core/local-config.js';
 import { loadSkippedIssuesDetailed } from './skip-file-parser.js';
 import { ISSUE_URL_PATTERN } from './validation.js';
 
@@ -116,7 +117,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics, excludeUrl
   // silently. The missing case is the common one: a relative skippedIssuesPath
   // resolves against the CWD, so running /oss outside the directory that holds
   // it found nothing and the skip list loaded empty without any warning.
-  const skippedIssuesLoad = loadSkippedIssuesDetailed(config.skippedIssuesPath);
+  const skippedIssuesLoad = loadSkippedIssuesDetailed(getMachinePath('skippedIssuesPath', config));
   if ((skippedIssuesLoad.readError !== undefined || skippedIssuesLoad.notFound) && diagnostics) {
     diagnostics.skipListUnavailable = true;
   }

@@ -247,13 +247,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   // ── Tooling ──────────────────────────────────────────────────────────
   {
     key: 'issueListPath',
-    description: 'Path to a text file of extra issue URLs to surface.',
+    description: 'Path to a text file of extra issue URLs to surface (per machine, not synced).',
     settableVia: 'both',
     valueHint: 'filesystem path',
   },
   {
     key: 'skippedIssuesPath',
-    description: 'Path to the skipped-issues file (entries are permanent).',
+    description: 'Path to the skipped-issues file (entries are permanent; per machine, not synced).',
     settableVia: 'setup',
     valueHint: 'filesystem path',
   },

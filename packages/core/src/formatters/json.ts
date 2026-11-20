@@ -1483,7 +1483,14 @@ export interface TrackOutput {
 }
 
 export interface ConfigOutput {
+  /** `issueListPath` and `skippedIssuesPath` are this machine's values in effect (#1950). */
   config: AgentState['config'];
+  /**
+   * Where each shown path comes from: `set`, `adopted` or `probe` for a value
+   * in this machine's `local-config.json`, `synced` for the shared config
+   * fallback. Omitted when neither path is configured.
+   */
+  machinePathSources?: Partial<Record<'issueListPath' | 'skippedIssuesPath', 'set' | 'adopted' | 'probe' | 'synced'>>;
 }
 
 /** Info about a detected issue list file */

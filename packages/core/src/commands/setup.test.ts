@@ -16,6 +16,12 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
+const { setMachinePathSpy } = vi.hoisted(() => ({ setMachinePathSpy: vi.fn() }));
+vi.mock('../core/local-config.js', () => ({
+  MACHINE_PATH_KEYS: ['issueListPath', 'skippedIssuesPath'],
+  setMachinePath: setMachinePathSpy,
+}));
+
 vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
 }));
@@ -353,14 +359,27 @@ describe('runSetup', () => {
   it('should set skippedIssuesPath', async () => {
     const result = (await runSetup({ set: ['skippedIssuesPath=/tmp/skip.txt'] })) as SetupSetOutput;
 
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: '/tmp/skip.txt' });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', '/tmp/skip.txt');
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
     expect(result.settings).toMatchObject({ skippedIssuesPath: '/tmp/skip.txt' });
+  });
+
+  it('skips the Gist checkpoint when every key set is machine-local (#1950)', async () => {
+    await runSetup({ set: ['issueListPath=/tmp/list.md', 'skippedIssuesPath=/tmp/skip.txt'] });
+
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('still checkpoints when a machine-local key is set together with a synced one', async () => {
+    await runSetup({ set: ['issueListPath=/tmp/list.md', 'maxActivePRs=7'] });
+
+    expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
   });
 
   it('should clear skippedIssuesPath when value is empty', async () => {
     const result = (await runSetup({ set: ['skippedIssuesPath='] })) as SetupSetOutput;
 
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: undefined });
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', undefined);
     expect(result.settings).toMatchObject({ skippedIssuesPath: '(cleared)' });
   });
 

@@ -191,6 +191,7 @@ import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
 import { detectIssueList } from './startup.js';
 import { getGitHubToken } from '../core/index.js';
 import { ConcurrencyError, ConfigurationError, StateLockTimeoutError } from '../core/errors.js';
+import { getLocalConfigPath } from '../core/paths.js';
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -2540,7 +2541,9 @@ describe('dashboard-server', () => {
     let issueListPath: string;
 
     beforeEach(() => {
-      // Fresh tmp file per test so mtimes don't collide across tests.
+      // Fresh tmp file per test so mtimes don't collide across tests, and no
+      // list path adopted locally from a previous test (#1950).
+      fs.rmSync(getLocalConfigPath(), { force: true });
       issueListDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-issuelist-'));
       issueListPath = path.join(issueListDir, 'potential-issue-list.md');
 

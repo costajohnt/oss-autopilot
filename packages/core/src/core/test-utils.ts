@@ -194,7 +194,7 @@ export function makeStateManagerMock(
     setMonthlyMergedCounts: () => {},
     setMonthlyClosedCounts: () => {},
     setMonthlyOpenedCounts: () => {},
-    setLocalRepoCache: () => {},
+    clearSyncedLocalRepoCache: () => {},
     getMergedPRs: () => [],
     addMergedPRs: () => {},
     getMergedPRWatermark: () => {},
