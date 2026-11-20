@@ -2146,6 +2146,19 @@ describe('cleanup command (#1956)', () => {
     expect(mockRunCleanup).toHaveBeenCalledWith({ apply: true });
     expect(mockOutputJson).toHaveBeenCalledWith({ ...data, applied: true });
     expect(mockPrintCleanup).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('exits non-zero when the run lists errors, and still prints the output', async () => {
+    const failed = { ...data, errors: ['/d/worktrees/a-1: git worktree remove refused'] };
+    mockRunCleanup.mockReturnValue(failed);
+
+    await buildProgram('cleanup').parseAsync(['node', 'cli', 'cleanup']);
+    const exitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    expect(exitCode).toBe(1);
+    expect(mockPrintCleanup).toHaveBeenCalledWith(failed);
   });
 });
 

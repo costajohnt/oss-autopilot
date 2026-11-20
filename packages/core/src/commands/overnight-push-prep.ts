@@ -49,7 +49,7 @@ export const PREP_REF_PREFIX = 'refs/heads/prep/';
 
 const GIT_TIMEOUT_MS = 60_000;
 // Inherited, any of these would point `git -C <worktree>` at another repository.
-const GIT_REDIRECTS = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']);
+const GIT_REDIRECTS = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR']);
 // `ls-files` on a large repository outgrows the 1 MiB default.
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
 
@@ -202,11 +202,11 @@ export function compareUrlFor(target: RemoteOwnerRepo, prHead: string, prepBranc
 }
 
 /** Run `git -C <worktree> <args>` and return its stdout. Also the runner `cleanup` uses. */
-export function git(worktree: string, args: string[]): string {
+export function git(worktree: string, args: string[], timeoutMs: number = GIT_TIMEOUT_MS): string {
   const inherited = Object.entries(process.env).filter(([name]) => !GIT_REDIRECTS.has(name));
   return execFileSync('git', ['-C', worktree, ...args], {
     encoding: 'utf8',
-    timeout: GIT_TIMEOUT_MS,
+    timeout: timeoutMs,
     maxBuffer: GIT_MAX_BUFFER,
     stdio: ['ignore', 'pipe', 'pipe'],
     // Unattended: a credential prompt must fail, not hang until the timeout.

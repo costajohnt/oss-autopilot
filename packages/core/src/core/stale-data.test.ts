@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import path from 'node:path';
+import { isRoot } from '../test-lib/is-root.js';
 import {
   DAY_MS,
   REJECTED_KEEP,
@@ -76,7 +77,7 @@ describe('staleRejectedCopies', () => {
     expect(fs.readdirSync(ctx.dataDir)).toHaveLength(REJECTED_KEEP + 1);
   });
 
-  it('skips an entry it cannot stat (a file that vanished mid-scan) with a warning', () => {
+  it.skipIf(isRoot)('skips an entry it cannot stat (a file that vanished mid-scan) with a warning', () => {
     const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (let i = 0; i < REJECTED_KEEP + 3; i++) writeCopy('state.json', OLD_DAYS + i);
     // Readable but not searchable: readdir lists the names, lstat on each fails.
@@ -170,7 +171,7 @@ describe('pruneRejectedCopies', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not prune rejected state copies'));
   });
 
-  it('reports and carries on when a delete fails', () => {
+  it.skipIf(isRoot)('reports and carries on when a delete fails', () => {
     const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (let i = 0; i < REJECTED_KEEP; i++) writeCopy('state.json', OLD_DAYS + i);
     const old = writeCopy('state.json', 60);

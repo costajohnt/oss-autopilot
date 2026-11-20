@@ -367,10 +367,25 @@ describe('checkStaleData', () => {
     fs.writeFileSync(path.join(dataDir, 'state.json.rejected-1'), '{}');
 
     fs.mkdirSync(path.join(dataDir, 'worktrees', 'octo-repo-1'), { recursive: true });
+    // Not worktrees: a stray file, a directory with another name, a file with a worktree's name.
+    fs.mkdirSync(path.join(dataDir, 'worktrees', 'scratch'));
+    fs.writeFileSync(path.join(dataDir, 'worktrees', '.DS_Store'), '');
+    fs.writeFileSync(path.join(dataDir, 'worktrees', 'octo-repo-2'), '');
 
     expect(checkStaleData(dataDir)).toMatchObject({ status: 'ok', message: expect.stringContaining('1 overnight') });
     expect(checkStaleData(path.join(dataDir, 'absent')).status).toBe('ok');
     fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('warns with the file system error instead of crashing on an unreadable data directory', () => {
+    const notADir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-doctor-stale-')), 'file');
+    fs.writeFileSync(notADir, '');
+
+    const result = checkStaleData(notADir);
+
+    expect(result.status).toBe('warning');
+    expect(result.message).toContain(`Could not read ${notADir}`);
+    fs.rmSync(path.dirname(notADir), { recursive: true, force: true });
   });
 
   it('warns and points at cleanup when rejected copies are past retention', () => {

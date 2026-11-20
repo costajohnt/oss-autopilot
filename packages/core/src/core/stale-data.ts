@@ -26,6 +26,9 @@ export const REJECTED_KEEP = 5;
 export const REJECTED_MIN_AGE_DAYS = 7;
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Directory names the overnight preparer gives its worktrees: `<owner>-<repo>-<n>`, `...-issue-<n>`. */
+export const WORKTREE_NAME = /^[\w.-]+-\d+$/;
+
 const REJECTED_PATTERN = /^(state|state-cache)\.json\.rejected-(\d+)$/;
 
 /** True when `child`, with every symlink resolved, sits strictly inside `parent`. */

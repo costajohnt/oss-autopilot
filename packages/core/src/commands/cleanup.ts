@@ -13,18 +13,22 @@
  * 3. `git status --porcelain --untracked-files=all` is empty: no modified and
  *    no untracked files, whatever `status.showUntrackedFiles` says;
  * 4. HEAD is contained in a remote-tracking ref, so no commit lives only here;
- * 5. no rebase, merge, cherry-pick, revert or bisect is in progress;
+ * 5. no rebase, merge, cherry-pick (a leftover `sequencer` included), revert
+ *    or bisect is in progress;
  * 6. every ignored file sits under a build-output directory
- *    ({@link BUILD_OUTPUT}); an ignored `.env` keeps the worktree;
+ *    ({@link BUILD_OUTPUT}); an ignored `.env`, or an ignored file that is
+ *    merely named `build`, keeps the worktree;
  * 7. no file is flagged skip-worktree or assume-unchanged, which would hide
  *    an edit from 3;
  * 8. every commit in this worktree's HEAD reflog is reachable from a branch,
  *    a remote-tracking ref or a tag;
  * 9. nothing touched it for {@link WORKTREE_MIN_AGE_DAYS} days.
  *
- * Removal is `git worktree remove` without `--force`, which re-checks 3
- * itself and leaves the branch in the clone. No network access, no `rm`.
- * `--apply` refuses during an unattended run.
+ * Each worktree is judged and, with `--apply`, removed at once, so nothing
+ * happens to it between the two. Removal is `git worktree remove` without
+ * `--force`, which re-checks 3 itself and leaves the branch in the clone. No
+ * network access, no `rm`. `--apply` refuses during an unattended run. A
+ * check that throws, and a removal Git refuses, are listed in `errors`.
  *
  * Two deliberate differences from the issue text:
  * - PR merged/closed is not checked (that needs the network). A clean,
@@ -37,22 +41,31 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import { assertAttended, errorMessage } from '../core/errors.js';
 import { resolveDataDir } from '../core/paths.js';
-import { DAY_MS, isInside, pruneRejectedCopies, staleRejectedCopies } from '../core/stale-data.js';
+import { DAY_MS, WORKTREE_NAME, isInside, pruneRejectedCopies, staleRejectedCopies } from '../core/stale-data.js';
 import type { PruneResult } from '../core/stale-data.js';
 import { git } from './overnight-push-prep.js';
 
 export const WORKTREE_MIN_AGE_DAYS = 14;
 
-/** Ignored paths with one of these as a path segment are rebuildable, not work. */
+/** Ignored paths under a directory with one of these names are rebuildable, not work. */
 export const BUILD_OUTPUT = new Set(['node_modules', 'dist', 'build', 'target', 'coverage', '.venv']);
 
-const WORKTREE_NAME = /^[\w.-]+-\d+$/;
 // Every call, the removal included: no index lock for a read, no
 // `core.fsmonitor` program the repo's config names, and untracked files
 // always count (`worktree remove` runs its own status and would otherwise
 // honour `status.showUntrackedFiles=no` and delete them).
 const SAFE_GIT = ['--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'status.showUntrackedFiles=all'];
-const IN_PROGRESS = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
+const IN_PROGRESS = [
+  'rebase-merge',
+  'rebase-apply',
+  'MERGE_HEAD',
+  'CHERRY_PICK_HEAD',
+  'REVERT_HEAD',
+  'BISECT_LOG',
+  'sequencer',
+];
+// Deleting a large `node_modules` on a loaded disk outlasts the runner's 60 s.
+const REMOVE_TIMEOUT_MS = 10 * 60_000;
 const MAX_NAMED_PATHS = 3;
 
 export type WorktreeAction = 'removed' | 'would-remove' | 'kept';
@@ -124,8 +137,11 @@ function operationInProgress(dir: string): string | null {
   return found.length > 0 ? `operation in progress (${found.join(', ')})` : null;
 }
 
+/** Directory segments only: an ignored regular file named `build` is not build output. */
 function isBuildOutput(ignoredPath: string): boolean {
-  return ignoredPath.split('/').some((segment) => BUILD_OUTPUT.has(segment));
+  // A directory entry ends in `/`, so its own name is not the last segment.
+  const directories = ignoredPath.split('/').slice(0, -1);
+  return directories.some((segment) => BUILD_OUTPUT.has(segment));
 }
 
 function ignoredOutsideBuildOutput(dir: string): string | null {
@@ -147,7 +163,7 @@ function hiddenEdits(dir: string): string | null {
 function reflogOnlyCommits(dir: string): string | null {
   // This worktree's own HEAD reflog; `rev-list -g` cannot take `--not`.
   // ponytail: the commits go on the command line; a reflog too long for that
-  // errors, and an error keeps the worktree.
+  // makes the spawn fail, and a failed check keeps the worktree.
   const reflog = gitOut(dir, ['reflog', 'show', '--format=%H', 'HEAD']);
   const commits = new Set(reflog.split('\n').filter((sha) => sha !== ''));
   if (commits.size === 0) return null;
@@ -182,32 +198,50 @@ function judge(dataDir: string, dir: string, now: number): WorktreeReport {
   return { ...report, action: 'would-remove', reason: `clean, pushed, idle ${ageDays} days` };
 }
 
-function inspect(dataDir: string, dir: string, now: number): WorktreeReport {
+/** A report plus, when a check threw or a removal failed, the error to surface. */
+interface Outcome {
+  report: WorktreeReport;
+  error?: string;
+}
+
+function inspect(dataDir: string, dir: string, now: number): Outcome {
   try {
-    return judge(dataDir, dir, now);
+    return { report: judge(dataDir, dir, now) };
   } catch (err) {
-    return kept(dir, `check failed: ${errorMessage(err)}`);
+    const reason = `check failed: ${errorMessage(err)}`;
+    return { report: kept(dir, reason), error: `${dir}: ${reason}` };
   }
 }
 
-function remove(report: WorktreeReport): WorktreeReport {
+function removalFailure(err: unknown): string {
+  if ((err as { code?: unknown })?.code === 'ETIMEDOUT')
+    return `git worktree remove was killed after ${REMOVE_TIMEOUT_MS / 1000}s; the worktree may be partly removed`;
+  return `git worktree remove refused: ${errorMessage(err)}`;
+}
+
+/** Judged removable and then not removed: an error, not a keep. */
+function remove(report: WorktreeReport): Outcome {
   try {
-    git(report.path, [...SAFE_GIT, 'worktree', 'remove', report.path]);
+    git(report.path, [...SAFE_GIT, 'worktree', 'remove', report.path], REMOVE_TIMEOUT_MS);
   } catch (err) {
-    return { ...report, action: 'kept', reason: `git worktree remove refused: ${errorMessage(err)}` };
+    const reason = removalFailure(err);
+    return { report: { ...report, action: 'kept', reason }, error: `${report.path}: ${reason}` };
   }
-  return { ...report, action: 'removed' };
+  return { report: { ...report, action: 'removed' } };
+}
+
+/** Judge one worktree and, with `apply`, remove it straight away if it may go. */
+function judgeAndRemove(dataDir: string, dir: string, options: CleanupOptions, now: number): Outcome {
+  const outcome = inspect(dataDir, dir, now);
+  return options.apply && outcome.report.action === 'would-remove' ? remove(outcome.report) : outcome;
 }
 
 function scan(dataDir: string, root: string, options: CleanupOptions, now: number): WorktreeScan {
   // A symlinked `worktrees` would have every child resolve outside the data dir.
   if (!fs.existsSync(root) || !fs.lstatSync(root).isDirectory()) return { worktrees: [], errors: [] };
-  const planned = fs.readdirSync(root).map((name) => inspect(dataDir, path.join(root, name), now));
-  if (!options.apply) return { worktrees: planned, errors: [] };
-  const worktrees = planned.map((r) => (r.action === 'would-remove' ? remove(r) : r));
-  // Planned and then refused: the judgement and Git disagree, which is an error, not a keep.
-  const refused = worktrees.filter((r, i) => r.action === 'kept' && planned[i].action === 'would-remove');
-  return { worktrees, errors: refused.map((r) => `${r.path}: ${r.reason}`) };
+  const outcomes = fs.readdirSync(root).map((name) => judgeAndRemove(dataDir, path.join(root, name), options, now));
+  const errors = outcomes.flatMap((outcome) => outcome.error ?? []);
+  return { worktrees: outcomes.map((outcome) => outcome.report), errors };
 }
 
 /** Every direct child of `<dataDir>/worktrees`, judged; removed only with `apply`. Never throws. */
@@ -229,8 +263,9 @@ function listRejectedCopies(dataDir: string): PruneResult {
 }
 
 /**
- * Sets a non-zero exit code when anything went wrong, in a dry run too: a
- * scheduler or a script sees only that, and a partial `--apply` is not success.
+ * `errors` is non-empty when anything went wrong, in a dry run too; the CLI
+ * action turns that into a non-zero exit code, since a scheduler or a script
+ * sees only that and a partial `--apply` is not success.
  */
 export function runCleanup(options: CleanupOptions): CleanupOutput {
   if (options.apply) assertAttended('remove worktrees and rejected state copies');
@@ -238,7 +273,6 @@ export function runCleanup(options: CleanupOptions): CleanupOutput {
   const rejected = options.apply ? pruneRejectedCopies(dataDir) : listRejectedCopies(dataDir);
   const scanned = cleanWorktrees(dataDir, options);
   const errors = [...scanned.errors, ...rejected.errors];
-  if (errors.length > 0) process.exitCode = 1;
   return { applied: options.apply, worktrees: scanned.worktrees, rejectedCopies: rejected.removed, errors };
 }
 
