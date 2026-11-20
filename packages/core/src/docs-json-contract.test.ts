@@ -100,10 +100,6 @@ const UNCHECKED = new Map<string, string>([
   // Keyed `cmd <command>` for commands without a Zod output schema.
   ['cmd guidelines', 'guidelines view/fetch-corpus/mark-extracted are goldens-only, no Zod schema'],
   ['cmd overnight', 'overnight run/record are goldens-only (report and push-prep have schemas and are checked)'],
-  // extract-learnings.md "Auto mode" forward-references Step 3's `guidelines fetch-corpus` output.
-  ['workflows/extract-learnings.md data.failures', 'guidelines fetch-corpus, no schema'],
-  ['workflows/extract-learnings.md data.prCount', 'guidelines fetch-corpus, no schema'],
-  ['workflows/extract-learnings.md data.skipped', 'guidelines fetch-corpus, no schema'],
 ]);
 
 // `cli.bundle.cjs" status --json`, `<prefix> status --json`, or an inline `` `status --json` `` mention.

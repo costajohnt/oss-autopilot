@@ -2170,13 +2170,15 @@ Load it with:
         .description('Persist per-repo guidelines (overwrites). Reads markdown content from --content or stdin.')
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
         .option('--content <markdown>', 'Markdown content. If omitted, reads from stdin.')
+        .option('--reviewed', 'Assert the user saw this exact text and approved it. Required; refused when unattended.')
         .option('--json', 'Output as JSON')
         .action(async (options) => {
           await executeAction(
             options,
             async () => {
               const content = options.content ?? (await readStdin());
-              return (await import('./commands/guidelines.js')).runGuidelinesStore({ repo: options.repo, content });
+              const { repo, reviewed = false } = options as { repo: string; reviewed?: boolean };
+              return (await import('./commands/guidelines.js')).runGuidelinesStore({ repo, content, reviewed });
             },
             (data) => {
               console.log(`Stored ${data.byteSize} bytes of guidelines for ${data.repo}.`);

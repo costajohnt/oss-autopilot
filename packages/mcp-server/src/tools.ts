@@ -53,7 +53,6 @@ import {
   getSetupKeys,
   getConfigKeys,
   getStateManager,
-  labelGuidelinesContent,
   renderGistWarning,
   ConcurrencyError,
   GistConcurrencyError,
@@ -1026,14 +1025,13 @@ export function registerTools(server: McpServer): void {
     // edit flow that writes it back) and carries the labeled text separately
     // as `agentContent`, which is what the workflows hand to agents.
     wrapTool(async (args: { repo: string }) => {
-      // MCP keeps its one-field shape: `content` is the labeled text. Drop the
-      // CLI-only `agentContent` twin rather than send the markdown twice.
-      // eslint-disable-next-line sonarjs/no-unused-vars
-      const { agentContent: _cliOnly, ...result } = await runGuidelinesView({ repo: args.repo });
-      if (typeof result.content !== 'string') return result;
+      // MCP keeps its one-field shape: `content` is the labeled text (provenance
+      // note plus review status, #1929), not the raw markdown sent twice.
+      const { agentContent, ...result } = await runGuidelinesView({ repo: args.repo });
+      if (typeof agentContent !== 'string') return result;
       // byteSize stays the STORED size — the provenance preamble is a read-time
       // label, not stored content, so it is excluded on purpose (#1455 review).
-      return { ...result, content: labelGuidelinesContent(result.content) };
+      return { ...result, content: agentContent };
     }),
   );
 
@@ -1042,7 +1040,7 @@ export function registerTools(server: McpServer): void {
     'guidelines-store',
     {
       description:
-        'Persist per-repo guidelines extracted from PR review feedback. Overwrites any existing guidelines for the repo. Content is capped at 8 KB. Requires Gist persistence — fails with GUIDELINES_NOT_AVAILABLE in local mode.',
+        'Persist per-repo guidelines extracted from PR review feedback, after the user has read and approved the exact text (reviewed: true is required; refused in unattended runs). Overwrites any existing guidelines for the repo. Content is capped at 8 KB. Requires Gist persistence — fails with GUIDELINES_NOT_AVAILABLE in local mode.',
       inputSchema: z.object({
         repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
         content: z
@@ -1050,11 +1048,14 @@ export function registerTools(server: McpServer): void {
           .min(1, 'Cannot store empty content; use guidelines-reset to delete')
           .max(8192, 'Content exceeds 8 KB cap')
           .describe('Markdown content extracted from past PR review feedback'),
+        reviewed: z
+          .boolean()
+          .describe('Must be true: the user was shown this exact content and approved it. Never set it on your own.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool((args: { repo: string; content: string }) =>
-      runGuidelinesStore({ repo: args.repo, content: args.content }),
+    wrapTool((args: { repo: string; content: string; reviewed: boolean }) =>
+      runGuidelinesStore({ repo: args.repo, content: args.content, reviewed: args.reviewed }),
     ),
   );
 

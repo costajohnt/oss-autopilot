@@ -228,4 +228,4 @@ Before any push (including post-rebase force-pushes and CI fix commits):
 
 ## Post-merge learnings (#867, #1696)
 
-When you observe that one of the user's PRs has just transitioned to merged, do nothing extra: the next `/oss` startup extracts learnings from it in the background (`autoExtractLearnings`, default on), or offers an `extract_learnings` menu item when that setting is off. Do not run `workflows/extract-learnings.md` yourself and do not prompt for it.
+When you observe that one of the user's PRs has just transitioned to merged, do nothing extra: the next `/oss` startup drafts learnings from it in the background (the `learnings-extractor` agent) and asks the user before storing them (`autoExtractLearnings`, default on), or offers an `extract_learnings` menu item when that setting is off. Do not run `workflows/extract-learnings.md` yourself and do not prompt for it.

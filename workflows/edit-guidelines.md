@@ -36,9 +36,11 @@ workflow is the lightweight load → edit → store path.
 ## Steps
 
 1. **Load the current guidelines** for `repo` via
-   `cli.bundle.cjs guidelines view --repo OWNER/REPO --json` (or the
-   `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get` MCP tool
-   when available).
+   `cli.bundle.cjs guidelines view --repo OWNER/REPO --json` and take
+   its `content` field, the raw stored text. Do not use `agentContent`
+   or the `guidelines-get` MCP tool here: both return the text wrapped
+   in a provenance label and a fence for agents to read, and storing
+   that would save the label into the guidelines (#1929).
 
    - If no guidelines exist, surface a one-line nudge to run
      `extract-learnings` first and exit. This workflow is for editing
@@ -65,7 +67,9 @@ workflow is the lightweight load → edit → store path.
    - No raw secrets pattern matches (defense-in-depth, not authoritative).
 
 5. **Store via the CLI** —
-   `cat <draft-path> | cli.bundle.cjs guidelines store --repo OWNER/REPO`.
+   `cat <draft-path> | cli.bundle.cjs guidelines store --repo OWNER/REPO --reviewed`.
+   `--reviewed` states that the user saw and approved this exact text,
+   which holds here because the user wrote the edit (#1929).
 
    - On success, print a one-line confirmation with the new byte size
      and timestamp.

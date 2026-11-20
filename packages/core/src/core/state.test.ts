@@ -1414,6 +1414,32 @@ describe('StateManager merged PRs', () => {
     it('deleteGuidelines throws GuidelinesNotAvailableError in local mode', () => {
       expect(() => stateManager.deleteGuidelines('owner/repo')).toThrow(/Per-repo guidelines require Gist persistence/);
     });
+
+    it('records one review stamp per repo and returns undefined for a repo never reviewed (#1929)', () => {
+      expect(stateManager.getGuidelinesReview('owner/repo')).toBeUndefined();
+      stateManager.markGuidelinesReviewed('owner/repo', 'aa', '2026-11-19T10:00:00.000Z');
+      stateManager.markGuidelinesReviewed('other/repo', 'bb', '2026-11-19T11:00:00.000Z');
+      stateManager.markGuidelinesReviewed('owner/repo', 'cc', '2026-11-19T12:00:00.000Z');
+      expect(stateManager.getGuidelinesReview('owner/repo')).toEqual({
+        reviewedAt: '2026-11-19T12:00:00.000Z',
+        sha256: 'cc',
+      });
+      expect(stateManager.getGuidelinesReview('other/repo')?.sha256).toBe('bb');
+    });
+
+    it('ignores an unreadable review entry on read and keeps the readable ones (#1929)', () => {
+      stateManager.markGuidelinesReviewed('owner/repo', 'aa', '2026-11-19T10:00:00.000Z');
+      const reviews = stateManager.getState().guidelinesReviews as Record<string, unknown>;
+      reviews['bad/entry'] = { reviewedAt: 5 };
+      expect(stateManager.getGuidelinesReview('bad/entry')).toBeUndefined();
+      expect(stateManager.getGuidelinesReview('owner/repo')?.sha256).toBe('aa');
+      stateManager.markGuidelinesReviewed('other/repo', 'bb', '2026-11-19T11:00:00.000Z');
+      expect(Object.keys(stateManager.getState().guidelinesReviews ?? {})).toEqual([
+        'owner/repo',
+        'bad/entry',
+        'other/repo',
+      ]);
+    });
   });
 });
 

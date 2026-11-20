@@ -11,7 +11,7 @@
       "id": "plugin",
       "type": "frontend",
       "label": "Claude Code Plugin",
-      "sublabel": "9 commands, 8 agents",
+      "sublabel": "9 commands, 9 agents",
       "pos": [
         40,
         110

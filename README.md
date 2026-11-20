@@ -165,7 +165,7 @@ The plugin adds 9 slash commands:
 
 **Commands:** `/oss`, `/oss-search`, `/oss-overnight`, `/oss-dashboard`, `/oss-guidelines`, `/pr-ready`, `/plan-ready`, `/setup-oss`, `/oss-help`
 
-The plugin also ships 8 specialized agents that Claude dispatches for you:
+The plugin also ships 9 specialized agents that Claude dispatches for you:
 
 | Agent | Job |
 |-------|-----|
@@ -177,6 +177,7 @@ The plugin also ships 8 specialized agents that Claude dispatches for you:
 | `repo-evaluator` | Judges whether a repo is worth your time before you start |
 | `contribution-strategist` | Looks at your history and suggests where to focus |
 | `overnight-preparer` | Prepares one fix branch in a local worktree during `/oss-overnight` |
+| `learnings-extractor` | Drafts per-repo guideline proposals from past PR feedback for you to approve; has no shell, file or store tool |
 
 Agents exist only in the Claude Code plugin. MCP and CLI users get the same underlying data through tools and commands.
 

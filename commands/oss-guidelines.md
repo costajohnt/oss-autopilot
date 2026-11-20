@@ -36,14 +36,18 @@ the full extraction.
 
    ```
    ## Guidelines for {owner}/{repo}
-   Stored: {byteSize} bytes, last updated {timestamp}
+   Stored: {byteSize} bytes. {review status}
 
    {markdown content}
    ```
 
-   Read via `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get`
-   when available; fall back to
-   `cli.bundle.cjs guidelines view --repo OWNER/REPO --json` otherwise.
+   Read via `cli.bundle.cjs guidelines view --repo OWNER/REPO --json`
+   and render its raw `content` field. Do not render the
+   `guidelines-get` MCP tool's output here: that is the agent-facing
+   form, wrapped in a label and an escaping fence. The review status
+   comes from `reviewedAt`: "Reviewed by you on {date}." when it is set,
+   "Not reviewed: stored before review was required, or changed since by
+   an older client." when it is null (#1929).
 
 3. **Offer follow-up actions.** Use `AskUserQuestion`:
    - **Re-extract from recent PRs** — dispatches the
