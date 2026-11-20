@@ -10,7 +10,7 @@
 
 import type { IssueAvailabilityVerdict, IssueVerification } from './issue-verification.js';
 import type { RepoCapStatus } from './repo-cap.js';
-import { banNote, fencePolicyText, summarizePolicy, type RepoPolicy } from './repo-policy.js';
+import { banNote, fencePolicyText, quote, summarizePolicy, type RepoPolicy } from './repo-policy.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
 import { isOwnRepo, splitRepo } from './urls.js';
 
@@ -59,6 +59,8 @@ export interface PreflightFacts {
   mergeBase: string | null;
   /** `git log --oneline` lines for upstream commits since the merge base that touch files this branch changed. */
   overlappingCommits: string[];
+  /** Full messages of this branch's own commits (`git log <mergeBase>..HEAD`, merges left out); null without a merge base. */
+  branchCommits: string[] | null;
   /** Set when `--fetch` was passed and the fetch failed. */
   fetchError: string | null;
   /** Configured GitHub username. */
@@ -319,12 +321,20 @@ function policyAsks(facts: PreflightFacts, policy: RepoPolicy, repo: string): st
     ],
     [isFirst && policy.cla === 'required', `${repo} requires a signed CLA: sign it when the CLA bot asks on the PR`],
     [policy.prGate === 'collaborators-only' && facts.github?.canPush !== true, collaboratorsAsk(facts, policy, repo)],
-    [
-      !facts.cap && policy.maxOpenAiPRs !== undefined,
-      `${repo} allows ${policy.maxOpenAiPRs} open AI-assisted PR(s): count yours there before opening another`,
-    ],
+    ...maxOpenAsk(facts, policy, repo),
   ];
   return rules.filter(([applies]) => applies).map(([, ask]) => ask);
+}
+
+/** The open AI-PR limit when it cannot fail: the count is unknown, or the limit was read from the docs and not reviewed. */
+function maxOpenAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string): Array<[boolean, string]> {
+  const max = policy.maxOpenAiPRs;
+  if (max === undefined) return [];
+  if (!facts.cap)
+    return [[true, `${repo} allows ${max} open AI-assisted PR(s): count yours there before opening another`]];
+  const isOver = !policy.reviewedByUser && facts.cap.openPRCount >= max;
+  const ask = `${repo}'s docs read as allowing ${max} open AI-assisted PR(s) and you have ${facts.cap.openPRCount}: wait for one to close, or record the limit with policy set --repo ${repo} --ai-policy <value> --max-open-ai-prs <n|0> if the docs were misread`;
+  return [[isOver, ask]];
 }
 
 /** The warn for `collaborators-only` when it cannot fail: push access unknown, or the rule not reviewed. */
@@ -345,7 +355,8 @@ function policyStop(facts: PreflightFacts, policy: RepoPolicy, repo: string): st
   if (policy.prGate === 'collaborators-only' && policy.reviewedByUser && facts.github?.canPush === false) {
     return `${repo} only takes PRs from collaborators: do not open this PR`;
   }
-  const max = policy.maxOpenAiPRs;
+  // Only a limit the user confirmed stops the PR; one read from the docs warns (policyAsks).
+  const max = policy.reviewedByUser ? policy.maxOpenAiPRs : undefined;
   if (max !== undefined && facts.cap && facts.cap.openPRCount >= max) {
     return `${repo} allows ${max} open AI-assisted PR(s) and you have ${facts.cap.openPRCount}: wait for one to close`;
   }
@@ -378,6 +389,59 @@ export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
   return check(id, 'pass', `${repo}: AI policy ${policy.aiPolicy}, PR gate ${policy.prGate}`, details);
 }
 
+const AUTO_SUBJECT = /^(?:Revert "|Reapply "|(?:fixup|squash|amend)! )/;
+/** A GitHub closing keyword, on the same line as `#12`, `owner/repo#12` or an issue URL. */
+const CLOSING_KEYWORD = String.raw`\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?[ \t]+`;
+const CLOSING_REFS: readonly RegExp[] = [
+  new RegExp(String.raw`${CLOSING_KEYWORD}\S*#\d+`, 'i'),
+  new RegExp(String.raw`${CLOSING_KEYWORD}https?://github\.com/[^/\s]+/[^/\s]+/issues/\d+`, 'i'),
+];
+
+/** Per commit rule id: true when a commit message breaks it. An id this release does not know is not checked. */
+const COMMIT_RULE_BROKEN: Record<string, (message: string) => boolean> = {
+  // Reverts and autosquash commits keep the subject Git wrote.
+  'conventional-commits': (m) => !AUTO_SUBJECT.test(m) && !/^\w+(?:\([^)\n]*\))?!?: \S/.test(m),
+  'dco-signoff': (m) => !/^Signed-off-by: .+ <[^>\n]+>\s*$/im.test(m),
+  'no-closing-keyword-in-commit': (m) => CLOSING_REFS.some((re) => re.test(m)),
+};
+
+const MAX_LISTED_VIOLATIONS = 10;
+
+/**
+ * The repo's recorded commit rules over this branch's commits (local, no
+ * network). A rule the user confirmed fails; one read from the docs and not
+ * reviewed only warns. Commit subjects arrive fenced.
+ */
+export function checkCommitRules(facts: PreflightFacts): PreflightCheck {
+  const id = 'commit-rules';
+  const { repo, policy, branchCommits } = facts;
+  const rules = (policy?.commitRules ?? []).filter((rule) => Object.hasOwn(COMMIT_RULE_BROKEN, rule));
+  if (!repo || !policy || rules.length === 0) return check(id, 'skipped', 'no commit rules recorded for this repo');
+  if (branchCommits === null) {
+    return check(id, 'skipped', 'the branch point is unknown (target branch not fetched); run again with --fetch');
+  }
+  const broken = branchCommits.flatMap((message) =>
+    rules
+      .filter((rule) => COMMIT_RULE_BROKEN[rule](message))
+      .map((rule) => `${rule}: ${quote(message.split('\n', 1)[0])}`),
+  );
+  if (broken.length === 0) {
+    return check(id, 'pass', `${branchCommits.length} commit(s) follow ${rules.join(', ')}`, { rules });
+  }
+  const unreviewed = policy.reviewedByUser
+    ? ''
+    : ` (rules read from the repo docs, not reviewed: record them with policy set --repo ${repo} --ai-policy <value> --commit-rules <ids> if misread)`;
+  return check(
+    id,
+    policy.reviewedByUser ? 'fail' : 'warn',
+    `${broken.length} commit rule violation(s): reword those commits${unreviewed}`,
+    {
+      rules,
+      violations: wrapUntrustedContent(broken.slice(0, MAX_LISTED_VIOLATIONS).join('\n'), 'commit-subjects'),
+    },
+  );
+}
+
 /** Every check, in output order. A new check is added here. */
 export const PREFLIGHT_CHECKS: ReadonlyArray<(facts: PreflightFacts) => PreflightCheck> = [
   checkDrift,
@@ -387,6 +451,7 @@ export const PREFLIGHT_CHECKS: ReadonlyArray<(facts: PreflightFacts) => Prefligh
   checkCompetingWork,
   checkRepoCap,
   checkRepoPolicy,
+  checkCommitRules,
 ];
 
 /** `fail` when any check fails, else `warn` when any warns, else `pass`. Skipped checks do not count. */

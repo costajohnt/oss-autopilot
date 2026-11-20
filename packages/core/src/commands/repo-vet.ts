@@ -43,7 +43,7 @@ const COMMUNITY_HEALTH_PATHS = [
  * repo's community health on a token that lacks scope or has been throttled
  * mid-sequence.
  */
-async function probePath(
+export async function probePath(
   octokit: ReturnType<typeof getOctokit>,
   owner: string,
   repo: string,
@@ -167,7 +167,9 @@ function lookupHistoryScore(repoSlug: string): number | undefined {
 /**
  * The contribution policy that applies (#1953): the user's record, else what
  * this run read from CONTRIBUTING and the PR template, with the blocklist read
- * as a ban. repo-vet stores nothing; `vet` records the policy.
+ * as a ban. repo-vet stores nothing (its MCP tool is read-only): it has no
+ * README / CODE_OF_CONDUCT anti-LLM scan, so its AI reading is partial, and
+ * `vet` / `vet-list` record the policy instead.
  */
 function resolvePolicy(repoSlug: string, docs: PolicyDoc[]): RepoPolicy | null {
   const derived = docs.length > 0 ? derivePolicy(docs) : undefined;

@@ -3,7 +3,7 @@
  * is opened. Gathers facts from the local clone (read-only commands) and from
  * GitHub (read-only API), then runs the pure checks in core/pr-preflight.ts:
  * upstream drift, base branch, head branch, working tree, competing work on
- * the issue, and the per-repo open-PR cap.
+ * the issue, the per-repo open-PR cap, the repo policy and its commit rules.
  *
  * It only reads, so it runs in unattended mode. Without a GitHub token, or
  * with `--local`, the local checks still run and the network checks come back
@@ -69,7 +69,7 @@ export interface PrPreflightOutput {
 
 type DriftFacts = Pick<
   PreflightFacts,
-  'remoteRefSha' | 'behind' | 'ahead' | 'mergeBase' | 'overlappingCommits' | 'fetchError'
+  'remoteRefSha' | 'behind' | 'ahead' | 'mergeBase' | 'overlappingCommits' | 'branchCommits' | 'fetchError'
 >;
 
 type FetchMode = 'fetch' | 'no-fetch';
@@ -77,6 +77,8 @@ type FetchMode = 'fetch' | 'no-fetch';
 const BRANCH_NAME = /^[\w.][\w./-]*$/;
 const ISSUE_NUMBER = /^#?(\d+)$/;
 const MAX_OVERLAP_LINES = 20;
+// ponytail: a branch with more commits than this has only its newest 200 checked against the commit rules.
+const MAX_BRANCH_COMMITS = 200;
 // ponytail: argv ceiling. A branch touching more files than this is checked on the first 500 only.
 const MAX_PATHSPECS = 500;
 
@@ -221,6 +223,21 @@ function overlappingCommits(dir: string, mergeBase: string, upstream: string): s
   return log.split('\n').filter((line) => line !== '');
 }
 
+/** Full messages of the branch's own non-merge commits since `mergeBase`, newest first. */
+function branchCommits(dir: string, mergeBase: string): string[] {
+  const log = git(dir, [
+    'log',
+    '--no-merges',
+    `--max-count=${MAX_BRANCH_COMMITS}`,
+    '--format=%B%x00',
+    `${mergeBase}..HEAD`,
+  ]);
+  return log
+    .split('\0')
+    .map((message) => message.trim())
+    .filter((message) => message !== '');
+}
+
 /**
  * Fetch the target branch into its remote-tracking ref, the only thing this command ever changes.
  * The full refspec keeps a branch name from being read as an option. Returns the failure, or null.
@@ -235,7 +252,14 @@ function fetchBase(dir: string, remote: string, base: string): string | null {
 }
 
 function gatherDriftFacts(dir: string, remote: string | null, base: string | null, mode: FetchMode): DriftFacts {
-  const none = { remoteRefSha: null, behind: null, ahead: null, mergeBase: null, overlappingCommits: [] };
+  const none = {
+    remoteRefSha: null,
+    behind: null,
+    ahead: null,
+    mergeBase: null,
+    overlappingCommits: [],
+    branchCommits: null,
+  };
   if (!remote || !base) return { ...none, fetchError: null };
   const fetchError = mode === 'fetch' ? fetchBase(dir, remote, base) : null;
   const remoteRefSha = tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${base}`]);
@@ -250,6 +274,7 @@ function gatherDriftFacts(dir: string, remote: string | null, base: string | nul
     mergeBase,
     fetchError,
     overlappingCommits: mergeBase ? overlappingCommits(dir, mergeBase, remoteRefSha) : [],
+    branchCommits: mergeBase ? branchCommits(dir, mergeBase) : null,
   };
 }
 

@@ -186,6 +186,22 @@ function storedRecordToEdit(
 }
 
 /**
+ * An unreviewed stored record without the derived commit rules, AI-PR limit
+ * and PR gate (reset to unknown) the user did not pass: confirming `--ai-policy` must not mark those as
+ * reviewed. A record the user set is returned as is.
+ */
+function withoutUnseenFields(stored: RepoPolicy, options: PolicySetOptions): RepoPolicy {
+  if (stored.reviewedByUser) return stored;
+  const { maxOpenAiPRs, commitRules, ...rest } = stored;
+  return {
+    ...rest,
+    commitRules: options.commitRules === undefined ? [] : commitRules,
+    prGate: options.prGate === undefined ? 'unknown' : rest.prGate,
+    ...(options.maxOpenAiPRs !== undefined && maxOpenAiPRs !== undefined && { maxOpenAiPRs }),
+  };
+}
+
+/**
  * Record the user's policy for `repo`, merged over what is stored. Refused
  * unattended, and the result is `reviewedByUser: true`, so vet never
  * overwrites it. It cannot lift a `config.aiPolicyBlocklist` ban.
@@ -197,7 +213,7 @@ export async function runPolicySet(options: PolicySetOptions): Promise<PolicyWri
   const stored = storedRecordToEdit(sm.getState(), options);
   const date = new Date();
   const now = date.toISOString();
-  const current = stored ?? {
+  const current = (stored && withoutUnseenFields(stored, options)) ?? {
     aiPolicy: 'unknown',
     cla: 'unknown',
     commitRules: [],
@@ -260,26 +276,74 @@ export async function runPolicyReset(options: { repo: string }): Promise<PolicyR
  * never thrown: recording the policy must not fail the vet.
  */
 export async function recordVetPolicy(repo: string, derived: RepoPolicy): Promise<void> {
+  await recordVetPolicies([{ repo, policy: derived }]);
+}
+
+/**
+ * {@link recordVetPolicy} for several repos, with one Gist checkpoint. With
+ * `fillOnly` (vet-list, which reads only scout's CONTRIBUTING text) a stored
+ * record is replaced only by a ban: a narrower reading must not overwrite one
+ * vet took from more docs.
+ */
+export async function recordVetPolicies(
+  readings: ReadonlyArray<{ repo: string; policy: RepoPolicy }>,
+  options: { fillOnly?: boolean } = {},
+): Promise<void> {
   try {
-    await writeVetPolicy(repo, derived);
+    await writeVetPolicies(readings, options.fillOnly === true);
   } catch (error) {
-    warn(MODULE, `Could not record the contribution policy for ${repo}: ${errorMessage(error)}`);
+    const repos = readings.map((r) => r.repo).join(', ');
+    warn(MODULE, `Could not record the contribution policy for ${repos}: ${errorMessage(error)}`);
   }
 }
 
-async function writeVetPolicy(repo: string, derived: RepoPolicy): Promise<void> {
+async function writeVetPolicies(
+  readings: ReadonlyArray<{ repo: string; policy: RepoPolicy }>,
+  isFillOnly: boolean,
+): Promise<void> {
   const sm = getStateManager();
   sm.reloadIfChanged();
-  const state = sm.getState();
-  // Never replace the user's record or one a newer release wrote.
-  if (isUserReviewed(state, repo) || isUnreadable(state, repo)) return;
-  const stored = storedPolicy(state, repo);
-  if (stored && isSamePolicy(stored, derived)) return;
-  // A recorded ban stays until the user says otherwise: a later reading that misses it does not lift it.
-  if (stored?.aiPolicy === 'banned' && derived.aiPolicy !== 'banned') return;
+  const perRepo = onePerRepo(readings);
+  // Re-checked on every run, so a Gist conflict replay judges against the fresh baseline.
+  let written = 0;
   const write = (): void => {
-    if (!isUserReviewed(sm.getState(), repo)) sm.setRepoPolicy(repo, derived);
+    written = 0;
+    for (const { repo, policy } of perRepo) {
+      if (!shouldWrite(repo, policy, isFillOnly)) continue;
+      sm.setRepoPolicy(repo, policy);
+      written++;
+    }
   };
   write();
-  await maybeCheckpoint(sm, MODULE, write);
+  if (written > 0) await maybeCheckpoint(sm, MODULE, write);
+}
+
+/** One reading per repo (case-insensitive); a ban wins over any other reading of the same repo. */
+function onePerRepo(
+  readings: ReadonlyArray<{ repo: string; policy: RepoPolicy }>,
+): Array<{ repo: string; policy: RepoPolicy }> {
+  const kept: Array<{ repo: string; policy: RepoPolicy }> = [];
+  const indexByRepo = new Map<string, number>();
+  for (const reading of readings) {
+    const index = indexByRepo.get(reading.repo.toLowerCase());
+    if (index === undefined) {
+      indexByRepo.set(reading.repo.toLowerCase(), kept.length);
+      kept.push(reading);
+      continue;
+    }
+    if (reading.policy.aiPolicy === 'banned') kept[index] = reading;
+  }
+  return kept;
+}
+
+function shouldWrite(repo: string, derived: RepoPolicy, isFillOnly: boolean): boolean {
+  const state = getStateManager().getState();
+  // Never replace the user's record or one a newer release wrote.
+  if (isUserReviewed(state, repo) || isUnreadable(state, repo)) return false;
+  const stored = storedPolicy(state, repo);
+  if (!stored) return true;
+  if (isSamePolicy(stored, derived)) return false;
+  // A recorded ban stays until the user says otherwise: a later reading that misses it does not lift it.
+  if (stored.aiPolicy === 'banned') return derived.aiPolicy === 'banned';
+  return !isFillOnly || derived.aiPolicy === 'banned';
 }
