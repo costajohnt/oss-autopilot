@@ -1,8 +1,10 @@
 /**
  * issue-thread command (#1932).
  *
- * The fenced way to read an issue: title, body and every comment come back
- * wrapped in `<github-content>` with author and author association. Raw
+ * The fenced way to read an issue: title, body and every comment reach the
+ * agent wrapped in `<github-content>` with author and author association
+ * (body and comments fenced here; the title by the CLI action or, on MCP, by
+ * the server's `fenceTitlesDeep`). Raw
  * `gh issue view` output passes through no code in this repo, so an agent
  * told to read a thread with it reads stranger-written text unfenced. The
  * unattended implement mode (agents/overnight-preparer.md) reads threads
@@ -38,7 +40,30 @@ function capBody(body: string): string {
 }
 
 /**
- * Fetch one issue's title, body and comments, each fenced as untrusted content.
+ * Fence the title of a thread returned by {@link runIssueThread}. The CLI
+ * applies this to everything it prints, with or without `--json`.
+ */
+export function fenceIssueThreadTitle(thread: IssueThreadOutput): IssueThreadOutput {
+  const label = `${thread.owner}/${thread.repo}#${thread.number}`;
+  return {
+    ...thread,
+    title: wrapUntrustedContent(thread.title, label, {
+      author: thread.author ?? undefined,
+      association: thread.authorAssociation ?? undefined,
+      source: 'issue-title',
+    }),
+  };
+}
+
+/**
+ * Fetch one issue's title, body and comments. The body and every comment
+ * come back fenced as untrusted content.
+ *
+ * The `title` comes back RAW, like every other producer's title: the MCP
+ * server fences `title` in every tool result (`fenceTitlesDeep`, #1931), so
+ * fencing it here too would put a fence inside a fence there. The CLI fences
+ * it with {@link fenceIssueThreadTitle}. Any other caller that hands this
+ * result to an agent must do the same.
  *
  * Nothing is filtered: bot comments and the user's own comments are part of
  * the discussion an implementer needs. Comments come oldest first.
@@ -90,11 +115,7 @@ export async function runIssueThread(options: IssueThreadOptions): Promise<Issue
     repo,
     number: issueNumber,
     state: issue.state,
-    title: wrapUntrustedContent(issue.title, label, {
-      author: issueAuthor,
-      association: issue.author_association,
-      source: 'issue-title',
-    }),
+    title: issue.title,
     author: issueAuthor ?? null,
     authorAssociation: issue.author_association ?? null,
     createdAt: issue.created_at,

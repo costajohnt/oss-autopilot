@@ -1,6 +1,7 @@
 /**
  * Tests for the `issue-thread` command (#1932): every piece of
- * stranger-written text comes back fenced, pagination and the body cap are
+ * stranger-written text comes back fenced (the title by the CLI's
+ * `fenceIssueThreadTitle`, since the MCP server fences titles itself), pagination and the body cap are
  * reported, and GitHub errors propagate. Octokit is mocked; no network.
  *
  * Fencing is asserted against `wrapUntrustedContent` itself, so these tests
@@ -26,7 +27,7 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
-import { runIssueThread, MAX_ISSUE_THREAD_BODY_CHARS } from './issue-thread.js';
+import { runIssueThread, fenceIssueThreadTitle, MAX_ISSUE_THREAD_BODY_CHARS } from './issue-thread.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { formatJson, IssueThreadOutputSchema } from '../formatters/json.js';
 
@@ -65,7 +66,7 @@ describe('issue-thread', () => {
     mocks.issuesListComments.mockReset().mockResolvedValue({ data: [] });
   });
 
-  it('fences the title, the body and every comment with author and association', async () => {
+  it('fences the body and every comment, and the CLI title fence covers the title', async () => {
     mocks.issuesGet.mockResolvedValue(makeIssue({ title: HOSTILE, body: HOSTILE }));
     mocks.issuesListComments.mockResolvedValue({
       data: [
@@ -74,10 +75,15 @@ describe('issue-thread', () => {
       ],
     });
 
-    const result = await runIssueThread({ issueUrl: ISSUE_URL });
+    const raw = await runIssueThread({ issueUrl: ISSUE_URL });
+    // The producer leaves the title raw: the MCP server fences every `title`
+    // itself, and the CLI applies fenceIssueThreadTitle.
+    expect(raw.title).toBe(HOSTILE);
+    const result = fenceIssueThreadTitle(raw);
 
     const issueMeta = { author: 'reporter', association: 'CONTRIBUTOR' };
     expect(result.title).toBe(wrapUntrustedContent(HOSTILE, LABEL, { ...issueMeta, source: 'issue-title' }));
+    expect({ ...result, title: raw.title }).toEqual(raw);
     expect(result.body).toBe(wrapUntrustedContent(HOSTILE, LABEL, { ...issueMeta, source: 'issue-body' }));
     expect(result.comments.map((c) => c.body)).toEqual([
       wrapUntrustedContent(HOSTILE, LABEL, { author: 'maintainer', association: 'MEMBER', source: 'issue-comment' }),
@@ -97,6 +103,12 @@ describe('issue-thread', () => {
     const result = await runIssueThread({ issueUrl: ISSUE_URL });
 
     expect(result.author).toBeNull();
+    expect(fenceIssueThreadTitle(result).title).toBe(
+      wrapUntrustedContent('Widget crashes on empty input', LABEL, {
+        association: 'CONTRIBUTOR',
+        source: 'issue-title',
+      }),
+    );
     expect(result.body).toBe(wrapUntrustedContent('', LABEL, { association: 'CONTRIBUTOR', source: 'issue-body' }));
     expect(result.comments).toEqual([
       {
@@ -196,7 +208,7 @@ describe('issue-thread', () => {
       data: [makeComment(1, long), { ...makeComment(2, null), user: null }],
     });
 
-    const result = await runIssueThread({ issueUrl: ISSUE_URL });
+    const result = fenceIssueThreadTitle(await runIssueThread({ issueUrl: ISSUE_URL }));
 
     const envelope = formatJson(IssueThreadOutputSchema, result);
     expect(envelope.success).toBe(true);

@@ -632,10 +632,10 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (issueUrl: string, options: { json?: boolean }) => {
           const { IssueThreadOutputSchema } = await import('./formatters/json.js');
-          const { runIssueThread } = await import('./commands/issue-thread.js');
+          const { runIssueThread, fenceIssueThreadTitle } = await import('./commands/issue-thread.js');
           await executeAction(
             options,
-            () => runIssueThread({ issueUrl }),
+            async () => fenceIssueThreadTitle(await runIssueThread({ issueUrl })),
             (data) => {
               // Fences stay on in text mode: an agent that drops --json must
               // still get stranger-written text inside its fence.
