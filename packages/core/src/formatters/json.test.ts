@@ -771,6 +771,11 @@ describe('Misc command schemas (#1155)', () => {
     expect(formatJson(SetupOutputSchema, { setupRequired: true, prompts: [] }).success).toBe(true);
   });
 
+  it('ConfigCommandOutputSchema keeps machinePathSources on config output (#2010)', () => {
+    const data = { config: { localRepoScanPaths: ['/here'] }, machinePathSources: { localRepoScanPaths: 'set' } };
+    expect(formatJson(ConfigCommandOutputSchema, data).data).toEqual(data);
+  });
+
   it('ConfigCommandOutputSchema accepts all three union variants', () => {
     expect(formatJson(ConfigCommandOutputSchema, { config: { foo: 'bar' } }).success).toBe(true);
     expect(formatJson(ConfigCommandOutputSchema, { success: true, key: 'k', value: 'v' }).success).toBe(true);

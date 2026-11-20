@@ -1144,6 +1144,8 @@ const ConfigKeyDefSchema = z.object({}).passthrough();
 
 const ConfigGetOutputSchema = z.object({
   config: z.record(z.string(), z.unknown()),
+  // Where each machine-local path shown comes from (#1950, #2010).
+  machinePathSources: z.record(z.string(), z.string()).optional(),
 });
 
 const ConfigSetOutputSchema = z.object({
