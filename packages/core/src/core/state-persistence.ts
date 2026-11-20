@@ -832,7 +832,7 @@ export function saveState(state: Readonly<AgentState>, expected: StateFileIdenti
     if (expected !== null && fs.existsSync(statePath)) {
       const current = statFileIdentity(statePath);
       if (!isSameIdentity(current, expected)) {
-        throw new ConcurrencyError(expected.mtimeMs, current.mtimeMs);
+        throw new ConcurrencyError(expected.mtimeMs, current.mtimeMs, undefined, expected, current);
       }
     }
 

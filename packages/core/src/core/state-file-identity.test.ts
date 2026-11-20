@@ -102,7 +102,18 @@ describe('saveState compare-and-swap uses file identity (#2006)', () => {
     expect(after.mtimeMs).toBe(loaded.fileId?.mtimeMs);
     expect(after.size).toBe(loaded.fileId?.size);
 
-    expect(() => saveState(loaded.state, loaded.fileId)).toThrow(ConcurrencyError);
+    let err: unknown;
+    try {
+      saveState(loaded.state, loaded.fileId);
+    } catch (error) {
+      err = error;
+    }
+    expect(err).toBeInstanceOf(ConcurrencyError);
+    const conflict = err as ConcurrencyError;
+    expect(conflict.expectedMtimeMs).toBe(conflict.actualMtimeMs);
+    expect(conflict.expectedIdentity).toEqual(loaded.fileId);
+    expect(conflict.actualIdentity?.ino).toBe(fs.statSync(stateFile(), { bigint: true }).ino.toString());
+    expect(conflict.actualIdentity?.ino).not.toBe(loaded.fileId?.ino);
     expect(diskUsername()).toBe('bobby');
     expect(reloadStateIfChanged(loaded.fileId)?.state.config.githubUsername).toBe('bobby');
   });
