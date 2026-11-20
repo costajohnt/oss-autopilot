@@ -89,8 +89,10 @@ import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
 import { batchOnFreshBaseline, filterDismissedIssues, reloadOrWarn } from './daily-dismiss-filter.js';
 import {
   applyRepoMetadata,
+  fetchClosedLedgerGap,
   fetchMergedLedgerGap,
   resetStaleClosedCounts,
+  storeClosedLedger,
   storeMergedLedger,
   syncLedgersWithGitHub,
 } from './daily-ledger.js';
@@ -117,7 +119,7 @@ export {
 // reuse it without crossing the commands → sibling-command boundary
 // (#1208 M7). Re-exported here for backward compatibility with anyone
 // importing from this module.
-import { buildStarFilter, firstMaintainerResponseFromDigest, lastReviewStateFromDigest } from '../core/daily-logic.js';
+import { buildStarFilter } from '../core/daily-logic.js';
 
 /**
  * Internal result of the daily check, using full (non-deduplicated) types.
@@ -196,6 +198,8 @@ interface FetchedPRData {
   truncatedSearches: { merged: boolean; closed: boolean };
   /** GitHub's all-time merged PR count, or undefined when the count search failed. */
   mergedTotalCount: number | undefined;
+  /** GitHub's all-time closed-without-merge count, or undefined when the count search failed. */
+  closedTotalCount: number | undefined;
   closedCounts: Map<string, number>;
   /** Every PR the merged/closed count searches returned, for transfer detection. */
   searchedPRs: Array<{ url: string; title: string }>;
@@ -414,6 +418,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
     recentlyMergedFetchFailed: recentPRs.recentlyMergedFetchFailed,
     truncatedSearches: { merged: mergedResult.truncated, closed: closedResult.truncated },
     mergedTotalCount: mergedResult.totalCount,
+    closedTotalCount: closedResult.totalCount,
     successorGaps,
     prs,
     failures,
@@ -1209,6 +1214,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     mergedCounts,
     truncatedSearches,
     mergedTotalCount,
+    closedTotalCount,
     closedCounts,
     searchedPRs,
     monthlyCounts,
@@ -1225,8 +1231,11 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Phase 2: Update repo scores (signals, star counts, trust sync)
   await updateRepoScores(prMonitor, prs, mergedCounts, truncatedSearches, closedCounts, searchedPRs, warnings);
 
-  // Merges since the ledger's newest entry, fetched before Phase 3 adds to it (#1924).
-  const mergedGap = await fetchMergedLedgerGap(getOctokit(token), getStateManager(), warnings);
+  // Merges and closes since each ledger's newest entry, fetched before Phase 3 adds to it (#1924, #1925).
+  const [mergedGap, closedGap] = await Promise.all([
+    fetchMergedLedgerGap(getOctokit(token), getStateManager(), warnings),
+    fetchClosedLedgerGap(getOctokit(token), getStateManager(), warnings),
+  ]);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
@@ -1264,19 +1273,13 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
         previousDigest,
         warnings,
       });
-      if (recentlyClosedPRs.length > 0) {
-        getStateManager().addClosedPRs(
-          recentlyClosedPRs.map((pr) => ({
-            url: pr.url,
-            title: pr.title,
-            closedAt: pr.closedAt,
-            openedAt: pr.openedAt,
-            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
-            issueUrl: pr.issueUrl,
-            ...lastReviewStateFromDigest(previousDigest, pr.url),
-          })),
-        );
-      }
+      storeClosedLedger(getStateManager(), {
+        gap: closedGap,
+        allTimeCount: closedTotalCount,
+        recentlyClosedPRs,
+        previousDigest,
+        warnings,
+      });
     });
   } catch (error) {
     recordWarning(warnings, 'analytics', 'persist monthly analytics', error);

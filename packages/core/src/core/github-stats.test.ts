@@ -533,7 +533,7 @@ describe('ledger fetches leave out private repositories and untracked organisati
     const result = await fetchClosedPRsSince(octokit, config, '2025-05-01T00:00:00Z');
 
     expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).toBe(
-      'is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme closed:>2025-05-01T00:00:00Z',
+      'is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme updated:>2025-04-30T00:00:00Z',
     );
     expect(result.prs.map((pr) => pr.title)).toEqual(['public']);
   });
@@ -802,13 +802,15 @@ describe('fetchClosedPRsSince', () => {
     expect(result.prs).toHaveLength(0);
   });
 
-  it('should include date filter when watermark is provided', async () => {
+  it('bounds on updated, one day before the watermark, like the merged fetch (#1925)', async () => {
     const octokit = makeOctokit([]);
 
     await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-07-01T00:00:00Z');
 
     const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
-    expect(query).toContain('closed:>2025-07-01T00:00:00Z');
+    expect(query).toBe(
+      'is:pr is:closed is:unmerged is:public author:testuser -user:testuser updated:>2025-06-30T00:00:00Z',
+    );
   });
 
   it('should persist openedAt from the search result created_at (#1461)', async () => {

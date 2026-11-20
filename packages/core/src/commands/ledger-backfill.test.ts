@@ -371,6 +371,49 @@ describe('runLedgerBackfill merged history (#1924)', () => {
   });
 });
 
+describe('runLedgerBackfill closed history (#1925)', () => {
+  let sm: StateManager;
+
+  beforeEach(() => {
+    sm = freshLedger();
+    sm.updateConfig({ githubUsername: 'me', untrackedOrgs: ['acme'] });
+    mocks.graphql.mockResolvedValue({ p0: node(), p1: node(), p2: node() });
+  });
+
+  it('adds a closed PR older than the newest closed entry, with the shared scope and no date bound', async () => {
+    const closedHole = { ...searchItem(HOLE, '2025-12-20T00:00:00Z'), pull_request: { merged_at: null } };
+    mocks.search.mockImplementation(({ q }: { q: string }) => {
+      const items = q.includes('is:unmerged') ? [closedHole] : [];
+      return Promise.resolve({ data: { total_count: items.length, items } });
+    });
+
+    const result = await runLedgerBackfill();
+
+    expect(mocks.search.mock.calls.map(([args]) => args.q)).toContain(
+      'is:pr is:closed is:unmerged is:public author:me -user:me -org:acme',
+    );
+    expect(result.closedAdded).toBe(1);
+    expect(result.mergedAdded).toBe(0);
+    expect(sm.getClosedPRs().map((pr) => pr.url)).toEqual([CLOSED, HOLE]);
+    const rerun = await runLedgerBackfill();
+    expect(rerun.closedAdded).toBe(0);
+  });
+
+  it('adds no closed PRs and warns when the closed walk fails', async () => {
+    mocks.search.mockImplementation(({ q }: { q: string }) =>
+      q.includes('is:unmerged')
+        ? Promise.reject(new Error('search down'))
+        : Promise.resolve({ data: { total_count: 0, items: [] } }),
+    );
+
+    const result = await runLedgerBackfill();
+
+    expect(result.closedAdded).toBe(0);
+    expect(result.warnings).toContain('closed PR history fetch failed, no missing PRs were added: search down');
+    expect(sm.getClosedPRs().map((pr) => pr.url)).toEqual([CLOSED]);
+  });
+});
+
 describe('runLedgerBackfill first-response lookup', () => {
   let sm: StateManager;
 
