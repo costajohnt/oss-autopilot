@@ -794,6 +794,7 @@ describe('runClaim edge arms (#2003)', () => {
   it('reports a non-Error state-save failure verbatim in stateSaveWarning', async () => {
     mockGetStateManager.mockReturnValue({
       addIssue: vi.fn().mockImplementation(() => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- the test covers a non-Error throw
         throw 'lock held';
       }),
     } as any);

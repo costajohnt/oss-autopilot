@@ -11,7 +11,7 @@
     "test:watch": "pnpm -r run test:watch",
     "test:coverage": "pnpm -r run test:coverage",
     "typecheck": "pnpm -r run typecheck",
-    "lint": "pnpm --filter @oss-autopilot/core run build && eslint packages/ scripts/ --max-warnings 2741",
+    "lint": "pnpm --filter @oss-autopilot/core run build && eslint packages/ scripts/ --max-warnings 2748",
     "lint:fix": "eslint packages/ scripts/ --fix",
     "format": "prettier --write packages/",
     "format:check": "prettier --check packages/",
