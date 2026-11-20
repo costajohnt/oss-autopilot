@@ -468,6 +468,9 @@ describe('analyzeChecklist: conditional lead-in lines and inline annotations (#1
       ['with a "(Not run: ...)" annotation', [...H, '- [ ] Signed the CLA (Not run: will do later)']],
       ['with a nested-paren "(Skipped: ...)"', [...H, '- [ ] Signed the CLA (Skipped: no, really (see notes))']],
       ['with "(if applicable)"', [...H, '- [ ] I signed the CLA (if applicable)']],
+      ['"Signoff" as one word', [...H, 'If you add a feature:', '- [ ] Signoff added to every commit']],
+      ['a DCO box', [...H, 'If dependencies are updated:', '', '- [ ] DCO']],
+      ['"Signed-off-by" with "(if applicable)"', [...H, '- [ ] Signed-off-by line added (if applicable)']],
     ])('%s', (_name, body) => {
       expect(isIncomplete(body)).toBe(true);
     });

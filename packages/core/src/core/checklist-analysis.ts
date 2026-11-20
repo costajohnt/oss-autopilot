@@ -20,7 +20,7 @@ const UNCHECKED_REASON_RE = /\((?:not run|skipped)\s*:\s*[^\s)][^)]*\)/i;
  * Boxes about agreements (CLA, code of conduct, licence, sign-off) are never
  * exempt, whatever lead-in or annotation surrounds them (#1796).
  */
-const NEVER_EXEMPT_RE = /\b(?:cla|code of conduct|agree\w*|sign|signed|licen[cs]\w*)\b/i;
+const NEVER_EXEMPT_RE = /\b(?:cla|dco|code of conduct|agree\w*|sign|signed|signoff|signed-off|licen[cs]\w*)\b/i;
 
 export function isConditionalChecklistItem(line: string): boolean {
   const lower = line.toLowerCase();
