@@ -19,7 +19,7 @@ import {
   getMachineScanPaths,
   setMachinePath,
 } from '../core/local-config.js';
-import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
+import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
 
@@ -166,12 +166,12 @@ function applyConfigKey(stateManager: StateManager, key: string, value: string):
       break;
     }
     case 'remove-scope': {
-      const scope = validateScope(value);
+      // Not validated: a stored scope a newer release added must be removable (#2005).
       const existingScopes = currentConfig.scope ?? [];
-      if (!existingScopes.includes(scope)) {
+      if (!existingScopes.includes(value)) {
         throw new Error(`Scope "${value}" is not currently set`);
       }
-      const filtered = existingScopes.filter((s) => s !== scope);
+      const filtered = existingScopes.filter((s) => s !== value);
       if (filtered.length === 0) {
         throw new Error('Cannot remove the last scope. Use setup to clear scopes entirely.');
       }
@@ -264,7 +264,7 @@ function applyConfigKey(stateManager: StateManager, key: string, value: string):
       if (!(DIFF_TOOLS as readonly string[]).includes(value)) {
         throw new Error(`Invalid diffTool "${value}". Valid options: ${DIFF_TOOLS.join(', ')}`);
       }
-      stateManager.updateConfig({ diffTool: value as DiffTool });
+      stateManager.updateConfig({ diffTool: value });
       break;
     }
     case 'diffToolCustomCommand': {

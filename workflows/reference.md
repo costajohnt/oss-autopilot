@@ -140,6 +140,25 @@ The flow, every time:
 4. After an edit, repeat from step 2. Write the file again only when the user dictated the change; if they edited the file on disk, just rerun `draft show`.
 5. Delete the draft (`rm -- "<draft-path>"`, that exact path) once the command succeeds, and when the user abandons it. Drafts left behind are removed after 30 days.
 
+#### Before drafting a comment (#2009)
+
+Before drafting any comment for the user to post, run `<prefix> policy get --repo <owner/repo> --json`. Draft nothing and hand the thread to the user (link it, say why) when:
+
+- `data.policy.aiPolicy` is `banned` (a repo in `aiPolicyBlocklist` reads as banned), or
+- the thread hits a case in "When to Defer to the Human Contributor" (`skills/contribution-ethics/SKILL.md`): maintainer frustration or AI accusations, a visual or subjective call, a heated discussion about AI, ethics, policy or governance.
+
+If `policy get` fails, say so and continue; the defer cases above still apply.
+
+#### Approval to post (#2009)
+
+Step 3 runs only on this answer. After showing the draft text (step 2), ask with AskUserQuestion, options:
+
+1. "Post this comment" — post the text shown, exactly.
+2. "Edit before posting" — take the change, then back to step 2.
+3. "Don't post" — delete the draft and move on.
+
+Post only when the answer contains one of "Post this comment", "post it", "option 1" or "yes, post" (case-insensitive) and no negation word ("don't", "no", "not", "wait", "cancel", "stop", "actually", "never mind", "changed my mind") in the same sentence, as in `workflows/pre-commit-review.md` step 7b. A change request, a generic "yes" / "ok" / "looks good", an empty answer (see "AskUserQuestion Validation Protocol") or anything ambiguous is not approval: do not post; treat a change request as "Edit before posting" and anything else as "Don't post", and say so. Edit rounds re-ask with the same rules. In an unattended run nothing is posted: `post` refuses there.
+
 `--body-file` and `--from-file` require `--expect-sha256`, cannot be combined with another source of the text (`--stdin`, positional words, `--content`), and refuse an empty file. They only read regular files directly inside the draft directory that you own, that are not world-writable and have no other hard link, in valid UTF-8 without a byte order mark; symlinks are refused.
 
 ### PR Management
@@ -334,7 +353,7 @@ rejected with a did-you-mean suggestion.
 | `workflows/dormant-pr-follow-up.md` | Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs |
 | `workflows/closed-pr-status-update.md` | Draft a status comment on the linked issue after an own PR closed unmerged (#1863) |
 | `workflows/merged-pr-notes.md` | Acknowledge or reply to maintainer notes left on recently merged PRs, one per thanks-only repo group (#1861) |
-| `workflows/review-follow-ups.md` | Re-review the changes and answer the questions on PRs the user reviewed after the author pushed or replied, via review-panel and draft-review-post (#1857) |
+| `workflows/review-follow-ups.md` | Re-review the changes and answer the questions on PRs the user reviewed after the author pushed or replied, via review-panel, posting approved draft files (#1857) |
 | `workflows/plan-review.md` | Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review) |
 | `workflows/extract-learnings.md` | Distill per-repo contribution guidelines from merged/closed PR feedback (#867) |
 | `workflows/edit-guidelines.md` | Manual edit path for stored per-repo guidelines (load → edit → store, no extraction) |

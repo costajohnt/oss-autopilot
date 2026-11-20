@@ -243,7 +243,7 @@ export interface DailyOutput {
   /**
    * Closed-unmerged PRs whose linked issue has not heard from the user since
    * the close (#1863). Drives the `closed_pr_status` action-menu item; the
-   * workflow drafts a status comment per entry through draft-review-post.
+   * workflow drafts a status comment per entry as a draft file.
    * Present only when at least one entry exists, so merge-free runs and
    * goldens are unchanged. See {@link ClosedPRStatusUpdate}.
    */
@@ -252,7 +252,7 @@ export interface DailyOutput {
    * Recently merged PRs carrying maintainer notes (thanks, a follow-up, a
    * commit pushed on top) the user has not answered (#1861). Drives the
    * `merged_pr_notes` action-menu item; the workflow classifies each note
-   * and drafts a reply through draft-review-post. Note excerpts are fenced
+   * and drafts a reply as a draft file. Note excerpts are fenced
    * as untrusted GitHub content. Present only when at least one entry
    * exists, so merge-free runs and goldens are unchanged. See
    * {@link MergedPRNotes}.
@@ -263,7 +263,7 @@ export interface DailyOutput {
    * replied since the user's last review or comment (#1857). Drives the
    * `review_follow_ups` action-menu item; the workflow re-reviews the range
    * (or the commit list when `rebased`) through review-panel and answers the
-   * questions through draft-review-post. Excerpts and commit subjects are
+   * questions in draft files. Excerpts and commit subjects are
    * fenced as untrusted GitHub content. Never counted in capacity or
    * `needsAddressingPRs`. Present only when at least one entry exists, so
    * goldens are unchanged. See {@link ReviewedPRFollowUp}.

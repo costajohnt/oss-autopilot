@@ -57,7 +57,8 @@ export function formatDate(iso: string): string {
  * servers fall back to the coarse status split so the SPA stays usable.
  */
 export function attentionBucketOf(pr: Pick<FetchedPR, 'status' | 'attentionBucket'>): AttentionBucket {
-  return pr.attentionBucket ?? (pr.status === 'needs_addressing' ? 'needs_attention' : 'waiting');
+  // A status a newer release added reads as needing attention (#2005).
+  return pr.attentionBucket ?? (pr.status === 'waiting_on_maintainer' ? 'waiting' : 'needs_attention');
 }
 
 export function statusColor(status: FetchedPRStatus | string): string {

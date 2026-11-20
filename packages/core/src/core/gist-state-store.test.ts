@@ -13,6 +13,7 @@ import {
   GistCorruptError,
   GistDiscoveryError,
   GistFileSizeError,
+  GistPermissionError,
   NewerStateVersionError,
 } from './errors.js';
 import { createFreshState } from './state-persistence.js';
@@ -125,6 +126,29 @@ function makeMockOctokit(): MockOctokit {
       update: vi.fn(),
     },
   } as unknown as MockOctokit;
+}
+
+/** Make every Gist API call fail the way an unreachable network does. */
+function failAllGistCalls(octokit: MockOctokit): void {
+  octokit.gists.get.mockRejectedValue(new Error('Network error'));
+  octokit.gists.list.mockRejectedValue(new Error('Network error'));
+  octokit.gists.create.mockRejectedValue(new Error('Network error'));
+}
+
+/** Names of the `.rejected-<ts>` copies preserved in `dir`. */
+function rejectedFilesIn(dir: string): string[] {
+  return fs.readdirSync(dir).filter((name) => name.includes('.rejected-'));
+}
+
+/** A Gist response whose state.json the API truncated, with `file` overriding raw_url etc. */
+function truncatedStateResponse(file: Record<string, unknown>) {
+  return {
+    data: {
+      id: 'trunc',
+      description: GIST_DESCRIPTION,
+      files: { [STATE_FILE_NAME]: { filename: STATE_FILE_NAME, content: '{"ver', truncated: true, ...file } },
+    },
+  };
 }
 
 // ── Test suite ───────────────────────────────────────────────────────────────
@@ -1917,6 +1941,234 @@ describe('GistStateStore', () => {
           [STATE_FILE_NAME]: { content: expect.any(String) },
           'guidelines--integration--repo.md': { content: '# Integration test guidelines' },
         },
+      });
+    });
+  });
+
+  describe('refusal, recovery and degraded-mode arms (#2003)', () => {
+    const METHODS = ['bootstrap', 'bootstrapWithMigration'] as const;
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+    const logged = () => errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('\n');
+    /** Pin Date.now and put a directory where the rejected copy would go, so preserving it fails. */
+    const blockRejectedCopy = () => {
+      vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+      fs.mkdirSync(path.join(tmpDir, 'state-cache.json.rejected-1700000000000'));
+    };
+
+    beforeEach(() => {
+      errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    describe.each(METHODS)('%s', (method) => {
+      it.each([401, 403])('refuses with GistPermissionError when the preflight returns %i', async (status) => {
+        octokit.gists.list.mockRejectedValue(Object.assign(new Error('Forbidden'), { status }));
+        const store = new GistStateStore(octokit);
+
+        await expect(store[method](createFreshState())).rejects.toBeInstanceOf(GistPermissionError);
+        // A permission problem must not degrade or go on to create a Gist.
+        expect(octokit.gists.get).not.toHaveBeenCalled();
+        expect(octokit.gists.create).not.toHaveBeenCalled();
+      });
+
+      it('rethrows a rate-limited preflight instead of degrading', async () => {
+        const rateLimited = Object.assign(new Error('API rate limit exceeded'), { status: 429 });
+        octokit.gists.list.mockRejectedValue(rateLimited);
+        fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), makeStateJson());
+        const store = new GistStateStore(octokit);
+
+        await expect(store[method](createFreshState())).rejects.toBe(rateLimited);
+      });
+
+      it('migrates a v1 local cache when degraded', async () => {
+        fs.writeFileSync(
+          path.join(tmpDir, 'state-cache.json'),
+          makeStateJson({ version: 1, mergedPRs: [{ repo: 'old/repo' }] }),
+        );
+        failAllGistCalls(octokit);
+        const store = new GistStateStore(octokit);
+
+        const result = await store[method](createFreshState());
+
+        expect(result.degraded).toBe(true);
+        expect(result.state.version).toBe(4);
+        // The v1->v2 step seeds a score record for every historical PR's repo.
+        expect(result.state.repoScores['old/repo']).toMatchObject({ repo: 'old/repo', score: 5 });
+      });
+
+      it('migrates a v3 local cache when degraded', async () => {
+        fs.writeFileSync(
+          path.join(tmpDir, 'state-cache.json'),
+          makeStateJson({ version: 3, lastRunAt: '2025-03-03T00:00:00.000Z' }),
+        );
+        failAllGistCalls(octokit);
+        const store = new GistStateStore(octokit);
+
+        const result = await store[method](createFreshState());
+
+        expect(result.degraded).toBe(true);
+        expect(result.state.version).toBe(4);
+        expect(result.state.lastRunAt).toBe('2025-03-03T00:00:00.000Z');
+      });
+
+      it('preserves a corrupt local cache and falls back when degraded', async () => {
+        fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), '{not json');
+        failAllGistCalls(octokit);
+        const seed = createFreshState();
+        seed.config.githubUsername = 'seeded-user';
+        const store = new GistStateStore(octokit);
+
+        const result = await store[method](seed);
+
+        expect(result.degraded).toBe(true);
+        expect(result.gistId).toBe('');
+        // bootstrap starts fresh; bootstrapWithMigration keeps the state it was handed.
+        expect(result.state.config.githubUsername).toBe(method === 'bootstrap' ? '' : 'seeded-user');
+        const [rejected] = rejectedFilesIn(tmpDir);
+        expect(fs.readFileSync(path.join(tmpDir, rejected), 'utf8')).toBe('{not json');
+        expect(logged()).toContain(`Corrupt cache preserved at: ${path.join(tmpDir, rejected)}`);
+      });
+
+      it('still falls back when the corrupt local cache cannot be preserved', async () => {
+        fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), '{not json');
+        failAllGistCalls(octokit);
+        blockRejectedCopy();
+        const store = new GistStateStore(octokit);
+
+        const result = await store[method](createFreshState());
+
+        expect(result.degraded).toBe(true);
+        expect(logged()).toContain('Could not preserve rejected Gist content for local-cache');
+        expect(logged()).toContain('Corrupt cache preserved at: (could not preserve)');
+      });
+
+      it('falls back when the local cache exists but cannot be read', async () => {
+        // A directory at the cache path: existsSync is true, readFileSync throws.
+        fs.mkdirSync(path.join(tmpDir, 'state-cache.json'));
+        failAllGistCalls(octokit);
+        const store = new GistStateStore(octokit);
+
+        const result = await store[method](createFreshState());
+
+        expect(result.degraded).toBe(true);
+        expect(result.state.version).toBe(4);
+        expect(logged()).toMatch(/failed to read local cache/i);
+        // Nothing was read, so nothing is preserved as corrupt.
+        expect(rejectedFilesIn(tmpDir)).toEqual([]);
+      });
+    });
+
+    it('treats an empty gist-id file as no saved ID and searches', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), '  \n');
+      octokit.gists.list.mockResolvedValue({
+        data: [{ id: 'found-by-search', description: GIST_DESCRIPTION, public: false, created_at: '2025-01-01' }],
+      });
+      octokit.gists.get.mockResolvedValue(makeGistResponse('found-by-search', makeStateJson()));
+      const store = new GistStateStore(octokit);
+
+      const result = await store.bootstrap();
+
+      expect(result.gistId).toBe('found-by-search');
+      expect(octokit.gists.get).toHaveBeenCalledWith({ gist_id: 'found-by-search' });
+      expect(fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8')).toBe('found-by-search');
+    });
+
+    it('migrates a v1 Gist state.json to v4', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'v1-gist');
+      octokit.gists.get.mockResolvedValue(
+        makeGistResponse('v1-gist', makeStateJson({ version: 1, closedPRs: [{ repo: 'closed/repo' }] })),
+      );
+      const store = new GistStateStore(octokit);
+
+      const result = await store.bootstrap();
+
+      expect(result.state.version).toBe(4);
+      expect(result.state.repoScores['closed/repo']).toMatchObject({ repo: 'closed/repo' });
+    });
+
+    it('throws GistCorruptError with no rejectedPath when the corrupt Gist cannot be preserved', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'corrupt-unsaved');
+      octokit.gists.get.mockResolvedValue(makeGistResponse('corrupt-unsaved', '{broken'));
+      blockRejectedCopy();
+      const store = new GistStateStore(octokit);
+
+      await expect(store.bootstrap()).rejects.toMatchObject({
+        name: 'GistCorruptError',
+        rejectedPath: null,
+        message: expect.stringContaining('do not push without inspecting the Gist manually'),
+      });
+      expect(logged()).toContain('Corrupt content preserved at: (could not preserve)');
+    });
+
+    it('reports a non-Error refresh failure as an Error carrying its text', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'refresh-string');
+      octokit.gists.get
+        .mockResolvedValueOnce(makeGistResponse('refresh-string', makeStateJson()))
+        .mockRejectedValueOnce('connection reset');
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+
+      const result = await store.refreshFromGist();
+
+      expect(result.status).toBe('error');
+      const { error } = result as { status: 'error'; error: Error };
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toBe('connection reset');
+      expect(store.lastRefreshError).toBe(error);
+    });
+
+    describe('truncated file that cannot be read from raw_url', () => {
+      beforeEach(() => {
+        fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'trunc');
+      });
+
+      it('refuses when the client has no request method', async () => {
+        octokit.gists.get.mockResolvedValue(
+          truncatedStateResponse({ raw_url: 'https://gist.githubusercontent.com/u/trunc/raw/state.json' }),
+        );
+        const store = new GistStateStore(octokit);
+
+        await expect(store.bootstrap()).rejects.toThrow(/no HTTP client available/);
+        expect(store.cachedFiles.size).toBe(0);
+      });
+
+      it('refuses when the API returned no raw_url', async () => {
+        octokit.gists.get.mockResolvedValue(truncatedStateResponse({}));
+        const request = vi.fn();
+        const store = new GistStateStore({ ...octokit, request });
+
+        await expect(store.bootstrap()).rejects.toThrow(/returned no raw_url/);
+        expect(request).not.toHaveBeenCalled();
+      });
+
+      it.each(['wss://gist.githubusercontent.com/u/trunc/raw/state.json', 'not a url'])(
+        'does not send the token to raw_url %j',
+        async (rawUrl) => {
+          octokit.gists.get.mockResolvedValue(truncatedStateResponse({ raw_url: rawUrl }));
+          const request = vi.fn();
+          const store = new GistStateStore({ ...octokit, request });
+
+          await expect(store.bootstrap()).rejects.toThrow(/unexpected raw_url host/);
+          expect(request).not.toHaveBeenCalled();
+        },
+      );
+
+      it('refuses a raw_url body that is not text', async () => {
+        octokit.gists.get.mockResolvedValue(
+          truncatedStateResponse({ raw_url: 'https://gist.githubusercontent.com/u/trunc/raw/state.json' }),
+        );
+        const request = vi.fn().mockResolvedValue({ data: { version: 4 } });
+        const store = new GistStateStore({ ...octokit, request });
+
+        await expect(store.bootstrap()).rejects.toMatchObject({
+          name: 'GistFileSizeError',
+          message: expect.stringContaining('response body was not text'),
+        });
+        expect(store.cachedFiles.size).toBe(0);
       });
     });
   });

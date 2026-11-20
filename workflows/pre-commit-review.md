@@ -213,6 +213,7 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
 | `sourcetree` | Run `stree .` to open the repo in SourceTree. Tell the user: "Opened in SourceTree — review the diff there." |
 | `vscode` | Run `code --diff` for each changed file against its HEAD version. Tell the user: "Opened diffs in VS Code." |
 | `custom` | Read `data.config.diffToolCustomCommand`. Before the first use in a session, show the user the exact stored command and ask (see below); then run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+| any other value | A newer release added it. Use the `inline` action; never run `diffToolCustomCommand` for it. |
 
 **Custom diff command: confirm before the first run in a session.** The stored command is a setting, and settings sync between machines, so the text may not be what the user typed on this one. Never run it unseen. Print the command verbatim in a code block, then use AskUserQuestion:
   ```
@@ -343,7 +344,7 @@ On "Done for now":
 - **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
 - **Never post without explicit, unambiguous user approval.**
 
-> **Other comment-posting paths also have safeguards.** The `pr-responder` agent defaults to saving drafts to a temp file (user posts manually) and only posts when explicitly requested. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
+> **Other comment-posting paths also have safeguards.** The `pr-responder` agent saves its draft in the tool's draft directory ("Draft Files" in `workflows/reference.md`) and posts it with `post --body-file ... --expect-sha256` only when the user explicitly asks; the replies drafted in `review-issue-replies.md`, `closed-pr-status-update.md`, `merged-pr-notes.md`, `dormant-pr-follow-up.md` and `review-follow-ups.md` use the same flow with the "Approval to post" rules. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
 
 **If the push was in response to maintainer feedback:**
 

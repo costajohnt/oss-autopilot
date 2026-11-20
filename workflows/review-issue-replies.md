@@ -46,7 +46,7 @@ Both `userLastCommentBody` and `lastResponseBody` are present on every `new_resp
 
 For each issue, use AskUserQuestion to offer actions:
 - "Start working on this issue" — Dismiss the issue reply by running `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. Then set `isNewContribution = true` and `issueContext = { title, url, description }` from the issue data, and return to the core router (`commands/oss.md`) — the Pre-Commit Review routing will direct to the draft-first workflow. Do NOT post a claim comment on the issue; the PR will be the first interaction. If the dismiss fails, show the error but still proceed to the implementation flow. Skip offering this on an engaged issue with `reason: 'open_pr'` (the user is already working on it through that PR); offer "Reply" instead.
-- "Reply with a question" — Draft a follow-up comment to ask for clarification before deciding (#1290 step 3). See **Drafting a clarifying reply** below. Routes through the `draft-review-post` skill — saves the draft where that skill keeps its drafts (the skill is not part of this plugin, so the tool's own draft directory and `--expect-sha256` do not apply to it) and hands the user the `gh issue comment` command. **Never auto-post.** Do NOT dismiss the issue afterward — a pending question means the issue should reappear next session if the maintainer hasn't replied yet. After the draft is saved, re-prompt with the same actions for this issue (the user may then mark-as-reviewed, skip, or pick another action). On an engaged issue the reply usually argues with or confirms the user's plan; a short answer that says what the user will do (or that the PR already handles it) is the right shape, same drafting rules.
+- "Reply with a question" — Draft a follow-up comment to ask for clarification before deciding (#1290 step 3). See **Drafting a clarifying reply** below. Stages the reply in the tool's own draft directory and posts it with `post --body-file ... --expect-sha256` only after the user approves the exact text. **Never auto-post.** Do NOT dismiss the issue afterward — a pending question means the issue should reappear next session if the maintainer hasn't replied yet. After the reply is posted (or the user drops it), re-prompt with the same actions for this issue (the user may then mark-as-reviewed, skip, or pick another action). On an engaged issue the reply usually argues with or confirms the user's plan; a short answer that says what the user will do (or that the PR already handles it) is the right shape, same drafting rules.
 - "Mark as reviewed" — The user has seen the reply but doesn't want to work on the issue right now. Dismiss it so it won't reappear next session: run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. If a genuinely new response arrives later (after the dismiss timestamp), the auto-undismiss logic will resurface it, under the same rule that surfaced this one (so a later community reply on an engaged issue comes back too).
 - "View full thread" — Display the issue URL for the user to open in browser. After viewing, re-prompt with the same options for this issue (do not advance to the next issue).
 - "Skip" — Leave the reply undismissed. It will reappear next session. Use this when the user wants to defer action to a future session.
@@ -57,10 +57,25 @@ For each issue, use AskUserQuestion to offer actions:
 When the user picks "Reply with a question":
 
 1. **Surface context first.** Re-display the user's original comment and the maintainer's reply (the `userLastCommentBody` / `lastResponseBody` already shown above) so the user has both visible while composing the question.
-2. **Prompt for the question text.** Use a free-form input ("What do you want to ask?"). Keep it short — clarifying questions are typically 1–2 sentences. Discourage rehashing the original comment; the maintainer can scroll up.
-3. **Route through `draft-review-post`.** Pass the question text, target URL (`{issue.url}`), and a hint that this is an issue comment (not a PR comment) so the skill emits the correct `gh issue comment {URL} --body-file ...` command.
+2. **Prompt for the question text.** Apply "Before drafting a comment" (`workflows/reference.md`) for the issue's repo first: when it says hand off, draft nothing for this issue, tell the user why, and move on. Otherwise use a free-form input ("What do you want to ask?"). Keep it short — clarifying questions are typically 1–2 sentences. Discourage rehashing the original comment; the maintainer can scroll up.
+3. **Stage the draft and post only after approval** (the flow in "Draft Files", `workflows/reference.md`; never under `/tmp`, never as a shell argument):
+   1. Get a draft path (`<unix-ts>` from `date +%s`) and save the question to the printed path **with the Write tool** (use the path literally and quoted):
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path <owner>--<repo>-<issue-number>-reply-<unix-ts>.md
+      ```
+   2. Read it back once:
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
+      ```
+      Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/reference.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+   3. Only on a "Post this comment" answer that passes those rules, post it:
+      ```bash
+      GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {issue.url} --body-file "<draft-path>" --expect-sha256 <sha256> --json
+      ```
+      **Never post without that approval.** If it returns `{ success: false }`, show the `error` field and keep the draft; a hash mismatch means the file changed since the user saw it, so go back to step 2.
+   4. On `success: true`, delete the draft (`rm -- "<draft-path>"`). Delete it too when the user decides not to post.
 4. **Do NOT dismiss the issue.** The issue stays in the next session's `commentedIssues` so the user is reminded if the maintainer hasn't replied yet. Auto-undismiss handles the case where the maintainer answers the follow-up.
-5. **Re-prompt for this same issue** with the standard action list above. The user can then mark-as-reviewed, skip, or pick a different action — the question is in their drafts folder either way.
+5. **Re-prompt for this same issue** with the standard action list above. The user can then mark-as-reviewed, skip, or pick a different action.
 
 **Tone constraints** for the drafted question (mirror the dormant-pr-follow-up rules):
 - 1–2 sentences max.
@@ -68,6 +83,6 @@ When the user picks "Reply with a question":
 - No restating what the maintainer already said.
 - No AI attribution.
 
-**Error handling:** If any CLI command (`dismiss`) returns `{ success: false }`, show the `error` field to the user and skip the remaining steps for that issue. Offer to retry or skip to the next issue.
+**Error handling:** If any CLI command (`dismiss`, `post`) returns `{ success: false }`, show the `error` field to the user and skip the remaining steps for that issue (keep a draft that failed to post; a hash mismatch means it changed since the user saw it, so go back to `draft show`). Offer to retry or skip to the next issue.
 
 **Return:** Core router (`commands/oss.md`) — **After Each Action** section (which will return to Action Menu since no Tier 1/2 actions were taken).

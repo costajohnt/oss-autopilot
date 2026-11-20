@@ -18,6 +18,7 @@ import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
 import { parseGitHubUrl, issueRefKey } from './urls.js';
 import { MAINTAINER_RESPONSE_RULE } from './review-analysis.js';
+import { FetchedPRStatusSchema, isKnownValue } from './state-schema.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
   FetchedPR,
@@ -116,8 +117,6 @@ export const STALE_STATUSES: ReadonlySet<StalenessTier> = new Set(['dormant', 'a
 // Status overrides
 // ---------------------------------------------------------------------------
 
-const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing', 'waiting_on_maintainer']);
-
 /**
  * Apply status overrides from state to the PR list.
  * Overrides are auto-cleared if the PR has new activity since the override was set.
@@ -165,7 +164,8 @@ export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentStat
         if (!override) {
           return pr;
         }
-        if (!VALID_OVERRIDE_STATUSES.has(override.status)) {
+        // A newer release may write a status this one does not know (#2005).
+        if (!isKnownValue(FetchedPRStatusSchema.options, override.status)) {
           warn('daily-logic', `Invalid override status "${override.status}" for ${pr.url} — ignoring`);
           return pr;
         }
@@ -706,8 +706,8 @@ export function computeActionMenu(
 
   // Closed-PR status nudge (#1863) — the user's PR closed without merge and
   // the linked issue has heard nothing from them since. Routes to
-  // workflows/closed-pr-status-update.md, which drafts the comment through
-  // draft-review-post; nothing posts automatically. Self-clears once the
+  // workflows/closed-pr-status-update.md, which drafts the comment as a draft
+  // file and posts only after approval. Self-clears once the
   // user comments on the issue or the PR leaves the recently-closed window.
   if (closedPRStatusCount > 0) {
     items.push({
@@ -720,7 +720,7 @@ export function computeActionMenu(
   // Merged-PR notes (#1861) — a maintainer thanked the user or explained a
   // change at merge time and nobody answered. Routes to
   // workflows/merged-pr-notes.md, which classifies each note and drafts the
-  // reply through draft-review-post; nothing posts automatically. Self-clears
+  // reply as a draft file, posted only after approval. Self-clears
   // once the user comments on the PR, dismisses its URL, or the PR leaves
   // the recently-merged window.
   if (mergedPRNotesCount > 0) {
@@ -735,8 +735,8 @@ export function computeActionMenu(
   // the author pushed commits or replied since the user's last review or
   // comment. Routes to workflows/review-follow-ups.md, which re-reviews the
   // compare range (or the commit list after a rebase) through review-panel
-  // and drafts answers through draft-review-post; nothing posts
-  // automatically. Self-clears once the user reviews or comments again,
+  // and drafts answers as draft files; nothing posts without the user's
+  // approval. Self-clears once the user reviews or comments again,
   // dismisses the PR URL, or the PR closes. Never counted in capacity.
   if (reviewedPRCount > 0) {
     items.push({

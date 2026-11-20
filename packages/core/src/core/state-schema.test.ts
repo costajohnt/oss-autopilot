@@ -446,8 +446,9 @@ describe('ShelvedPRRefSchema', () => {
       expect(ShelvedPRRefSchema.safeParse({ ...validShelvedPR, status: 'waiting_on_maintainer' }).success).toBe(true);
     });
 
-    it('should fail for invalid status "dormant"', () => {
-      expect(ShelvedPRRefSchema.safeParse({ ...validShelvedPR, status: 'dormant' }).success).toBe(false);
+    it('keeps a status a newer release added, and rejects a non-string (#2005)', () => {
+      expect(ShelvedPRRefSchema.parse({ ...validShelvedPR, status: 'dormant' }).status).toBe('dormant');
+      expect(ShelvedPRRefSchema.safeParse({ ...validShelvedPR, status: 3 }).success).toBe(false);
     });
   });
 });
@@ -477,14 +478,10 @@ describe('FetchedPRSchema (#1456)', () => {
     expect(FetchedPRSchema.safeParse(garbage).success).toBe(false);
   });
 
-  it('should reject an entry with an invalid status', () => {
-    const garbage = {
-      url: 'https://github.com/owner/repo/pull/7',
-      repo: 'owner/repo',
-      number: 7,
-      status: 'dormant',
-    };
-    expect(FetchedPRSchema.safeParse(garbage).success).toBe(false);
+  it('keeps a status a newer release added, and rejects a missing one (#2005)', () => {
+    const entry = { url: 'https://github.com/owner/repo/pull/7', repo: 'owner/repo', number: 7 };
+    expect(FetchedPRSchema.parse({ ...entry, status: 'dormant' }).status).toBe('dormant');
+    expect(FetchedPRSchema.safeParse(entry).success).toBe(false);
   });
 
   it('should parse a persisted state whose lastDigest carries populated PR arrays', () => {
@@ -596,12 +593,9 @@ describe('TrackedIssueSchema', () => {
       }
     });
 
-    it('should fail for invalid status "unknown"', () => {
-      const result = TrackedIssueSchema.safeParse({
-        ...validTrackedIssue,
-        status: 'unknown',
-      });
-      expect(result.success).toBe(false);
+    it('keeps a status a newer release added, and rejects a non-string (#2005)', () => {
+      expect(TrackedIssueSchema.parse({ ...validTrackedIssue, status: 'abandoned' }).status).toBe('abandoned');
+      expect(TrackedIssueSchema.safeParse({ ...validTrackedIssue, status: null }).success).toBe(false);
     });
 
     it('should pass when optional vettingResult is omitted', () => {

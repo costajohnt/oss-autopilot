@@ -32,7 +32,7 @@ import { openInBrowser } from './startup.js';
 import { writeDashboardServerInfo, removeOwnDashboardServerInfo } from './dashboard-process.js';
 import { RateLimiter } from './rate-limiter.js';
 import { GistSyncCoordinator } from './dashboard-gist-sync.js';
-import { DashboardCache, getIssueListMtimeMs } from './dashboard-cache.js';
+import { DashboardCache, clearForeignVerdicts, getIssueListMtimeMs } from './dashboard-cache.js';
 
 // Re-export the payload builder for backward compatibility — it moved to
 // dashboard-cache.ts with the cache extraction (#1457) but is unit-tested
@@ -353,6 +353,8 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         const currentIssueListMtimeMs = getIssueListMtimeMs();
         const issueListChanged = currentIssueListMtimeMs !== cache.issueListMtimeMs;
         if (stateChanged || issueListChanged) {
+          // Re-check the list's checkout on the same events that rebuild (#2012).
+          clearForeignVerdicts();
           try {
             cache.rebuild(gistSync.stateManager.getState(), undefined, undefined, currentIssueListMtimeMs);
           } catch (error) {

@@ -42,21 +42,21 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │
  │   ├─ "Follow up on dormant PRs" ──► workflows/dormant-pr-follow-up.md
  │   │   Surface waiting-on-maintainer PRs past the 7/14/30-day cadence and draft
- │   │   a polite follow-up via the draft-review-post skill (user posts themselves)
+ │   │   a polite follow-up as a draft file, posted only after the user approves it
  │   │
  │   ├─ "Post status update on linked issue" ──► workflows/closed-pr-status-update.md
- │   │   Own PR closed unmerged: draft what was found on the linked issue via
- │   │   draft-review-post (user posts themselves); claim released if tracked
+ │   │   Own PR closed unmerged: draft what was found on the linked issue as
+ │   │   a draft file, posted after approval; claim released if tracked
  │   │
  │   ├─ "Merged PRs with maintainer notes" ──► workflows/merged-pr-notes.md
  │   │   A maintainer thanked the user or changed what shipped at merge time:
  │   │   classify, draft one ack per thanks-only repo group or a reply naming
- │   │   the change, via draft-review-post (user posts themselves)
+ │   │   the change, as draft files posted only after the user approves them
  │   │
  │   ├─ "Review follow-ups" ──► workflows/review-follow-ups.md
  │   │   A PR the user reviewed moved on: the author pushed or replied. Show the
  │   │   range since the review (or the commit list after a rebase), re-review
- │   │   via review-panel, answer questions via draft-review-post (user posts)
+ │   │   via review-panel, answer questions as draft files posted after approval
  │   │
  │   ├─ "Collect finished implementations" ──► workflows/draft-first-workflow.md
  │   │   A background implementation reported its branch ready: enter the
@@ -102,7 +102,7 @@ The CLI returns structured data with new fields for the action-first flow:
 {
   "success": true,
   "data": {
-    "version": "0.26.0",
+    "version": "<version>",
     "setupComplete": true,
     "daily": {
       "briefSummary": "16 Active PRs | 3 need attention | Dashboard opened in browser",

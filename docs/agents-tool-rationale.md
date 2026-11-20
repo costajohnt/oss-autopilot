@@ -11,14 +11,14 @@ enforced by this per-agent allowlist, which keeps MCP-mediated posting
 tools out of agents' hands. The plugin previously also shipped PreToolUse
 hooks that intercepted Bash-based posting (`gh pr comment`, `gh issue
 comment`, etc.); those were removed, so Bash-level posting is now governed by
-workflow discipline — the `draft-review-post` skill — rather than a hard gate.
+workflow discipline (the draft-file flow in "Draft Files", `workflows/reference.md`) rather than a hard gate.
 Prose in the agent body is advisory; the allowlist must be kept narrow.
 
 ## Deliberate exclusions
 
 | Tool | Why no agent declares it |
 |---|---|
-| `mcp__plugin_oss-autopilot_oss-autopilot__post` | Writes a public GitHub comment. All posting goes through the `draft-review-post` skill so the user reviews the exact body before it ships. |
+| `mcp__plugin_oss-autopilot_oss-autopilot__post` | Writes a public GitHub comment. All posting goes through the draft-file flow ("Draft Files" in `workflows/reference.md`) so the user reviews the exact body before it ships. |
 | `mcp__plugin_oss-autopilot_oss-autopilot__claim` | Posts a claim comment on an issue. Same reason as `post`. |
 | `mcp__plugin_oss-autopilot_oss-autopilot__move`, `__dismiss` / `__undismiss` | Mutate `~/.oss-autopilot/state.json`. Agents that need to influence state should produce a recommendation for the parent workflow to act on, not mutate directly. |
 | `mcp__linkedin__*`, `mcp__claude_ai_Gmail__*`, `mcp__puppeteer__*`, `mcp__plugin_serena_serena__execute_shell_command` | Out of scope — OSS Autopilot agents should never need cross-channel messaging, arbitrary web control, or sandbox escape. |

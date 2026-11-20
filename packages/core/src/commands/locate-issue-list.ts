@@ -87,8 +87,11 @@ function configuredIssueList(isQuiet = false): { value: string; source: string }
  * someone else's checkout. Callers treat that as "no curated list". A file
  * found in the current directory is never returned here: see
  * {@link suggestIssueListPath} (#1933).
+ *
+ * @param isForeign - The foreign-checkout check; the long-running dashboard
+ *   passes a memoized one so polling does not run Git per request (#2012).
  */
-export function detectIssueListPath(): IssueListLocation | undefined {
+export function detectIssueListPath(isForeign = isForeignCheckout): IssueListLocation | undefined {
   let configured: ReturnType<typeof configuredIssueList>;
   try {
     configured = configuredIssueList();
@@ -110,7 +113,7 @@ export function detectIssueListPath(): IssueListLocation | undefined {
   }
   // A value the user did not set here (synced, adopted) is checked like a
   // probe hit: it may point into a checkout that is not theirs.
-  if (source !== 'set' && isForeignCheckout(path.dirname(value))) {
+  if (source !== 'set' && isForeign(path.dirname(value))) {
     warn('startup', `Ignoring issueListPath ${value}: its checkout has a remote not owned by you; ${SET_HINT}`);
     return undefined;
   }
@@ -126,17 +129,22 @@ function remoteOwner(url: string): string | undefined {
  * True when `dir` is inside a Git checkout that has a remote not owned by
  * the configured user (owner path segment, any host, case-insensitive). A
  * fork clone with an `upstream` remote is foreign, and so is a checkout with
- * no remotes or one Git refuses to read. Not a checkout, or no Git: false.
- * Reads local Git config only; no network.
+ * no remotes or one Git refuses to read. Only Git reporting "not a git
+ * repository" means not a checkout (false); a timeout, a spawn failure (no
+ * Git) or any other error fails closed as foreign. Reads local Git config
+ * only; no network.
  */
-function isForeignCheckout(dir: string): boolean {
+export function isForeignCheckout(dir: string): boolean {
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     if (git('rev-parse', '--is-inside-work-tree').trim() !== 'true') return false;
   } catch (error) {
-    // "dubious ownership" is a checkout Git will not read: foreign.
-    return /dubious ownership/.test(String((error as { stderr?: unknown }).stderr));
+    // Fail closed: a timeout or spawn failure (code/signal set), "dubious
+    // ownership" (a checkout Git will not read) or any other Git error is
+    // foreign. Only a plain "not a git repository" exit is not a checkout.
+    const { code, signal, stderr } = error as { code?: unknown; signal?: unknown; stderr?: unknown };
+    return Boolean(code || signal) || !/not a git repository/.test(String(stderr));
   }
   let username = '';
   let urls: string[];

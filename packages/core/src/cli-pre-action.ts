@@ -88,14 +88,20 @@ export function installPreAction(program: Command, localOnlySet: ReadonlySet<str
       // when Gist mode is the configured persistence (#1000). Hard errors
       // still throw (#1202); the resolving degraded modes are surfaced in the
       // JSON envelope so --json consumers see them too (#1433).
-      const { ensureGistPersistence, renderGistWarning } = await import('./core/index.js');
+      const { ensureGistPersistence, renderGistWarning, unknownPersistenceModeWarning } =
+        await import('./core/index.js');
       const status = await ensureGistPersistence(token);
+      // A mode a newer release added runs local-only here (#2005).
+      let envelopeWarning = status === 'local-mode' ? unknownPersistenceModeWarning() : null;
       if (status === 'degraded' || status === 'state-unreadable') {
-        const { setEnvelopeGistWarning } = await import('./formatters/json.js');
         // Shared renderer (#1444). 'degraded' is ensureGistPersistence's
         // deliberate conflation of the transient init fallback and a #1443
         // degraded bootstrap — rendered as the init-fallback cause, as before.
-        setEnvelopeGistWarning(renderGistWarning(status === 'degraded' ? 'init-fallback' : 'state-unreadable'));
+        envelopeWarning = renderGistWarning(status === 'degraded' ? 'init-fallback' : 'state-unreadable');
+      }
+      if (envelopeWarning) {
+        const { setEnvelopeGistWarning } = await import('./formatters/json.js');
+        setEnvelopeGistWarning(envelopeWarning);
       }
     }
   });

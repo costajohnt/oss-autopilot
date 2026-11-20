@@ -9,6 +9,7 @@
  */
 
 import { warn } from './logger.js';
+import type { StateFileIdentity } from './state-persistence.js';
 
 /**
  * Base error for all oss-autopilot errors.
@@ -117,8 +118,12 @@ export class GistCorruptError extends ConfigurationError {
  *
  * Library consumers should call `stateManager.reloadIfChanged()` and
  * re-apply their mutation. The runtime `message` is phrased for CLI
- * end-users; the structured `expectedMtimeMs` / `actualMtimeMs` fields
- * are for programmatic handling.
+ * end-users; the structured fields are for programmatic handling.
+ * `expectedMtimeMs` / `actualMtimeMs` stay for compatibility, but the check
+ * compares the whole file identity (mtime, inode, size; #2006), so the two
+ * mtimes can be equal. `expectedIdentity` / `actualIdentity` carry what was
+ * compared; they are undefined when no comparison ran (a lock timeout).
+ * An `actualIdentity` with a NaN mtime means the file could not be stat'ed.
  */
 export class ConcurrencyError extends OssAutopilotError {
   constructor(
@@ -126,6 +131,8 @@ export class ConcurrencyError extends OssAutopilotError {
     public readonly actualMtimeMs: number,
     message = 'Another oss-autopilot process wrote state.json concurrently. ' +
       'Re-run the command to retry — the last write wins and no data was lost from the other process.',
+    public readonly expectedIdentity?: StateFileIdentity,
+    public readonly actualIdentity?: StateFileIdentity,
   ) {
     super(message, 'CONCURRENCY_ERROR');
     this.name = 'ConcurrencyError';

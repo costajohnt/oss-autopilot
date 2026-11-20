@@ -875,6 +875,97 @@ describe('loadState rejected-file preservation and recovery metadata (#1371)', (
       fs.chmodSync(statePath, 0o600);
     }
   });
+
+  // ── Enum values a newer release added (#2005) ──
+  const prUrl = 'https://github.com/o/r/pull/1';
+  const shelvedRef = {
+    number: 2,
+    url: 'https://github.com/o/r/pull/2',
+    title: 't',
+    repo: 'o/r',
+    daysSinceActivity: 40,
+  };
+  const newerConfig = {
+    ...makeBaseConfig(),
+    githubUsername: 'newer',
+    persistence: 'gist-v2',
+    diffTool: 'zed',
+    scope: ['beginner', 'expert'],
+    projectCategories: ['devtools', 'gaming'],
+    statusOverrides: {
+      [prUrl]: { status: 'snoozed', setAt: '2026-11-01T00:00:00Z', lastActivityAt: '2026-11-01T00:00:00Z' },
+    },
+  };
+  const newerParts = {
+    activeIssues: [
+      {
+        id: 1,
+        url: 'https://github.com/o/r/issues/9',
+        repo: 'o/r',
+        number: 9,
+        title: 'i',
+        status: 'abandoned',
+        labels: [],
+        createdAt: '2026-11-01T00:00:00Z',
+        updatedAt: '2026-11-01T00:00:00Z',
+        vetted: false,
+      },
+    ],
+    lastDigest: {
+      generatedAt: '2026-11-01T00:00:00Z',
+      openPRs: [{ url: prUrl, repo: 'o/r', number: 1, status: 'needs_rebase' }],
+      needsAddressingPRs: [],
+      waitingOnMaintainerPRs: [],
+      recentlyClosedPRs: [],
+      recentlyMergedPRs: [],
+      shelvedPRs: [{ ...shelvedRef, status: 'needs_rebase' }],
+      autoUnshelvedPRs: [],
+      summary: { totalActivePRs: 1, totalNeedingAttention: 0, totalMergedAllTime: 0, mergeRate: 0 },
+    },
+    lastOvernight: {
+      runAt: '2026-11-01T00:00:00Z',
+      reportPath: 'report.md',
+      prepareCount: 0,
+      judgmentCount: 0,
+      prepared: [],
+      implementAttempts: [
+        { url: 'https://github.com/o/r/issues/9', attemptedAt: '2026-11-01T00:00:00Z', outcome: 'skipped' },
+      ],
+    },
+  };
+
+  it('loads the state instead of restoring a backup over it, and writes every newer value back unchanged', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState({ config: newerConfig, ...newerParts })), {
+      mode: 0o600,
+    });
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const olderBackup = makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'older-backup' } });
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'), JSON.stringify(olderBackup), {
+      mode: 0o600,
+    });
+
+    const loaded = loadState();
+    expect(loaded.recovery).toBeUndefined();
+    expect(loaded.state.config.githubUsername).toBe('newer');
+    // A digest PR with an unknown status counts as needing attention, not hidden.
+    expect(loaded.state.lastDigest?.needsAddressingPRs.map((pr) => pr.url)).toEqual([prUrl]);
+
+    saveState(loaded.state, loaded.fileId);
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    expect(written.config).toMatchObject({
+      persistence: 'gist-v2',
+      diffTool: 'zed',
+      scope: ['beginner', 'expert'],
+      projectCategories: ['devtools', 'gaming'],
+      statusOverrides: newerConfig.statusOverrides,
+    });
+    expect(written.activeIssues[0].status).toBe('abandoned');
+    expect(written.lastDigest.openPRs[0].status).toBe('needs_rebase');
+    expect(written.lastDigest.shelvedPRs[0].status).toBe('needs_rebase');
+    expect(written.lastOvernight.implementAttempts[0].outcome).toBe('skipped');
+  });
 });
 
 // ── StateManager.getLoadRecovery (#1371) ────────────────────────────────────
@@ -1047,7 +1138,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
   it('saves normally when no external write happened between load and save', () => {
     const sm = new StateManager(false);
     sm.updateConfig({ githubUsername: 'alice' });
-    sm.save(); // seeds the file + lastLoadedMtimeMs
+    sm.save(); // seeds the file + lastLoadedFileId
 
     // In-process mutate + save again — mtime still matches because we
     // were the last writer.
@@ -1118,7 +1209,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
 
     // We hold alice's content. Saving it must not silently replace bob's write.
     expect(loaded.state.config.githubUsername).toBe('alice');
-    expect(() => saveState(loaded.state, loaded.mtimeMs)).toThrow(ConcurrencyError);
+    expect(() => saveState(loaded.state, loaded.fileId)).toThrow(ConcurrencyError);
     expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('bob-wrote-mid-load');
   });
 
@@ -1188,7 +1279,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('carol-wrote-mid-reload');
   });
 
-  it('saveState bypasses the check when expectedMtimeMs is null (first write path)', () => {
+  it('saveState bypasses the check when the expected identity is null (first write path)', () => {
     const fresh = createFreshState();
     // No file on disk; passing null means "skip CAS" — should succeed.
     expect(() => saveState(fresh, null)).not.toThrow();
@@ -1196,14 +1287,14 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(fs.existsSync(statePath)).toBe(true);
   });
 
-  it('saveState with matching expectedMtimeMs succeeds, with mismatching throws', async () => {
+  it('saveState with a matching identity succeeds, with a mismatching one throws', async () => {
     const fresh = createFreshState();
-    const firstMtime = saveState(fresh, null);
-    expect(firstMtime).toBeGreaterThan(0);
+    const firstId = saveState(fresh, null);
+    expect(firstId.mtimeMs).toBeGreaterThan(0);
 
-    // Matching mtime — writes fine.
-    const secondMtime = saveState(fresh, firstMtime);
-    expect(secondMtime).toBeGreaterThan(0);
+    // Matching identity — writes fine.
+    const secondId = saveState(fresh, firstId);
+    expect(secondId.mtimeMs).toBeGreaterThan(0);
 
     // Force the on-disk mtime forward without going through saveState.
     const statePath = path.join(mockTmpDir, 'state.json');
@@ -1212,7 +1303,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     fs.utimesSync(statePath, future, future);
 
     // Now saveState with the stale mtime must throw.
-    expect(() => saveState(fresh, secondMtime)).toThrow(ConcurrencyError);
+    expect(() => saveState(fresh, secondId)).toThrow(ConcurrencyError);
   });
 
   it('allowReloadAndLoseMutation downgrades ConcurrencyError to a reload warning', async () => {

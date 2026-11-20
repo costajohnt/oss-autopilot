@@ -326,8 +326,17 @@ describe('runConfig', () => {
     await expect(runConfig({ key: 'remove-scope', value: 'advanced' })).rejects.toThrow('not currently set');
   });
 
-  it('should throw for invalid scope value in remove-scope', async () => {
-    await expect(runConfig({ key: 'remove-scope', value: 'expert' })).rejects.toThrow('Invalid scope');
+  it('removes a stored scope a newer release added (#2005)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner', 'expert'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'remove-scope', value: 'expert' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner'] });
   });
 
   // scoreThreshold tests removed — field dropped in v3 schema

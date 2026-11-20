@@ -56,6 +56,7 @@ import {
   getConfigKeys,
   getStateManager,
   renderGistWarning,
+  unknownPersistenceModeWarning,
   ConcurrencyError,
   StateLockTimeoutError,
   NewerStateVersionError,
@@ -380,7 +381,10 @@ function wrapTool<A>(
       // envelope): this snapshot can be MORE specific than the manager-level
       // health check (e.g. 'no-token'), and both prose variants now come
       // from the same core renderer.
-      const warningText = hardInitWarning ?? (degradedCause ? gistWarningText(degradedCause) : null);
+      // A persistence mode a newer release added runs local-only (#2005):
+      // init resolves it as local mode, so it is checked here on every call.
+      const warningText =
+        hardInitWarning ?? (degradedCause ? gistWarningText(degradedCause) : unknownPersistenceModeWarning());
       if (warningText && data && typeof data === 'object' && !Array.isArray(data)) {
         return ok({ ...(data as Record<string, unknown>), gistInitWarning: warningText });
       }

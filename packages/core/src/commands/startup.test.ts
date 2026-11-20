@@ -28,7 +28,7 @@ vi.mock('./daily.js', () => ({
 // by default no directory is a git checkout.
 const { execFileSyncMock } = vi.hoisted(() => ({
   execFileSyncMock: vi.fn((): string => {
-    throw new Error('not a git repository');
+    throw Object.assign(new Error('git failed'), { stderr: 'fatal: not a git repository' });
   }),
 }));
 vi.mock('node:child_process', () => ({
@@ -200,7 +200,7 @@ describe('detectIssueList', () => {
     vi.clearAllMocks();
     for (const key of Object.keys(localPaths)) delete localPaths[key];
     execFileSyncMock.mockImplementation(() => {
-      throw new Error('not a git repository');
+      throw Object.assign(new Error('git failed'), { stderr: 'fatal: not a git repository' });
     });
     config = { githubUsername: 'Me' };
     const { getStateManager } = await import('../core/index.js');
@@ -341,7 +341,14 @@ describe('detectIssueList', () => {
       expect(detectIssueList(true)).toBeUndefined();
     });
 
-    it('treats a checkout with no remotes, or that git refuses to read, as foreign', () => {
+    it('treats a checkout with no remotes, that git refuses to read, or a failed check as foreign', () => {
+      // Killed by the timeout (signal), no Git binary (code), or another Git error.
+      for (const failure of [{ signal: 'SIGTERM' }, { code: 'ENOENT' }, { stderr: 'fatal: bad config' }]) {
+        execFileSyncMock.mockImplementation(() => {
+          throw Object.assign(new Error('git failed'), failure);
+        });
+        expect(detectIssueList(true)).toBeUndefined();
+      }
       gitCheckout([]);
       expect(detectIssueList(true)).toBeUndefined();
       gitCheckout(new Error('timeout'));

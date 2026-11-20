@@ -51,9 +51,9 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `draft-first-workflow.md` | New contributions | Commit locally → iterative local review → manual test → squash → push and create the PR (ready or draft) |
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
-| `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue via `draft-review-post`; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
-| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify the note, draft one ack per thanks-only repo group or a reply naming the change, via `draft-review-post`; "skip" dismisses the PR URL (#1861) |
-| `review-follow-ups.md` | A PR the user reviewed (not authored) where the author pushed or replied since | Show the compare range since the review (or the commit list after a rebase), re-review via `review-panel`, answer the questions addressed to the user via `draft-review-post`; "skip" dismisses the PR URL (#1857) |
+| `closed-pr-status-update.md` | Own PR closed unmerged, linked issue not updated | Draft a status comment on the linked issue as a draft file, posted after the user approves it; `daily` released the claim if it was tracked, "skip" dismisses the issue URL (#1863) |
+| `merged-pr-notes.md` | Maintainer note (thanks, follow-up, commit on top) on a recently merged PR, unanswered | Classify the note, draft one ack per thanks-only repo group or a reply naming the change, as draft files posted after approval; "skip" dismisses the PR URL (#1861) |
+| `review-follow-ups.md` | A PR the user reviewed (not authored) where the author pushed or replied since | Show the compare range since the review (or the commit list after a rebase), re-review via `review-panel`, answer the questions addressed to the user as draft files posted after approval; "skip" dismisses the PR URL (#1857) |
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
 | `plan-review.md` | `/plan-ready` | Plan-phase review convergence loop — catches design problems before code exists (#1249) |
@@ -90,7 +90,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 26 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 27 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -142,6 +142,8 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `cleanup` | `cleanup.ts` | List (and with `--apply` remove) stale overnight worktrees and rejected state copies under `~/.oss-autopilot` |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
 | `guidelines list/view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
+| `draft path` / `show` | `draft.ts` | Stage text for the user's approval in the owner-only draft directory (`~/.oss-autopilot/tmp`); `show` returns the text with the SHA-256 to pass back as `--expect-sha256` (#1930) |
+| `policy get` / `set` / `reset` | `policy.ts` | Per-repo contribution policy: AI policy, disclosure, CLA, commit rules, PR gate (#1953) |
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
 | `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
 | `ledger-backfill` | `ledger-backfill.ts` | Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824) |

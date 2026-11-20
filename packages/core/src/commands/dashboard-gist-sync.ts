@@ -218,7 +218,9 @@ export class GistSyncCoordinator {
   async maybeRecoverGist(): Promise<void> {
     // One probe covers both degraded shapes — health.degraded is non-null
     // for configured-but-local AND bootstrap-degraded (#1444).
-    if (this.probeGistHealth()?.degraded == null) return;
+    const degraded = this.probeGistHealth()?.degraded;
+    // An unknown mode (#2005) is not recoverable by re-running init.
+    if (degraded == null || !degraded.recoverable) return;
     if (this.recoveryHaltedReason !== null) return;
     const now = Date.now();
     if (now - this.lastRecoveryAttemptAt < RECOVERY_RETRY_INTERVAL_MS) return;
