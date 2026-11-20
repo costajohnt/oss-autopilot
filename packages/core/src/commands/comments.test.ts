@@ -14,7 +14,7 @@ vi.mock('../core/index.js', () => ({
   maybeCheckpoint: vi.fn().mockResolvedValue(null),
 }));
 
-import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
+import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
 import { runComments, runPost, runClaim } from './comments.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
@@ -267,6 +267,121 @@ describe('runComments', () => {
   });
 });
 
+/** A full 100-entry page, so paginateAllDetailed hits its page cap and flags truncation. */
+const fullPage = (n: number) =>
+  Array.from({ length: 100 }, (_, i) => ({
+    user: { login: 'other', type: 'User' },
+    body: `b${n}-${i}`,
+    path: 'a.ts',
+    created_at: '2026-01-15T10:00:00Z',
+    submitted_at: '2026-01-15T10:00:00Z',
+    state: 'COMMENTED',
+  }));
+
+describe('runComments edge arms (#2003)', () => {
+  const PR_DATA = {
+    title: 'PR',
+    state: 'open',
+    mergeable: true,
+    head: { ref: 'feature' },
+    base: { ref: 'main' },
+    html_url: TEST_PR_URL,
+  };
+  const mockOctokit = (lists: { reviews?: unknown[]; reviewComments?: unknown[]; issueComments?: unknown[] }) => {
+    const pullsGet = vi.fn().mockResolvedValue({ data: PR_DATA });
+    mockGetOctokit.mockReturnValue({
+      pulls: {
+        get: pullsGet,
+        listReviewComments: vi.fn().mockResolvedValue({ data: lists.reviewComments ?? [] }),
+        listReviews: vi.fn().mockResolvedValue({ data: lists.reviews ?? [] }),
+      },
+      issues: { listComments: vi.fn().mockResolvedValue({ data: lists.issueComments ?? [] }) },
+    } as any);
+    return pullsGet;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { githubUsername: 'testuser' } }),
+      getStateStaleness: vi.fn().mockReturnValue(null),
+    } as any);
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
+  });
+
+  it('rejects a well-formed URL that parses as an issue, before fetching the PR', async () => {
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'issues' });
+    const pullsGet = mockOctokit({});
+
+    await expect(runComments({ prUrl: TEST_PR_URL })).rejects.toThrow('Invalid PR URL format');
+    expect(pullsGet).not.toHaveBeenCalled();
+  });
+
+  it('names every truncated stream in the warning', async () => {
+    mockOctokit({ reviews: fullPage(1), reviewComments: fullPage(2) });
+
+    const result = await runComments({ prUrl: TEST_PR_URL });
+
+    const truncation = result.warnings!.find((w) => w.operation === 'fetch PR comments (truncated)');
+    expect(truncation!.message).toContain('reviews, inline review comments for owner/repo#42');
+    expect(truncation!.message).not.toContain('discussion comments');
+  });
+
+  it('surfaces Gist staleness as a structured warning', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { githubUsername: 'testuser' } }),
+      getStateStaleness: vi.fn().mockReturnValue({
+        source: 'local-cache',
+        reason: 'Gist unreachable',
+        detectedAt: '2026-01-15T10:00:00Z',
+        lastSuccessfulRefresh: null,
+      }),
+    } as any);
+    mockOctokit({});
+
+    const result = await runComments({ prUrl: TEST_PR_URL });
+
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ phase: 'gist-staleness', message: expect.stringContaining('Gist unreachable') }),
+    ]);
+  });
+
+  it('drops ghost-user entries, keeps bots only with showBots, and handles null bodies and dates', async () => {
+    const lists = {
+      reviews: [
+        { user: null, state: 'APPROVED', body: 'ghost review', submitted_at: '2026-01-15T10:00:00Z' },
+        { user: { login: 'late', type: 'User' }, state: 'COMMENTED', body: 'no date', submitted_at: null },
+        { user: { login: 'early', type: 'User' }, state: 'APPROVED', body: 'dated', submitted_at: '2026-01-14T00:00Z' },
+        {
+          user: { login: 'blank', type: 'User' },
+          state: 'APPROVED',
+          body: ' '.repeat(3),
+          submitted_at: '2026-01-15T00:00Z',
+        },
+      ],
+      issueComments: [
+        { user: { login: 'other', type: 'User' }, body: null, created_at: '2026-01-15T10:00:00Z' },
+        { user: { login: 'ci-bot', type: 'Bot' }, body: 'build ok', created_at: '2026-01-15T09:00:00Z' },
+      ],
+    };
+    mockOctokit(lists);
+
+    const hidden = await runComments({ prUrl: TEST_PR_URL });
+
+    // Dated review sorts before the undated one (missing submitted_at sorts as epoch).
+    expect(hidden.reviews.map((r) => [r.user, r.submittedAt])).toEqual([
+      ['early', '2026-01-14T00:00Z'],
+      ['late', null],
+    ]);
+    expect(hidden.issueComments).toEqual([{ user: 'other', body: null, createdAt: '2026-01-15T10:00:00Z' }]);
+
+    mockOctokit(lists);
+    const shown = await runComments({ prUrl: TEST_PR_URL, showBots: true });
+    expect(shown.issueComments.map((c) => c.user)).toEqual(['other', 'ci-bot']);
+  });
+});
+
 describe('runPost', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -373,6 +488,14 @@ describe('runPost', () => {
     } as any);
 
     await expect(runPost({ url: TEST_PR_URL, message: 'Hello' })).rejects.toThrow('API error');
+  });
+
+  it('refuses a well-formed URL the parser rejects, without posting', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue(null as any);
+
+    await expect(runPost({ url: TEST_PR_URL, message: 'Hello' })).rejects.toThrow('Invalid GitHub URL format');
+    expect(mockGetOctokit).not.toHaveBeenCalled();
   });
 });
 
@@ -610,5 +733,90 @@ describe('runClaim', () => {
     } as any);
 
     await expect(runClaim({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow('Permission denied');
+  });
+});
+
+describe('runClaim edge arms (#2003)', () => {
+  const COMMENT_URL = 'https://github.com/owner/repo/issues/10#issuecomment-1';
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    return () => consoleSpy.mockRestore();
+  });
+
+  const mockIssues = (get: ReturnType<typeof vi.fn>) => {
+    const createComment = vi.fn().mockResolvedValue({ data: { html_url: COMMENT_URL } });
+    mockGetOctokit.mockReturnValue({ issues: { createComment, get } } as any);
+    return createComment;
+  };
+
+  it('refuses a well-formed URL the parser rejects, without posting', async () => {
+    mockParseGitHubUrl.mockReturnValue(null as any);
+
+    await expect(runClaim({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow('Invalid issue URL format');
+    expect(mockGetOctokit).not.toHaveBeenCalled();
+  });
+
+  it('accepts string labels, drops unnamed ones, and keeps defaults for missing title/date/labels', async () => {
+    const addIssue = vi.fn();
+    mockGetStateManager.mockReturnValue({ addIssue } as any);
+    mockIssues(
+      vi.fn().mockResolvedValue({ data: { title: '', labels: ['bug', { name: null }, { name: 'help wanted' }, ''] } }),
+    );
+
+    await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    expect(addIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '(claimed)', labels: ['bug', 'help wanted'], createdAt: expect.any(String) }),
+    );
+
+    addIssue.mockClear();
+    mockIssues(vi.fn().mockResolvedValue({ data: { title: 'T', labels: null } }));
+    await runClaim({ issueUrl: TEST_ISSUE_URL });
+    expect(addIssue).toHaveBeenCalledWith(expect.objectContaining({ title: 'T', labels: [] }));
+  });
+
+  it('logs a non-Error enrichment failure verbatim and still posts the claim', async () => {
+    mockGetStateManager.mockReturnValue({ addIssue: vi.fn() } as any);
+    const createComment = mockIssues(vi.fn().mockRejectedValue('socket hang up'));
+
+    const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    expect(createComment).toHaveBeenCalled();
+    expect(result.commentUrl).toBe(COMMENT_URL);
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('claiming with placeholder: socket hang up'));
+  });
+
+  it('reports a non-Error state-save failure verbatim in stateSaveWarning', async () => {
+    mockGetStateManager.mockReturnValue({
+      addIssue: vi.fn().mockImplementation(() => {
+        throw 'lock held';
+      }),
+    } as any);
+    mockIssues(vi.fn().mockResolvedValue({ data: { title: 'T', labels: [] } }));
+
+    const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.stateSaveWarning).toBe(
+      `Comment posted on ${TEST_ISSUE_URL} but failed to save to local state: lock held`,
+    );
+  });
+
+  it('threads a Gist checkpoint failure into gistSyncWarning', async () => {
+    vi.mocked(maybeCheckpoint).mockResolvedValueOnce('Gist push failed: conflict');
+    mockGetStateManager.mockReturnValue({ addIssue: vi.fn() } as any);
+    mockIssues(vi.fn().mockResolvedValue({ data: { title: 'T', labels: [] } }));
+
+    const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result).toEqual({
+      commentUrl: COMMENT_URL,
+      issueUrl: TEST_ISSUE_URL,
+      gistSyncWarning: 'Gist push failed: conflict',
+    });
   });
 });
