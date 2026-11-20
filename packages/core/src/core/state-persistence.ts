@@ -515,9 +515,10 @@ export interface LoadRecoveryInfo {
  * What saveState's compare-and-swap and reloadStateIfChanged compare (#2006).
  * mtime alone misses two writes in one timestamp quantum (whole seconds on
  * FAT and some network or synced mounts). Every write here is an atomic
- * rename, so it lands on a new inode; size catches in-place writers.
- * Where `ino` is always 0 (some Windows file systems) it compares equal on
- * both sides and the check falls back to mtime + size.
+ * rename, which usually lands on a new inode; size catches in-place writers.
+ * Where the file system synthesizes or reuses inode numbers (FAT/vfat, cifs
+ * with noserverino, FUSE without use_ino, ext4 reusing a freed inode), or
+ * reports `ino` as 0 on both sides, the check degrades to mtime + size.
  */
 export interface StateFileIdentity {
   mtimeMs: number;
