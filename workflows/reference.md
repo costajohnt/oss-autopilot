@@ -214,7 +214,7 @@ rejected with a did-you-mean suggestion.
 # a remote-tracking branch, it holds no ignored files outside build output, no hidden or
 # reflog-only work, no rebase or merge in progress, and nothing touched it for 14 days.
 # Every kept one is listed with the reason. --apply refuses in an unattended run, and the
-# command exits non-zero when anything failed (data.errors).
+# command lists what failed and exits non-zero.
 <prefix> cleanup --json [--apply]
 
 # Audit new files on this branch for cross-references (old name: check-integration)
