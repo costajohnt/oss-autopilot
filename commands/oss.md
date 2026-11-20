@@ -102,7 +102,7 @@ The CLI returns structured data with new fields for the action-first flow:
 {
   "success": true,
   "data": {
-    "version": "0.26.0",
+    "version": "<version>",
     "setupComplete": true,
     "daily": {
       "briefSummary": "16 Active PRs | 3 need attention | Dashboard opened in browser",

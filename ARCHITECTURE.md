@@ -90,7 +90,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 26 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 27 commands that skip the `preAction` GitHub token check. Note: some (like `startup` and `pr-preflight`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -142,6 +142,8 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `cleanup` | `cleanup.ts` | List (and with `--apply` remove) stale overnight worktrees and rejected state copies under `~/.oss-autopilot` |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
 | `guidelines list/view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
+| `draft path` / `show` | `draft.ts` | Stage text for the user's approval in the owner-only draft directory (`~/.oss-autopilot/tmp`); `show` returns the text with the SHA-256 to pass back as `--expect-sha256` (#1930) |
+| `policy get` / `set` / `reset` | `policy.ts` | Per-repo contribution policy: AI policy, disclosure, CLA, commit rules, PR gate (#1953) |
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
 | `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
 | `ledger-backfill` | `ledger-backfill.ts` | Fill missing outcome-ledger fields: opened date, closing issue, close reason, list vet score (#1824) |

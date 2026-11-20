@@ -14,6 +14,8 @@
  *     `agents-contract.test.ts`).
  *   - ARCHITECTURE's command table must have a row for every
  *     `commands/*.md` file, and reference no file that does not exist.
+ *   - ARCHITECTURE's subcommand table must list every top-level command
+ *     registered in `cli-registry.ts` (deprecated ones may be absent) (#2002).
  *
  * Parsers are tolerant of formatting (whitespace, surrounding prose) but
  * strict on content (exact name sets, exact counts).
@@ -22,6 +24,8 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { Command } from 'commander';
+import { commands } from './cli-registry.js';
 import { parseRegisteredTools } from './test-lib/registered-mcp-tools.js';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
@@ -153,5 +157,58 @@ describe('ARCHITECTURE.md command table ↔ commands/ parity (#1379)', () => {
     expect(stale, `ARCHITECTURE.md command table references nonexistent command files: ${stale.join(', ')}`).toEqual(
       [],
     );
+  });
+});
+
+describe('ARCHITECTURE.md subcommand table ↔ cli-registry parity (#2002)', () => {
+  // Deprecated commands may stay out of the table until they are removed.
+  const DEPRECATED = new Set(['orphan-files', 'detect-formatters']);
+
+  const program = new Command();
+  for (const def of commands) def.register(program);
+  const registered = new Map((program.commands as readonly Command[]).map((c) => [c.name(), c]));
+
+  /**
+   * First-column cells of the "### Subcommands" table, as lists of backticked
+   * names. A cell like `work claim` / `finish` names a group then its
+   * subcommands; a cell like `comments` / `post` names top-level commands.
+   */
+  function firstColumnCells(): string[][] {
+    const lines = fs.readFileSync(ARCHITECTURE, 'utf8').split('\n');
+    const start = lines.findIndex((l) => /^###\s+Subcommands\b/.test(l));
+    expect(start, 'ARCHITECTURE.md no longer has a "### Subcommands" section — update this test').toBeGreaterThan(-1);
+    const cells: string[][] = [];
+    for (let i = start + 1; i < lines.length && !/^#{1,3}\s/.test(lines[i]); i++) {
+      const cell = lines[i].trimStart().startsWith('|') ? lines[i].split('|')[1] : '';
+      const names = [...cell.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+      if (names.length > 0) cells.push(names);
+    }
+    return cells;
+  }
+
+  it('the table lists every registered top-level command and no unregistered one', () => {
+    const inTable = new Set<string>();
+    const badSubcommands: string[] = [];
+    for (const [first, ...rest] of firstColumnCells()) {
+      const [group, sub] = first.split(' ');
+      inTable.add(group);
+      if (sub === undefined) {
+        for (const name of rest) inTable.add(name);
+        continue;
+      }
+      const subs = new Set((registered.get(group)?.commands ?? []).map((c) => c.name()));
+      for (const name of rest) if (!subs.has(name)) badSubcommands.push(`${group} ${name}`);
+    }
+    const missing = [...registered.keys()].filter((n) => !inTable.has(n) && !DEPRECATED.has(n));
+    const stale = [...inTable].filter((n) => !registered.has(n));
+    expect(missing, `ARCHITECTURE.md subcommand table is missing rows for: ${missing.join(', ')}`).toEqual([]);
+    expect(stale, `ARCHITECTURE.md subcommand table names unregistered commands: ${stale.join(', ')}`).toEqual([]);
+    expect(badSubcommands, `ARCHITECTURE.md subcommand table names unregistered subcommands`).toEqual([]);
+  });
+
+  it('the "N commands that skip" localOnly count matches the registry', () => {
+    const m = fs.readFileSync(ARCHITECTURE, 'utf8').match(/(\d+) commands that skip/);
+    expect(m, 'ARCHITECTURE.md no longer states the localOnly count — update this test').not.toBeNull();
+    expect(Number(m?.[1])).toBe(commands.filter((c) => c.localOnly).length);
   });
 });
