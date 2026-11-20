@@ -40,7 +40,7 @@ export function isBotAuthor(author: string, userType?: string | null): boolean {
  * Detect short acknowledgment comments that don't need code or a status change.
  * Such a comment does not mark the PR as needing attention, so a thanks-only
  * comment never reaches pr-responder's `appreciation` rule (#1852 follow-up).
- * Returns true only when: no question mark, matches an acknowledgment keyword, and under 100 chars.
+ * Returns true only when: no question mark, no request word, matches an acknowledgment keyword, and under 100 chars.
  * Conservative -- missing a real acknowledgment (false negative) is safer than suppressing a substantive response (false positive).
  */
 export function isAcknowledgmentComment(body: string): boolean {
@@ -48,6 +48,11 @@ export function isAcknowledgmentComment(body: string): boolean {
   if (body.includes('?')) return false;
 
   const lower = body.toLowerCase();
+  // "Thanks! Please rebase and I'll merge." is a request, not an acknowledgment (#1916).
+  // Bare "fix" is left out so "Thanks for the fix!" stays an acknowledgment.
+  if (/\b(?:please|pls|but|however|just|needs?|should|must|rebase|squash|update|add|change|remove)\b/.test(lower)) {
+    return false;
+  }
   const ackKeywords = [
     'thanks',
     'thank you',

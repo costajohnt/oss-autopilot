@@ -571,6 +571,40 @@ describe('checkUnrespondedComments', () => {
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
+
+  it('should surface a short request that also says thanks (#1916)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        {
+          user: { login: 'maintainer' },
+          body: "Thanks! Please rebase and I'll merge.",
+          created_at: '2026-02-07T12:00:00Z',
+        },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer');
+  });
+
+  it('should keep a request when a second maintainer follows it with thanks (#1916)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'maintainer1' }, body: 'Fix the failing test', created_at: '2026-02-07T11:00:00Z' },
+        { user: { login: 'maintainer2' }, body: 'Thanks!', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer1');
+    expect(result.lastMaintainerComment?.body).toBe('Fix the failing test');
+  });
 });
 
 describe('getLastMaintainerActivity', () => {

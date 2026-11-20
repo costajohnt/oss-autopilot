@@ -253,12 +253,17 @@ export function checkUnrespondedComments(
 
   // Find maintainer comments after the user's last comment
   let lastMaintainerComment: FetchedPR['lastMaintainerComment'] | undefined;
-  let lastMaintainerReviewId: number | undefined;
 
   for (const item of timeline) {
     if (item.isUser) continue; // Skip user's own comments
     if (item.author === 'unknown') continue; // Skip deleted/null accounts
     if (isBotAuthor(item.author, item.userType)) continue; // Skip bots
+    // Skip pure acknowledgments here, not after the loop, so a later "thanks"
+    // does not clear an earlier unanswered request (#1916). A review with
+    // inline comments is never skipped: those carry feedback beyond the
+    // summary body that likely needs a response (#829).
+    const hasInlineComments = item.reviewId != null && reviewHasInlineComments(item.reviewId, reviewComments);
+    if (isAcknowledgmentComment(item.body) && !hasInlineComments) continue;
 
     const itemTime = new Date(item.createdAt);
     if (!lastUserCommentTime || itemTime > lastUserCommentTime) {
@@ -267,17 +272,7 @@ export function checkUnrespondedComments(
         body: item.body.slice(0, 200) + (item.body.length > 200 ? '...' : ''),
         createdAt: item.createdAt,
       };
-      lastMaintainerReviewId = item.reviewId;
     }
-  }
-
-  // Filter out pure acknowledgment comments that don't require a response.
-  // Skip the filter when the review has inline comments — those indicate
-  // feedback beyond the summary body that likely needs a response (#829).
-  const lastReviewHasInlineComments =
-    lastMaintainerReviewId != null && reviewHasInlineComments(lastMaintainerReviewId, reviewComments);
-  if (lastMaintainerComment && isAcknowledgmentComment(lastMaintainerComment.body) && !lastReviewHasInlineComments) {
-    lastMaintainerComment = undefined;
   }
 
   return {
