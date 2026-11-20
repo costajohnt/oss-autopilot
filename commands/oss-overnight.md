@@ -190,10 +190,17 @@ What it does, for each entry recorded with a `--worktree`:
    that list shows (`pushurl`, `pushInsteadOf`), so the list is only compared
    against GitHub's answer, never pushed to. Then copies the recorded branch
    into a temporary bare repository (`git fetch` from the worktree's path)
-   and pushes from there to `https://github.com/<owner>/<repo>.git`, built
-   from that answer. The push itself reads no config, hook, credential helper
-   or ssh command from the worktree (#1937), and goes over https whatever the
-   remote's own URL was. The temporary repository is removed afterwards.
+   and pushes from there to a URL built from that answer and the literal
+   host `github.com`: `git@github.com:<owner>/<repo>.git` when the matching
+   remote's own push URL is an ssh one for github.com (`git@github.com:...`
+   or `ssh://git@github.com/...`), otherwise
+   `https://github.com/<owner>/<repo>.git`. Only the transport is taken from
+   the remote, never its text; with the handoff there is no remote and the
+   push is https. When the clone has several remotes of yours, the one that
+   names the target is used. A PR whose head repository cannot be read is
+   skipped. The push itself reads no config, hook, credential helper or ssh
+   command from the worktree (#1937). The temporary repository is removed
+   afterwards.
    Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
    head branch, never `--force`, never tags; a non-fast-forward is a skip with
    a reason.

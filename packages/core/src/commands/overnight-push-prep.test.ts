@@ -507,7 +507,8 @@ describe('runOvernightPushPrep', () => {
   it.each([
     ['plain http', 'https://github.com/octocat/react.git'.replace('https', 'http')],
     ['userinfo in the URL', 'https://someone:secret@github.com/octocat/react.git'],
-    ['ssh', 'git@github.com:OctoCat/react.git'],
+    ['ssh on another port', 'ssh://git@github.com:22/octocat/react.git'],
+    ['ssh with the host spelled another way', 'git@GitHub.com:octocat/react.git'],
   ])('pushes to the URL built from the PR head repo, never the remote string: %s (#1937)', async (_case, url) => {
     const sm = fakeStateManager(record([entry()]));
     mockGetStateManager.mockReturnValue(sm);
@@ -522,6 +523,34 @@ describe('runOvernightPushPrep', () => {
     expect(pushCalls()[0].join(' ')).not.toContain(url);
     // The fork check now also requires the fork's parent to be the PR's repo.
     expect(octokit.repos.get).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['scp-style', 'git@github.com:octocat/react.git'],
+    ['ssh://', 'ssh://git@github.com/octocat/react'],
+  ])('keeps the ssh transport of an ssh remote, with the URL still built from the target: %s', async (_case, url) => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit(`origin\t${url} (fetch)\norigin\t${url} (push)\n`);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('pushed');
+    // Owner and repo as GitHub names them (`OctoCat`), not as the remote spells them.
+    expect(pushCalls()[0][5]).toBe('git@github.com:OctoCat/react.git');
+  });
+
+  it('picks the login-owned remote that names the target when an earlier one does not', async () => {
+    const sm = fakeStateManager(record([entry()]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit('origin\thttps://github.com/octocat/other.git (push)\nfork\thttps://github.com/octocat/react.git (push)\n');
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0]).toMatchObject({ status: 'pushed', remote: 'fork', repo: 'octocat/react' });
+    expect(pushCalls()[0][5]).toBe('https://github.com/OctoCat/react.git');
   });
 
   it('skips a fork of some other repository, and a PR whose head repo cannot be read (#1937)', async () => {

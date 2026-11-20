@@ -12,7 +12,8 @@
  *    `<login>/<repo>` for an issue. The worktree must hold a remote whose
  *    parsed URL names that same repo; remote names are never trusted, and
  *    neither is the remote's URL, which the worktree's config can rewrite
- *    (#1937). The push goes to an HTTPS URL built from GitHub's answer.
+ *    (#1937). The push goes to a URL built from GitHub's answer, keeping only
+ *    that remote's transport (pickRemote).
  * 2. That repo must be a fork (`GET /repos/{owner}/{repo}` says `fork: true`)
  *    of the PR's repo, so the user's own source repos never grow `prep/*`
  *    branches.
@@ -253,6 +254,44 @@ function remoteMismatch(found: PushTarget, expected: RemoteOwnerRepo): string | 
     : `remote ${found.remote} points at ${actual}, not ${wanted}`;
 }
 
+// The two SSH spellings of github.com with no port. Only the scheme is taken from the remote.
+const SSH_REMOTE = /^(?:git@github\.com:|ssh:\/\/git@github\.com\/)/;
+
+/** What `pickRemote` found: a remote and the URL to push to, or the reason to skip. */
+interface PickedRemote {
+  target?: PushTarget;
+  pushUrl?: string;
+  reason?: string;
+}
+
+/**
+ * The login-owned remote that names `expected`, and the URL to push to: built
+ * from `expected` and the literal host, over SSH when that remote's own push
+ * URL is an SSH form for github.com, else HTTPS. The remote's string is never
+ * pushed to.
+ */
+function pickRemote(
+  remotes: GitRemote[],
+  login: string,
+  expected: PushTarget,
+  worktree: string | undefined,
+): PickedRemote {
+  const names = [...new Set(remotes.map((r) => r.name))];
+  const owned = names.flatMap(
+    (name) =>
+      resolvePushRemote(
+        remotes.filter((r) => r.name === name),
+        login,
+      ) ?? [],
+  );
+  if (owned.length === 0) return { reason: `no remote in ${worktree} is owned by ${login}` };
+  const target = owned.find((candidate) => remoteMismatch(candidate, expected) === null);
+  if (!target) return { reason: remoteMismatch(owned[0], expected) ?? undefined };
+  const url = remotes.find((r) => r.name === target.remote)?.url ?? '';
+  const pushUrl = SSH_REMOTE.test(url) ? `git@github.com:${expected.owner}/${expected.repo}.git` : expected.remote;
+  return { target, pushUrl };
+}
+
 function outsideRoot(worktree: string): string {
   return `worktree ${worktree} is not under ${worktreesRoot()}`;
 }
@@ -400,25 +439,24 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
   }
 
   async function pushOne(entry: OvernightPrepared): Promise<PushPrepResult> {
-    // Without the handoff, the worktree must hold a remote owned by the login.
-    let found: PushTarget | undefined;
+    // Without the handoff, the worktree's remotes are read; a remote's URL is
+    // the worktree's word (a `pushurl` or `pushInsteadOf` there can name any
+    // repo the login owns), so one of them only has to agree with the target
+    // GitHub names. The push goes to a URL built from that target.
+    let remotes: GitRemote[] | undefined;
     if (!dropDir) {
       if (!entry.worktree) return skip(entry, 'no worktree recorded');
       if (!fs.existsSync(entry.worktree)) return skip(entry, `worktree ${entry.worktree} does not exist`);
       if (!isPreparerWorktree(entry.worktree)) return skip(entry, outsideRoot(entry.worktree));
-      found = resolvePushRemote(parseRemotesOutput(git(entry.worktree, ['remote', '-v'])), login) ?? undefined;
-      if (!found) return skip(entry, `no remote in ${entry.worktree} is owned by ${login}`);
+      remotes = parseRemotesOutput(git(entry.worktree, ['remote', '-v']));
     }
-    // That remote's URL is the worktree's word (a `pushurl` or `pushInsteadOf`
-    // there can name any repo the login owns), so it only has to agree with
-    // the target GitHub names; the push goes to the URL built from that.
     const expected = await expectedTarget(entry.url);
-    if (typeof expected === 'string') return skip(entry, expected, found);
-    const mismatch = found && remoteMismatch(found, expected.target);
-    if (mismatch) return skip(entry, mismatch, found);
+    if (typeof expected === 'string') return skip(entry, expected);
+    const picked = remotes ? pickRemote(remotes, login, expected.target, entry.worktree) : {};
+    if (picked.reason) return skip(entry, picked.reason);
     const { upstream } = expected;
-    const target = found ?? expected.target;
-    const pushUrl = expected.target.remote;
+    const target = picked.target ?? expected.target;
+    const pushUrl = picked.pushUrl ?? expected.target.remote;
 
     const notFork = await forkSkipReason(target, upstream);
     if (notFork) return skip(entry, notFork, target);
