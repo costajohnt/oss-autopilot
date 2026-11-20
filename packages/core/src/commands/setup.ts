@@ -11,7 +11,7 @@ import {
   maybeCheckpoint,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
-import { MACHINE_PATH_KEYS, setMachinePath } from '../core/local-config.js';
+import { MACHINE_PATH_KEYS, assertSafeMachinePath, setMachinePath, type MachinePathKey } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
 import {
   PROJECT_CATEGORIES,
@@ -136,6 +136,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
       const [key] = setting.split('=', 1);
       if (!knownKeys.has(key)) {
         throw new ValidationError(formatUnknownKeyError(key, 'setup'));
+      }
+      if ((MACHINE_PATH_KEYS as readonly string[]).includes(key)) {
+        assertSafeMachinePath(key as MachinePathKey, setting.slice(key.length + 1));
       }
     }
 
