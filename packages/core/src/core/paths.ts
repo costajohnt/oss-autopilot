@@ -195,7 +195,7 @@ export function getCLIVersion(): string {
   try {
     const entry = fs.realpathSync(process.argv[1]);
     const pkgPath = path.join(path.dirname(entry), '..', 'package.json');
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+    return (JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version: string }).version;
   } catch {
     return '0.0.0';
   }

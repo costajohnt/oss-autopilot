@@ -26,6 +26,7 @@ function loadConfetti(): Promise<ConfettiFn | null> {
   if (confettiInflight) return confettiInflight;
   confettiInflight = import('canvas-confetti')
     .then((mod) => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- without the cast no-misused-promises rejects the canvas-confetti signature
       confettiFn = mod.default as ConfettiFn;
       return confettiFn;
     })

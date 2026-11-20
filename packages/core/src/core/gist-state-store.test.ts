@@ -798,7 +798,9 @@ describe('GistStateStore', () => {
       const result = await store.refreshFromGist();
       expect(result.status).toBe('throttled');
       if (result.status === 'throttled') {
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.sinceLastMs).toBeGreaterThanOrEqual(0);
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.sinceLastMs).toBeLessThan(30_000);
       }
     });
@@ -817,6 +819,7 @@ describe('GistStateStore', () => {
       const result = await store.refreshFromGist();
       expect(result.status).toBe('error');
       if (result.status === 'error') {
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.error.message).toContain('Gist API 500');
       }
     });

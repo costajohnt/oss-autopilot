@@ -443,6 +443,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
   return { pruned: collapsed.join('\n') + '\n', removedCount };
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runParseList(options: ParseListOptions): Promise<ParseIssueListOutput> {
   const filePath = path.resolve(options.filePath);
 

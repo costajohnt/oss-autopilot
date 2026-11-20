@@ -26,7 +26,6 @@ import {
 } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
-import type { MoveTarget } from './move.js';
 import { fetchDashboardData, type ActionRequest } from './dashboard-data.js';
 import { openInBrowser } from './startup.js';
 import { writeDashboardServerInfo, removeOwnDashboardServerInfo } from './dashboard-process.js';
@@ -560,7 +559,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     let applyMutation: () => Promise<void> | void;
     if (body.action === 'move') {
       const { VALID_TARGETS, runMove } = await import('./move.js');
-      if (!body.target || !VALID_TARGETS.includes(body.target as MoveTarget)) {
+      if (!body.target || !VALID_TARGETS.includes(body.target)) {
         sendError(res, 400, `move requires a valid "target" field (${VALID_TARGETS.join(', ')})`);
         return;
       }

@@ -131,7 +131,7 @@ function buildWorkflowIndex() {
   try {
     manifest = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`workflows/manifest.json is not valid JSON: ${err.message}`);
+    throw new Error(`workflows/manifest.json is not valid JSON: ${err.message}`, { cause: err });
   }
   if (!Array.isArray(manifest.workflows)) {
     throw new Error(`workflows/manifest.json must have a "workflows" array`);
@@ -184,14 +184,14 @@ function buildLocalOnlyCommandsLine() {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {
-    throw new Error(`Failed to invoke 'manifest --json' on the CLI bundle: ${err.message}`);
+    throw new Error(`Failed to invoke 'manifest --json' on the CLI bundle: ${err.message}`, { cause: err });
   }
 
   let parsed;
   try {
     parsed = JSON.parse(stdout);
   } catch (err) {
-    throw new Error(`'manifest --json' did not produce parseable JSON: ${err.message}`);
+    throw new Error(`'manifest --json' did not produce parseable JSON: ${err.message}`, { cause: err });
   }
   if (!parsed.success || !Array.isArray(parsed.data?.commands)) {
     throw new Error(`'manifest --json' returned an unexpected envelope: ${stdout.slice(0, 200)}`);

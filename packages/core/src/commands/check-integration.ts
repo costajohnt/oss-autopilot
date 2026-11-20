@@ -79,6 +79,7 @@ function suggestEntryPoints(newFile: string, existingFiles: string[]): string[] 
   return [...new Set(suggestions)];
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runCheckIntegration(options: CheckIntegrationOptions): Promise<CheckIntegrationOutput> {
   const base = options.base;
 
@@ -153,8 +154,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
         }
       } catch (error: unknown) {
         // git grep exit code 1 = no matches (expected), exit code 2+ = real error
-        const exitCode =
-          error && typeof error === 'object' && 'status' in error ? (error as { status: unknown }).status : undefined;
+        const exitCode = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
         if (exitCode !== undefined && exitCode !== 1) {
           const msg = errorMessage(error);
           debug('check-integration', `git grep failed for "${pattern}": ${msg}`);

@@ -209,6 +209,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues[0].lastResponseBody).toContain('Yes, go for it!');
     expect(issues[0].userLastCommentBody).toBe('Is this still relevant?');
     if (issues[0].status === 'new_response') {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].isFromMaintainer).toBe(true);
     }
     expect(failures).toHaveLength(0);
@@ -255,6 +256,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('new_response');
     if (issues[0].status === 'new_response') {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].isFromMaintainer).toBe(true);
     }
   });
@@ -280,6 +282,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('new_response');
     if (issues[0].status === 'new_response') {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].isFromMaintainer).toBe(true);
     }
   });
@@ -374,7 +377,9 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('new_response');
     if (issues[0].status === 'new_response') {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].isFromMaintainer).toBe(false);
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].lastResponseAuthor).toBe('random-user');
     }
   });
@@ -612,6 +617,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('new_response');
     if (issues[0].status === 'new_response') {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].lastResponseBody.length).toBeLessThanOrEqual(203); // 200 + "..."
     }
   });
@@ -945,6 +951,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues[0].lastResponseAuthor).toBe('maintainerB');
     expect(issues[0].lastResponseBody).toContain('go ahead and submit a PR');
     if (issues[0].status === 'new_response') {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(issues[0].isFromMaintainer).toBe(true);
     }
   });

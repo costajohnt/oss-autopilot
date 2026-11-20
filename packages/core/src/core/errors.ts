@@ -246,7 +246,7 @@ export function errorMessage(e: unknown): string {
  */
 export function getHttpStatusCode(error: unknown): number | undefined {
   if (error && typeof error === 'object' && 'status' in error) {
-    const status = (error as { status: unknown }).status;
+    const status = error.status;
     return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
   }
   return undefined;
