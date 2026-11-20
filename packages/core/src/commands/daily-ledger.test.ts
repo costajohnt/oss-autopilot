@@ -245,6 +245,15 @@ describe('closed-ledger gap filling (#1925)', () => {
   const recentRow: ClosedPR = { url: prUrl(4), repo: 'org/repo', number: 4, title: 'PR 4', closedAt: daysAgo(1) };
   const closedUrls = (sm: StateManager) => sm.getClosedPRs().map((pr) => pr.url);
   let sm: StateManager;
+  /** `count` stored closed rows, the newest closed 2 days ago. */
+  const seed = (count: number) =>
+    sm.addClosedPRs(
+      Array.from({ length: count }, (_, i) => ({
+        url: prUrl(100 + i),
+        title: `PR ${100 + i}`,
+        closedAt: daysAgo(2 + i / 100),
+      })),
+    );
 
   beforeEach(() => {
     sm = new StateManager(true);
@@ -321,16 +330,6 @@ describe('closed-ledger gap filling (#1925)', () => {
 
   describe('a ledger an older version left short (seeded ahead of its history)', () => {
     const BASE = 'is:pr is:closed is:unmerged is:public author:me -user:me';
-    /** `count` stored closed rows, the newest closed 2 days ago. */
-    const seed = (count: number) =>
-      sm.addClosedPRs(
-        Array.from({ length: count }, (_, i) => ({
-          url: prUrl(100 + i),
-          title: `PR ${100 + i}`,
-          closedAt: daysAgo(2 + i / 100),
-        })),
-      );
-
     it('refetches the whole history while under the ceiling: 6 rows of 40', async () => {
       seed(6);
       const search = makeSearch(olderCloses);

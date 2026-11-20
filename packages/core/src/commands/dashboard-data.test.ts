@@ -147,21 +147,24 @@ vi.mock('../core/errors.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../core/github-stats.js', async (importOriginal) => ({
-  // The real backfill guard (#1925): pure, so the dashboard's choice of start is what's tested.
-  gapFetchWatermark: (await importOriginal<typeof import('../core/github-stats.js')>()).gapFetchWatermark,
-  LEDGER_BACKFILL_CEILING: 300,
-  emptyPRCountsResult: () => ({
-    repos: new Map(),
-    monthlyCounts: {},
-    monthlyOpenedCounts: {},
-    dailyActivityCounts: {},
-  }),
-  MERGED_LEDGER_TRUNCATED_MESSAGE: 'merged ledger truncated',
-  CLOSED_LEDGER_TRUNCATED_MESSAGE: 'closed ledger truncated',
-  fetchMergedPRsSince: (...args: unknown[]) => mockFetchMergedPRsSince(...args),
-  fetchClosedPRsSince: (...args: unknown[]) => mockFetchClosedPRsSince(...args),
-}));
+vi.mock('../core/github-stats.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/github-stats.js')>();
+  return {
+    // The real backfill guard (#1925): pure, so the dashboard's choice of start is what's tested.
+    gapFetchWatermark: actual.gapFetchWatermark,
+    LEDGER_BACKFILL_CEILING: 300,
+    emptyPRCountsResult: () => ({
+      repos: new Map(),
+      monthlyCounts: {},
+      monthlyOpenedCounts: {},
+      dailyActivityCounts: {},
+    }),
+    MERGED_LEDGER_TRUNCATED_MESSAGE: 'merged ledger truncated',
+    CLOSED_LEDGER_TRUNCATED_MESSAGE: 'closed ledger truncated',
+    fetchMergedPRsSince: (...args: unknown[]) => mockFetchMergedPRsSince(...args),
+    fetchClosedPRsSince: (...args: unknown[]) => mockFetchClosedPRsSince(...args),
+  };
+});
 
 vi.mock('./daily.js', () => ({
   toShelvedPRRef: (pr: unknown) => mockToShelvedPRRef(pr),
