@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import path from 'node:path';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { getStateManager } from '../core/index.js';
 import { getMachinePath } from '../core/local-config.js';
@@ -65,6 +66,15 @@ export function runSkipAdd(options: SkipAddOptions): SkipAddOutput {
   }
 
   if (!fs.existsSync(skipFilePath)) {
+    // A path whose directory is missing is usually another machine's synced
+    // value (#1950): say so instead of failing with a bare ENOENT, and never
+    // create directories for it.
+    if (!fs.existsSync(path.dirname(path.resolve(skipFilePath)))) {
+      throw new Error(
+        `Skipped-issues file ${skipFilePath} cannot be created: its directory does not exist on this machine. ` +
+          'Set the path for this machine via `oss-autopilot setup --set skippedIssuesPath=<path>` or pass --path.',
+      );
+    }
     fs.writeFileSync(skipFilePath, FILE_HEADER);
   }
 

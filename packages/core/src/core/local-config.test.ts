@@ -8,7 +8,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import path from 'node:path';
 import { getLocalConfigPath } from './paths.js';
-import { getMachinePath, getMachineRepoCache, setMachinePath, setMachineRepoCache } from './local-config.js';
+import {
+  getMachinePath,
+  getMachinePathSource,
+  getMachineRepoCache,
+  setMachinePath,
+  setMachineRepoCache,
+} from './local-config.js';
 import type { LocalRepoCache } from './state-schema.js';
 
 function readStored(): Record<string, unknown> {
@@ -21,6 +27,13 @@ function existingFile(name: string): string {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, '# list\n');
   return filePath;
+}
+
+/** Full paths of the set-aside copies of an unreadable local-config.json. */
+function rejectedCopies(): string[] {
+  const dir = path.dirname(getLocalConfigPath());
+  const names = fs.readdirSync(dir).filter((name) => name.startsWith('local-config.json.rejected-'));
+  return names.map((name) => path.join(dir, name));
 }
 
 function cacheOf(paths: Record<string, string>): LocalRepoCache {
@@ -45,7 +58,7 @@ describe('getMachinePath / setMachinePath', () => {
     setMachinePath('issueListPath', '/here/list.md');
 
     expect(getMachinePath('issueListPath', {})).toBe('/here/list.md');
-    expect(readStored()).toEqual({ issueListPath: '/here/list.md' });
+    expect(readStored()).toEqual({ issueListPath: { path: '/here/list.md', source: 'set' } });
     expect(fs.statSync(getLocalConfigPath()).mode & 0o777).toBe(0o600);
   });
 
@@ -59,7 +72,10 @@ describe('getMachinePath / setMachinePath', () => {
     setMachinePath('issueListPath', '/here/list.md');
     setMachinePath('skippedIssuesPath', '/here/skip.md');
 
-    expect(readStored()).toEqual({ issueListPath: '/here/list.md', skippedIssuesPath: '/here/skip.md' });
+    expect(readStored()).toEqual({
+      issueListPath: { path: '/here/list.md', source: 'set' },
+      skippedIssuesPath: { path: '/here/skip.md', source: 'set' },
+    });
   });
 
   it('a cleared value stays cleared even when the synced document still has one', () => {
@@ -73,7 +89,7 @@ describe('getMachinePath / setMachinePath', () => {
     const list = existingFile('vault/list.md');
 
     expect(getMachinePath('issueListPath', { issueListPath: list })).toBe(list);
-    expect(readStored()).toEqual({ issueListPath: list });
+    expect(readStored()).toEqual({ issueListPath: { path: list, source: 'adopted' } });
     // Another machine then overwrites the synced value: this one keeps its own.
     expect(getMachinePath('issueListPath', { issueListPath: '/other-machine/list.md' })).toBe(list);
   });
@@ -90,10 +106,32 @@ describe('getMachinePath / setMachinePath', () => {
     expect(fs.existsSync(getLocalConfigPath())).toBe(false);
   });
 
-  it('ignores an unreadable file instead of throwing', () => {
+  it('does not adopt a synced path that is a directory here', () => {
+    const dir = path.dirname(existingFile('vault/list.md'));
+
+    expect(getMachinePath('issueListPath', { issueListPath: dir })).toBe(dir);
+    expect(fs.existsSync(getLocalConfigPath())).toBe(false);
+  });
+
+  it('sets an unreadable file aside as .rejected-<timestamp> instead of throwing or overwriting it', () => {
     fs.writeFileSync(getLocalConfigPath(), '{ not json');
 
     expect(getMachinePath('issueListPath', { issueListPath: '/synced/list.md' })).toBe('/synced/list.md');
+    setMachinePath('issueListPath', '/here/list.md');
+
+    const rejected = rejectedCopies();
+    expect(rejected).toHaveLength(1);
+    expect(fs.readFileSync(rejected[0], 'utf8')).toBe('{ not json');
+    expect(getMachinePath('issueListPath', {})).toBe('/here/list.md');
+    fs.rmSync(rejected[0]);
+  });
+
+  it('loads a file written before the source was recorded, treating a bare string as set', () => {
+    fs.writeFileSync(getLocalConfigPath(), JSON.stringify({ issueListPath: '/here/list.md', skippedIssuesPath: '' }));
+
+    expect(getMachinePath('issueListPath', {})).toBe('/here/list.md');
+    expect(getMachinePathSource('issueListPath', {})).toBe('set');
+    expect(getMachinePath('skippedIssuesPath', { skippedIssuesPath: '/synced/skip.md' })).toBeUndefined();
   });
 
   it('still returns the synced value when the adoption write fails', () => {
@@ -102,6 +140,30 @@ describe('getMachinePath / setMachinePath', () => {
 
     expect(getMachinePath('issueListPath', { issueListPath: list })).toBe(list);
     fs.rmSync(getLocalConfigPath(), { recursive: true });
+  });
+});
+
+describe('getMachinePathSource', () => {
+  it('is undefined when nothing is configured and synced when only the shared config has a value', () => {
+    expect(getMachinePathSource('issueListPath', {})).toBeUndefined();
+    expect(getMachinePathSource('issueListPath', { issueListPath: '/other-machine/list.md' })).toBe('synced');
+  });
+
+  it('reports set, probe and adopted for local values', () => {
+    const list = existingFile('vault/list.md');
+    setMachinePath('skippedIssuesPath', '/here/skip.md', 'probe');
+    getMachinePath('issueListPath', { issueListPath: list });
+
+    expect(getMachinePathSource('skippedIssuesPath', {})).toBe('probe');
+    expect(getMachinePathSource('issueListPath', { issueListPath: list })).toBe('adopted');
+    setMachinePath('issueListPath', list);
+    expect(getMachinePathSource('issueListPath', { issueListPath: list })).toBe('set');
+  });
+
+  it('reports set for an explicit clear, which still hides the synced value', () => {
+    setMachinePath('issueListPath', undefined);
+
+    expect(getMachinePathSource('issueListPath', { issueListPath: '/synced/list.md' })).toBe('set');
   });
 });
 

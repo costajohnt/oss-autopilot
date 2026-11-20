@@ -11,7 +11,7 @@ import {
   maybeCheckpoint,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
-import { setMachinePath } from '../core/local-config.js';
+import { MACHINE_PATH_KEYS, setMachinePath } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
 import {
   PROJECT_CATEGORIES,
@@ -96,6 +96,12 @@ function parseComplexIssues(value: string): 'off' | 'warm' {
     throw new ValidationError(`Invalid value for complexIssues: "${value}". Must be "off" or "warm".`);
   }
   return value;
+}
+
+/** True when every `key=value` names a path kept in this machine's local file. */
+function setsOnlyMachinePaths(settings: string[]): boolean {
+  const localKeys: readonly string[] = MACHINE_PATH_KEYS;
+  return settings.every((setting) => localKeys.includes(setting.split('=', 1)[0]));
 }
 
 /**
@@ -469,7 +475,11 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // Push the settings mutation to the Gist in gist mode (no-op locally).
     // Without this the change only hits the local cache and the next
     // bootstrap reverts it from the Gist (#1440).
-    const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE, () => stateManager.batch(applySettings));
+    // Path settings are written to this machine's local file only (#1950), so
+    // a call that sets nothing else has nothing to push.
+    const gistSyncWarning = setsOnlyMachinePaths(options.set)
+      ? null
+      : await maybeCheckpoint(stateManager, MODULE, () => stateManager.batch(applySettings));
     return {
       success: true,
       settings: results,

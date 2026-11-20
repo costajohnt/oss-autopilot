@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getStateManager } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
-import { getMachinePath, setMachinePath } from '../core/local-config.js';
+import { getMachinePath, getMachinePathSource, setMachinePath } from '../core/local-config.js';
 import { warn } from '../core/logger.js';
 
 /**
@@ -43,11 +43,20 @@ export interface IssueListLocation {
  * flow (#1577). Shared by the list detection here and the skip-path resolution
  * in startup.ts.
  */
-export function persistConfigPath(key: 'issueListPath' | 'skippedIssuesPath', absolutePath: string): void {
+export function persistConfigPath(
+  key: 'issueListPath' | 'skippedIssuesPath',
+  absolutePath: string,
+  origin: 'probe' | 'configured',
+): void {
   try {
-    if (getMachinePath(key, getStateManager().getState().config) !== absolutePath) {
-      setMachinePath(key, absolutePath);
-    }
+    const { config } = getStateManager().getState();
+    if (getMachinePath(key, config) === absolutePath) return;
+    // A probe hit is recorded as one (#1933 decides what a probed value may
+    // do). A configured value made absolute keeps the source it had; one that
+    // came from the synced config counts as adopted.
+    const current = getMachinePathSource(key, config);
+    const kept = current === undefined || current === 'synced' ? 'adopted' : current;
+    setMachinePath(key, absolutePath, origin === 'probe' ? 'probe' : kept);
   } catch (error) {
     // Best-effort — the current run still uses the resolved path; the next run
     // just re-detects. Log so the failure is debuggable.
@@ -79,7 +88,7 @@ export function detectIssueListPath(): IssueListLocation | undefined {
       // the location is stable no matter where `/oss` runs (#1577).
       const resolved = path.resolve(configuredPath);
       if (fs.existsSync(resolved)) {
-        if (resolved !== configuredPath) persistConfigPath('issueListPath', resolved);
+        if (resolved !== configuredPath) persistConfigPath('issueListPath', resolved, 'configured');
         return { path: resolved, source: 'configured' };
       }
       // A path WAS configured but nothing is there. Surface it prominently
@@ -127,7 +136,7 @@ export function detectIssueListPath(): IssueListLocation | undefined {
   for (const probe of probes) {
     if (fs.existsSync(probe)) {
       const resolved = path.resolve(probe);
-      if (!configuredButMissing) persistConfigPath('issueListPath', resolved);
+      if (!configuredButMissing) persistConfigPath('issueListPath', resolved, 'probe');
       return { path: resolved, source: 'auto-detected' };
     }
   }

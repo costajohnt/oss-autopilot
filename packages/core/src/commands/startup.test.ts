@@ -41,6 +41,8 @@ vi.mock('./dashboard-process.js', () => ({
 const { setMachinePathSpy } = vi.hoisted(() => ({ setMachinePathSpy: vi.fn() }));
 vi.mock('../core/local-config.js', () => ({
   getMachinePath: (key: string, synced: Record<string, string | undefined>) => synced[key],
+  getMachinePathSource: (key: string, synced: Record<string, string | undefined>) =>
+    synced[key] ? 'synced' : undefined,
   setMachinePath: setMachinePathSpy,
 }));
 
@@ -440,6 +442,7 @@ describe('detectIssueList', () => {
     expect(setMachinePathSpy).toHaveBeenCalledWith(
       'skippedIssuesPath',
       nodePath.resolve('open-source/skipped-issues.md'),
+      'probe',
     );
   });
 
@@ -491,6 +494,7 @@ describe('detectIssueList', () => {
     expect(setMachinePathSpy).toHaveBeenCalledWith(
       'issueListPath',
       nodePath.resolve('open-source/potential-issue-list.md'),
+      'probe',
     );
   });
 
@@ -508,7 +512,7 @@ describe('detectIssueList', () => {
 
     detectIssueList();
 
-    expect(setMachinePathSpy).toHaveBeenCalledWith('issueListPath', nodePath.resolve('state/issues.md'));
+    expect(setMachinePathSpy).toHaveBeenCalledWith('issueListPath', nodePath.resolve('state/issues.md'), 'adopted');
   });
 
   it('returns undefined (not a silent probe fallthrough that finds nothing) when a configured list is missing (#1577)', async () => {
@@ -563,7 +567,7 @@ describe('detectIssueList', () => {
     const result = detectIssueList();
 
     expect(result?.skippedIssuesPath).toBe(expectedSkip);
-    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', expectedSkip);
+    expect(setMachinePathSpy).toHaveBeenCalledWith('skippedIssuesPath', expectedSkip, 'adopted');
   });
 });
 

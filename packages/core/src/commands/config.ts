@@ -12,7 +12,7 @@ import {
   type StateManager,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
-import { setMachinePath } from '../core/local-config.js';
+import { MACHINE_PATH_KEYS, getMachinePath, getMachinePathSource, setMachinePath } from '../core/local-config.js';
 import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
@@ -47,6 +47,25 @@ function validateScope(value: string): IssueScope {
 }
 
 /**
+ * The config as this machine uses it: the two path settings show the value in
+ * effect here (local file first, synced value as fallback), not whatever
+ * another machine last synced (#1950). `machinePathSources` says where each
+ * shown path comes from and is omitted when neither is configured.
+ */
+function showConfig(config: ConfigOutput['config']): ConfigOutput {
+  const shown = { ...config };
+  const sources: NonNullable<ConfigOutput['machinePathSources']> = {};
+  for (const key of MACHINE_PATH_KEYS) {
+    const value = getMachinePath(key, config);
+    if (value === undefined) delete shown[key];
+    else shown[key] = value;
+    const source = getMachinePathSource(key, config);
+    if (source) sources[key] = source;
+  }
+  return { config: shown, ...(Object.keys(sources).length > 0 && { machinePathSources: sources }) };
+}
+
+/**
  * Read or write user configuration settings.
  * When called without a key, returns the full config.
  * When called with a key and value, updates the setting.
@@ -73,7 +92,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
 
   if (!options.key) {
     // Show current config
-    return { config: stateManager.getState().config };
+    return showConfig(stateManager.getState().config);
   }
 
   if (!options.value) {

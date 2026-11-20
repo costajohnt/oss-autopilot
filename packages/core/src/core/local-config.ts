@@ -27,20 +27,49 @@ import { warn } from './logger.js';
 const MODULE = 'local-config';
 
 /** Config keys whose value is a filesystem path on one machine. */
-export type MachinePathKey = 'issueListPath' | 'skippedIssuesPath';
+export const MACHINE_PATH_KEYS = ['issueListPath', 'skippedIssuesPath'] as const;
+export type MachinePathKey = (typeof MACHINE_PATH_KEYS)[number];
 
 /** The synced values the accessors fall back to (a slice of `state.config`). */
 export type SyncedPaths = Partial<Record<MachinePathKey, string>>;
 
-// An empty string records "cleared on this machine", so the synced value does
-// not come back after `setup --set issueListPath=`.
+/**
+ * How a stored path got into the local file: `set` by the user (`setup --set`,
+ * `config`), `adopted` from the synced config because it exists on this
+ * machine, or found by a `probe` (current-directory list probe, or the
+ * `skipped-issues.md` next to the list).
+ */
+export type MachinePathSource = 'set' | 'adopted' | 'probe';
+
+// An empty `path` records "cleared on this machine", so the synced value does
+// not come back after `setup --set issueListPath=`. A bare string is the
+// shape written before the source was recorded; it loads as `set`.
+const StoredPathSchema = z.union([
+  z.string(),
+  z.object({ path: z.string(), source: z.enum(['set', 'adopted', 'probe']) }),
+]);
+
 const LocalConfigSchema = z.looseObject({
-  issueListPath: z.string().optional(),
-  skippedIssuesPath: z.string().optional(),
+  issueListPath: StoredPathSchema.optional(),
+  skippedIssuesPath: StoredPathSchema.optional(),
   localRepoCache: LocalRepoCacheSchema.optional(),
 });
 
 type LocalConfig = z.infer<typeof LocalConfigSchema>;
+
+/**
+ * Move a file that cannot be parsed out of the way, so the next write does
+ * not overwrite what the user had. Returns a note for the warning.
+ */
+function setAsideUnreadable(filePath: string): string {
+  const rejectedPath = `${filePath}.rejected-${Date.now()}`;
+  try {
+    fs.renameSync(filePath, rejectedPath);
+    return `kept as ${rejectedPath}`;
+  } catch (err) {
+    return `could not be set aside (${errorMessage(err)})`;
+  }
+}
 
 /** The stored file, or `{}` when it is missing or unreadable (with a warning). */
 function readLocalConfig(): LocalConfig {
@@ -49,9 +78,15 @@ function readLocalConfig(): LocalConfig {
   try {
     return LocalConfigSchema.parse(JSON.parse(fs.readFileSync(filePath, 'utf8')));
   } catch (err) {
-    warn(MODULE, `Ignoring unreadable ${filePath}: ${errorMessage(err)}`);
+    warn(MODULE, `Ignoring unreadable ${filePath} (${errorMessage(err)}); it ${setAsideUnreadable(filePath)}`);
     return {};
   }
+}
+
+/** The stored entry for a key in its current shape, or undefined when none is stored. */
+function readStoredPath(key: MachinePathKey): { path: string; source: MachinePathSource } | undefined {
+  const stored = readLocalConfig()[key];
+  return typeof stored === 'string' ? { path: stored, source: 'set' } : stored;
 }
 
 // ponytail: read-modify-write with no lock. Two processes setting different
@@ -71,27 +106,50 @@ function adopt(patch: Partial<LocalConfig>): void {
   }
 }
 
+/** True for an absolute path to a regular file on this machine's disk. */
+function isFileHere(candidate: string): boolean {
+  return path.isAbsolute(candidate) && fs.statSync(candidate, { throwIfNoEntry: false })?.isFile() === true;
+}
+
 /**
  * This machine's value for a path setting.
  *
  * The local value wins. With none, the synced value is returned unchanged
  * (callers already handle a path that is not on disk), and it is copied to
- * the local file when it is absolute and exists here, so a later write from
- * another machine cannot replace it.
+ * the local file when it is an absolute path to a regular file here, so a
+ * later write from another machine cannot replace it.
  */
 export function getMachinePath(key: MachinePathKey, synced: SyncedPaths): string | undefined {
-  const local = readLocalConfig()[key];
-  if (local !== undefined) return local || undefined;
+  const local = readStoredPath(key);
+  if (local) return local.path || undefined;
   const syncedValue = synced[key];
-  if (syncedValue && path.isAbsolute(syncedValue) && fs.existsSync(syncedValue)) {
-    adopt({ [key]: syncedValue });
+  if (syncedValue && isFileHere(syncedValue)) {
+    adopt({ [key]: { path: syncedValue, source: 'adopted' } });
   }
   return syncedValue;
 }
 
-/** Set (or, with `undefined` or an empty string, clear) a path setting for this machine only. */
-export function setMachinePath(key: MachinePathKey, value = ''): void {
-  updateLocalConfig({ [key]: value });
+/**
+ * Where the value {@link getMachinePath} returns comes from: the source
+ * recorded with the local value, `synced` when there is no local value and
+ * the shared config supplies one, or undefined when nothing is configured.
+ */
+export function getMachinePathSource(
+  key: MachinePathKey,
+  synced: SyncedPaths,
+): MachinePathSource | 'synced' | undefined {
+  const local = readStoredPath(key);
+  if (local) return local.source;
+  const syncedValue = synced[key];
+  return syncedValue ? 'synced' : undefined;
+}
+
+/**
+ * Set (or, with `undefined` or an empty string, clear) a path setting for
+ * this machine only, recording how the value was obtained.
+ */
+export function setMachinePath(key: MachinePathKey, value = '', source: MachinePathSource = 'set'): void {
+  updateLocalConfig({ [key]: { path: value, source } });
 }
 
 /** The cache with only the repos whose checkout is on this machine's disk. */

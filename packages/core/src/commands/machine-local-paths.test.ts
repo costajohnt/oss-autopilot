@@ -43,6 +43,7 @@ import { runSetup } from './setup.js';
 import { runConfig } from './config.js';
 import { runLocalRepos } from './local-repos.js';
 import { runStateShow } from './state-cmd.js';
+import { runSkipAdd } from './skip-add.js';
 import { detectIssueList } from './startup.js';
 
 const testHome = os.homedir();
@@ -139,14 +140,17 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
     await switchTo(machineA);
     await runSetup({ set: setPaths(vault) });
     await runConfig({ key: 'issueListPath', value: vault.list });
-    await getStateManager().checkpoint();
+    await runSetup({ set: ['maxActivePRs=7'] });
 
     expect(getStateManager().getState().config.issueListPath).toBeUndefined();
     expect(getStateManager().getState().config.skippedIssuesPath).toBeUndefined();
     expect(gist.pushed.length).toBeGreaterThan(0);
     expect(gist.pushed.join('\n')).not.toContain(machineA);
     const local = fs.readFileSync(path.join(machineA, '.oss-autopilot', 'local-config.json'), 'utf8');
-    expect(JSON.parse(local)).toEqual({ issueListPath: vault.list, skippedIssuesPath: vault.skip });
+    expect(JSON.parse(local)).toEqual({
+      issueListPath: { path: vault.list, source: 'set' },
+      skippedIssuesPath: { path: vault.skip, source: 'set' },
+    });
   });
 
   it('a list auto-detected in the current directory is kept locally, not pushed', async () => {
@@ -162,8 +166,8 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
     expect(gist.content).not.toContain('potential-issue-list.md');
     const local = fs.readFileSync(path.join(machineA, '.oss-autopilot', 'local-config.json'), 'utf8');
     expect(JSON.parse(local)).toEqual({
-      issueListPath: fs.realpathSync(vault.list),
-      skippedIssuesPath: fs.realpathSync(vault.skip),
+      issueListPath: { path: fs.realpathSync(vault.list), source: 'probe' },
+      skippedIssuesPath: { path: fs.realpathSync(vault.skip), source: 'probe' },
     });
   });
 
@@ -210,7 +214,7 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
     expect(detectIssueList()).toMatchObject({ path: vaultA.list, source: 'configured' });
   });
 
-  it('local-repos and state-show never print the other machine paths', async () => {
+  it('local-repos never returns the other machine clone paths', async () => {
     const repoA = path.join(machineA, 'dev', 'r');
     seedGist((state) => {
       state.localRepoCache = {
@@ -222,10 +226,64 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
 
     await switchTo(machineB);
     const repos = await runLocalRepos({ paths: [path.join(machineB, 'dev')] });
-    const shown = await runStateShow();
 
     expect(repos).toMatchObject({ fromCache: false, repos: {} });
-    expect(JSON.stringify([repos, shown])).not.toContain(machineA);
+    expect(JSON.stringify(repos)).not.toContain(machineA);
+  });
+
+  it('state-show prints no path at all, so never the other machine synced paths', async () => {
+    seedGist((state) => {
+      state.config.issueListPath = path.join(machineA, 'vault', 'list.md');
+      state.config.skippedIssuesPath = path.join(machineA, 'vault', 'skip.md');
+    });
+
+    await switchTo(machineB);
+    const shown = await runStateShow({ validate: true });
+
+    expect(shown).toMatchObject({ persistence: 'gist', gistId: 'shared-gist' });
+    expect(JSON.stringify(shown)).not.toContain(machineA);
+  });
+
+  it('config shows the paths in effect on this machine and where they come from', async () => {
+    const vaultB = makeVault(machineB);
+    const foreignList = path.join(machineA, 'vault', 'list.md');
+    seedGist((state) => {
+      state.config.issueListPath = foreignList;
+      state.config.skippedIssuesPath = path.join(machineA, 'vault', 'skip.md');
+    });
+
+    await switchTo(machineB);
+    const before = await runConfig({});
+    await runSetup({ set: [`issueListPath=${vaultB.list}`, 'skippedIssuesPath='] });
+    const after = await runConfig({});
+
+    // No local value yet: the synced fallback is what is in effect, and says so.
+    expect(before).toMatchObject({
+      config: { issueListPath: foreignList },
+      machinePathSources: { issueListPath: 'synced', skippedIssuesPath: 'synced' },
+    });
+    expect(after).toMatchObject({
+      config: { issueListPath: vaultB.list },
+      machinePathSources: { issueListPath: 'set', skippedIssuesPath: 'set' },
+    });
+    expect(after).not.toHaveProperty('config.skippedIssuesPath');
+    expect(JSON.stringify(after)).not.toContain(machineA);
+    // The shown overlay is a copy: the synced document keeps its keys.
+    expect(getStateManager().getState().config.issueListPath).toBe(foreignList);
+  });
+
+  it('skip-add refuses to create a skip file under a directory that only exists on the other machine', async () => {
+    const foreignSkip = path.join(machineA, 'vault', 'open-source', 'skipped-issues.md');
+    seedGist((state) => {
+      state.config.skippedIssuesPath = foreignSkip;
+    });
+
+    await switchTo(machineB);
+
+    expect(() => runSkipAdd({ issueUrl: 'https://github.com/o/r/issues/1' })).toThrow(
+      /directory does not exist on this machine.*setup --set skippedIssuesPath=<path>/,
+    );
+    expect(fs.existsSync(path.dirname(foreignSkip))).toBe(false);
   });
 
   it('a fresh scan is cached locally and removes the synced copy from the Gist', async () => {

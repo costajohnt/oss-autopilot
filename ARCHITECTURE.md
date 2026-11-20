@@ -324,16 +324,18 @@ Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 
 With Gist sync, `state.json` is one document shared by every machine, so a filesystem path stored in it is replaced by whichever machine wrote last. Three values are per-machine and live in `local-config.json`, which no sync path reads or writes (#1950):
 
-- `issueListPath` and `skippedIssuesPath` — read through `getMachinePath(key, state.config)` in `core/local-config.ts`. `setup --set`, `config` and auto-detection write the local file only.
-- `localRepoCache` — read through `getMachineRepoCache`. Entries whose checkout is gone are dropped on every read; the file is rewritten by the next `local-repos --scan`.
+- `issueListPath` and `skippedIssuesPath` — read through `getMachinePath(key, state.config)` in `core/local-config.ts`. `setup --set`, `config` and auto-detection write the local file only. Each is stored as `{ "path": "...", "source": "set" | "adopted" | "probe" }`: `set` by the user, `adopted` from the synced config, or found by a `probe` (the current-directory list probe, or the `skipped-issues.md` next to the list). `getMachinePathSource` returns the source (`synced` when the shared config is the fallback in effect). A bare string from an earlier file loads as `set`.
+- `localRepoCache` — read through `getMachineRepoCache`. Entries whose checkout is gone are dropped on every read; the file is rewritten by the next scan.
 
 The synced keys (`config.issueListPath`, `config.skippedIssuesPath`, `localRepoCache`) stay in the schema for clients that have not upgraded, and are only a fallback:
 
-- No local value: the synced value is used as before. If it is an absolute path that exists on this machine it is copied into the local file (it was most likely set here); if it does not exist it is not adopted, and the command behaves as it always has for a configured path that is missing.
+- No local value: the synced value is used as before. If it is an absolute path to a regular file on this machine it is copied into the local file (it was most likely set here); if it does not exist it is not adopted, and the command behaves as it always has for a configured path that is missing.
 - A local value, including an explicit clear, always wins over the synced one.
-- New clients never write the two synced path keys and leave existing values in place. A fresh `local-repos --scan` removes the synced `localRepoCache` (a regenerable cache that only adds to the Gist's size).
+- New clients never write the two synced path keys and leave existing values in place. Any `local-repos` run that scans (`--scan`, or a run with no usable local cache) removes the synced `localRepoCache`, a regenerable cache that only adds to the Gist's size.
 
 Until every machine runs a release with this change, an older client can still overwrite the synced keys; a machine that already holds local values is unaffected.
+
+To correct a wrong local value (for example a path adopted or probed by mistake), run `setup --set issueListPath=<path>` or `setup --set skippedIssuesPath=<path>` on that machine; `=` with no value clears it. An explicit set overrides whatever was adopted. `config` with no arguments shows the two paths in effect on this machine, with their sources under `machinePathSources`. A `local-config.json` that cannot be parsed is renamed to `local-config.json.rejected-<timestamp>` and treated as empty.
 
 ### What's NOT Stored (v2 Design)
 

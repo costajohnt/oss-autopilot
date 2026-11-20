@@ -91,7 +91,7 @@ export function detectIssueList(): IssueListInfo | undefined {
         : path.resolve(path.dirname(issueListPath), configuredSkipPath);
       if (fs.existsSync(resolvedSkip)) {
         skippedIssuesPath = resolvedSkip;
-        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip);
+        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip, 'configured');
       }
     }
   } catch (err) {
@@ -118,7 +118,7 @@ export function detectIssueList(): IssueListInfo | undefined {
         // The write goes to this machine's local settings (#1950).
         const current = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
         if (!current) {
-          setMachinePath('skippedIssuesPath', defaultSkipPath);
+          setMachinePath('skippedIssuesPath', defaultSkipPath, 'probe');
         }
       } catch (err) {
         // Persistence is best-effort — startup still surfaces the path
