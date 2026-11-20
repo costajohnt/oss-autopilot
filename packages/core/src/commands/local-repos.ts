@@ -9,6 +9,7 @@ import * as os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { getStateManager, debug } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { getMachineRepoCache, setMachineRepoCache } from '../core/local-config.js';
 import type { LocalReposOutput, LocalRepoInfo } from '../formatters/json.js';
 
 interface LocalReposOptions {
@@ -164,8 +165,9 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
     DEFAULT_SCAN_PATHS.filter((p) => fs.existsSync(p));
 
   // Use cached data unless --scan is specified
-  if (!options.scan && state.localRepoCache) {
-    const cache = state.localRepoCache;
+  // (this machine's cache: paths from another machine are never returned, #1950)
+  const cache = options.scan ? undefined : getMachineRepoCache(state.localRepoCache);
+  if (cache) {
     return {
       repos: cache.repos,
       scanPaths: cache.scanPaths,
@@ -176,10 +178,12 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
 
   const repos = scanForRepos(scanPaths);
 
-  // Cache the results in state
+  // Cache the results for this machine, and drop the synced copy an older
+  // client left in state: it is a regenerable cache and only bloats the Gist.
   const cachedAt = new Date().toISOString();
   try {
-    stateManager.setLocalRepoCache({ repos, scanPaths, cachedAt });
+    setMachineRepoCache({ repos, scanPaths, cachedAt });
+    stateManager.clearSyncedLocalRepoCache();
   } catch (error) {
     const msg = errorMessage(error);
     console.error(`Warning: Failed to cache scan results to disk: ${msg}`);

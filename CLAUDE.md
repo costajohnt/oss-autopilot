@@ -101,6 +101,7 @@ Repo root (also the Claude Code plugin directory):
 ├── cache/                               # ETag-based HTTP response cache
 ├── gist-id                              # Gist ID for cross-machine state sync (opt-in)
 ├── machine-id                           # Random UUID identifying this machine on work claims (local only, never synced)
+├── local-config.json                    # Per-machine paths (issue list, skip file) and local repo cache (local only, never synced)
 ├── state-cache.json                     # Local cache of gist state for offline access
 └── dashboard-server.pid                 # PID file for interactive SPA dashboard server
 ```

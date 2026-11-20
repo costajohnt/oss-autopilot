@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import type { DailyWarning } from '../formatters/json.js';
 import { isRoot } from '../test-lib/is-root.js';
+import { getLocalConfigPath } from '../core/paths.js';
 
 // detectIssueListPath reads the configured list path from state — mock the
 // barrel so each test can point it at a tmp file (or at nothing).
@@ -46,6 +47,9 @@ function makeList(): string {
 }
 
 function setIssueListPath(p: string | undefined): void {
+  // Each test configures its own list: forget the path a previous test's
+  // list was adopted under (#1950).
+  fs.rmSync(getLocalConfigPath(), { force: true });
   mockGetState.mockReturnValue({ config: { issueListPath: p } });
 }
 

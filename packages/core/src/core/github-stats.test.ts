@@ -13,6 +13,7 @@ import {
   fetchUserClosedPRCounts,
   fetchMergedPRsSince,
   fetchClosedPRsSince,
+  externalPRScope,
   fetchRecentlyMergedPRs,
   fetchRecentlyClosedPRs,
   PR_COUNTS_CACHE_TTL_MS,
@@ -54,6 +55,36 @@ function makeMergedItem(owner: string, repo: string, mergedAt: string) {
   };
 }
 
+type SearchArgs = { q: string; page: number; sort: string; order: string };
+
+/** `count` merged search items, created (and merged) one minute apart, oldest first. */
+function makeMergedSeries(count: number) {
+  const start = Date.parse('2025-01-01T00:00:00Z');
+  return Array.from({ length: count }, (_, i) => {
+    const created = new Date(start + i * 60_000);
+    const at = `${created.toISOString().slice(0, 19)}Z`;
+    return {
+      html_url: `https://github.com/org/repo/pull/${i + 1}`,
+      title: `PR ${i + 1}`,
+      pull_request: { merged_at: at },
+      closed_at: at,
+      created_at: at,
+    };
+  });
+}
+
+/** A Search API stand-in over `items` (oldest first): honors `created:>=` and 100-per-page paging. */
+function makeSearchOver(items: Array<{ created_at: string }>) {
+  const issuesAndPullRequests = vi.fn(({ q, page }: SearchArgs) => {
+    const cursor = /created:>=(\S+)/.exec(q)?.[1] ?? '';
+    const matching = items.filter((item) => item.created_at >= cursor);
+    return Promise.resolve({
+      data: { total_count: matching.length, items: matching.slice((page - 1) * 100, page * 100) },
+    });
+  });
+  return { search: { issuesAndPullRequests } } as any;
+}
+
 /** ISO timestamp N days before now — recent-PR fetches filter on a live window. */
 function isoDaysAgo(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -88,7 +119,7 @@ describe('fetchUserPRCounts caching', () => {
     expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
 
     // Verify the result was cached
-    const cached = testCache.getIfFresh('pr-counts:v3:merged:testuser', PR_COUNTS_CACHE_TTL_MS);
+    const cached = testCache.getIfFresh('pr-counts:v4:merged:testuser', PR_COUNTS_CACHE_TTL_MS);
     expect(cached).not.toBeNull();
   });
 
@@ -102,7 +133,7 @@ describe('fetchUserPRCounts caching', () => {
     const cached = await fetchUserMergedPRCounts(octokit, 'testuser');
     expect(cached.searchedPRs).toEqual(expected);
 
-    testCache.set('pr-counts:v3:merged:testuser', '', {
+    testCache.set('pr-counts:v4:merged:testuser', '', {
       reposEntries: [],
       monthlyCounts: {},
       monthlyOpenedCounts: {},
@@ -110,6 +141,29 @@ describe('fetchUserPRCounts caching', () => {
     });
     const legacy = await fetchUserMergedPRCounts(octokit, 'testuser');
     expect(legacy.searchedPRs).toEqual([]);
+  });
+
+  it('reports the search total past the pagination cap, through a cache round-trip (#1924)', async () => {
+    const octokit = makeOctokit([makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')], 450);
+
+    const fresh = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(fresh.totalCount).toBe(450);
+    const cached = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(cached.totalCount).toBe(450);
+    expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(3);
+  });
+
+  it('leaves the total undefined for a cache entry written before it existed (#1924)', async () => {
+    testCache.set('pr-counts:v4:merged:testuser', '', {
+      reposEntries: [],
+      monthlyCounts: {},
+      monthlyOpenedCounts: {},
+      dailyActivityCounts: {},
+    });
+
+    const legacy = await fetchUserMergedPRCounts(makeOctokit([]), 'testuser');
+
+    expect(legacy.totalCount).toBeUndefined();
   });
 
   it('flags a pagination-capped result as truncated, through a cache round-trip (#1897)', async () => {
@@ -158,7 +212,7 @@ describe('fetchUserPRCounts caching', () => {
     const octokit = makeOctokit(items);
 
     // Seed the cache with an old entry
-    testCache.set('pr-counts:v3:merged:testuser', '', {
+    testCache.set('pr-counts:v4:merged:testuser', '', {
       reposEntries: [['org/old-repo', { count: 5, lastMergedAt: '2025-01-01T00:00:00Z' }]],
       monthlyCounts: { '2025-01': 5 },
       monthlyOpenedCounts: {},
@@ -170,7 +224,7 @@ describe('fetchUserPRCounts caching', () => {
     for (const file of cacheFiles) {
       const filePath = path.join(testCacheDir, file);
       const entry = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      if (entry.url === 'pr-counts:v3:merged:testuser') {
+      if (entry.url === 'pr-counts:v4:merged:testuser') {
         entry.cachedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
         fs.writeFileSync(filePath, JSON.stringify(entry), 'utf8');
       }
@@ -196,8 +250,8 @@ describe('fetchUserPRCounts caching', () => {
     expect(closedOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
 
     // Verify separate cache keys
-    expect(testCache.getIfFresh('pr-counts:v3:merged:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
-    expect(testCache.getIfFresh('pr-counts:v3:closed:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
+    expect(testCache.getIfFresh('pr-counts:v4:merged:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
+    expect(testCache.getIfFresh('pr-counts:v4:closed:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
   });
 
   it('should reconstruct Map correctly from cached entries', async () => {
@@ -356,6 +410,139 @@ describe('fetchUserPRCounts star filtering', () => {
     expect(result.repos.size).toBe(1);
     expect(result.repos.has('big-org/popular')).toBe(true);
   });
+
+  describe('private repositories and untracked organisations are left out (#1924)', () => {
+    it('asks only for public PRs outside the untracked organisations', async () => {
+      const octokit = makeOctokit([]);
+
+      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['Acme']);
+      await fetchUserClosedPRCounts(octokit, 'testuser', undefined, ['Acme']);
+
+      const queries = octokit.search.issuesAndPullRequests.mock.calls.map(([args]: [SearchArgs]) => args.q);
+      expect(queries).toEqual([
+        'is:pr is:merged is:public author:testuser -user:testuser -org:Acme',
+        'is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme',
+      ]);
+    });
+
+    it('does not count, list or total an untracked organisation PR the search returns anyway', async () => {
+      const orgs = ['not a login', 'ACME'];
+      const octokit = makeOctokit(
+        [
+          makeMergedItem('acme', 'internal', '2025-06-01T00:00:00Z'),
+          makeMergedItem('org', 'repo', '2025-06-02T00:00:00Z'),
+        ],
+        2,
+      );
+
+      const merged = await fetchUserMergedPRCounts(octokit, 'testuser', undefined, orgs);
+      const closed = await fetchUserClosedPRCounts(octokit, 'testuser', undefined, orgs);
+
+      expect(merged.repos.size).toBe(1);
+      expect(merged.repos.has('org/repo')).toBe(true);
+      expect(merged.searchedPRs.map((pr) => pr.url)).toEqual(['https://github.com/org/repo/pull/1']);
+      expect(merged.monthlyCounts).toEqual({ '2025-06': 1 });
+      expect(closed.repos.size).toBe(1);
+      expect(closed.repos.has('org/repo')).toBe(true);
+      // The list cannot go in the query, so the total is an overcount: unknown.
+      expect(merged.totalCount).toBeUndefined();
+      expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).not.toContain('-org:');
+    });
+
+    it('reuses the cached counts when the same organisations are listed in another order or case', async () => {
+      const octokit = makeOctokit([makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')]);
+
+      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['acme', 'Beta']);
+      await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['beta', 'ACME']);
+
+      expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not serve counts cached under a different untrackedOrgs list', async () => {
+      const octokit = makeOctokit([makeMergedItem('acme', 'internal', '2025-06-01T00:00:00Z')]);
+
+      const before = await fetchUserMergedPRCounts(octokit, 'testuser');
+      const after = await fetchUserMergedPRCounts(octokit, 'testuser', undefined, ['acme']);
+
+      expect(before.repos.size).toBe(1);
+      expect(after.repos.size).toBe(0);
+      expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+describe('externalPRScope (#1924)', () => {
+  it('covers public repositories the user does not own', () => {
+    expect(externalPRScope('me')).toEqual({ query: 'is:public author:me -user:me', isExact: true });
+  });
+
+  it('excludes each untracked organisation', () => {
+    expect(externalPRScope('me', ['Acme', 'acme-labs'])).toEqual({
+      query: 'is:public author:me -user:me -org:Acme -org:acme-labs',
+      isExact: true,
+    });
+  });
+
+  it('puts no cap on the number of organisations (ten -org: terms were accepted by a live search)', () => {
+    const orgs = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+
+    const scope = externalPRScope('me', orgs);
+
+    expect(scope.isExact).toBe(true);
+    expect(scope.query.split(' -org:')).toHaveLength(11);
+  });
+
+  it.each([
+    ['an organisation name that is not a login', ['acme corp']],
+    ['a list too long for the query limit', ['a'.repeat(60), 'b'.repeat(60), 'c'.repeat(60)]],
+  ])('leaves the organisations out and says the scope is not exact for %s', (_label, orgs) => {
+    expect(externalPRScope('me', orgs)).toEqual({ query: 'is:public author:me -user:me', isExact: false });
+  });
+
+  it('keeps the longest query the ledger fetch builds within 256 characters', () => {
+    const orgs = ['a'.repeat(25), 'b'.repeat(25), 'c'.repeat(25)];
+    const scope = externalPRScope('u'.repeat(15), orgs);
+    const longest = `is:pr is:closed is:unmerged ${scope.query} updated:>2026-01-01T00:00:00Z created:>=2026-01-01T00:00:00Z`;
+
+    expect(scope.isExact).toBe(true);
+    expect(longest.length).toBeLessThanOrEqual(256);
+  });
+});
+
+describe('ledger fetches leave out private repositories and untracked organisations (#1924)', () => {
+  const config = { githubUsername: 'testuser', untrackedOrgs: ['Acme'] };
+  const items = [
+    { ...makeMergedItem('ACME', 'internal', '2025-06-01T00:00:00Z'), title: 'employer' },
+    { ...makeMergedItem('org', 'repo', '2025-06-02T00:00:00Z'), title: 'public' },
+  ];
+
+  it('asks only for public merged PRs outside the untracked organisations and drops one returned anyway', async () => {
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, config);
+
+    expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).toBe(
+      'is:pr is:merged is:public author:testuser -user:testuser -org:Acme',
+    );
+    expect(result.prs.map((pr) => pr.title)).toEqual(['public']);
+  });
+
+  it('does the same for closed PRs', async () => {
+    const octokit = makeOctokit(items);
+
+    const result = await fetchClosedPRsSince(octokit, config, '2025-05-01T00:00:00Z');
+
+    expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).toBe(
+      'is:pr is:closed is:unmerged is:public author:testuser -user:testuser -org:Acme closed:>2025-05-01T00:00:00Z',
+    );
+    expect(result.prs.map((pr) => pr.title)).toEqual(['public']);
+  });
+
+  it('reports a closed fetch over the limit as truncated', async () => {
+    const result = await fetchClosedPRsSince(makeOctokit(items, 1001), config);
+
+    expect(result).toEqual({ prs: [], truncated: true });
+  });
 });
 
 describe('fetchMergedPRsSince', () => {
@@ -387,16 +574,16 @@ describe('fetchMergedPRsSince', () => {
 
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01');
 
-    expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://github.com/external-org/repo/pull/42');
-    expect(result[0].title).toBe('Fix bug');
-    expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
+    expect(result.prs).toHaveLength(1);
+    expect(result.prs[0].url).toBe('https://github.com/external-org/repo/pull/42');
+    expect(result.prs[0].title).toBe('Fix bug');
+    expect(result.prs[0].mergedAt).toBe('2025-06-15T12:00:00Z');
   });
 
   it('should return empty array when no username is configured', async () => {
     const octokit = makeOctokit([]);
     const result = await fetchMergedPRsSince(octokit, { githubUsername: '' });
-    expect(result).toEqual([]);
+    expect(result).toEqual({ prs: [], truncated: false });
   });
 
   it('should fetch all merged PRs when no watermark is provided', async () => {
@@ -412,18 +599,86 @@ describe('fetchMergedPRsSince', () => {
 
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result).toHaveLength(1);
+    expect(result.prs).toHaveLength(1);
     const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
-    expect(query).not.toContain('merged:>');
+    expect(query).toBe('is:pr is:merged is:public author:testuser -user:testuser');
   });
 
-  it('should include date filter when watermark is provided', async () => {
+  it('bounds the search on updated, one day before the watermark (#1924)', async () => {
     const octokit = makeOctokit([]);
 
     await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01T00:00:00Z');
 
     const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
-    expect(query).toContain('merged:>2025-06-01T00:00:00Z');
+    expect(query).toBe('is:pr is:merged is:public author:testuser -user:testuser updated:>2025-05-31T00:00:00Z');
+  });
+
+  it('fetches all time when the watermark does not parse as a date (#1924)', async () => {
+    const octokit = makeOctokit([]);
+
+    await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, 'not-a-date');
+
+    expect(octokit.search.issuesAndPullRequests.mock.calls[0][0].q).not.toContain('updated:');
+  });
+
+  it('returns nothing and stops after one request when the search matches more than the limit (#1924)', async () => {
+    const octokit = makeOctokit([makeMergedItem('org', 'repo', '2025-06-15T12:00:00Z')], 1001);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01T00:00:00Z');
+
+    expect(result).toEqual({ prs: [], truncated: true });
+    expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes exactly the limit (#1924)', async () => {
+    const octokit = makeSearchOver(makeMergedSeries(1000));
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result.truncated).toBe(false);
+    expect(result.prs).toHaveLength(1000);
+  });
+
+  it('continues past three pages from the last creation date instead of a deeper page (#1924)', async () => {
+    const series = makeMergedSeries(450);
+    const octokit = makeSearchOver(series);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result.truncated).toBe(false);
+    expect(result.prs.map((pr) => pr.url)).toEqual(series.map((item) => item.html_url));
+    const calls = octokit.search.issuesAndPullRequests.mock.calls.map(([args]: [SearchArgs]) => args);
+    expect(calls.map((args: SearchArgs) => args.page)).toEqual([1, 2, 3, 1, 2]);
+    expect(calls.every((args: SearchArgs) => args.sort === 'created' && args.order === 'asc')).toBe(true);
+    expect(calls[3].q).toContain(`created:>=${series[299].created_at}`);
+  });
+
+  it('walks the whole history when the limit is Infinity (#1924)', async () => {
+    const octokit = makeSearchOver(makeMergedSeries(1250));
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, undefined, Infinity);
+
+    expect(result.truncated).toBe(false);
+    const urls = new Set(result.prs.map((pr) => pr.url));
+    expect(urls.size).toBe(1250);
+    expect(result.prs).toHaveLength(1250);
+  });
+
+  it('reports truncated rather than looping when a full window shares one creation date (#1924)', async () => {
+    const sameSecond = makeMergedSeries(301).map((item) => ({ ...item, created_at: '2025-01-01T00:00:00Z' }));
+    const octokit = makeSearchOver(sameSecond);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, undefined, Infinity);
+
+    expect(result).toEqual({ prs: [], truncated: true });
+    expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(6);
+  });
+
+  it('rejects when a page fails, returning nothing partial (#1924)', async () => {
+    const octokit = makeSearchOver(makeMergedSeries(250));
+    octokit.search.issuesAndPullRequests.mockRejectedValueOnce(new Error('boom'));
+
+    await expect(fetchMergedPRsSince(octokit, { githubUsername: 'testuser' })).rejects.toThrow('boom');
   });
 
   it('should skip PRs with no merge date', async () => {
@@ -439,7 +694,7 @@ describe('fetchMergedPRsSince', () => {
 
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result).toHaveLength(0);
+    expect(result.prs).toHaveLength(0);
   });
 
   it('should fall back to closed_at when merged_at is missing', async () => {
@@ -455,8 +710,8 @@ describe('fetchMergedPRsSince', () => {
 
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result).toHaveLength(1);
-    expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
+    expect(result.prs).toHaveLength(1);
+    expect(result.prs[0].mergedAt).toBe('2025-06-15T12:00:00Z');
   });
 
   it('should persist openedAt from the search result created_at (#1461)', async () => {
@@ -473,7 +728,7 @@ describe('fetchMergedPRsSince', () => {
 
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result[0].openedAt).toBe('2025-06-01T08:00:00Z');
+    expect(result.prs[0].openedAt).toBe('2025-06-01T08:00:00Z');
   });
 
   it('should leave openedAt undefined when created_at is absent (#1461)', async () => {
@@ -489,7 +744,7 @@ describe('fetchMergedPRsSince', () => {
 
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result[0].openedAt).toBeUndefined();
+    expect(result.prs[0].openedAt).toBeUndefined();
   });
 });
 
@@ -520,16 +775,16 @@ describe('fetchClosedPRsSince', () => {
 
     const result = await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01');
 
-    expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://github.com/external-org/repo/pull/99');
-    expect(result[0].title).toBe('Rejected PR');
-    expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
+    expect(result.prs).toHaveLength(1);
+    expect(result.prs[0].url).toBe('https://github.com/external-org/repo/pull/99');
+    expect(result.prs[0].title).toBe('Rejected PR');
+    expect(result.prs[0].closedAt).toBe('2025-07-01T10:00:00Z');
   });
 
   it('should return empty array when no username is configured', async () => {
     const octokit = makeOctokit([]);
     const result = await fetchClosedPRsSince(octokit, { githubUsername: '' });
-    expect(result).toEqual([]);
+    expect(result).toEqual({ prs: [], truncated: false });
   });
 
   it('should skip PRs with no close date', async () => {
@@ -544,7 +799,7 @@ describe('fetchClosedPRsSince', () => {
 
     const result = await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result).toHaveLength(0);
+    expect(result.prs).toHaveLength(0);
   });
 
   it('should include date filter when watermark is provided', async () => {
@@ -569,7 +824,7 @@ describe('fetchClosedPRsSince', () => {
 
     const result = await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' });
 
-    expect(result[0].openedAt).toBe('2025-06-20T08:00:00Z');
+    expect(result.prs[0].openedAt).toBe('2025-06-20T08:00:00Z');
   });
 });
 
@@ -839,7 +1094,7 @@ describe('closingIssueUrl (#1824)', () => {
       },
     ]);
     const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
-    expect(result[0].issueUrl).toBe('https://github.com/org/repo/issues/77');
+    expect(result.prs[0].issueUrl).toBe('https://github.com/org/repo/issues/77');
   });
 });
 
