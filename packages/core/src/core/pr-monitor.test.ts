@@ -3516,7 +3516,12 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
     repos: {
       getCombinedStatusForRef: vi.fn().mockResolvedValue({ data: { state: 'success', statuses: [] } }),
       getCommit: vi.fn().mockResolvedValue({
-        data: { commit: { author: { date: '2026-02-03T00:00:00Z' } }, author: { login: 'testuser' } },
+        // Amended commit (#1919): Git keeps the author date, only the committer date moves.
+        data: {
+          commit: { author: { date: '2026-02-01T00:00:00Z' }, committer: { date: '2026-02-03T00:00:00Z' } },
+          author: { login: 'testuser' },
+          committer: { login: 'testuser' },
+        },
       }),
     },
     checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },

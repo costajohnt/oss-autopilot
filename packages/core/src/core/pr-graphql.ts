@@ -27,6 +27,7 @@ import type { Octokit } from '@octokit/rest';
 import { CIStatusResult } from './types.js';
 import { computeCIStatus, type RawCheckRun, type RawCombinedStatus } from './ci-analysis.js';
 import type { ActivityEvent, ReviewComment } from './review-analysis.js';
+import { commitDateOf } from './commit-date.js';
 import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
 import { warn } from './logger.js';
@@ -180,7 +181,9 @@ type GraphQLRollupContextNode = GraphQLCheckRunNode | GraphQLStatusContextNode |
 interface GraphQLCommitNode {
   oid: string;
   authoredDate: string | null;
+  committedDate: string | null;
   author: { user: GraphQLActor | null } | null;
+  committer: GraphQLGitActor;
   status: {
     state: string;
     contexts: Array<{ context: string; state: string; description: string | null }>;
@@ -294,7 +297,9 @@ const PR_FIELDS = `
       commit {
         oid
         authoredDate
+        committedDate
         author { user { login } }
+        committer { user { login } }
         status { state contexts { context state description } }
         statusCheckRollup {
           contexts(first: ${CI_CONTEXTS_CAP}) {
@@ -435,7 +440,12 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
 
   const commit = node.commits.nodes[0]?.commit;
   const commitInfo: CommitInfo = {
-    date: commit?.authoredDate ?? undefined,
+    date: commitDateOf({
+      authorDate: commit?.authoredDate,
+      committerDate: commit?.committedDate,
+      authorLogin: commit?.author?.user?.login,
+      committerLogin: commit?.committer?.user?.login,
+    }),
     author: commit?.author?.user?.login ?? undefined,
   };
 
