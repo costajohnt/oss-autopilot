@@ -133,36 +133,59 @@ const CLA_NEGATED = negated(String.raw`(?:CLA\b|contributor\s+license)`);
 const COUNT_WORDS: Record<string, number> = { one: 1, 'a single': 1, two: 2, three: 3, four: 4, five: 5 };
 const COUNT = String.raw`(\d{1,2}|one|a\s+single|two|three|four|five)`;
 const AI_PRS = String.raw`(?:open\s+)?(?:AI|LLM)[-\s](?:assisted|generated|authored|written)\s+(?:PRs?|pull\s+requests?)`;
-/** "one AI-assisted PR at a time", "no more than 2 open AI-generated pull requests", "don't open more than one AI-assisted PR". */
-const AI_PR_LIMITS: readonly RegExp[] = [
-  new RegExp(String.raw`\b${COUNT}\s+${AI_PRS}\s+(?:open\s+)?(?:at\s+(?:a|any\s+one)\s+time|at\s+once)`, 'di'),
-  new RegExp(
-    String.raw`(?:\bno\s+more\s+than|(?:\bnot|n't|\bnever)\s+(?:\w+\s+)?more\s+than|\bat\s+most|\bup\s+to|\ba\s+maximum\s+of|\blimit(?:ed)?\s+(?:of|to))\s+${COUNT}\s+${AI_PRS}`,
-    'di',
-  ),
+/**
+ * "one AI-assisted PR at a time" (a rate after it does not change it), and "no
+ * more than 2 open AI-generated pull requests", "don't open more than one
+ * AI-assisted PR" (a rate after these makes them a throughput).
+ */
+const AI_PR_LIMITS: ReadonlyArray<{ re: RegExp; isRateChecked: boolean }> = [
+  {
+    re: new RegExp(String.raw`\b${COUNT}\s+${AI_PRS}\s+(?:open\s+)?(?:at\s+(?:a|any\s+one)\s+time|at\s+once)`, 'dgi'),
+    isRateChecked: false,
+  },
+  {
+    re: new RegExp(
+      String.raw`(?:\bno\s+more\s+than|(?:\bnot|n't|\bnever)\s+(?:\w+\s+)?more\s+than|\bat\s+most|\bup\s+to|\ba\s+maximum\s+of|\blimit(?:ed)?\s+(?:of|to))\s+${COUNT}\s+${AI_PRS}`,
+      'dgi',
+    ),
+    isRateChecked: true,
+  },
 ];
 /** "there is no limit on ...", "you don't need to keep to one ...": the rest of the sentence states no limit. */
 const AI_PR_LIMIT_NEGATED =
   /(?:\bno|\bnot|n't)\s+(?:\w+\s+){0,2}?(?:limit|restrict|cap\b|maximum|requir|need|have\s+to|must)[^.;!?]*/gi;
 
-/** "... per week", "... a day", "... per contributor": a throughput or a per-person quota, not an open-PR limit. */
-const RATE_AFTER =
-  /^\s*(?:per|a|an|each|every)\s+(?:week|day|month|year|quarter|release|cycle|contributor|person|author|user)\b/i;
+/** "... per week", "... a day", "... per contributor per release": a throughput, not an open-PR limit. */
+const RATE_AFTER = /^\s*(?:per|a|an|each|every)\s+(?:week|day|month|year|quarter|release|cycle)\b/i;
+const PER_PERSON = /^\s*per\s+(?:contributor|person|author|user)\b/i;
 /** "maintainers review one ... at a time", "we merge up to 10 ...": what the maintainers do, not a contributor limit. */
-const MAINTAINER_VERB = /\b(?:review|merg|triag)\w*\b/i;
+const MAINTAINER_VERB = /\b(?:we|maintainers?|reviewers?)\s+(?:\w+\s+)?(?:review|merg|triag)\w*/i;
 
-function aiPrLimit(line: string): number | null {
-  const text = affirmed(line, AI_PR_LIMIT_NEGATED);
-  const match = AI_PR_LIMITS.map((re) => re.exec(text)).find((m) => m !== null);
-  const countStart = match?.indices?.[1]?.[0];
-  if (!match || countStart === undefined) return null;
-  const sentence =
+/** A match that states what maintainers do, or a throughput. */
+function isNotALimit(text: string, match: RegExpExecArray, isRateChecked: boolean): boolean {
+  const countStart = match.indices?.[1]?.[0] ?? match.index;
+  const clause =
     text
       .slice(0, countStart)
-      .split(/[.;!?]/)
+      .split(/[.;!?,]/)
       .at(-1) ?? '';
-  if (RATE_AFTER.test(text.slice(match.index + match[0].length)) || MAINTAINER_VERB.test(sentence)) return null;
-  const count = match[1];
+  if (MAINTAINER_VERB.test(clause)) return true;
+  const after = text.slice(match.index + match[0].length).replace(PER_PERSON, '');
+  return isRateChecked && RATE_AFTER.test(after);
+}
+
+/** The first limit the line states, in reading order; null when none. */
+function aiPrLimit(line: string): number | null {
+  const text = affirmed(line, AI_PR_LIMIT_NEGATED);
+  let first: RegExpExecArray | null = null;
+  for (const { re, isRateChecked } of AI_PR_LIMITS) {
+    for (const match of text.matchAll(re)) {
+      const isEarlier = first === null || match.index < first.index;
+      if (isEarlier && !isNotALimit(text, match, isRateChecked)) first = match;
+    }
+  }
+  if (!first) return null;
+  const count = first[1];
   const n = COUNT_WORDS[count.toLowerCase().replaceAll(/\s+/g, ' ')] ?? Number(count);
   return n > 0 ? n : null;
 }
@@ -277,9 +300,11 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
 /** Markdown link targets: `[text](target)`. */
 const MD_LINK = /\]\(\s*<?([^\s)>]+)/g;
 const POLICY_DOC_PATH =
-  /(?:^|\/)(?:[^/]*[-_])?(?:contribut|guideline|ai[-_]?(?:policy|usage|use)|llm)[^/]*\.(?:md|markdown|rst|txt)$/i;
-/** A folder guide: `docs/contributing/README.md`. */
-const POLICY_DOC_FOLDER = /(?:^|\/)(?:contribut|guideline)[^/]*\/(?:readme|index)\.md$/i;
+  /(?:^|\/)(?:[^/]*[-_])?(?:contribut|guideline|ai[-_]?(?:policy|usage|use)\b|llm)[^/]*\.(?:md|markdown|rst|txt)$/i;
+/** A folder guide: `docs/contributing/README.md`, `docs/ai-policy/index.md`. */
+const POLICY_DOC_FOLDER = /(?:^|\/)(?:contribut|guideline|ai[-_]?policy)[^/]*\/(?:readme|index)\.md$/i;
+/** Names that match the words but are not guides: the llms.txt site index, a contributors list. */
+const NOT_A_GUIDE = /(?:^|\/)(?:llms(?:-full)?\.txt|contributors\.[^/]*)$/i;
 /** Where scout already reads CONTRIBUTING from. */
 const SCOUT_READ = new Set(['contributing.md', '.github/contributing.md', 'docs/contributing.md']);
 
@@ -305,7 +330,7 @@ function policyDocPath(target: string): string | null {
   // A scheme means another site (or a blob link to another repo); `..` leaves the repo.
   if (/^[a-z][\w+.-]*:/i.test(target) || target.split('/').includes('..')) return null;
   const path = target.replace(/^(?:\.?\/)+/, '');
-  const isPolicyDoc = POLICY_DOC_PATH.test(path) || POLICY_DOC_FOLDER.test(path);
+  const isPolicyDoc = (POLICY_DOC_PATH.test(path) || POLICY_DOC_FOLDER.test(path)) && !NOT_A_GUIDE.test(path);
   return isPolicyDoc && !SCOUT_READ.has(path.toLowerCase()) ? path : null;
 }
 

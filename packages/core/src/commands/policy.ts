@@ -186,8 +186,8 @@ function storedRecordToEdit(
 }
 
 /**
- * An unreviewed stored record without the derived commit rules and AI-PR limit
- * the user did not pass: confirming `--ai-policy` must not mark those as
+ * An unreviewed stored record without the derived commit rules, AI-PR limit
+ * and PR gate (reset to unknown) the user did not pass: confirming `--ai-policy` must not mark those as
  * reviewed. A record the user set is returned as is.
  */
 function withoutUnseenFields(stored: RepoPolicy, options: PolicySetOptions): RepoPolicy {
@@ -196,6 +196,7 @@ function withoutUnseenFields(stored: RepoPolicy, options: PolicySetOptions): Rep
   return {
     ...rest,
     commitRules: options.commitRules === undefined ? [] : commitRules,
+    prGate: options.prGate === undefined ? 'unknown' : rest.prGate,
     ...(options.maxOpenAiPRs !== undefined && maxOpenAiPRs !== undefined && { maxOpenAiPRs }),
   };
 }

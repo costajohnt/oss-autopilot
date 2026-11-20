@@ -195,6 +195,12 @@ describe('derivePolicy: maxOpenAiPRs', () => {
 
   it.each([
     ['Please have no more than 2 open AI-generated pull requests.', 2],
+    ['No more than 2 open AI-generated pull requests per contributor.', 2],
+    ['Please keep one AI-assisted PR open at a time per contributor.', 1],
+    ['Limit of 2 AI-assisted PRs per user at any time.', 2],
+    ['To keep review manageable, contributors may have at most 2 open AI-assisted PRs.', 2],
+    ['Until your first one is merged, do not open more than one AI-assisted PR.', 1],
+    ['We merge up to 10 AI-generated PRs a week, so open at most 2 open AI-assisted PRs.', 2],
     ['Please do not open more than three LLM-generated PRs at once.', 3],
     ["Don't open more than one AI-assisted PR.", 1],
     ['Contributors may have at most 5 open AI-authored PRs.', 5],
@@ -228,6 +234,12 @@ describe('linkedPolicyDocs', () => {
     const readme =
       '[x](https://example.com/CONTRIBUTING.md) [y](../other/CONTRIBUTING.md) [z](.github/CONTRIBUTING.md) [w](mailto:contributing.md)';
     expect(linkedPolicyDocs(readme, 'owner/repo')).toEqual([]);
+  });
+
+  it('skips llms.txt, contributor lists and words that only start like "ai-use"', () => {
+    const readme =
+      '[a](llms.txt) [b](docs/llms-full.txt) [c](CONTRIBUTORS.md) [d](docs/ai-useful-tricks.md) [e](docs/ai-policy/README.md)';
+    expect(linkedPolicyDocs(readme, 'owner/repo', 5)).toEqual(['docs/ai-policy/README.md']);
   });
 
   it('matches the doc name, not any path containing the word, and folder guides', () => {

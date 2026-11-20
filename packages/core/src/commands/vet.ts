@@ -15,6 +15,7 @@ import {
   linkedPolicyDocs,
   policyField,
   quote,
+  storedPolicy,
   type PolicyDoc,
   type RepoPolicy,
 } from '../core/repo-policy.js';
@@ -212,7 +213,9 @@ async function recordedPolicyFields(candidate: ScoutCandidate): Promise<Partial<
   const extra = await extraPolicyDocs(repo);
   const derived = vetPolicy(candidate, extra.docs);
   if (derived) await recordVetPolicies([{ repo, policy: derived }], { fillOnly: !extra.complete });
-  return policyFields(candidate, derived);
+  // Show what was kept: a partial reading does not override a stored record unless it is a ban.
+  const isKept = extra.complete || derived?.aiPolicy === 'banned' || !storedPolicy(getStateManager().getState(), repo);
+  return policyFields(candidate, isKept ? derived : null);
 }
 
 /** The policy that applies to the candidate's repo, with `derived` as the fresh reading; a ban makes the issue a skip. */

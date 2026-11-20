@@ -626,6 +626,7 @@ describe('checkRepoPolicy (#1953)', () => {
     const result = checkRepoPolicy({ ...READY, policy: policy({ maxOpenAiPRs: 1 }) });
     expect(result.status).toBe('warn');
     expect(result.summary).toContain('docs read as allowing 1 open AI-assisted PR(s) and you have 1');
+    expect(result.summary).toContain('--ai-policy <value> --max-open-ai-prs <n|0>');
   });
 
   it('warns on unknown AI policy and a CLA only on a first contribution', () => {
@@ -685,6 +686,7 @@ describe('checkCommitRules (#2013)', () => {
 
   it.each([
     ['Revert "feat: add x"', false],
+    ['Reapply "feat: add x"', false],
     ['fixup! feat: add x', false],
     ['squash! feat: add x', false],
     ['Add x', true],

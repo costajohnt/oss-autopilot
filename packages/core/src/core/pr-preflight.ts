@@ -333,7 +333,7 @@ function maxOpenAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string): Ar
   if (!facts.cap)
     return [[true, `${repo} allows ${max} open AI-assisted PR(s): count yours there before opening another`]];
   const isOver = !policy.reviewedByUser && facts.cap.openPRCount >= max;
-  const ask = `${repo}'s docs read as allowing ${max} open AI-assisted PR(s) and you have ${facts.cap.openPRCount}: wait for one to close, or record the limit with policy set --repo ${repo} if the docs were misread`;
+  const ask = `${repo}'s docs read as allowing ${max} open AI-assisted PR(s) and you have ${facts.cap.openPRCount}: wait for one to close, or record the limit with policy set --repo ${repo} --ai-policy <value> --max-open-ai-prs <n|0> if the docs were misread`;
   return [[isOver, ask]];
 }
 
@@ -389,7 +389,7 @@ export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
   return check(id, 'pass', `${repo}: AI policy ${policy.aiPolicy}, PR gate ${policy.prGate}`, details);
 }
 
-const AUTO_SUBJECT = /^(?:Revert "|(?:fixup|squash|amend)! )/;
+const AUTO_SUBJECT = /^(?:Revert "|Reapply "|(?:fixup|squash|amend)! )/;
 /** A GitHub closing keyword, on the same line as `#12`, `owner/repo#12` or an issue URL. */
 const CLOSING_KEYWORD = String.raw`\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?[ \t]+`;
 const CLOSING_REFS: readonly RegExp[] = [

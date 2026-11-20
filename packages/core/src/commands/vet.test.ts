@@ -141,6 +141,22 @@ describe('runVet: PR template and README-linked docs (#2013)', () => {
     expect(mockSetRepoPolicy).toHaveBeenCalledWith('owner/repo', expect.objectContaining({ prGate: 'claim-first' }));
   });
 
+  it('with a failed README read, keeps and shows the stored reading; a README 404 is a complete read', async () => {
+    mockGetState.mockReturnValue({ config: {}, repoPolicies: { 'owner/repo': STORED_READING } });
+    const getReadme = vi.fn().mockRejectedValue(Object.assign(new Error('Server Error'), { status: 500 }));
+    mockOctokit.value = { repos: { getContent, getReadme } };
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).not.toHaveBeenCalled();
+    expect(result.policy).toMatchObject({ prGate: 'none', aiPolicy: 'unknown' });
+
+    getReadme.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+    await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(mockSetRepoPolicy).toHaveBeenCalledWith('owner/repo', expect.objectContaining({ prGate: 'claim-first' }));
+  });
+
   it('with a failed read, only fills a gap: a stored reading stays', async () => {
     mockGetState.mockReturnValue({ config: {}, repoPolicies: { 'owner/repo': STORED_READING } });
     getContent.mockRejectedValue(Object.assign(new Error('Server Error'), { status: 500 }));

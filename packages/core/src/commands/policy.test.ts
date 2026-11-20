@@ -124,6 +124,17 @@ describe('policy set', () => {
     expect(kept.policy).toMatchObject({ commitRules: ['dco-signoff'], maxOpenAiPRs: 2 });
   });
 
+  it('resets an unreviewed derived PR gate to unknown unless --pr-gate is passed', async () => {
+    await recordVetPolicy(REPO, vetPolicy({ prGate: 'claim-first' }));
+    const confirmed = await runPolicySet({ repo: REPO, aiPolicy: 'allowed' });
+    expect(confirmed.policy?.prGate).toBe('unknown');
+
+    fake.state.repoPolicies = {};
+    await recordVetPolicy(REPO, vetPolicy({ prGate: 'claim-first' }));
+    const out = await runPolicySet({ repo: REPO, aiPolicy: 'allowed', prGate: 'maintainer-label' });
+    expect(out.policy?.prGate).toBe('maintainer-label');
+  });
+
   it('keeps the commit rules and limit of a record the user already reviewed', async () => {
     await runPolicySet({ repo: REPO, aiPolicy: 'allowed', commitRules: 'dco-signoff', maxOpenAiPRs: 1 });
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required' });
