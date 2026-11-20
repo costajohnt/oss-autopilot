@@ -91,6 +91,7 @@ export {
   GistPermissionError,
   ConcurrencyError,
   GistConcurrencyError,
+  GistDiscoveryError,
   GistFileSizeError,
   GIST_FILE_SIZE_REMEDY,
   errorMessage,

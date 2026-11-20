@@ -21,6 +21,7 @@ const {
   mockRunStatus,
   MockConfigurationError,
   MockGistFileSizeError,
+  MockGistDiscoveryError,
 } = vi.hoisted(() => {
   // Stand-ins for the core error classes (the whole module is mocked, so
   // tools.ts's instanceof checks run against THESE classes).
@@ -36,12 +37,19 @@ const {
       this.name = 'MockGistFileSizeError';
     }
   }
+  class MockGistDiscoveryError extends MockConfigurationError {
+    constructor(message: string) {
+      super(message);
+      this.name = 'MockGistDiscoveryError';
+    }
+  }
   return {
     mockGetGitHubTokenAsync: vi.fn(),
     mockEnsureGistPersistence: vi.fn(),
     mockRunStatus: vi.fn(),
     MockConfigurationError,
     MockGistFileSizeError,
+    MockGistDiscoveryError,
   };
 });
 
@@ -110,6 +118,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   getConfigKeys: () => ['username'],
   ConfigurationError: MockConfigurationError,
   GistFileSizeError: MockGistFileSizeError,
+  GistDiscoveryError: MockGistDiscoveryError,
   GIST_FILE_SIZE_REMEDY: 'trim repoScores and searchSeen, or run state-unlink',
   ConcurrencyError: class ConcurrencyError extends Error {},
   GistConcurrencyError: class GistConcurrencyError extends Error {},
@@ -415,6 +424,20 @@ describe('ensureGistInit retry semantics (#1368)', () => {
       // ...and resets the memo.
       await client.callTool({ name: 'status', arguments: {} });
       expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+    });
+
+    it('a GistDiscoveryError halts init retries and keeps its own message (#1926)', async () => {
+      mockEnsureGistPersistence.mockRejectedValueOnce(new MockGistDiscoveryError('write the Gist ID to gist-id'));
+
+      await client.callTool({ name: 'status', arguments: {} });
+      const second = await client.callTool({ name: 'status', arguments: {} });
+
+      expect(second.isError).toBe(true);
+      const text = (second.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain('write the Gist ID to gist-id');
+      expect(text).toMatch(/retried after 10 minutes, or right away after config, setup, init, or state-unlink/);
+      expect(text).not.toContain('trim repoScores');
+      expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
     });
 
     it('a memoized GistFileSizeError expires after 10 minutes', async () => {
