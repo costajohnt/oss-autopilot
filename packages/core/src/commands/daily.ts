@@ -60,7 +60,6 @@ import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { debug, warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
-import { findRepoTransfers } from '../core/repo-score-manager.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
@@ -86,6 +85,7 @@ import {
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
 import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
+import { resetStaleClosedCounts, syncLedgersWithGitHub } from './daily-ledger.js';
 
 const MODULE = 'daily';
 
@@ -184,8 +184,8 @@ interface FetchedPRData {
   prs: FetchedPR[];
   failures: PRCheckFailure[];
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>;
-  /** The merged-count search hit its pagination cap, so `mergedCounts` is partial. */
-  wasMergedSearchTruncated: boolean;
+  /** Which count searches hit their pagination cap, leaving `mergedCounts` / `closedCounts` partial. */
+  truncatedSearches: { merged: boolean; closed: boolean };
   closedCounts: Map<string, number>;
   /** Every PR the merged/closed count searches returned, for transfer detection. */
   searchedPRs: Array<{ url: string; title: string }>;
@@ -418,7 +418,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   return {
     searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
     recentlyMergedFetchFailed: didRecentlyMergedFetchFail,
-    wasMergedSearchTruncated: mergedResult.truncated,
+    truncatedSearches: { merged: mergedResult.truncated, closed: closedResult.truncated },
     successorGaps,
     prs,
     failures,
@@ -443,7 +443,7 @@ async function updateRepoScores(
   prMonitor: PRMonitor,
   prs: FetchedPR[],
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>,
-  wasMergedSearchTruncated: boolean,
+  truncatedSearches: { merged: boolean; closed: boolean },
   closedCounts: Map<string, number>,
   searchedPRs: Array<{ url: string; title: string }>,
   warnings: DailyWarning[],
@@ -455,13 +455,9 @@ async function updateRepoScores(
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
   try {
     batchOnFreshBaseline(stateManager, () => {
-      // Re-key transferred/renamed repos before anything reads repoScores, so
-      // the old name isn't zeroed here and then re-bumped from stored PR URLs
-      // on the next load (which double counted its merges in getStats).
-      const stored = [...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()];
-      for (const [from, to] of findRepoTransfers(stored, searchedPRs)) {
-        stateManager.renameRepo(from, to);
-      }
+      // Re-key transferred repos and evict reopened/merged PRs from the closed
+      // ledger before anything below reads or writes repoScores (#1923).
+      syncLedgersWithGitHub(stateManager, searchedPRs, prs);
 
       // Reset stale repos first (so excluded/removed repos get zeroed).
       // Guard: if the API returned zero results but we have existing repos with merged PRs,
@@ -474,7 +470,7 @@ async function updateRepoScores(
           MODULE,
           `Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
         );
-      } else if (wasMergedSearchTruncated) {
+      } else if (truncatedSearches.merged) {
         // A repo absent from a pagination-capped search may still have merges (#1897).
         debug(MODULE, 'Skipping stale repo reset: merged PR search was truncated.');
       } else {
@@ -511,16 +507,9 @@ async function updateRepoScores(
         );
       }
 
-      // Populate closedWithoutMergeCount in repo scores.
-      const existingReposWithClosed = Object.values(stateManager.getState().repoScores).filter(
-        (s) => (s.closedWithoutMergeCount || 0) > 0,
-      );
-      if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
-        warn(
-          MODULE,
-          `API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`,
-        );
-      }
+      // Populate closedWithoutMergeCount in repo scores: zero the repos that
+      // left the closed search, then write the counts it returned.
+      resetStaleClosedCounts(stateManager, closedCounts, truncatedSearches.closed);
       let closedCountFailures = 0;
       for (const [repo, count] of closedCounts) {
         try {
@@ -1241,7 +1230,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     prs,
     failures,
     mergedCounts,
-    wasMergedSearchTruncated,
+    truncatedSearches,
     closedCounts,
     searchedPRs,
     monthlyCounts,
@@ -1256,7 +1245,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   } = await fetchPRData(prMonitor, token, warnings);
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
-  await updateRepoScores(prMonitor, prs, mergedCounts, wasMergedSearchTruncated, closedCounts, searchedPRs, warnings);
+  await updateRepoScores(prMonitor, prs, mergedCounts, truncatedSearches, closedCounts, searchedPRs, warnings);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.

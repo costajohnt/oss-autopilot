@@ -12,6 +12,7 @@ import {
   reconcilePRCounts,
   findRepoTransfers,
   renameRepo,
+  evictClosedPRs,
 } from './repo-score-manager.js';
 import { makeAgentState, makeRepoScore } from './test-utils.js';
 
@@ -765,5 +766,103 @@ describe('transferred repos', () => {
     const before = structuredClone(state);
     renameRepo(state, 'old-owner/tool', 'new-org/tool');
     expect(state).toEqual(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// evictClosedPRs (#1923)
+// ---------------------------------------------------------------------------
+
+describe('evictClosedPRs', () => {
+  const PR = 'https://github.com/owner/repo/pull';
+  const closedEntry = (n: number) => ({ url: `${PR}/${n}`, title: `pr ${n}`, closedAt: '2025-03-01T00:00:00Z' });
+  const stateWithClosed = (numbers: number[], closedWithoutMergeCount: number) =>
+    makeAgentState({
+      repoScores: { 'owner/repo': makeRepoScore({ repo: 'owner/repo', closedWithoutMergeCount }) },
+      closedPRs: numbers.map((n) => closedEntry(n)),
+    });
+
+  it('drops a closed PR that is now in the merged ledger and lowers the count and the score input', () => {
+    const state = stateWithClosed([1, 2], 2);
+    state.mergedPRs = [{ url: `${PR}/1`, title: 'pr 1', mergedAt: '2025-03-05T00:00:00Z' }];
+    updateRepoScore(state, 'owner/repo', {});
+    const inflatedScore = state.repoScores['owner/repo'].score;
+
+    expect(evictClosedPRs(state, [])).toBe(1);
+
+    expect(state.closedPRs).toEqual([closedEntry(2)]);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(1);
+    expect(state.repoScores['owner/repo'].score).toBe(inflatedScore + 1);
+  });
+
+  it('drops a closed PR that was seen open again', () => {
+    const state = stateWithClosed([1], 1);
+
+    expect(evictClosedPRs(state, [`${PR}/1`])).toBe(1);
+
+    expect(state.closedPRs).toEqual([]);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(0);
+  });
+
+  it('keeps closed PRs that are neither merged nor open, such as ones outside the fetch window', () => {
+    const state = stateWithClosed([1, 2], 2);
+    const before = structuredClone(state);
+
+    expect(evictClosedPRs(state, [`${PR}/99`, 'https://github.com/other/repo/pull/1'])).toBe(0);
+
+    expect(state).toEqual(before);
+  });
+
+  it('is idempotent', () => {
+    const state = stateWithClosed([1, 2], 2);
+    evictClosedPRs(state, [`${PR}/1`]);
+    const once = structuredClone(state);
+
+    expect(evictClosedPRs(state, [`${PR}/1`])).toBe(0);
+
+    expect(state).toEqual(once);
+  });
+
+  it('heals a state already holding the same PR in both ledgers, and reconciliation keeps it healed', () => {
+    const state = stateWithClosed([1], 1);
+    state.mergedPRs = [{ url: `${PR}/1`, title: 'pr 1', mergedAt: '2025-03-05T00:00:00Z' }];
+
+    evictClosedPRs(state, []);
+    reconcilePRCounts(state, state.mergedPRs, state.closedPRs ?? []);
+
+    expect(state.closedPRs).toEqual([]);
+    expect(state.repoScores['owner/repo']).toMatchObject({ mergedPRCount: 1, closedWithoutMergeCount: 0 });
+  });
+
+  it('leaves a count the search set above the ledger for daily to rewrite', () => {
+    const state = stateWithClosed([1], 5);
+
+    evictClosedPRs(state, [`${PR}/1`]);
+
+    expect(state.closedPRs).toEqual([]);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(5);
+  });
+
+  it('drops a count between the new and the old ledger count to the new one', () => {
+    const state = stateWithClosed([1, 2, 3], 2);
+
+    evictClosedPRs(state, [`${PR}/1`, `${PR}/2`]);
+
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(1);
+  });
+
+  it('leaves a count already below the new ledger count alone', () => {
+    const state = stateWithClosed([1, 2, 3], 1);
+
+    evictClosedPRs(state, [`${PR}/1`]);
+
+    expect(state.closedPRs).toHaveLength(2);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(1);
+  });
+
+  it('does nothing on a state with no closed ledger', () => {
+    const state = makeAgentState({});
+    expect(evictClosedPRs(state, [`${PR}/1`])).toBe(0);
+    expect(state.closedPRs).toBeUndefined();
   });
 });

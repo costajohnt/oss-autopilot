@@ -911,6 +911,8 @@ export class StateManager {
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
+    // A PR that merged after being recorded closed leaves the closed ledger (#1923).
+    repoScoring.evictClosedPRs(this.state, []);
     this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
@@ -947,7 +949,8 @@ export class StateManager {
    * this prevents the bad data from reaching disk in the first place).
    *
    * Re-seen URLs upgrade the stored entry's missing ledger fields in place
-   * (#1461) — see {@link addMergedPRs} for the full semantics.
+   * (#1461) — see {@link addMergedPRs} for the full semantics. URLs already
+   * in the merged ledger are skipped (#1923).
    *
    * @param prs - Closed PRs to add (duplicates by URL upgrade in place)
    * @returns count of entries added vs. dropped (invalid URL)
@@ -955,7 +958,10 @@ export class StateManager {
   addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
     if (prs.length === 0) return { added: 0, dropped: 0 };
     const { valid: unpicked, dropped } = filterValidUrlEntries(prs, 'closed');
-    const valid = unpicked.map((pr) => this.withPick(pr));
+    // A merged PR is never closed-without-merge: skip it so a caller holding
+    // a pre-eviction copy of the closed ledger cannot put it back (#1923).
+    const mergedUrls = new Set(this.getMergedPRs().map((pr) => pr.url));
+    const valid = unpicked.filter((pr) => !mergedUrls.has(pr.url)).map((pr) => this.withPick(pr));
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
     const byUrl = new Map(this.state.closedPRs.map((pr) => [pr.url, pr]));
@@ -977,6 +983,18 @@ export class StateManager {
     this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
+  }
+
+  /**
+   * Remove closed-ledger entries that are open again (`openUrls`) or sit in
+   * the merged ledger, lowering the affected repos' closed counts with them
+   * (#1923). See repoScoring.evictClosedPRs.
+   * @returns the number of entries removed
+   */
+  evictClosedPRs(openUrls: Iterable<string>): number {
+    const evicted = repoScoring.evictClosedPRs(this.state, openUrls);
+    if (evicted > 0) this.autoSave();
+    return evicted;
   }
 
   /** Returns the most recent close date, used as a watermark for incremental fetching. */
