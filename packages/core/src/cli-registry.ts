@@ -90,6 +90,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
+ * (`draft path` / `draft show` have neither: their shapes are pinned by `commands/draft.test.ts`.)
  *
  * To promote a command to tier 1: export a Zod schema from
  * `formatters/json.ts`, assert it in the command's contract test alongside
@@ -1040,24 +1041,17 @@ export const commands: CLICommandDef[] = [
         .command('post <url> [message...]')
         .description('Post a comment to a PR or issue')
         .option('--stdin', 'Read message from stdin')
+        .option('--body-file <path>', BODY_FILE_HELP)
+        .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
         .option('--json', 'Output as JSON')
-        .action(async (url, messageParts, options) => {
+        .action(async (url: string, messageParts: string[], options: MessageCliOptions) => {
           const { PostOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
             async () => {
-              let message: string;
-              if (options.stdin) {
-                const chunks: Buffer[] = [];
-                for await (const chunk of process.stdin) {
-                  chunks.push(chunk);
-                }
-                message = Buffer.concat(chunks).toString('utf8').trim();
-              } else {
-                message = messageParts.join(' ');
-              }
+              const message = await readMessage(options, messageParts);
               const { runPost } = await import('./commands/comments.js');
-              return runPost({ url, message });
+              return runPost({ url, message, expectSha256: options.expectSha256 });
             },
             (data) => {
               console.log(`Comment posted: ${data.commentUrl}`);
@@ -1075,15 +1069,18 @@ export const commands: CLICommandDef[] = [
       program
         .command('claim <issue-url> [message...]')
         .description('Claim an issue by posting a comment')
+        .option('--body-file <path>', BODY_FILE_HELP)
+        .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
         .option('--json', 'Output as JSON')
-        .action(async (issueUrl, messageParts, options) => {
+        .action(async (issueUrl: string, messageParts: string[], options: MessageCliOptions) => {
           const { ClaimOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
             async () => {
               const { runClaim } = await import('./commands/comments.js');
-              const message = messageParts.length > 0 ? messageParts.join(' ') : undefined;
-              return runClaim({ issueUrl, message });
+              // No words and no file means the default claim message.
+              const message = (await readMessage(options, messageParts)) || undefined;
+              return runClaim({ issueUrl, message, expectSha256: options.expectSha256 });
             },
             (data) => {
               console.log(`Issue claimed: ${data.commentUrl}`);
@@ -2157,6 +2154,58 @@ Load it with:
     },
   },
 
+  // ── Draft files (#1930) ────────────────────────────────────────────────
+  // Local-only and read-only: where to stage text for the user's approval,
+  // and one read that yields both the text to show and the hash to pass back.
+  {
+    name: 'draft',
+    localOnly: true,
+    register(program) {
+      const group = program
+        .command('draft')
+        .description('Stage text for approval in the owner-only draft directory (~/.oss-autopilot/tmp)');
+
+      group
+        .command('path <name>')
+        .description('Print the path for a draft file name, creating the draft directory (mode 0700) if needed')
+        .option('--json', 'Output as JSON')
+        .action(async (name: string, options: { json?: boolean }) => {
+          await executeAction(
+            options,
+            async () => {
+              const { runDraftPath } = await import('./commands/draft.js');
+              return runDraftPath({ name });
+            },
+            (data) => {
+              console.log(data.path);
+            },
+          );
+        });
+
+      group
+        .command('show <file>')
+        .description('Read a draft once and return its text with the SHA-256 to pass back as --expect-sha256')
+        .option(
+          '--untrusted',
+          "Wrap the text in the untrusted-content fence (text distilled from other people's writing)",
+        )
+        .option('--json', 'Output as JSON')
+        .action(async (file: string, options: { json?: boolean; untrusted?: boolean }) => {
+          await executeAction(
+            options,
+            async () => {
+              const { runDraftShow } = await import('./commands/draft.js');
+              return runDraftShow({ file, untrusted: options.untrusted === true });
+            },
+            (data) => {
+              console.log(data.content);
+              console.log(`\nsha256: ${data.sha256}`);
+            },
+          );
+        });
+    },
+  },
+
   // ── Guidelines (#867) ──────────────────────────────────────────────────
   {
     name: 'guidelines',
@@ -2212,18 +2261,26 @@ Load it with:
 
       group
         .command('store')
-        .description('Persist per-repo guidelines (overwrites). Reads markdown content from --content or stdin.')
+        .description(
+          'Persist per-repo guidelines (overwrites). Reads markdown content from --from-file, --content or stdin.',
+        )
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option(
+          '--from-file <path>',
+          'Read the markdown from a draft file (see `draft path`). Needs --expect-sha256; not with --content.',
+        )
         .option('--content <markdown>', 'Markdown content. If omitted, reads from stdin.')
+        .option('--expect-sha256 <hex>', EXPECT_SHA256_HELP)
         .option('--reviewed', 'Assert the user saw this exact text and approved it. Required; refused when unattended.')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
+        .action(async (options: GuidelinesStoreCliOptions) => {
           await executeAction(
             options,
             async () => {
-              const content = options.content ?? (await readStdin());
-              const { repo, reviewed = false } = options as { repo: string; reviewed?: boolean };
-              return (await import('./commands/guidelines.js')).runGuidelinesStore({ repo, content, reviewed });
+              const content = await readGuidelinesContent(options);
+              const { repo, reviewed = false, expectSha256 } = options;
+              const { runGuidelinesStore } = await import('./commands/guidelines.js');
+              return runGuidelinesStore({ repo, content, reviewed, expectSha256 });
             },
             (data) => {
               console.log(`Stored ${data.byteSize} bytes of guidelines for ${data.repo}.`);
@@ -2294,6 +2351,61 @@ Load it with:
     },
   },
 ];
+
+const BODY_FILE_HELP =
+  'Read the message from a draft file (see `draft path`). Needs --expect-sha256; not with --stdin or positional words.';
+const EXPECT_SHA256_HELP = 'Fail before doing anything unless the text hashes to this SHA-256 (from `draft show`)';
+
+/** Options of the commands that post a message (`post`, `claim`). */
+interface MessageCliOptions {
+  json?: boolean;
+  stdin?: boolean;
+  bodyFile?: string;
+  expectSha256?: string;
+}
+
+interface GuidelinesStoreCliOptions {
+  json?: boolean;
+  repo: string;
+  fromFile?: string;
+  content?: string;
+  reviewed?: boolean;
+  expectSha256?: string;
+}
+
+/** The message for `post` / `claim`: an approved draft file, stdin (trimmed), or the positional words. */
+async function readMessage(options: MessageCliOptions, parts: string[]): Promise<string> {
+  if (options.bodyFile !== undefined) {
+    const { readApprovedDraft } = await import('./commands/draft.js');
+    return readApprovedDraft({
+      file: options.bodyFile,
+      flag: '--body-file',
+      expectSha256: options.expectSha256,
+      hasOtherInput: options.stdin === true || parts.length > 0,
+    });
+  }
+  if (options.stdin) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks).toString('utf8').trim();
+  }
+  return parts.join(' ');
+}
+
+async function readGuidelinesContent(options: GuidelinesStoreCliOptions): Promise<string> {
+  if (options.fromFile !== undefined) {
+    const { readApprovedDraft } = await import('./commands/draft.js');
+    return readApprovedDraft({
+      file: options.fromFile,
+      flag: '--from-file',
+      expectSha256: options.expectSha256,
+      hasOtherInput: options.content !== undefined,
+    });
+  }
+  return options.content ?? readStdin();
+}
 
 /** Read full stdin content. Used when `guidelines store` content isn't passed inline. */
 async function readStdin(): Promise<string> {

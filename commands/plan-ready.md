@@ -17,9 +17,14 @@ plan, BEFORE you start implementing. A solid plan caught and refined here
 is much cheaper than the same problem caught after 200 lines of code
 exist.
 
-The slash command auto-locates the plan artifact at
-`/tmp/oss-autopilot-plans/<repo>-<issue-number>.md`. Pass the path
-explicitly if the plan lives elsewhere: `/plan-ready /tmp/some-plan.md`.
+The slash command auto-locates the plan artifact in the tool's own
+owner-only draft directory: run
+`node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path plan-<repo>-<issue-number>.md`
+and read the path it prints. Plans are not kept under `/tmp`: the plan
+is implemented once it converges, and a shared directory lets another
+local user plant or swap a file at a predictable path (#1930). Pass
+the path explicitly if the plan lives elsewhere:
+`/plan-ready ~/notes/some-plan.md`.
 
 ## What it does
 

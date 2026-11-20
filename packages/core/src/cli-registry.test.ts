@@ -271,6 +271,15 @@ vi.mock('./commands/guidelines.js', () => ({
   runFetchCorpus: mockFetchCorpus,
 }));
 
+const mockReadApprovedDraft = vi.fn();
+const mockRunDraftPath = vi.fn();
+const mockRunDraftShow = vi.fn();
+vi.mock('./commands/draft.js', () => ({
+  readApprovedDraft: mockReadApprovedDraft,
+  runDraftPath: mockRunDraftPath,
+  runDraftShow: mockRunDraftShow,
+}));
+
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { commands } from './cli-registry.js';
@@ -1436,6 +1445,142 @@ describe('post command', () => {
     );
 
     expect(mockRunPost).toHaveBeenCalledWith({ url: PR_URL, message: 'from stdin' });
+  });
+});
+
+describe('approved text from a draft file (#1930)', () => {
+  const DRAFT = '/home/u/.oss-autopilot/tmp/reply.md';
+  const SHA = 'a'.repeat(64);
+
+  it('post --body-file posts the file text untrimmed and forwards --expect-sha256', async () => {
+    mockReadApprovedDraft.mockReturnValue('from file\n');
+    mockRunPost.mockResolvedValue({ commentUrl: `${PR_URL}#issuecomment-6` });
+
+    await buildProgram('post').parseAsync([
+      'node',
+      'cli',
+      'post',
+      PR_URL,
+      '--body-file',
+      DRAFT,
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockReadApprovedDraft).toHaveBeenCalledWith({
+      file: DRAFT,
+      flag: '--body-file',
+      expectSha256: SHA,
+      hasOtherInput: false,
+    });
+    expect(mockRunPost).toHaveBeenCalledWith({ url: PR_URL, message: 'from file\n', expectSha256: SHA });
+  });
+
+  it.each([['--stdin'], ['positional', 'words']])(
+    'post reports %s next to --body-file as another input',
+    async (...extra) => {
+      mockReadApprovedDraft.mockReturnValue('x');
+      mockRunPost.mockResolvedValue({ commentUrl: PR_URL });
+
+      await buildProgram('post').parseAsync(['node', 'cli', 'post', PR_URL, ...extra, '--body-file', DRAFT]);
+
+      expect(mockReadApprovedDraft).toHaveBeenCalledWith({
+        file: DRAFT,
+        flag: '--body-file',
+        expectSha256: undefined,
+        hasOtherInput: true,
+      });
+    },
+  );
+
+  it('post reports a refused draft and never calls runPost', async () => {
+    mockReadApprovedDraft.mockImplementation(() => {
+      throw new Error('--body-file requires --expect-sha256');
+    });
+
+    await expect(
+      buildProgram('post').parseAsync(['node', 'cli', 'post', PR_URL, '--body-file', DRAFT, '--json']),
+    ).rejects.toThrow('process.exit called');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('--body-file requires --expect-sha256', 'UNKNOWN');
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('claim --body-file uses the file text as the claim message', async () => {
+    mockReadApprovedDraft.mockReturnValue('I can take this');
+    mockRunClaim.mockResolvedValue({ commentUrl: `${ISSUE_URL}#issuecomment-7` });
+
+    await buildProgram('claim').parseAsync([
+      'node',
+      'cli',
+      'claim',
+      ISSUE_URL,
+      '--body-file',
+      DRAFT,
+      '--expect-sha256',
+      SHA,
+    ]);
+
+    expect(mockRunClaim).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, message: 'I can take this', expectSha256: SHA });
+  });
+
+  it('guidelines store --from-file reads the draft and reports --content as another input', async () => {
+    mockReadApprovedDraft.mockReturnValue('# rules\n');
+    mockGuidelinesStore.mockResolvedValue({ repo: 'octo/alpha', byteSize: 8 });
+    const base = ['node', 'cli', 'guidelines', 'store', '--repo', 'octo/alpha', '--from-file', DRAFT, '--reviewed'];
+
+    await buildProgram('guidelines').parseAsync([...base, '--expect-sha256', SHA]);
+
+    expect(mockReadApprovedDraft).toHaveBeenLastCalledWith({
+      file: DRAFT,
+      flag: '--from-file',
+      expectSha256: SHA,
+      hasOtherInput: false,
+    });
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({
+      repo: 'octo/alpha',
+      content: '# rules\n',
+      reviewed: true,
+      expectSha256: SHA,
+    });
+
+    await buildProgram('guidelines').parseAsync([...base, '--content', 'inline']);
+
+    expect(mockReadApprovedDraft).toHaveBeenLastCalledWith(expect.objectContaining({ hasOtherInput: true }));
+  });
+});
+
+describe('draft command (#1930)', () => {
+  const DRAFT = '/home/u/.oss-autopilot/tmp/reply.md';
+
+  it('is local-only: it needs no GitHub token', () => {
+    expect(commands.find((c) => c.name === 'draft')?.localOnly).toBe(true);
+  });
+
+  it('path prints the path, or the envelope with --json', async () => {
+    const data = { path: DRAFT, dir: '/home/u/.oss-autopilot/tmp' };
+    mockRunDraftPath.mockReturnValue(data);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'path', 'reply.md']);
+    expect(mockRunDraftPath).toHaveBeenCalledWith({ name: 'reply.md' });
+    expect(consoleLogSpy).toHaveBeenCalledWith(DRAFT);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'path', 'reply.md', '--json']);
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+
+  it('show prints the text and its hash, or the envelope with --json', async () => {
+    const data = { path: DRAFT, content: 'hello', sha256: 'b'.repeat(64), byteSize: 5, fenced: false };
+    mockRunDraftShow.mockReturnValue(data);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'show', DRAFT]);
+    expect(mockRunDraftShow).toHaveBeenCalledWith({ file: DRAFT, untrusted: false });
+    expect(consoleLogSpy).toHaveBeenCalledWith('hello');
+    expect(consoleLogSpy).toHaveBeenCalledWith(`\nsha256: ${'b'.repeat(64)}`);
+
+    await buildProgram('draft').parseAsync(['node', 'cli', 'draft', 'show', DRAFT, '--untrusted', '--json']);
+    expect(mockRunDraftShow).toHaveBeenLastCalledWith({ file: DRAFT, untrusted: true });
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
   });
 });
 
