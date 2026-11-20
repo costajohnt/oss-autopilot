@@ -571,6 +571,84 @@ describe('checkUnrespondedComments', () => {
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
+
+  it('should surface a short request that also says thanks (#1916)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        {
+          user: { login: 'maintainer' },
+          body: "Thanks! Please rebase and I'll merge.",
+          created_at: '2026-02-07T12:00:00Z',
+        },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer');
+  });
+
+  it('should keep a request when a second maintainer follows it with thanks (#1916)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'maintainer1' }, body: 'Fix the failing test', created_at: '2026-02-07T11:00:00Z' },
+        { user: { login: 'maintainer2' }, body: 'Thanks!', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer1');
+    expect(result.lastMaintainerComment?.body).toBe('Fix the failing test');
+  });
+
+  it('should not flag a request the author answered before the maintainer said thanks (#1916)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'maintainer' }, body: 'Fix the failing test', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'testuser' }, body: 'Updated, PTAL', created_at: '2026-02-07T11:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Thanks!', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should keep an ack review with inline comments when a pure thanks follows it (#829, #1916)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'maintainer2' }, body: 'Thanks!', created_at: '2026-02-07T13:00:00Z' },
+      ],
+      [
+        {
+          user: { login: 'reviewer' },
+          body: 'Looks good so far, thanks!',
+          submitted_at: '2026-02-07T12:00:00Z',
+          state: 'COMMENTED',
+          id: 100,
+        },
+      ],
+      [
+        {
+          id: 1000,
+          user: { login: 'reviewer' },
+          body: 'This needs error handling',
+          created_at: '2026-02-07T12:00:00Z',
+          pull_request_review_id: 100,
+        },
+      ],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('reviewer');
+  });
 });
 
 describe('getLastMaintainerActivity', () => {
