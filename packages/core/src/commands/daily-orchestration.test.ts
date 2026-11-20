@@ -1366,6 +1366,48 @@ describe('executeDailyCheck() — closed-ledger gap (#1925)', () => {
     ]);
   });
 
+  it('stores the closed gap when only the merged gap fetch fails, and the merged gap when only the closed one fails', async () => {
+    const mergedRecent = {
+      url: 'https://github.com/org/repo/pull/40',
+      repo: 'org/repo',
+      number: 40,
+      title: 'Recent merge',
+      mergedAt: '2026-01-24T12:00:00Z',
+    };
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedRecent]);
+    mockSearchPRs.mockImplementation(({ q }: { q: string }) =>
+      q.includes('is:unmerged')
+        ? Promise.resolve({ data: { total_count: 1, items: [older] } })
+        : Promise.reject(new Error('merged search down')),
+    );
+
+    const first = await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).not.toHaveBeenCalled();
+    const [closedStored] = mockAddClosedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(closedStored.map((pr) => pr.url)).toEqual([recent.url, older.html_url]);
+    expect(first.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch merged PRs for the ledger', message: 'merged search down' },
+    ]);
+
+    mockAddMergedPRs.mockClear();
+    mockAddClosedPRs.mockClear();
+    mockSearchPRs.mockImplementation(({ q }: { q: string }) =>
+      q.includes('is:unmerged')
+        ? Promise.reject(new Error('closed search down'))
+        : Promise.resolve({ data: { total_count: 0, items: [] } }),
+    );
+
+    const second = await executeDailyCheck('test-token');
+
+    expect(mockAddClosedPRs).not.toHaveBeenCalled();
+    const [mergedStored] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<{ url: string }>];
+    expect(mergedStored.map((pr) => pr.url)).toEqual([mergedRecent.url]);
+    expect(second.warnings).toEqual([
+      { phase: 'fetch', operation: 'fetch closed PRs for the ledger', message: 'closed search down' },
+    ]);
+  });
+
   it('stores no closed PRs when the gap fetch fails', async () => {
     onLedgerSearch('is:unmerged', () => Promise.reject(new Error('search down')));
 
