@@ -94,6 +94,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   // exercise the actual renderGistWarning, not a passthrough.
   renderGistWarning: (await importOriginal<typeof import('@oss-autopilot/core')>()).renderGistWarning,
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  fenceTitlesDeep: (value: unknown) => value,
   getStateManager: vi.fn().mockReturnValue({
     getState: vi.fn().mockReturnValue({
       lastDigest: { openPRs: [], shelvedPRs: [] },
