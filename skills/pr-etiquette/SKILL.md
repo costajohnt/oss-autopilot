@@ -125,7 +125,7 @@ Add a screenshots section only when the change is visible and the template or a 
 
 Be patient, not pushy. Only follow up once per timeframe. Check if maintainers are active elsewhere before escalating.
 
-**Workflow:** `workflows/dormant-pr-follow-up.md` operationalizes this cadence — run via the `/oss` router or the action menu. It surfaces dormant PRs, buckets them into tiers, and drafts a tier-appropriate follow-up through the `draft-review-post` skill (never auto-posts).
+**Workflow:** `workflows/dormant-pr-follow-up.md` operationalizes this cadence — run via the `/oss` router or the action menu. It surfaces dormant PRs, buckets them into tiers, and drafts a tier-appropriate follow-up as a draft file and posts it only after the user approves the exact text (never auto-posts).
 
 ## PR Quality Checklist
 

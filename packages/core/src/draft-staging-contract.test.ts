@@ -14,10 +14,9 @@
  * Limit: a text scan. `mktemp`, `$TMPDIR`, `/var/tmp` and `/private/tmp` fail
  * too, but a draft staged in some other shared directory is not seen.
  *
- * Known gap: the workflows that post through the external `draft-review-post`
- * skill (review-issue-replies, closed-pr-status-update, merged-pr-notes,
- * dormant-pr-follow-up, review-follow-ups) stage wherever that skill does; it
- * is not part of this repository, so nothing here checks it.
+ * Posting goes through this flow, not an external drafting skill: the
+ * `draft-review-post` skill is not shipped here, stages outside the draft
+ * directory and skips `--expect-sha256`, so naming it fails too (#2009).
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -116,6 +115,23 @@ describe('prompt files use no other shared temp location (#1930)', () => {
 
   it('no prompt file uses mktemp, $TMPDIR, /var/tmp or /private/tmp', () => {
     expect(findInPrompts(OTHER_SHARED_TEMP), 'Use `draft path` instead of a shared temp location').toEqual([]);
+  });
+});
+
+describe('prompt files do not hand drafts to an external skill (#2009)', () => {
+  /** The skill's name, also spelled with spaces or underscores, any case. */
+  const SKILL_NAME = /draft[\s_-]?review[\s_-]?post/gi;
+
+  it('the name pattern matches the usual spellings', () => {
+    expect('draft-review-post Draft Review Post draft_review_post draftreviewpost'.match(SKILL_NAME)).toHaveLength(4);
+  });
+
+  it('no prompt file names the draft-review-post skill', () => {
+    expect(
+      findInPrompts(SKILL_NAME),
+      'Stage the text with `draft path` / `draft show` and post it with `--body-file` and `--expect-sha256` ' +
+        '(see "Draft Files" in workflows/reference.md)',
+    ).toEqual([]);
   });
 });
 
