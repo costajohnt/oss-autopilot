@@ -224,7 +224,7 @@ describe('fetchUserOpenPRs status inputs from a successful GraphQL batch', () =>
   });
 
   it('flags a maintainer comment the contributor has not answered', async () => {
-    const question = { authorAssociation: 'NONE', body: 'Could you add a test?', createdAt: '2026-02-05T00:00:00Z' };
+    const question = { authorAssociation: 'MEMBER', body: 'Could you add a test?', createdAt: '2026-02-05T00:00:00Z' };
     const comments = { totalCount: 1, nodes: [{ ...question, author: { login: 'maintainer' } }] };
 
     const pr = await fetchViaGraphQL(makeNode(1, { comments }));

@@ -163,6 +163,13 @@ export interface DetermineStatusInput {
   contributorUsername?: string;
   lastMaintainerCommentDate?: string;
   latestChangesRequestedDate?: string;
+  /**
+   * Every unanswered maintainer comment, each with the time its author
+   * submitted their own standing approval, if they have one. On an approved PR
+   * a comment still needs a response unless its author approved at or after
+   * writing it (#1920).
+   */
+  unansweredComments?: Array<{ createdAt: string; authorApprovalDate?: string }>;
   /** True if at least one failing CI check is classified as 'actionable'. */
   hasActionableCIFailure?: boolean;
 }
