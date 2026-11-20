@@ -75,14 +75,13 @@ const approvalSchema = z.object({
  * the user approved, so a preview containing one is refused instead.
  * Ceiling: \p{Cf} includes U+200D, so emoji ZWJ sequences are refused too.
  */
-const HIDDEN_CHARACTERS =
-  /[\p{Cf}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/u;
+const HIDDEN_CHARACTERS = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/u;
 /** The one variation selector allowed: a single U+FE0E or U+FE0F right after a pictograph (as in ❤️). */
-const EMOJI_PRESENTATION = /(\p{Extended_Pictographic})[\uFE0E\uFE0F]/gu;
+const EMOJI_PRESENTATION = /(\p{Extended_Pictographic})[\u{FE0E}\u{FE0F}]/gu;
 
 /** The first character {@link HIDDEN_CHARACTERS} refuses, checked on a copy without the allowed emoji selectors. */
 function firstHiddenCharacter(text: string): string | undefined {
-  return HIDDEN_CHARACTERS.exec(text.replace(EMOJI_PRESENTATION, '$1'))?.[0];
+  return HIDDEN_CHARACTERS.exec(text.replaceAll(EMOJI_PRESENTATION, '$1'))?.[0];
 }
 
 /** "N characters", counted in code points, for an approval preview header. */

@@ -217,75 +217,6 @@ describe('user approval before a GitHub write (#1936)', () => {
     expect(writer.run).toHaveBeenCalledWith(writer.args);
   });
 
-  it.each([
-    ['post', { url: ISSUE, message: 'héllo 👋' }, '(7 characters)'],
-    ['claim', { issueUrl: ISSUE, message: 'mine' }, '(4 characters)'],
-    ['guidelines-store', { repo: 'owner/repo', content: 'x', reviewed: true }, '(1 character)'],
-  ])('%s shows the length in the header', async (name, args, count) => {
-    const { client, asked } = await connect(FORM_HOST, APPROVED);
-    await client.callTool({ name, arguments: args });
-    expect(asked[0].message.split('\n')[0]).toContain(count);
-  });
-
-  const HIDDEN = [
-    '\u202A',
-    '\u202E',
-    '\u2066',
-    '\u2069',
-    '\u200B',
-    '\u200D',
-    '\uFEFF',
-    '\u2060',
-    '\u200F',
-    '\u061C',
-    '\u00AD',
-    '\u{E0041}',
-    '\u0007',
-    '\u{F0000}',
-    '\u{E0100}',
-    '\uFE0F',
-    'a\uFE0F',
-    '\u2764\uFE0F\uFE0F',
-    '\u3164',
-    '\u2028',
-  ];
-  const hiddenCases = HIDDEN.flatMap((char) => [
-    ['post', { url: ISSUE, message: `fine${char}text` }, mockRunPost, char] as const,
-    ['claim', { issueUrl: ISSUE, message: `mine${char}` }, mockRunClaim, char] as const,
-    [
-      'guidelines-store',
-      { repo: 'owner/repo', content: `${char}rules`, reviewed: true },
-      mockRunGuidelinesStore,
-      char,
-    ] as const,
-  ]);
-
-  it.each(hiddenCases)('%s refuses text with invisible formatting characters (%#)', async (name, args, run, char) => {
-    const first = [...char].find((c) => !/[a\u2764]/u.test(c)) ?? char;
-    const code = `U+${first.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
-    for (const [capabilities, optIn] of [
-      [FORM_HOST, ''],
-      [{}, '1'],
-    ] as const) {
-      vi.stubEnv(ALLOW_UNCONFIRMED, optIn);
-      const { client, asked } = await connect(capabilities, APPROVED);
-      const result = await client.callTool({ name, arguments: args });
-      expect(result.isError).toBe(true);
-      expect(text(result)).toContain(`invisible formatting characters (first: ${code})`);
-      expect(asked).toEqual([]);
-    }
-    expect(run).not.toHaveBeenCalled();
-  });
-
-  it('accepts tabs, newlines and an emoji with a variation selector', async () => {
-    const message = 'line one\n\tindented\r\nlove \u2764\uFE0F';
-    const { client, asked } = await connect(FORM_HOST, APPROVED);
-    const result = await client.callTool({ name: 'post', arguments: { url: ISSUE, message } });
-    expect(result.isError).toBeFalsy();
-    expect(asked[0].message).toContain(message);
-    expect(mockRunPost).toHaveBeenCalledWith({ url: ISSUE, message });
-  });
-
   it('claim shows a custom message verbatim', async () => {
     const { client, asked } = await connect(FORM_HOST, APPROVED);
     await client.callTool({ name: 'claim', arguments: { issueUrl: ISSUE, message: 'I can take this one.' } });
@@ -378,11 +309,11 @@ describe('user approval before a GitHub write (#1936)', () => {
         { name: 'post', arguments: WRITERS.post.args },
         { timeout: 2 * APPROVAL_TIMEOUT_MS },
       );
-      let settled = false;
-      void pending.then(() => (settled = true));
+      let isSettled = false;
+      void pending.then(() => (isSettled = true));
       await vi.advanceTimersByTimeAsync(APPROVAL_TIMEOUT_MS - 1);
       expect(asked).toHaveLength(1);
-      expect(settled).toBe(false);
+      expect(isSettled).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       const result = await pending;
       expect(result.isError).toBe(true);
@@ -431,5 +362,76 @@ describe('user approval before a GitHub write (#1936)', () => {
     });
     expect(result.isError).toBe(true);
     expect(text(result)).toMatch(/unattended run/);
+  });
+});
+
+describe('what the approval form shows (#1936)', () => {
+  it.each([
+    ['post', { url: ISSUE, message: 'héllo 👋' }, '(7 characters)'],
+    ['claim', { issueUrl: ISSUE, message: 'mine' }, '(4 characters)'],
+    ['guidelines-store', { repo: 'owner/repo', content: 'x', reviewed: true }, '(1 character)'],
+  ])('%s shows the length in the header', async (name, args, count) => {
+    const { client, asked } = await connect(FORM_HOST, APPROVED);
+    await client.callTool({ name, arguments: args });
+    expect(asked[0].message.split('\n', 1)[0]).toContain(count);
+  });
+
+  const HIDDEN = [
+    '\u{202A}',
+    '\u{202E}',
+    '\u{2066}',
+    '\u{2069}',
+    '\u{200B}',
+    '\u{200D}',
+    '\u{FEFF}',
+    '\u{2060}',
+    '\u{200F}',
+    '\u{61C}',
+    '\u{AD}',
+    '\u{E0041}',
+    '\u{7}',
+    '\u{F0000}',
+    '\u{E0100}',
+    '\u{FE0F}',
+    'a\u{FE0F}',
+    '\u{2764}\u{FE0F}\u{FE0F}',
+    '\u{3164}',
+    '\u{2028}',
+  ];
+  const hiddenCases = HIDDEN.flatMap((char) => [
+    ['post', { url: ISSUE, message: `fine${char}text` }, mockRunPost, char] as const,
+    ['claim', { issueUrl: ISSUE, message: `mine${char}` }, mockRunClaim, char] as const,
+    [
+      'guidelines-store',
+      { repo: 'owner/repo', content: `${char}rules`, reviewed: true },
+      mockRunGuidelinesStore,
+      char,
+    ] as const,
+  ]);
+
+  it.each(hiddenCases)('%s refuses text with invisible formatting characters (%#)', async (name, args, run, char) => {
+    const first = [...char].find((c) => !/[a\u{2764}]/u.test(c)) ?? char;
+    const code = `U+${first.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
+    for (const [capabilities, optIn] of [
+      [FORM_HOST, ''],
+      [{}, '1'],
+    ] as const) {
+      vi.stubEnv(ALLOW_UNCONFIRMED, optIn);
+      const { client, asked } = await connect(capabilities, APPROVED);
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain(`invisible formatting characters (first: ${code})`);
+      expect(asked).toEqual([]);
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('accepts tabs, newlines and an emoji with a variation selector', async () => {
+    const message = 'line one\n\tindented\r\nlove \u{2764}\u{FE0F}';
+    const { client, asked } = await connect(FORM_HOST, APPROVED);
+    const result = await client.callTool({ name: 'post', arguments: { url: ISSUE, message } });
+    expect(result.isError).toBeFalsy();
+    expect(asked[0].message).toContain(message);
+    expect(mockRunPost).toHaveBeenCalledWith({ url: ISSUE, message });
   });
 });
