@@ -400,7 +400,7 @@ function listAgentFiles(): string[] {
   const abs = path.join(REPO_ROOT, 'agents');
   return fs
     .readdirSync(abs)
-    .filter((name) => name.endsWith('.md') && name !== 'README.md')
+    .filter((name) => name.endsWith('.md'))
     .map((name) => path.join(abs, name));
 }
 
@@ -569,7 +569,32 @@ describe('agent body tool references ↔ frontmatter tool grants (#1377)', () =>
   });
 });
 
-// ── agents/README.md ↔ frontmatter parity (#1419) ─────────────────────────
+// ── every agents/*.md is an agent (#1946) ─────────────────────────────────
+//
+// Claude Code registers every markdown file in `agents/` as an agent, and one
+// without a `tools:` key gets every tool. A contributor README there shipped
+// as `oss-autopilot:README` with all tools, so nothing in `agents/` is exempt.
+
+describe('every agents/*.md declares a tools allowlist (#1946)', () => {
+  it('has frontmatter with a non-empty `tools:` list', () => {
+    const offenders: string[] = [];
+    for (const file of listAgentFiles()) {
+      const rel = path.relative(REPO_ROOT, file);
+      try {
+        if (!parseAgentDoc(file).tools?.size) offenders.push(`${rel}: no \`tools:\` list in frontmatter`);
+      } catch (error) {
+        offenders.push((error as Error).message);
+      }
+    }
+    expect(
+      offenders,
+      `every markdown file in agents/ is loaded as an agent; move docs elsewhere or add a narrow \`tools:\` list:\n  ` +
+        offenders.join('\n  '),
+    ).toEqual([]);
+  });
+});
+
+// ── docs/agents-tool-rationale.md ↔ frontmatter parity (#1419) ────────────
 //
 // The README's allowlist bullets and model-tier table are hand-maintained
 // prose duplicating each agent's frontmatter. They drifted (issue-scout's
@@ -578,6 +603,7 @@ describe('agent body tool references ↔ frontmatter tool grants (#1377)', () =>
 // parses both surfaces and pins set equality.
 
 const MCP_TOOL_PREFIX = 'mcp__plugin_oss-autopilot_oss-autopilot__';
+const AGENTS_RATIONALE_DOC = 'docs/agents-tool-rationale.md';
 
 function parseAgentFrontmatterField(file: string, field: string): string | null {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
@@ -586,8 +612,8 @@ function parseAgentFrontmatterField(file: string, field: string): string | null 
   return line ? line.slice(field.length + 1).trim() : null;
 }
 
-describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
-  const readme = fs.readFileSync(path.join(REPO_ROOT, 'agents', 'README.md'), 'utf8');
+describe('docs/agents-tool-rationale.md ↔ agent frontmatter parity (#1419)', () => {
+  const readme = fs.readFileSync(path.join(REPO_ROOT, AGENTS_RATIONALE_DOC), 'utf8');
   const agents = listAgentFiles().map((file) => ({
     name: path.basename(file, '.md'),
     file,
@@ -601,7 +627,7 @@ describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
       // The bullet form is: - `name` — `Tool`, `Tool`, `mcp__...__x`, ... (prose)
       const bullet = readme.split('\n').find((line) => line.startsWith(`- \`${agent.name}\``));
       if (!bullet) {
-        offenders.push(`${agent.name}: no allowlist bullet in agents/README.md`);
+        offenders.push(`${agent.name}: no allowlist bullet in ${AGENTS_RATIONALE_DOC}`);
         continue;
       }
       const listed = new Set(
@@ -629,7 +655,7 @@ describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
     }
     expect(
       offenders,
-      `agents/README.md allowlist bullets drifted from frontmatter \`tools:\` — update the README row:\n  ` +
+      `${AGENTS_RATIONALE_DOC} allowlist bullets drifted from frontmatter \`tools:\` — update the doc row:\n  ` +
         offenders.join('\n  '),
     ).toEqual([]);
   });
@@ -641,7 +667,7 @@ describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
       if (!model) continue;
       const row = readme.split('\n').find((line) => line.startsWith(`| \`${agent.name}\` |`));
       if (!row) {
-        offenders.push(`${agent.name}: no model-tier table row in agents/README.md`);
+        offenders.push(`${agent.name}: no model-tier table row in ${AGENTS_RATIONALE_DOC}`);
         continue;
       }
       const cell = row.split('|', 3)[2]?.trim().replaceAll('`', '');
@@ -651,7 +677,7 @@ describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
     }
     expect(
       offenders,
-      `agents/README.md model-tier table drifted from frontmatter \`model:\` — update the table row:\n  ` +
+      `${AGENTS_RATIONALE_DOC} model-tier table drifted from frontmatter \`model:\` — update the table row:\n  ` +
         offenders.join('\n  '),
     ).toEqual([]);
   });

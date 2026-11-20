@@ -214,28 +214,28 @@ jobs:
 
       - name: Guard against mcp__* wildcard in agent tools
         # Agents must declare specific MCP tools, never the wildcard. See
-        # agents/README.md for rationale. mcp__* would grant access to every
+        # docs/agents-tool-rationale.md for rationale. mcp__* would grant access to every
         # MCP server on the user's machine (including cross-channel posting),
         # bypassing the draft-review-post gate the global CLAUDE.md enforces.
-        # Matches only `tools:` frontmatter lines so prose in README.md that
-        # discusses the pattern (for documentation) does not false-positive.
+        # Matches only `tools:` frontmatter lines so prose in an agent body
+        # that discusses the pattern does not false-positive.
         run: |
           if grep -Hn '^tools:.*mcp__\*' agents/*.md; then
-            echo "::error::Agent frontmatter contains mcp__* wildcard. Use a narrow allowlist. See agents/README.md and issue #1029."
+            echo "::error::Agent frontmatter contains mcp__* wildcard. Use a narrow allowlist. See docs/agents-tool-rationale.md and issue #1029."
             exit 1
           fi
 
       - name: "Guard against `model: inherit` in agent frontmatter"
         # Every agent must declare an explicit tier (haiku/sonnet/opus) so
         # cheap bounded tasks and heavy reasoning tasks don't silently inherit
-        # whatever model the parent session uses. See agents/README.md for the
+        # whatever model the parent session uses. See docs/agents-tool-rationale.md for the
         # workload→tier rationale and issue #1040 for the original audit.
         # Matches only top-of-file frontmatter `model:` keys on `*.md` files
         # inside agents/ so prose discussing the pattern does not
         # false-positive.
         run: |
           if grep -Hn '^model:[[:space:]]*inherit' agents/*.md; then
-            echo "::error::Agent frontmatter contains 'model: inherit'. Pick an explicit tier — see agents/README.md and issue #1040."
+            echo "::error::Agent frontmatter contains 'model: inherit'. Pick an explicit tier — see docs/agents-tool-rationale.md and issue #1040."
             exit 1
           fi
 

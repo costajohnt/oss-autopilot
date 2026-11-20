@@ -43,7 +43,7 @@ function listCommandNames(): string[] {
 function listAgentNames(): string[] {
   return fs
     .readdirSync(AGENTS_DIR)
-    .filter((name) => name.endsWith('.md') && name !== 'README.md')
+    .filter((name) => name.endsWith('.md'))
     .map((name) => name.replace(/\.md$/, ''))
     .toSorted();
 }

@@ -1,13 +1,13 @@
 # Subagents — tool-list rationale
 
-Each agent here declares a narrow `tools:` allowlist rather than the `mcp__*`
+Each agent in `agents/` declares a narrow `tools:` allowlist rather than the `mcp__*`
 wildcard. Wildcards grant access to every MCP server the user has installed
 (LinkedIn, Gmail, Telegram, Puppeteer, Serena, etc.) in addition to this
 plugin's own MCP server — and that includes tools that post publicly on the
 user's behalf.
 
 The global CLAUDE.md rule "never post without showing a draft first" is
-enforced here by this per-agent allowlist, which keeps MCP-mediated posting
+enforced by this per-agent allowlist, which keeps MCP-mediated posting
 tools out of agents' hands. The plugin previously also shipped PreToolUse
 hooks that intercepted Bash-based posting (`gh pr comment`, `gh issue
 comment`, etc.); those were removed, so Bash-level posting is now governed by

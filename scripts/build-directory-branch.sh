@@ -33,8 +33,6 @@ cp -R docs/images "$OUT/docs/"
 cp docs/repo-scores.md docs/anti-llm-policy.md "$OUT/docs/"
 cp docs/diagrams/*.svg "$OUT/docs/diagrams/"
 cp scripts/build-cli-if-stale.sh scripts/build-dashboard-if-stale.sh "$OUT/scripts/"
-# Contributor notes, not an agent: the validator flags it for missing frontmatter.
-rm -f "$OUT/agents/README.md"
 
 # Prebuilt CLI and dashboard from the published tarball. npm can take minutes
 # to serve a fresh publish, so retry for up to 10 minutes.

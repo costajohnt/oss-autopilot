@@ -83,7 +83,7 @@ function readFrontmatter(filePath) {
 
 function buildAgentTable() {
   const files = readdirSync(AGENTS_DIR)
-    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .filter((f) => f.endsWith('.md'))
     .map((f) => join(AGENTS_DIR, f));
 
   const byName = new Map();
