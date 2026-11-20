@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseGitHubUrl, extractOwnerRepo, splitRepo, issueRefKey } from './urls.js';
+import { parseGitHubUrl, extractOwnerRepo, splitRepo, issueRefKey, findRefKey } from './urls.js';
 import { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';
 import {
   getGitHubToken,
@@ -620,6 +620,29 @@ describe('detectGitHubUsername', () => {
     });
     const username = await detectGitHubUsername();
     expect(username).toBeNull();
+  });
+});
+
+describe('findRefKey (#2001)', () => {
+  const pr = 'https://github.com/Owner/Repo/pull/7';
+  const map = { [pr]: 1, 'not a url': 2 };
+
+  it('returns the URL itself on an exact hit', () => {
+    expect(findRefKey(map, pr)).toBe(pr);
+  });
+
+  it('returns the stored key naming the same issue or PR', () => {
+    expect(findRefKey(map, 'https://github.com/owner/repo/issues/7/')).toBe(pr);
+    expect(findRefKey(map, 'https://github.com/owner/repo/issues/8')).toBeUndefined();
+  });
+
+  it('matches a non-GitHub URL only exactly', () => {
+    expect(findRefKey(map, 'not a url')).toBe('not a url');
+    expect(findRefKey(map, 'https://example.com/owner/repo/pull/7')).toBeUndefined();
+  });
+
+  it('returns undefined for an undefined map', () => {
+    expect(findRefKey(undefined, pr)).toBeUndefined();
   });
 });
 

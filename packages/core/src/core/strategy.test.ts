@@ -215,11 +215,12 @@ describe('computeStrategy — capacity', () => {
   it('derives the waiting bucket from openPRs through the override map (#1416)', () => {
     // Dashboard-written digests keep RAW statuses in openPRs; a live
     // override flipping needs_addressing -> waiting must count as dormant.
+    // The override is keyed by another form of the PR's URL (#2001).
     const state = makeState({
       mergedPRs: Array.from({ length: 10 }, (_, i) => makeMergedPR('a/r', i + 1)),
       config: {
         statusOverrides: {
-          'https://github.com/x/y/pull/1': {
+          'https://github.com/X/Y/issues/1': {
             status: 'waiting_on_maintainer',
             setAt: '2026-05-02T00:00:00Z',
             lastActivityAt: '2026-05-01T00:00:00Z',

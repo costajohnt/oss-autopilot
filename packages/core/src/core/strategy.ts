@@ -15,6 +15,7 @@
  */
 
 import type { AgentState } from './state-schema.js';
+import { findRefKey } from './urls.js';
 
 export type ContributorStyle = 'maintainer' | 'explorer' | 'specialist' | 'generalist';
 export type TrajectoryDirection = 'growing' | 'steady' | 'declining';
@@ -200,7 +201,8 @@ function effectiveStatus(
   state: AgentState,
 ): unknown {
   if (typeof pr.url !== 'string') return pr.status;
-  const override = state.config.statusOverrides?.[pr.url];
+  const overrides = state.config.statusOverrides;
+  const override = overrides?.[findRefKey(overrides, pr.url) ?? pr.url];
   if (!override) return pr.status;
   const lastActivity = activityAt(pr);
   if (lastActivity !== undefined && lastActivity > override.lastActivityAt) return pr.status;

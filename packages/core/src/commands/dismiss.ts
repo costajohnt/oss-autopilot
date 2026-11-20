@@ -21,6 +21,7 @@
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
+import { findRefKey } from '../core/urls.js';
 import {
   ISSUE_OR_PR_URL_PATTERN,
   PR_URL_PATTERN,
@@ -97,12 +98,14 @@ export interface UndismissOutput {
 export async function runDismiss(options: { url: string; head?: string }): Promise<DismissOutput> {
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
-  const isPR = PR_URL_PATTERN.test(options.url);
+  const stateManager = getStateManager();
+  // The /issues/N form of a PR already dismissed as /pull/N is that PR (#2001).
+  const existingKey = findRefKey(stateManager.getState().config?.dismissedIssues, options.url);
+  const isPR = PR_URL_PATTERN.test(options.url) || (existingKey !== undefined && PR_URL_PATTERN.test(existingKey));
   if (!isPR && options.head !== undefined) {
     throw new ValidationError('--head applies to PR URLs only: a dismissed issue has no head commit');
   }
 
-  const stateManager = getStateManager();
   const dismissedAt = new Date().toISOString();
   const dismissOptions = {
     refresh: isPR,

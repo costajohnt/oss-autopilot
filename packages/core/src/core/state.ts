@@ -56,7 +56,7 @@ import * as guidelinesStoreModule from './guidelines-store.js';
 export const OVERNIGHT_REPORT_DOCUMENT = 'overnight-report.md';
 import { renderGistWarning, type GistHealth, type GistWarningCause } from './gist-health.js';
 import { getStatePath, getStateCachePath, getGistIdPath } from './paths.js';
-import { parseGitHubUrl, issueRefKey } from './urls.js';
+import { parseGitHubUrl, issueRefKey, findRefKey } from './urls.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
 export type { LoadRecoveryInfo } from './state-persistence.js';
@@ -1356,11 +1356,14 @@ export class StateManager {
     if (!this.state.config.dismissedIssues) {
       this.state.config.dismissedIssues = {};
     }
-    if (url in this.state.config.dismissedIssues && !options.refresh) {
+    // An existing entry for the same issue or PR keeps its key (#2001).
+    const existing = findRefKey(this.state.config.dismissedIssues, url);
+    if (existing !== undefined && !options.refresh) {
       return false;
     }
-    this.state.config.dismissedIssues[url] = timestamp;
-    this.setDismissedPRHead(url, options.headSha);
+    const key = existing ?? url;
+    this.state.config.dismissedIssues[key] = timestamp;
+    this.setDismissedPRHead(key, options.headSha);
     this.autoSave();
     return true;
   }
@@ -1372,11 +1375,12 @@ export class StateManager {
    * @returns true if undismissed, false if not currently dismissed
    */
   undismissIssue(url: string): boolean {
-    if (!this.state.config.dismissedIssues || !(url in this.state.config.dismissedIssues)) {
+    const key = findRefKey(this.state.config.dismissedIssues, url);
+    if (key === undefined) {
       return false;
     }
-    delete this.state.config.dismissedIssues[url];
-    this.setDismissedPRHead(url, undefined);
+    delete this.state.config.dismissedIssues[key];
+    this.setDismissedPRHead(key, undefined);
     this.autoSave();
     return true;
   }
@@ -1386,7 +1390,9 @@ export class StateManager {
    * @param url - The issue URL to check
    */
   getIssueDismissedAt(url: string): string | undefined {
-    return this.state.config.dismissedIssues?.[url];
+    const dismissed = this.state.config.dismissedIssues;
+    const key = findRefKey(dismissed, url);
+    return key === undefined ? undefined : dismissed[key];
   }
 
   /**
@@ -1396,17 +1402,24 @@ export class StateManager {
    * @param url - The PR URL to check
    */
   getDismissedPRHead(url: string): string | undefined {
-    return this.state.config.dismissedPRHeads?.[url];
+    const heads = this.state.config.dismissedPRHeads;
+    const key = findRefKey(heads, url);
+    return key === undefined ? undefined : heads[key];
   }
 
-  /** Record or (with `undefined`) drop the dismiss head for `url`; no save. */
+  /**
+   * Record or (with `undefined`) drop the dismiss head for `url`, replacing
+   * any head stored under another form of the same PR's URL (#2001); no save.
+   */
   private setDismissedPRHead(url: string, headSha: string | undefined): void {
     if (!this.state.config.dismissedPRHeads) {
       this.state.config.dismissedPRHeads = {};
     }
-    if (headSha === undefined) {
-      delete this.state.config.dismissedPRHeads[url];
-    } else {
+    const existing = findRefKey(this.state.config.dismissedPRHeads, url);
+    if (existing !== undefined) {
+      delete this.state.config.dismissedPRHeads[existing];
+    }
+    if (headSha !== undefined) {
       this.state.config.dismissedPRHeads[url] = headSha;
     }
   }
@@ -1597,7 +1610,8 @@ export class StateManager {
     if (!this.state.config.statusOverrides) {
       this.state.config.statusOverrides = {};
     }
-    this.state.config.statusOverrides[url] = {
+    // An existing override for the same PR keeps its key (#2001).
+    this.state.config.statusOverrides[findRefKey(this.state.config.statusOverrides, url) ?? url] = {
       status,
       setAt: new Date().toISOString(),
       lastActivityAt,
@@ -1611,10 +1625,11 @@ export class StateManager {
    * @returns true if an override was removed, false if none existed
    */
   clearStatusOverride(url: string): boolean {
-    if (!this.state.config.statusOverrides || !(url in this.state.config.statusOverrides)) {
+    const key = findRefKey(this.state.config.statusOverrides, url);
+    if (!this.state.config.statusOverrides || key === undefined) {
       return false;
     }
-    delete this.state.config.statusOverrides[url];
+    delete this.state.config.statusOverrides[key];
     this.autoSave();
     return true;
   }
@@ -1626,7 +1641,9 @@ export class StateManager {
    * @returns The override if still valid, undefined otherwise
    */
   getStatusOverride(url: string, currentUpdatedAt?: string): StatusOverride | undefined {
-    const override = this.state.config.statusOverrides?.[url];
+    const overrides = this.state.config.statusOverrides;
+    const key = findRefKey(overrides, url);
+    const override = key === undefined ? undefined : overrides?.[key];
     if (!override) return undefined;
 
     // Auto-clear if the PR has new activity since the override was set

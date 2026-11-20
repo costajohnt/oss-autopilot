@@ -11,6 +11,7 @@
  */
 import { z } from 'zod';
 import { CLOSE_REASONS, SELF_CLOSE_REASONS } from './close-reason.js';
+import { issueRefKey, parseGitHubUrl } from './urls.js';
 
 /**
  * An enum that also accepts values it does not know (#1831): a newer release
@@ -443,7 +444,93 @@ export const AgentConfigSchema = z
   // Passthrough (#1831): a newer release's config fields survive this
   // version's load/save. Retired fields must be dropped explicitly instead.
   .passthrough()
-  .transform(({ snoozedPRs: _retired, ...config }) => config);
+  .transform(({ snoozedPRs: _retired, ...config }) => foldRefKeys(config));
+
+/** ISO stamp to ms for ranking; an unparseable stamp ranks last. */
+function stampRank(at: string): number {
+  const ms = Date.parse(at);
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
+/** One issue or PR's entries in a URL-keyed map, folded by {@link groupByRef}. */
+interface RefGroup<T> {
+  /** Key the folded entry is stored under: the first `/pull/` key, else the first key. */
+  key: string;
+  /** Key the kept value came from. */
+  source: string;
+  value: T;
+}
+
+/**
+ * Group the keys of a URL-keyed map that name the same issue or PR (#2001):
+ * owner/repo casing, `/issues/N` vs `/pull/N`. Each group keeps the value
+ * `rank` scores highest (the first on a tie) under the key an older client
+ * sharing the Gist most likely looks up by exact match: the `/pull/` form,
+ * which GitHub reports for a PR, else the first key.
+ */
+function groupByRef<T>(map: Record<string, T>, rank: (value: T) => number): Map<string, RefGroup<T>> {
+  const groups = new Map<string, RefGroup<T>>();
+  for (const [key, value] of Object.entries(map)) {
+    const ref = issueRefKey(key) ?? key;
+    const group = groups.get(ref);
+    if (!group) {
+      groups.set(ref, { key, value, source: key });
+      continue;
+    }
+    if (parseGitHubUrl(group.key)?.type !== 'pull' && parseGitHubUrl(key)?.type === 'pull') group.key = key;
+    if (rank(value) > rank(group.value)) {
+      group.source = key;
+      group.value = value;
+    }
+  }
+  return groups;
+}
+
+/** The map `groups` folds `map` into; `map` itself when nothing folded. */
+function foldedMap<T>(map: Record<string, T>, groups: Map<string, RefGroup<T>>): Record<string, T> {
+  if (groups.size === Object.keys(map).length) return map;
+  return Object.fromEntries(Array.from(groups.values(), (group) => [group.key, group.value]));
+}
+
+/**
+ * Fold duplicate keys of `dismissedIssues`, `dismissedPRHeads` and
+ * `statusOverrides` on load (#2001), newest stamp kept. A dismissed PR keeps
+ * only the head recorded under the key its winning dismiss stamp came from:
+ * a newest dismiss without a head means the head was cleared.
+ */
+function foldRefKeys<
+  C extends {
+    dismissedIssues: Record<string, string>;
+    dismissedPRHeads: Record<string, string>;
+    statusOverrides?: Record<string, { setAt: string }>;
+  },
+>(config: C): C {
+  const dismissGroups = groupByRef(config.dismissedIssues, stampRank);
+  const dismissedPRHeads: Record<string, string> = {};
+  const headGroups = groupByRef(config.dismissedPRHeads, () => 0);
+  for (const [ref, group] of headGroups) {
+    const dismiss = dismissGroups.get(ref);
+    if (!dismiss) {
+      dismissedPRHeads[group.key] = group.value;
+      continue;
+    }
+    if (Object.hasOwn(config.dismissedPRHeads, dismiss.source)) {
+      dismissedPRHeads[dismiss.key] = config.dismissedPRHeads[dismiss.source];
+    }
+  }
+  const overrides = config.statusOverrides;
+  return {
+    ...config,
+    dismissedIssues: foldedMap(config.dismissedIssues, dismissGroups),
+    dismissedPRHeads,
+    ...(overrides && {
+      statusOverrides: foldedMap(
+        overrides,
+        groupByRef(overrides, (override) => stampRank(override.setAt)),
+      ),
+    }),
+  };
+}
 
 // ── 6. Cache schemas ─────────────────────────────────────────────────
 

@@ -3574,30 +3574,34 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
     checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
   });
 
-  it('records the commit date when the PR has a status override', async () => {
-    vi.mocked(getStateManager).mockReturnValue(
-      makeStateManagerMock({
-        config: {
-          excludeRepos: [],
-          excludeOrgs: [],
-          statusOverrides: {
-            [prUrl]: {
-              status: 'waiting_on_maintainer',
-              setAt: '2026-02-04T00:00:00Z',
-              lastActivityAt: '2026-02-03T00:00:00Z',
+  // The second key is another form of the same PR's URL (#2001).
+  it.each([prUrl, 'https://github.com/Owner/Repo/issues/1'])(
+    'records the commit date when the PR has a status override keyed %s',
+    async (overrideKey) => {
+      vi.mocked(getStateManager).mockReturnValue(
+        makeStateManagerMock({
+          config: {
+            excludeRepos: [],
+            excludeOrgs: [],
+            statusOverrides: {
+              [overrideKey]: {
+                status: 'waiting_on_maintainer',
+                setAt: '2026-02-04T00:00:00Z',
+                lastActivityAt: '2026-02-03T00:00:00Z',
+              },
             },
           },
-        },
-      }),
-    );
-    mockOctokitInstance = makeMocks();
+        }),
+      );
+      mockOctokitInstance = makeMocks();
 
-    const monitor = new PRMonitor('fake-token');
-    const { prs } = await monitor.fetchUserOpenPRs();
+      const monitor = new PRMonitor('fake-token');
+      const { prs } = await monitor.fetchUserOpenPRs();
 
-    expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledTimes(1);
-    expect(prs[0].latestCommitDate).toBe('2026-02-03T00:00:00Z');
-  });
+      expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledTimes(1);
+      expect(prs[0].latestCommitDate).toBe('2026-02-03T00:00:00Z');
+    },
+  );
 
   it('skips the commit fetch when there is no override and status does not need it', async () => {
     vi.mocked(getStateManager).mockReturnValue(makeStateManagerMock({ config: { excludeRepos: [], excludeOrgs: [] } }));

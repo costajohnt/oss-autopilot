@@ -297,4 +297,14 @@ describe('buildDashboardJson omits dismissed issue responses', () => {
 
     expect(data.issueResponses.map((i) => i.url)).toEqual([resurfaced.url]);
   });
+
+  it('omits an issue dismissed under a mixed-case URL (#2001)', () => {
+    const sm = getStateManager();
+    const dismissed = makeResponse(1);
+    sm.dismissIssue('https://github.com/Owner/Repo/issues/1', '2026-05-03T00:00:00Z');
+
+    const data = buildDashboardJson(makeDailyDigest(), sm.getState(), [dismissed], [], []);
+
+    expect(data.issueResponses).toEqual([]);
+  });
 });

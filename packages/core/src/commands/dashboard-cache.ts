@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import { getStateManager, applyStatusOverrides, classifyAttentionBucket, isCoveredByDismiss } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { warn } from '../core/logger.js';
+import { findRefKey } from '../core/urls.js';
 import {
   computePRsByRepo,
   computeTopRepos,
@@ -127,7 +128,7 @@ export function buildDashboardJson(
   const dismissedIssues = state.config.dismissedIssues || {};
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => {
     if (i.status !== 'new_response') return false;
-    const dismissedAt = dismissedIssues[i.url];
+    const dismissedAt = dismissedIssues[findRefKey(dismissedIssues, i.url) ?? i.url];
     return !dismissedAt || !isCoveredByDismiss(dismissedAt, i.lastResponseAt);
   });
 
