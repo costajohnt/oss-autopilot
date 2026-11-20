@@ -7,11 +7,11 @@
  * and the prompt-injection corpus:
  *
  *  1. Output starts with the open tag and ends with the close tag.
- *  2. Nothing an LLM reader could take for the fence's open or close tag
- *     appears inside the wrapped body: the `<` of any tag-like sequence
- *     (any letter case, inner whitespace, attributes, separator variants;
- *     see {@link TAG_LIKE_PATTERN}) is escaped (#1931), so an attacker
- *     cannot close the fence early and inject instructions after it.
+ *  2. No `<` appears inside the wrapped body: every one is escaped to
+ *     `&lt;` (#1931), so no tag of any spelling (letter case, inner
+ *     whitespace, attributes, zero-width or lookalike letters) can exist
+ *     there and an attacker cannot close the fence early and inject
+ *     instructions after it.
  *  3. `extractFromFence(wrapUntrustedContent(x, label))` returns `x`
  *     unchanged for any input — the wrapping is lossless.
  *
@@ -50,30 +50,6 @@
 export const UNTRUSTED_OPEN_TAG_NAME = 'github-content';
 export const UNTRUSTED_CLOSE_TAG = `</${UNTRUSTED_OPEN_TAG_NAME}>`;
 
-/**
- * Matches the `<` of anything an LLM reader could take for the fence's open
- * or close tag (#1931): `<`, any run of non-letters (whitespace, newlines,
- * `/`), `github`, any run of non-letters (`-`, `_`, lookalike hyphens,
- * nothing), `content`, in any letter case. Attributes, whitespace or a
- * newline before the `>` come after the name, so they are covered too. The
- * consumer is an LLM, not an XML parser, so the match is deliberately
- * loose: over-matching is harmless because the escape is lossless.
- *
- * Linear time: a match can only start at `<`, and neither run can cross a
- * `<`, a `>` or a letter, so no character is scanned from two starts.
- *
- * ponytail: lookalikes of the letters or of `<` itself (zero-width
- * characters inside the name, fullwidth brackets) are not matched; escape
- * every `<` in the body if that ever matters.
- */
-const TAG_LIKE_PATTERN = /<(?=[^<>a-z]*github[^<>a-z]*content)/gi;
-
-/**
- * Non-global twin of {@link TAG_LIKE_PATTERN} for existence checks (a
- * global pattern's `test` is stateful through `lastIndex`).
- */
-const TAG_LIKE_TEST = new RegExp(TAG_LIKE_PATTERN.source, 'i');
-
 export interface UntrustedContentMeta {
   /** GitHub login of the content's author (e.g. PR comment author). */
   author?: string;
@@ -98,21 +74,18 @@ function escapeAttr(value: string): string {
 
 /**
  * Wrap `text` in a `<github-content>` fence labeled with `label` and the
- * optional metadata. Any open- or close-tag lookalike inside `text` (see
- * {@link TAG_LIKE_PATTERN}) has its `<` entity-escaped, which round-trips
- * losslessly via {@link extractFromFence}. Wrapping already-fenced text
- * escapes the inner fence's tags like any other.
+ * optional metadata. Every `&` and `<` inside `text` is entity-escaped,
+ * which round-trips losslessly via {@link extractFromFence}. Wrapping
+ * already-fenced text escapes the inner fence's tags like any other.
+ * Fullwidth `＜` (U+FF1C) is not ASCII `<` and stays as is.
  */
 export function wrapUntrustedContent(text: string, label: string, meta: UntrustedContentMeta = {}): string {
-  // Tag-like sequences are neutralized with HTML entity escapes so the
-  // result is pure ASCII and round-trips losslessly. Escape order matters
-  // for round-trip correctness:
+  // Escape order matters for round-trip correctness:
   //  1. `&` first — so any pre-existing entity in the input gets a literal
   //     `&amp;` that survives the unwrap pass below.
-  //  2. The `<` of every open- or close-tag lookalike. After pass 1 every
-  //     `&lt;` in the body is one written here, so an input holding the
-  //     literal text `&lt;/github-content>` does not collide.
-  const escapedBody = text.replaceAll('&', '&amp;').replaceAll(TAG_LIKE_PATTERN, '&lt;');
+  //  2. Every `<`. After pass 1 every `&lt;` in the body is one written
+  //     here, so an input holding the literal text `&lt;` does not collide.
+  const escapedBody = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;');
   const attrs: string[] = [`label="${escapeAttr(label)}"`];
   if (meta.author !== undefined) attrs.push(`author="${escapeAttr(meta.author)}"`);
   if (meta.association !== undefined) attrs.push(`association="${escapeAttr(meta.association)}"`);
@@ -122,7 +95,7 @@ export function wrapUntrustedContent(text: string, label: string, meta: Untruste
 
 /**
  * Reverse of {@link wrapUntrustedContent}. Extracts the original body text
- * (un-escaping any sentinel-encoded close tags). Throws if the input is not
+ * (un-escaping `&lt;` and `&amp;`). Throws if the input is not
  * a single well-formed fence — callers shouldn't be parsing arbitrary
  * markdown with this; it's for tests + symmetric reasoning only.
  */
@@ -135,8 +108,9 @@ export function extractFromFence(fenced: string): string {
     throw new Error('extractFromFence: input does not end with </github-content>');
   }
   const inner = fenced.slice(openMatch[0].length, fenced.length - UNTRUSTED_CLOSE_TAG.length);
-  if (TAG_LIKE_TEST.test(inner)) {
-    throw new Error('extractFromFence: nested <github-content> tag found in body — fence escaping is broken');
+  // wrapUntrustedContent never leaves a raw `<` in the body.
+  if (inner.includes('<')) {
+    throw new Error('extractFromFence: raw < found in body (nested tag?) — fence escaping is broken');
   }
   // Reverse the escapes in opposite order: `&lt;` first (so an
   // already-`&amp;`-prefixed entity survives), then unescape `&amp;`.
@@ -195,10 +169,12 @@ export function fenceFetchedPR<T extends FenceablePR>(pr: T): T {
  *
  * Composes safely with {@link fenceFetchedPR} (disjoint fields), and is
  * applied to already-body-fenced digest PRs without double-wrapping.
- * `VerifiedLinkedPR.title` (verify-issue) stays raw: the same producer
- * feeds the CLI `--json` contract (pinned by verify-issue contract
- * snapshots) and the consuming issue-scout agent carries the awareness
- * block. Returns a copy; never mutates.
+ * `VerifiedLinkedPR.title` (verify-issue) stays raw at the producer and on
+ * the CLI: the same producer feeds the CLI `--json` contract (pinned by
+ * verify-issue contract snapshots) and the consuming issue-scout agent
+ * carries the awareness block. On the MCP `verify-issue` tool result it is
+ * fenced by {@link fenceTitlesDeep} like every other title (#1931).
+ * Returns a copy; never mutates.
  */
 export function fenceFetchedPRTitles<T extends FenceableTitledPR>(pr: T): T {
   const label = `${pr.repo}#${pr.number}`;
@@ -247,6 +223,10 @@ function titleLabel(obj: Record<string, unknown>): string {
 export function fenceTitlesDeep<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item: unknown) => fenceTitlesDeep(item)) as T;
   if (value === null || typeof value !== 'object') return value;
+  // Plain objects only: a Date or a class with toJSON must reach
+  // JSON.stringify intact, not as a copy of its own enumerable fields.
+  const proto: unknown = Object.getPrototypeOf(value);
+  if (proto !== null && proto !== Object.prototype) return value;
   const obj = value as Record<string, unknown>;
   const label = titleLabel(obj);
   const out: Record<string, unknown> = {};
