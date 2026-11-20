@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.5](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.4...core-v3.42.5) (2026-11-20)
+
+
+### Bug Fixes
+
+* always count Signoff and DCO checklist boxes ([d309928](https://github.com/costajohnt/oss-autopilot/commit/d309928bc727f899d43d75091179553b2e4ce56b))
+* always count Signoff and DCO checklist boxes ([c607a8a](https://github.com/costajohnt/oss-autopilot/commit/c607a8a797db7c5d6f4c2fe395bd969a08554925))
+* **compliance:** accept clear PR descriptions without mandatory headings ([#1795](https://github.com/costajohnt/oss-autopilot/issues/1795)) ([bb9076f](https://github.com/costajohnt/oss-autopilot/commit/bb9076f4343d455d3121ef2e30ea9d8afec3854c))
+* exempt checklist runs under template-style conditional lead-ins ([a5358b4](https://github.com/costajohnt/oss-autopilot/commit/a5358b4738a7ef040468e44472af069b654b9525))
+* exempt checklist runs under template-style conditional lead-ins ([30873a5](https://github.com/costajohnt/oss-autopilot/commit/30873a55fcc15f4771ec5189636e601bcedef0be))
+* keep template lead-ins narrow ([2191fbc](https://github.com/costajohnt/oss-autopilot/commit/2191fbc6fc2d0ce658467f19eb0ef8cd6a607403))
+* stop agents/README.md registering as a plugin agent ([#1958](https://github.com/costajohnt/oss-autopilot/issues/1958)) ([a87648e](https://github.com/costajohnt/oss-autopilot/commit/a87648e91c4eb8d45aecbbf7391bc9762cfd1854))
+* stop the acknowledgment filter dropping short maintainer requests ([#1959](https://github.com/costajohnt/oss-autopilot/issues/1959)) ([da28580](https://github.com/costajohnt/oss-autopilot/commit/da285808b8c06e950a62509d7a5f6d82833d6395)), closes [#1916](https://github.com/costajohnt/oss-autopilot/issues/1916)
+
 ## [3.42.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.3...core-v3.42.4) (2026-11-13)
 
 
