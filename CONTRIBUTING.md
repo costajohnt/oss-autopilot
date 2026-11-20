@@ -67,7 +67,7 @@ git checkout -b fix/your-bug-fix
 - Add tests if applicable
 - Run `pnpm test` to ensure tests pass
 - Run `pnpm run build` to ensure it compiles
-- Run `pnpm lint` and `pnpm format:check` to catch style issues (also enforced by pre-commit hook)
+- Run `pnpm lint` and `pnpm format:check` to catch style issues (the pre-commit hook runs the format check; the pre-push hook runs lint)
 - **Do NOT manually bump versions or edit CHANGELOG.md** — versioning is automated via [release-please](https://github.com/googleapis/release-please)
 
 ### 4. Commit

@@ -42,6 +42,7 @@ import {
   fetchReviewedOpenPRs as fetchReviewedOpenPRsImpl,
   fetchReviewedPRActivity as fetchReviewedPRActivityImpl,
 } from './reviewed-prs-fetch.js';
+import { commitDateOf } from './commit-date.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import {
   batchFetchPRDetails,
@@ -568,7 +569,7 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch the HEAD commit's author date and login via REST `repos.getCommit`.
+   * Fetch the HEAD commit's date (see {@link commitDateOf}) and author login via REST `repos.getCommit`.
    * Rate-limit errors propagate (silently swallowing them produces misleading
    * status, e.g. needs_changes when changes were addressed) (#469); other
    * failures degrade to `undefined` so the PR is still returned.
@@ -577,7 +578,12 @@ export class PRMonitor {
     try {
       const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
       return {
-        date: res.data.commit.author?.date,
+        date: commitDateOf({
+          authorDate: res.data.commit.author?.date,
+          committerDate: res.data.commit.committer?.date,
+          authorLogin: res.data.author?.login,
+          committerLogin: res.data.committer?.login,
+        }),
         // GitHub user login of the commit author (may differ from git author)
         author: res.data.author?.login,
       };

@@ -68,6 +68,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       save: vi.fn(),
       isPRShelved: vi.fn(() => false),
       unshelvePR: vi.fn(() => true),
+      fillShelvedPRReasons: vi.fn(),
       getStats: vi.fn(),
       getIssueDismissedAt: vi.fn(),
       getDismissedPRHead: vi.fn(),

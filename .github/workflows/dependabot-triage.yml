@@ -61,6 +61,9 @@ jobs:
             repo=$(echo "$pr" | jq -r '.repository.nameWithOwner')
             number=$(echo "$pr" | jq -r '.number')
             title=$(echo "$pr" | jq -r '.title')
+            # The report is expanded with printf '%b' below; keep backslashes in
+            # a PR title literal so they are not read as escape sequences.
+            title=${title//\\/\\\\}
             url=$(echo "$pr" | jq -r '.url')
 
             echo "Processing $repo#$number: $title"
@@ -85,18 +88,16 @@ jobs:
               fi
             fi
 
-            # Check CI status
-            ci_status="unknown"
-            ci_failures=$(gh pr checks "$number" --repo "$repo" --json bucket \
-              --jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo "-1")
-
-            if [ "$ci_failures" = "-1" ]; then
-              ci_status="error"
-            elif [ "$ci_failures" = "0" ]; then
-              ci_status="passing"
-            else
-              ci_status="failing"
-            fi
+            # Check CI status. "passing" needs at least one check and every check
+            # finished as pass or skipping; anything still pending (or cancelled)
+            # is not a verdict yet, so the PR waits for a later run (#1939).
+            # gh may exit non-zero while still printing a status (8 = pending),
+            # so only an empty result counts as an error.
+            ci_status=$(gh pr checks "$number" --repo "$repo" --json bucket --jq '
+              if any(.[]; .bucket == "fail") then "failing"
+              elif length > 0 and all(.[]; .bucket == "pass" or .bucket == "skipping") then "passing"
+              else "pending" end' 2>/dev/null || true)
+            ci_status=${ci_status:-error}
 
             # Check mergeability
             mergeable=$(gh pr view "$number" --repo "$repo" --json mergeable \

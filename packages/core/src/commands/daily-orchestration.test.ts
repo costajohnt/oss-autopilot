@@ -52,6 +52,7 @@ const mockSave = vi.fn();
 const mockReloadIfChanged = vi.fn(() => false);
 const mockIsPRShelved = vi.fn();
 const mockUnshelvePR = vi.fn();
+const mockFillShelvedPRReasons = vi.fn();
 const mockGetStats = vi.fn();
 const mockGetIssueDismissedAt = vi.fn();
 const mockUndismissIssue = vi.fn();
@@ -109,6 +110,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       save: mockSave,
       isPRShelved: mockIsPRShelved,
       unshelvePR: mockUnshelvePR,
+      fillShelvedPRReasons: mockFillShelvedPRReasons,
       getStats: mockGetStats,
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
@@ -455,6 +457,82 @@ describe('executeDailyCheck() — PR partitioning', () => {
     // Should appear in active (repoGroups) not shelved
     const allGroupedPRUrls = result.repoGroups.flatMap((g) => g.prUrls);
     expect(allGroupedPRUrls).toContain(criticalPR.url);
+  });
+
+  it('keeps a PR shelved when it was shelved while already needing addressing (#1922)', async () => {
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 7,
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      lastMaintainerActivityAt: '2026-01-20T00:00:00Z',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
+    mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
+    mockIsPRShelved.mockReturnValue(true);
+    const state = makeDefaultState();
+    (state.config as Record<string, unknown>).shelvedPRInfo = { 'owner/repo#7': { at: '2026-01-21T00:00:00.000Z' } };
+    mockGetState.mockReturnValue(state);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockUnshelvePR).not.toHaveBeenCalled();
+    // The reasons were unknown at shelve time: this run records them for later runs to compare.
+    expect(mockFillShelvedPRReasons).toHaveBeenCalledWith(criticalPR.url, ['failing_ci']);
+    expect(result.digest.autoUnshelvedPRs).toHaveLength(0);
+    expect(result.digest.shelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
+    // Hidden everywhere the brief lists work: not Needs Addressing, not actionable, not active.
+    expect(result.digest.needsAddressingPRs).not.toContain(criticalPR.url);
+    expect(result.actionableIssues).toHaveLength(0);
+    expect(result.repoGroups.flatMap((g) => g.prUrls)).not.toContain(criticalPR.url);
+  });
+
+  it('auto-unshelves a stamped shelved PR once a maintainer acts after the shelve (#1922)', async () => {
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 8,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      lastMaintainerActivityAt: '2026-01-22T00:00:00Z',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
+    mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
+    mockIsPRShelved.mockReturnValue(true);
+    const state = makeDefaultState();
+    (state.config as Record<string, unknown>).shelvedPRInfo = { 'owner/repo#8': { at: '2026-01-21T00:00:00.000Z' } };
+    mockGetState.mockReturnValue(state);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockUnshelvePR).toHaveBeenCalledWith(criticalPR.url);
+    expect(result.digest.autoUnshelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
+    expect(result.digest.needsAddressingPRs).toContain(criticalPR.url);
+  });
+
+  it('auto-unshelves a PR recorded as healthy at shelve time once its CI fails, with no maintainer activity (#1922)', async () => {
+    // Accepted tradeoff: the record comes from the last digest, which can be
+    // stale. A PR whose CI was already failing when it was shelved, but that
+    // the digest still showed as healthy, is unshelved once by this rule.
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 9,
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      lastMaintainerActivityAt: '2026-01-20T00:00:00Z',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
+    mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
+    mockIsPRShelved.mockReturnValue(true);
+    const state = makeDefaultState();
+    (state.config as Record<string, unknown>).shelvedPRInfo = {
+      'owner/repo#9': { at: '2026-01-21T00:00:00.000Z', reasons: [] },
+    };
+    mockGetState.mockReturnValue(state);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockUnshelvePR).toHaveBeenCalledWith(criticalPR.url);
+    expect(result.digest.autoUnshelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
   });
 
   it('keeps shelved PR with non-critical status in shelvedPRs (no auto-unshelf)', async () => {
@@ -845,6 +923,27 @@ describe('executeDailyCheck() — error resilience', () => {
         expect.objectContaining({ phase: 'partition', message: expect.stringContaining('digest exploded') }),
       ]),
     );
+    consoleSpy.mockRestore();
+  });
+
+  it('keeps a shelved PR out of Needs Addressing when it falls back to the persisted digest (#1922)', async () => {
+    const shelvedCritical = makePR({ repo: 'owner/repo', number: 11, status: 'needs_addressing' });
+    const state = makeDefaultState({ lastDigest: makeDigest([shelvedCritical]) });
+    (state.config as Record<string, unknown>).shelvedPRInfo = { 'owner/repo#11': { at: '2026-01-21T00:00:00.000Z' } };
+    mockGetState.mockReturnValue(state);
+    mockFetchUserOpenPRs.mockResolvedValue({
+      prs: [{ ...shelvedCritical, lastMaintainerActivityAt: '2026-01-20T00:00:00Z' }],
+      failures: [],
+    });
+    mockIsPRShelved.mockReturnValue(true);
+    mockGenerateDigest.mockImplementation(() => {
+      throw new Error('digest exploded');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.digest.needsAddressingPRs).toEqual([]);
     consoleSpy.mockRestore();
   });
 

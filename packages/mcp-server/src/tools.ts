@@ -56,6 +56,7 @@ import {
   renderGistWarning,
   ConcurrencyError,
   GistConcurrencyError,
+  GistDiscoveryError,
   GistFileSizeError,
   GIST_FILE_SIZE_REMEDY,
   ConfigurationError,
@@ -119,7 +120,11 @@ function resetGistInitMemo(): void {
  * next tool call retries init anyway, so a Gist trimmed from another
  * machine (or a one-off raw_url refusal) heals without a restart. */
 const GIST_SIZE_HALT_TTL_MS = 10 * 60_000;
-/** When the current memoized GistFileSizeError rejection was recorded. */
+/** Appended to a halted init error so the caller knows when init runs again. */
+const GIST_INIT_HALT_RETRY =
+  `Gist init is retried after ${GIST_SIZE_HALT_TTL_MS / 60_000} minutes, ` +
+  'or right away after config, setup, init, or state-unlink.';
+/** When the current memoized halting rejection was recorded. */
 const gistInitHalt: { at: number | null } = { at: null };
 
 function gistWarningText(cause: GistDegradedCause): string {
@@ -181,7 +186,9 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
       // instead of re-bootstrapping on each tool call. Every call reports the
       // same error; the repair tools (setup/config/init/state-unlink) still
       // run and reset the memo early.
-      if (e instanceof GistFileSizeError) {
+      // A GistDiscoveryError is halted the same way: it stands until the user
+      // writes the gist-id file, and each retry re-lists up to 10 pages (#1926).
+      if (e instanceof GistFileSizeError || e instanceof GistDiscoveryError) {
         gistInitHalt.at = Date.now();
         return;
       }
@@ -200,13 +207,19 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
 function gistInitFailureReason(e: unknown, isRepairTool: boolean): string {
   const message = errorMessage(e);
   if (!isRepairTool && e instanceof GistFileSizeError) {
+    throw new Error(`${message} To fix it, ${GIST_FILE_SIZE_REMEDY}. ${GIST_INIT_HALT_RETRY}`, { cause: e });
+  }
+  if (!isRepairTool && e instanceof GistDiscoveryError) {
+    // Writing the gist-id file does not clear the memo, so say what does.
     throw new Error(
-      `${message} To fix it, ${GIST_FILE_SIZE_REMEDY}. Gist init is retried after ` +
-        `${GIST_SIZE_HALT_TTL_MS / 60_000} minutes, or right away after config, setup, init, or state-unlink.`,
+      `${message} After writing the file, run the config tool with no arguments to retry right away; ` +
+        `otherwise Gist init is retried after ${GIST_SIZE_HALT_TTL_MS / 60_000} minutes.`,
       { cause: e },
     );
   }
   if (!(isRepairTool && e instanceof ConfigurationError)) throw e;
+  // A GistDiscoveryError carries its own remedy; the scope hint below would mislead.
+  if (e instanceof GistDiscoveryError) return `initialization failed (${message})`;
   return e instanceof GistFileSizeError
     ? `initialization failed (${message}). To fix it, ${GIST_FILE_SIZE_REMEDY}`
     : `initialization failed (${message}) — fix the Gist setup ` +

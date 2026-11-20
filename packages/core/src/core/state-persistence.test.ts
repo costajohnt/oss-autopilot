@@ -642,16 +642,17 @@ describe('batch and auto-save', () => {
     saveSpy.mockRestore();
   });
 
-  it('should not auto-save boolean methods when no actual change (e.g. shelvePR twice)', () => {
+  it('should not auto-save boolean methods when no actual change (e.g. unshelvePR twice)', () => {
     const sm = new StateManager(false);
+    const url = 'https://github.com/owner/repo/pull/1';
+    sm.shelvePR(url);
     const saveSpy = vi.spyOn(sm, 'save');
 
-    const url = 'https://github.com/owner/repo/pull/1';
-    sm.shelvePR(url); // first time: actual change → save
+    sm.unshelvePR(url); // first time: actual change → save
     expect(saveSpy).toHaveBeenCalledTimes(1);
 
     saveSpy.mockClear();
-    sm.shelvePR(url); // second time: no change → no save
+    sm.unshelvePR(url); // second time: no change → no save
     expect(saveSpy).not.toHaveBeenCalled();
 
     saveSpy.mockRestore();

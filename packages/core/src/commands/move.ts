@@ -4,6 +4,8 @@
  */
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
+import { shelveReasonsOf } from '../core/daily-logic.js';
+import { issueRefKey } from '../core/urls.js';
 import { ValidationError } from '../core/errors.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
@@ -67,7 +69,11 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
     case 'shelved': {
       const apply = (): void =>
         stateManager.batch(() => {
-          stateManager.shelvePR(options.prUrl);
+          // Record why the PR needs addressing right now, when the last
+          // digest knows it, so only a reason it lacks now unshelves it (#1922).
+          const key = issueRefKey(options.prUrl);
+          const openPR = stateManager.getState().lastDigest?.openPRs.find((pr) => issueRefKey(pr.url) === key);
+          stateManager.shelvePR(options.prUrl, openPR && shelveReasonsOf(openPR));
           stateManager.clearStatusOverride(options.prUrl);
         });
       apply();

@@ -1002,6 +1002,35 @@ describe('GraphQL vs REST status parity: bot reviews', () => {
   });
 });
 
+// #1919: amend and rebase keep the author date; only the committer date moves.
+describe('amended HEAD commit (author date before the review, committer date after)', () => {
+  it('counts as addressing the changes request', async () => {
+    const review = {
+      author: { login: 'maintainer' },
+      body: 'please fix',
+      databaseId: 6,
+      state: 'CHANGES_REQUESTED',
+      submittedAt: '2026-02-03T00:00:00Z',
+    };
+    const amended = {
+      commit: {
+        author: { user: { login: 'contributor' } },
+        authoredDate: '2026-02-02T00:00:00Z',
+        committedDate: '2026-02-04T00:00:00Z',
+        committer: { user: { login: 'contributor' } },
+        oid: 'amended1',
+        status: null,
+        statusCheckRollup: null,
+      },
+    };
+    const node = makeNode({ commits: { nodes: [amended] }, reviews: { nodes: [review], totalCount: 1 } });
+    const pr = await assembleFromGraphQL(node);
+
+    expect(pr.latestCommitDate).toBe('2026-02-04T00:00:00Z');
+    expect(pr.waitReason).toBe('changes_addressed');
+  });
+});
+
 // #1713 follow-up: override auto-clear keys on latestActivityAt, which falls
 // back to updatedAt when latestCommitDate is absent. A PR with no human
 // comments never needed the commit for status, so the GraphQL path used to

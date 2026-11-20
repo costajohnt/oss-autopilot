@@ -46,8 +46,8 @@ All data lives under `~/.oss-autopilot/`.
 
 ### Network Security
 
-- **HTTPS only.** All API calls go to `api.github.com` over HTTPS.
-- **No third-party services contacted.** The plugin communicates exclusively with GitHub's API.
+- **HTTPS only.** API calls go to `api.github.com` over HTTPS. One other GitHub host is used: with Gist sync on, a state file too large for the Gist API to return inline is read from its `raw_url`, and the request is refused unless that URL is HTTPS on `gist.githubusercontent.com`.
+- **No third-party services contacted, apart from the npm registry.** The CLI communicates exclusively with GitHub. The plugin's build check (`scripts/build-cli-if-stale.sh`) installs dependencies from the npm registry when it builds, and at most once a day runs `npm view` to see whether a newer `@oss-scout/core` is published.
 - **Rate limit handling.** The Octokit client uses `@octokit/plugin-throttling` to respect API rate limits rather than hammering endpoints on failure.
 
 ### Plugin Security
@@ -75,7 +75,7 @@ Explicit non-goals: no automated detection of injection content (false-positive 
 
 The attack surface is intentionally minimal.
 
-- **3 production dependencies:** `@octokit/rest`, `@octokit/plugin-throttling`, `commander`. All other packages are devDependencies only.
+- **6 production dependencies in `@oss-autopilot/core`:** `@octokit/rest`, `@octokit/plugin-throttling`, `@octokit/plugin-retry`, `@oss-scout/core`, `commander`, `zod`. All other packages are devDependencies only.
 - **pnpm audit in CI:** The CI workflow runs `pnpm audit --audit-level=high` on every push and PR.
 - **Dependabot:** Weekly automated dependency scanning for the npm ecosystem.
 - **CodeQL:** GitHub's CodeQL security analysis runs on pushes to main and on pull requests.

@@ -36,8 +36,8 @@ env:
   #   - **Don't bump for a flaky measurement:** esbuild output is
   #     deterministic. If the threshold trips on a no-op rebuild, it's a
   #     real increase somewhere upstream — not noise.
-  BUNDLE_MAX_CORE: 940000 # ~918 KB. Raised from 920000 (#1869): 2026-11-02 added four daily phases (closed-PR status, merged-PR notes, engaged issues, review follow-ups) and the work command; bundle measured 901.9 KB.
-  BUNDLE_MAX_MCP: 1228000 # ~1199 KB. Raised from 1180000 (#1908): moving to the MCP SDK v2 packages adds about 47 KB; bundle measured 1211019 bytes. This bundle inlines core and scout. Was lowered 1237 -> 990 KB in #1651.
+  BUNDLE_MAX_CORE: 960000 # ~938 KB. Raised from 940000 (#1926): the 2026-11-19 audit fixes add error handling across core (Gist discovery errors, shelve records, CI status and check-run dedupe, liveness probe); bundle measured 940315 bytes. Earlier: Raised from 920000 (#1869): 2026-11-02 added four daily phases (closed-PR status, merged-PR notes, engaged issues, review follow-ups) and the work command; bundle measured 901.9 KB.
+  BUNDLE_MAX_MCP: 1250000 # ~1221 KB. Raised from 1228000 (#1926): this bundle inlines core, so it grows with the same audit fixes; bundle measured 1216512 bytes. Earlier: Raised from 1180000 (#1908): moving to the MCP SDK v2 packages adds about 47 KB; bundle measured 1211019 bytes. This bundle inlines core and scout. Was lowered 1237 -> 990 KB in #1651.
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
 jobs:
@@ -50,13 +50,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: 'pnpm'
@@ -105,13 +105,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
@@ -470,13 +470,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: 'pnpm'

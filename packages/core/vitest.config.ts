@@ -45,6 +45,21 @@ export default defineConfig({
           functions: 98,
           lines: 97,
         },
+        // Per-file floors for the unattended-write guard and the state it
+        // protects (#1945): the 80% gate above is aggregate, so any of these
+        // could lose all its tests without tripping it. Each floor sits about
+        // 4 points under the value measured on 2026-11-19
+        // (statements/branches/functions/lines):
+        //   overnight-push-prep.ts  96.19 / 95.62 / 100   / 98.06
+        //   comments.ts             93.93 / 71.64 / 94.44 / 95.65
+        //   errors.ts               92.85 / 92.72 / 90.47 / 95.74
+        //   state-persistence.ts    94.29 / 91.00 / 100   / 94.18
+        //   gist-state-store.ts     87.36 / 66.66 / 100   / 91.01
+        'src/commands/overnight-push-prep.ts': { statements: 92, branches: 91, functions: 96, lines: 94 },
+        'src/commands/comments.ts': { statements: 89, branches: 67, functions: 90, lines: 91 },
+        'src/core/errors.ts': { statements: 88, branches: 88, functions: 86, lines: 91 },
+        'src/core/state-persistence.ts': { statements: 90, branches: 87, functions: 96, lines: 90 },
+        'src/core/gist-state-store.ts': { statements: 83, branches: 62, functions: 96, lines: 87 },
       },
     },
   },

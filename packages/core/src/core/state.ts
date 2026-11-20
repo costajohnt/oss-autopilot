@@ -43,6 +43,7 @@ import {
   ConcurrencyError,
   GistConcurrencyError,
   isTransientNetworkError,
+  GistDiscoveryError,
   GistFileSizeError,
   GIST_FILE_SIZE_REMEDY,
 } from './errors.js';
@@ -1202,18 +1203,37 @@ export class StateManager {
   /**
    * Shelve a PR URL, hiding it from daily digest and capacity.
    * @param url - The PR URL to shelve
+   * @param reasons - The PR's action reasons right now (`shelveReasonsOf`), when known
    * @returns true if newly shelved, false if already shelved
    */
-  shelvePR(url: string): boolean {
+  shelvePR(url: string, reasons?: string[]): boolean {
     if (!this.state.config.shelvedPRUrls) {
       this.state.config.shelvedPRUrls = [];
     }
-    if (this.state.config.shelvedPRUrls.includes(url)) {
-      return false;
+    // Record every shelve, a repeat included (#1922): the daily run compares
+    // maintainer activity and the action reasons against this, so re-shelving
+    // a PR acknowledges everything up to now.
+    const now = new Date();
+    this.state.config.shelvedPRInfo = {
+      ...this.state.config.shelvedPRInfo,
+      [issueRefKey(url) ?? url]: { at: now.toISOString(), reasons },
+    };
+    const isNew = this.shelvedIndex(url) === -1;
+    if (isNew) {
+      this.state.config.shelvedPRUrls.push(url);
     }
-    this.state.config.shelvedPRUrls.push(url);
     this.autoSave();
-    return true;
+    return isNew;
+  }
+
+  /**
+   * Index of a PR in `shelvedPRUrls`, matched through {@link issueRefKey} so
+   * a URL typed in different casing or with a trailing slash still finds the
+   * entry (#1922). -1 when not shelved.
+   */
+  private shelvedIndex(url: string): number {
+    const key = issueRefKey(url);
+    return (this.state.config.shelvedPRUrls ?? []).findIndex((u) => (key ? issueRefKey(u) === key : u === url));
   }
 
   /**
@@ -1222,16 +1242,30 @@ export class StateManager {
    * @returns true if removed from shelf, false if not shelved
    */
   unshelvePR(url: string): boolean {
-    if (!this.state.config.shelvedPRUrls) {
-      return false;
-    }
-    const index = this.state.config.shelvedPRUrls.indexOf(url);
+    const index = this.shelvedIndex(url);
     if (index === -1) {
       return false;
     }
     this.state.config.shelvedPRUrls.splice(index, 1);
+    if (this.state.config.shelvedPRInfo) {
+      delete this.state.config.shelvedPRInfo[issueRefKey(url) ?? url];
+    }
     this.autoSave();
     return true;
+  }
+
+  /**
+   * Fill in the action reasons of a shelve record that has none yet (#1922):
+   * the PR was not in the digest when it was shelved, so the first daily run
+   * that sees it records them. Never changes reasons already recorded: a
+   * reason that clears and comes back was there at shelve time and is not
+   * new. No-op for a PR without a shelve record.
+   */
+  fillShelvedPRReasons(url: string, reasons: string[]): void {
+    const info = this.state.config.shelvedPRInfo?.[issueRefKey(url) ?? url];
+    if (!info || info.reasons) return;
+    info.reasons = reasons;
+    this.autoSave();
   }
 
   /**
@@ -1240,7 +1274,7 @@ export class StateManager {
    * @returns true if the PR is shelved
    */
   isPRShelved(url: string): boolean {
-    return this.state.config.shelvedPRUrls?.includes(url) ?? false;
+    return this.shelvedIndex(url) !== -1;
   }
 
   // === Dismiss / Undismiss Issues ===
@@ -1857,7 +1891,8 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
     let reason = `Gist initialization failed: ${errorMessage(err)}`;
     if (err instanceof GistFileSizeError) {
       reason = `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`;
-    } else if (err instanceof ConfigurationError) {
+    } else if (err instanceof ConfigurationError && !(err instanceof GistDiscoveryError)) {
+      // A GistDiscoveryError carries its own remedy; the scope hint would mislead (#1926).
       reason = `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`;
     }
     cause = { reason };

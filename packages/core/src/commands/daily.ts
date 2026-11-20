@@ -16,6 +16,9 @@ import {
   requireGitHubToken,
   renderGistWarning,
   CRITICAL_STATUSES,
+  shouldAutoUnshelve,
+  shelveReasonsOf,
+  withoutShelvedNeedsAddressing,
   applyStatusOverrides,
   computeRepoSignals,
   computeLedgerRepoSignals,
@@ -693,13 +696,16 @@ function partitionPRs(
   let digest: DailyDigest | undefined;
   try {
     batchOnFreshBaseline(stateManager, () => {
+      const shelvedPRInfo = stateManager.getState().config.shelvedPRInfo;
       for (const pr of overriddenPRs) {
         if (stateManager.isPRShelved(pr.url)) {
-          if (CRITICAL_STATUSES.has(pr.status)) {
+          if (shouldAutoUnshelve(pr, shelvedPRInfo)) {
             stateManager.unshelvePR(pr.url);
             autoUnshelvedPRs.push(toShelvedPRRef(pr));
             activePRs.push(pr);
           } else {
+            // Still shelved: record its reasons if the shelve could not (#1922).
+            stateManager.fillShelvedPRReasons(pr.url, shelveReasonsOf(pr));
             shelvedPRs.push(toShelvedPRRef(pr));
           }
         } else if (pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status)) {
@@ -716,7 +722,10 @@ function partitionPRs(
       // output) reflect dashboard/CLI reclassifications.
       // Note: digest.openPRs contains ALL fetched PRs (including shelved).
       // We override summary fields below to reflect active-only counts.
-      digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
+      digest = withoutShelvedNeedsAddressing(
+        prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs),
+        shelvedPRs,
+      );
 
       // Attach shelve info to digest
       digest.shelvedPRs = shelvedPRs;
@@ -756,7 +765,7 @@ function partitionPRs(
           (recorded ? `: ${recorded.message}` : '.'),
       );
     }
-    return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: persisted };
+    return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: withoutShelvedNeedsAddressing(persisted, shelvedPRs) };
   }
   return { activePRs, shelvedPRs, autoUnshelvedPRs, digest };
 }
