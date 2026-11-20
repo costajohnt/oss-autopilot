@@ -171,6 +171,9 @@ inherits it and refuses too.
 
 What it does, for each entry recorded with a `--worktree`:
 
+0. Without the handoff below: skips a worktree that does not resolve (symlinks
+   followed) to a directory under `~/.oss-autopilot/worktrees/`, since the
+   path comes from the preparer's report.
 1. Reads the worktree's remotes and picks the one whose URL owner is the
    authenticated login (case-insensitive on the parsed URL; remote names are
    never trusted). The URL read is the effective one, after any `pushurl` or
@@ -179,7 +182,26 @@ What it does, for each entry recorded with a `--worktree`:
    skipped with a reason.
 2. Refuses unless that repo is a fork (`fork: true` on the repo) that the login
    owns, so your own source repos never get `prep/*` branches.
-3. Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
+3. Requires the remote it picked to name the repository GitHub says the
+   branch belongs on: the PR's head repository, or `<login>/<repo>` for an
+   issue. That repository must also be a fork of the PR's (or issue's)
+   repository. A remote that names anything else is skipped with the reason.
+   The worktree's remote list is still read, and its config can rewrite what
+   that list shows (`pushurl`, `pushInsteadOf`), so the list is only compared
+   against GitHub's answer, never pushed to. Then copies the recorded branch
+   into a temporary bare repository (`git fetch` from the worktree's path)
+   and pushes from there to a URL built from that answer and the literal
+   host `github.com`: `git@github.com:<owner>/<repo>.git` when the matching
+   remote's own push URL is an ssh one for github.com (`git@github.com:...`
+   or `ssh://git@github.com/...`), otherwise
+   `https://github.com/<owner>/<repo>.git`. Only the transport is taken from
+   the remote, never its text; with the handoff there is no remote and the
+   push is https. When the clone has several remotes of yours, the one that
+   names the target is used. A PR whose head repository cannot be read is
+   skipped. The push itself reads no config, hook, credential helper or ssh
+   command from the worktree (#1937). The temporary repository is removed
+   afterwards.
+   Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
    head branch, never `--force`, never tags; a non-fast-forward is a skip with
    a reason.
 4. Records `pushedRef` and a compare URL (`<fork>/compare/<pr-head>...prep/<branch>`)
@@ -229,6 +251,12 @@ pushing stay inside the normal draft-approval flow there.
 
 ## Scheduling
 
+Claude Code's own documentation says permission rules on Bash arguments are
+fragile and not a security boundary. That applies to everything in this
+section: the boundary is the split-user setup above (or an OS sandbox), and
+the rules below are what keeps a run that follows its charter from publishing
+by accident.
+
 The CLI renders the launchd job:
 
 ```bash
@@ -238,7 +266,10 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight schedul
 Run it again after upgrading the plugin: the allowlist is baked into the
 plist when it is written, so a schedule installed before a change to the list
 (such as `gh issue view` leaving it, #1932) keeps the old one until this
-command rewrites it.
+command rewrites it. `doctor` warns when the installed plist's rules or
+environment differ from what this version would write (#1937). It checks the
+launchd plist only; a systemd unit or cron entry you wrote yourself is not
+compared.
 
 It writes `~/Library/LaunchAgents/com.oss-autopilot.overnight.plist`, a
 settings file `~/.oss-autopilot/reports/overnight-settings.json` that enables
@@ -247,27 +278,73 @@ job runs `claude -p "/oss-overnight" --permission-mode dontAsk
 --setting-sources "" --settings <that file> --allowedTools "<list>"`. The empty
 `--setting-sources` matters: permission allow rules union across settings
 layers, so a user whose own settings allow bare `Bash` would otherwise void the
-enumerated allowlist and keep only the deny list. Dropping the user's settings
+enumerated allowlist and keep only the deny list. The empty value is not
+documented by Claude Code, so this depends on behaviour that could change;
+`--restricted` (managed settings and `--settings` only, file tools confined
+to working directories) is the documented flag to evaluate as a replacement. Dropping the user's settings
 also drops their CLAUDE.md and hooks for this job; the plugin's own charter is
 what the run follows.
 headless runs start in manual permission mode where any unapproved tool call
 fails, so the plist pre-approves exactly the tools this command uses and
-nothing that mutates remote state: file tools, Task, git subcommands except
-`push` (in both the bare and the `git -C <dir>` form, since a preparer's
+nothing that mutates remote state: file tools, Task, the git subcommands the
+procedure uses and never `push` (in both the bare and the `git -C <dir>` form, since a preparer's
 worktree is never its cwd and `cd <dir> && git` is denied), the read side of `gh` (`pr view/checks/diff/list`, `run view/list`,
 `repo view`; no `gh issue view`, whose raw output is unfenced: issue threads
-are read with the CLI's `issue-thread`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
+are read with the CLI's `issue-thread`; no `gh api`; no `gh auth`, which can print the token), and `node`/`pnpm`/`npm` for the CLI
 and test suites. No `bash`, `sh`, or `npx`. A deny list (`--disallowedTools`,
 deny beats allow) additionally names `git push` and `git -C <dir> push`, every `gh pr`/`gh issue`
 write, `gh issue view`, `gh run rerun`, `gh api`, the npm/pnpm registry writes
 (`publish`/`unpublish`/`deprecate`), the direct shell escapes inside the
 allowed programs (`npm exec`/`npm x`, `pnpm dlx`/`pnpm exec`, `node
--e`/`--eval`/`-p`/`--print`), and `AskUserQuestion`. The one escape tool rules
-cannot close is a repo's own test scripts, which run arbitrary code — hence
-the dedicated-user advice below. The preparer agent's
-charter repeats the gate so an interactive `/oss-overnight` behaves the same. If running a repo's test
+-e`/`--eval`/`-p`/`--print`), and `AskUserQuestion`. Since #1937 it also names
+git option forms that run a program or inject config, for example `-c name=value`,
+`--config`/`--config-env`, `--exec-path`, `--exec`/`-x`, `--upload-pack`/`clone -u`,
+`--receive-pack`, `--template`, `--ext-diff`, `--output`, the `ext::` transport,
+with the abbreviations git accepts such as `--upl` and a value attached to a
+short option such as `-x<cmd>`; push by another name (`send-pack`,
+`http-push`), `git credential`, `gh auth`, `security`, and reads of the
+credential files (`~/.config/gh`, `~/.ssh`, `~/.npmrc`, `~/.netrc`,
+`~/.git-credentials`). Those `Read(~/...)` rules are documented syntax and
+best effort: they cover the file tools and the file commands Bash recognises,
+and a subprocess can still read the files. These rules match text anywhere in
+a command, a quoted commit message included, which is why the preparer
+commits with `git commit -F <file>` and never `-m` (it Reads the message file
+first when one is left from an earlier night, since Write will not overwrite
+an unread file; `cleanup` removes the file with its worktree). The list is
+not complete: other subcommands that run a program, such as `difftool
+--extcmd` or `bisect run`, pass through the `git -C <dir>` pattern. An option with quotes
+inside it (`--up"load-pack"`), or a short option bundled behind another
+(`-qu`), is not matched.
+
+The plist also sets a git environment. Pushes to a remote whose URL starts
+with `https://github.com/`, `git@github.com:`, `ssh://git@github.com/`,
+`ssh://git@github.com:22/` or `git@ssh.github.com:` are rewritten to a host
+that does not resolve (`pushInsteadOf`); any other spelling of the host, and
+a remote with an explicit `pushurl`, is not rewritten. Credential prompts
+fail, and the `ext::` transport is off.
+
+**None of this is a sandbox.** A rule is a pattern over the text of a command,
+so it stops a spelling, not a capability. Three things stay possible by design:
+
+- Running a repository's lint and tests runs that repository's code, and the
+  code of every dependency it installs, with everything the job's user can
+  reach: the GitHub token, ssh keys, the npm token, the rest of the home
+  directory.
+- `node` and `Write` are both needed, so the run can write a script, a git
+  hook, a git alias or a `package.json` script and then run it. Code that runs
+  this way is not bound by the rules or by the git environment above.
+- `git -C <dir> <subcommand>` has to allow any directory, and the pattern for
+  that also matches other git subcommands whose arguments end in an allowed
+  word. Quoting an option (`"-c"`) gets past a rule that spells it plainly.
+
+The lists keep a run that is following its charter from publishing by
+accident, and make a run that has been talked into something by a CI log or a
+review comment take a visible detour. They do not hold against one that sets
+out to get around them. If running a repo's test
 suite under your own credentials is more trust than you want, run the job as
-a dedicated user with no push credentials. Two caveats
+a dedicated user with no push credentials ("Split users" above): that is the
+boundary. The preparer agent's
+charter repeats the gate so an interactive `/oss-overnight` behaves the same. Two caveats
 from the headless docs: a bare `claude -p` reads `ANTHROPIC_API_KEY` from the
 environment (add it to the plist's `EnvironmentVariables` if your login is
 not picked up), and logs go to `~/.oss-autopilot/reports/overnight-launchd.log`.

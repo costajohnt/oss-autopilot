@@ -42,6 +42,7 @@ import type { DailyOutput, DailyWarning, PendingLearnings } from '../formatters/
 import type { AttentionSummary } from '../core/pr-attention.js';
 import { executeDailyCheck } from './daily.js';
 import { exportHandoff, handoffDir, pruneHandoffBundles, writeHandoffBundle } from './overnight-handoff.js';
+import { OVERNIGHT_ALLOWED_TOOLS, OVERNIGHT_DISALLOWED_TOOLS, OVERNIGHT_GIT_ENV } from './overnight-tool-rules.js';
 
 type OvernightBucket = 'prepare' | 'judgment';
 
@@ -647,144 +648,52 @@ export interface ScheduleOptions {
 
 export const LAUNCHD_LABEL = 'com.oss-autopilot.overnight';
 
-/**
- * Tools the headless run may use without a prompt (see commands/oss-overnight.md).
- *
- * The allowlist is the enforcement half of the no-side-effects gate, so it is
- * enumerated, not wildcarded: every git subcommand except `push`, only the
- * read side of `gh` (no `create`/`comment`/`merge`/`close`/`rerun`, no `gh api`
- * because it can POST, no `issue view` because its raw output is unfenced and
- * the `issue-thread` CLI command is the fenced read, #1932), and no `bash`/`sh`/`npx` shell escapes. `node`, `pnpm`
- * and `npm` stay because the CLI bundle and a repo's test suite are already
- * arbitrary code; the credential-bearing writes are what the list keeps out.
- * Stronger isolation (a dedicated user with no push credentials, or a
- * container) is the upgrade path if that trust level is not acceptable.
- */
-const GIT_SUBCOMMANDS = [
-  'clone',
-  'fetch',
-  'worktree',
-  'checkout',
-  'switch',
-  'branch',
-  'rebase',
-  'merge-base',
-  'status',
-  'diff',
-  'log',
-  'show',
-  'add',
-  'commit',
-  'rev-parse',
-  'remote',
-];
-const GH_READ_SUBCOMMANDS = [
-  'pr view',
-  'pr checks',
-  'pr diff',
-  'pr list',
-  'run view',
-  'run list',
-  'repo view',
-  'auth status',
-];
-/**
- * Deny list layered under the allowlist (deny beats allow): even if a future
- * allow rule widens, these never run unattended. `AskUserQuestion` is denied
- * because nobody can answer; the preparer agent reports `blocked` instead.
- */
-export const OVERNIGHT_DISALLOWED_TOOLS = [
-  'Bash(git push)',
-  'Bash(git push *)',
-  // The -C form of push: `git -C <dir> push` would otherwise slip past a
-  // prefix rule on `git push`.
-  'Bash(git * push)',
-  'Bash(git * push *)',
-  'Bash(gh pr create *)',
-  'Bash(gh pr comment *)',
-  'Bash(gh pr merge *)',
-  'Bash(gh pr close *)',
-  'Bash(gh pr edit *)',
-  'Bash(gh pr ready *)',
-  'Bash(gh issue create *)',
-  'Bash(gh issue comment *)',
-  'Bash(gh issue close *)',
-  // A read, denied anyway: its raw output is unfenced stranger text. Issue
-  // threads are read with the `issue-thread` CLI command (#1932).
-  'Bash(gh issue view)',
-  'Bash(gh issue view *)',
-  'Bash(gh run rerun *)',
-  'Bash(gh api *)',
-  // `npm`/`pnpm` are allowed for builds and tests, but a token in ~/.npmrc
-  // would let their registry writes ship a release unattended — exactly the
-  // credential-bearing writes the gate exists to keep out.
-  'Bash(npm publish)',
-  'Bash(npm publish *)',
-  'Bash(npm unpublish *)',
-  'Bash(npm deprecate *)',
-  'Bash(pnpm publish)',
-  'Bash(pnpm publish *)',
-  // Direct shell escapes inside the allowed programs (#1728): `npm exec` IS
-  // npx, `pnpm dlx`/`pnpm exec` run arbitrary packages, and `node -e` runs
-  // arbitrary JS — each can spawn `git push` and void the push denies above.
-  // The residual (a repo's own test scripts run arbitrary code) is documented
-  // in commands/oss-overnight.md and cannot be closed by tool rules.
-  'Bash(npm exec)',
-  'Bash(npm exec *)',
-  'Bash(npm x)',
-  'Bash(npm x *)',
-  'Bash(npm * exec *)',
-  'Bash(pnpm dlx *)',
-  'Bash(pnpm * dlx *)',
-  'Bash(pnpm exec)',
-  'Bash(pnpm exec *)',
-  'Bash(pnpm * exec *)',
-  'Bash(node -e *)',
-  'Bash(node --eval *)',
-  'Bash(node -p *)',
-  'Bash(node -pe *)',
-  'Bash(node --print *)',
-  // The same escapes after a leading flag (`node --no-warnings -e`,
-  // `pnpm --dir x exec`), mirroring the `git * push` deny.
-  'Bash(node * -e *)',
-  'Bash(node * --eval *)',
-  'Bash(node * -p *)',
-  'Bash(node * -pe *)',
-  'Bash(node * --print *)',
-  'Bash(npm * x *)',
-  // The `=` forms take no space, so the space-delimited denies above miss
-  // them: `node --eval=<js>` runs exactly like `node --eval <js>`.
-  'Bash(node --eval=*)',
-  'Bash(node * --eval=*)',
-  'Bash(node --print=*)',
-  'Bash(node * --print=*)',
-  'AskUserQuestion',
-].join(',');
-
-export const OVERNIGHT_ALLOWED_TOOLS = [
-  'Read',
-  'Edit',
-  'Write',
-  'Glob',
-  'Grep',
-  'Task',
-  // Both the bare and the `-C <dir>` forms: a preparer's worktree is never its
-  // cwd, and `cd <dir> && git ...` is denied under dontAsk, so without `-C`
-  // every preparer blocks (#1697).
-  ...GIT_SUBCOMMANDS.flatMap((sub) => [
-    `Bash(git ${sub})`,
-    `Bash(git ${sub} *)`,
-    `Bash(git -C * ${sub})`,
-    `Bash(git -C * ${sub} *)`,
-  ]),
-  ...GH_READ_SUBCOMMANDS.map((sub) => `Bash(gh ${sub} *)`),
-  'Bash(node *)',
-  'Bash(pnpm *)',
-  'Bash(npm *)',
-].join(',');
+export {
+  OVERNIGHT_ALLOWED_TOOLS,
+  OVERNIGHT_DISALLOWED_TOOLS,
+  OVERNIGHT_GIT_ENV,
+  PUSH_DISABLED_URL,
+} from './overnight-tool-rules.js';
 
 function xmlEscape(s: string): string {
   return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+/**
+ * The flags that make the rule lists the only permissions in force. An empty
+ * `--setting-sources` is what drops the user's own settings, and Claude Code
+ * does not document the empty value: the run depends on behaviour that could
+ * change. `--restricted` (managed settings and `--settings` only, file tools
+ * confined to working directories) is the documented flag to evaluate instead.
+ */
+const PERMISSION_FLAGS = ['--permission-mode', 'dontAsk', '--setting-sources', ''];
+
+function plistArg(value: string): string {
+  return `    <string>${xmlEscape(value)}</string>`;
+}
+
+function plistEnvLine(key: string, value: string): string {
+  return `    <key>${key}</key><string>${xmlEscape(value)}</string>`;
+}
+
+function gitEnvLines(): string[] {
+  return Object.entries(OVERNIGHT_GIT_ENV).map(([key, value]) => plistEnvLine(key, value));
+}
+
+/**
+ * Pure: whether an installed plist carries the rules and environment this
+ * version renders. The lists are baked in when the plist is written, so a
+ * schedule installed before an upgrade keeps the old ones (`doctor` warns).
+ */
+export function isScheduleCurrent(plist: string): boolean {
+  const required = [
+    PERMISSION_FLAGS.map((flag) => plistArg(flag)).join('\n'),
+    plistArg(OVERNIGHT_ALLOWED_TOOLS),
+    plistArg(OVERNIGHT_DISALLOWED_TOOLS),
+    plistEnvLine(UNATTENDED_ENV, '1'),
+    ...gitEnvLines(),
+  ];
+  return required.every((part) => plist.includes(part));
 }
 
 /**
@@ -814,10 +723,7 @@ export function renderLaunchdPlist(
     options.claudePath,
     '-p',
     '/oss-overnight',
-    '--permission-mode',
-    'dontAsk',
-    '--setting-sources',
-    '',
+    ...PERMISSION_FLAGS,
     '--settings',
     settingsPath,
     '--allowedTools',
@@ -835,7 +741,7 @@ export function renderLaunchdPlist(
     `  <key>Label</key><string>${LAUNCHD_LABEL}</string>`,
     '  <key>ProgramArguments</key>',
     '  <array>',
-    ...args.map((a) => `    <string>${xmlEscape(a)}</string>`),
+    ...args.map((a) => plistArg(a)),
     '  </array>',
     '  <key>StartCalendarInterval</key>',
     `  <dict><key>Hour</key><integer>${options.hour}</integer><key>Minute</key><integer>0</integer></dict>`,
@@ -848,7 +754,8 @@ export function renderLaunchdPlist(
     `    <key>PATH</key><string>${xmlEscape(`${path.dirname(process.execPath)}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`)}</string>`,
     // The CLI's own GitHub-writing commands refuse while this is set (see
     // assertAttended): `Bash(node *)` has to stay allowed, so the gate is in code.
-    `    <key>${UNATTENDED_ENV}</key><string>1</string>`,
+    plistEnvLine(UNATTENDED_ENV, '1'),
+    ...gitEnvLines(),
     '  </dict>',
     '</dict>',
     '</plist>',

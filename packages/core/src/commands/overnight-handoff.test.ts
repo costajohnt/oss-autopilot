@@ -49,8 +49,7 @@ function run(args: string[], cwd?: string): string {
 }
 
 /** The tick's clone: one commit on BRANCH, plus a planted pre-push hook and fsmonitor that would touch `marker`. */
-function tickClone(): { dir: string; sha: string } {
-  const dir = path.join(tmp, 'tick-clone');
+function tickClone(dir: string = path.join(tmp, 'tick-clone')): { dir: string; sha: string } {
   run(['init', '-q', '-b', 'main', dir]);
   fs.writeFileSync(path.join(dir, 'a.txt'), 'fix\n');
   run(['add', 'a.txt'], dir);
@@ -311,5 +310,66 @@ describe('push-prep from the handoff', () => {
     expect(out.results[0].status).toBe('planned');
     expect(sm.setLastOvernight).not.toHaveBeenCalled();
     expect(fs.existsSync(path.join(fork, 'refs', 'heads', 'prep'))).toBe(false);
+  });
+});
+
+describe('push-prep without the handoff (#1937)', () => {
+  it('pushes the branch tip from a private repo: config planted in the worktree is not read', async () => {
+    const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+    fs.mkdirSync(root, { recursive: true });
+    const { dir, sha } = tickClone(fs.mkdtempSync(path.join(root, 'facebook-react-')));
+    const evilFork = path.join(tmp, 'evil.git');
+    run(['init', '-q', '--bare', evilFork]);
+    // On top of tickClone's pre-push hook and fsmonitor: every key a push would consult.
+    const touch = `touch '${marker}'`;
+    run(['config', 'credential.helper', `!${touch}`], dir);
+    run(['config', 'core.askPass', path.join(tmp, 'fsmonitor.sh')], dir);
+    run(['config', 'core.sshCommand', touch], dir);
+    run(['config', `url.${evilFork}.insteadOf`, 'https://github.com/octocat/react.git'], dir);
+    // `git remote -v` shows the fork's GitHub URL (one rewrite); the push to that URL lands in the local bare repo.
+    run(['remote', 'add', 'origin', 'fake:react'], dir);
+    delete process.env[HANDOFF_ENV];
+    Object.assign(process.env, {
+      GIT_CONFIG_COUNT: '4',
+      GIT_CONFIG_KEY_3: 'url.https://github.com/octocat/react.git.insteadOf',
+      GIT_CONFIG_VALUE_3: 'fake:react',
+    });
+    const reportPath = path.join(tmp, 'reports', 'overnight-2026-09-22.md');
+    const sm = fakeStateManager({ ...handoffRecord({ worktree: dir }), reportPath });
+    vi.mocked(getStateManager).mockReturnValue(sm as never);
+    fakeOctokit();
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    expect(out.results).toEqual([
+      expect.objectContaining({ status: 'pushed', remote: 'origin', ref: `refs/heads/prep/${BRANCH}` }),
+    ]);
+    expect(run(['rev-parse', `refs/heads/prep/${BRANCH}`], fork)).toBe(sha);
+    expect(run(['for-each-ref'], evilFork)).toBe('');
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it('skips a worktree whose push URL was pointed at another repository of the login', async () => {
+    const root = path.join(os.homedir(), '.oss-autopilot', 'worktrees');
+    fs.mkdirSync(root, { recursive: true });
+    const { dir } = tickClone(fs.mkdtempSync(path.join(root, 'facebook-react-')));
+    run(['remote', 'add', 'origin', 'https://example.invalid/octocat/react.git'], dir);
+    run(['config', 'remote.origin.pushurl', 'https://github.com/octocat/other.git'], dir);
+    delete process.env[HANDOFF_ENV];
+    const reportPath = path.join(tmp, 'reports', 'overnight-2026-09-22.md');
+    const sm = fakeStateManager({ ...handoffRecord({ worktree: dir }), reportPath });
+    vi.mocked(getStateManager).mockReturnValue(sm as never);
+    fakeOctokit();
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    expect(out.results[0]).toMatchObject({
+      status: 'skipped',
+      reason: 'remote origin points at octocat/other, not octocat/react',
+    });
+    expect(run(['for-each-ref'], fork)).toBe('');
+    expect(fs.existsSync(marker)).toBe(false);
   });
 });

@@ -103,6 +103,31 @@ describe('cleanWorktrees: working tree contents', () => {
     expect(git(ctx.clone, ['worktree', 'list'])).not.toContain('octo-repo-12');
   });
 
+  it('removes the commit message file beside a worktree with it, and never reports one (#1937)', () => {
+    const dir = addWorktree('octo-repo-13');
+    const kept = addWorktree('octo-repo-14');
+    fs.writeFileSync(path.join(kept, 'README.md'), 'edited\n');
+    fs.writeFileSync(`${dir}.commit-msg.txt`, 'fix: a\n');
+    fs.writeFileSync(`${kept}.commit-msg.txt`, 'fix: b\n');
+    const unrelated = path.join(ctx.dataDir, 'worktrees', 'notes.commit-msg.txt');
+    fs.writeFileSync(unrelated, 'not beside a preparer worktree name\n');
+
+    const dryRun = cleanWorktrees(ctx.dataDir, DRY_RUN, OLD);
+    expect(dryRun.worktrees.map((w) => path.basename(w.path)).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'notes.commit-msg.txt',
+      'octo-repo-13',
+      'octo-repo-14',
+    ]);
+    expect(fs.existsSync(`${dir}.commit-msg.txt`)).toBe(true);
+
+    expect(cleanWorktrees(ctx.dataDir, APPLY, OLD).errors).toEqual([]);
+    expect(fs.existsSync(dir)).toBe(false);
+    expect(fs.existsSync(`${dir}.commit-msg.txt`)).toBe(false);
+    // A kept worktree keeps its message file; a file with another name is not touched.
+    expect(fs.existsSync(`${kept}.commit-msg.txt`)).toBe(true);
+    expect(fs.existsSync(unrelated)).toBe(true);
+  });
+
   it('keeps a worktree with a modified file', () => {
     const dir = addWorktree('octo-repo-1');
     fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
