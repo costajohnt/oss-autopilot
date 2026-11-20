@@ -1,6 +1,7 @@
 /**
- * Tests for whose comments make a PR need a response (#1921): issue comments
- * count only from accounts with standing on the PR, on both transports.
+ * Tests for whose comments make a PR need a response (#1921): an issue comment
+ * from a passer-by (no tie to the repository or the PR) does not, on both
+ * transports.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -52,7 +53,7 @@ function approvedWith(comment: AssemblyComment, reviews = [APPROVAL]) {
   return assembleFetchedPR(signals({ reviews, comments: [comment] }), CONFIG, undefined);
 }
 
-describe('issue comments count toward needs_response only from accounts with standing (#1921)', () => {
+describe("a passer-by's issue comment does not count toward needs_response (#1921)", () => {
   it('a drive-by "any update?" from an account with no association leaves an approved PR pending_merge', async () => {
     const pr = await approvedWith(commentBy('passer-by', 'NONE'));
     expect(pr.hasUnrespondedComment).toBe(false);
@@ -68,12 +69,12 @@ describe('issue comments count toward needs_response only from accounts with sta
     expect(pr.actionReason).toBe('needs_response');
   });
 
-  it.each(['OWNER', 'MEMBER', 'COLLABORATOR'])('a comment from a %s counts', async (association) => {
+  it.each(['OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR'])('a comment from a %s counts', async (association) => {
     const pr = await approvedWith(commentBy('someone', association));
     expect(pr.actionReason).toBe('needs_response');
   });
 
-  it.each(['NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'CONTRIBUTOR', 'MANNEQUIN'])(
+  it.each(['NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'MANNEQUIN'])(
     'a comment from a %s who has not reviewed the PR does not count',
     async (association) => {
       const pr = await approvedWith(commentBy('someone', association));
@@ -87,25 +88,29 @@ describe('issue comments count toward needs_response only from accounts with sta
     expect(pr.actionReason).toBe('needs_response');
   });
 
-  it.each(['APPROVED', 'CHANGES_REQUESTED'])(
-    'a comment from a CONTRIBUTOR whose review on the PR is %s counts',
+  it.each(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED'])(
+    'a comment from an account with no association whose review on the PR is %s counts',
     async (state) => {
-      const pr = await approvedWith(commentBy('codeowner', 'CONTRIBUTOR'), [
-        APPROVAL,
-        reviewBy('CodeOwner', state, 'CONTRIBUTOR'),
-      ]);
+      const pr = await approvedWith(commentBy('codeowner', 'NONE'), [APPROVAL, reviewBy('CodeOwner', state, 'NONE')]);
       expect(pr.lastMaintainerComment?.author).toBe('codeowner');
       expect(pr.actionReasons).toContain('needs_response');
     },
   );
 
-  it('a CONTRIBUTOR who only left a comment-only review gains no standing for issue comments', async () => {
-    const pr = await approvedWith(commentBy('reader', 'CONTRIBUTOR'), [
-      APPROVAL,
-      { ...reviewBy('reader', 'COMMENTED', 'CONTRIBUTOR'), body: 'Thanks!', submitted_at: daysAgo(20) },
-    ]);
-    expect(pr.hasUnrespondedComment).toBe(false);
-    expect(pr.waitReason).toBe('pending_merge');
+  it('a comment from an account with no association that left an inline review comment counts', async () => {
+    const pr = await assembleFetchedPR(
+      signals({
+        reviews: [APPROVAL],
+        comments: [commentBy('reader', 'NONE')],
+        reviewComments: [
+          { id: 31, user: { login: 'Reader' }, body: 'Typo here.', created_at: daysAgo(20), pull_request_review_id: 9 },
+        ],
+      }),
+      CONFIG,
+      undefined,
+    );
+    expect(pr.lastMaintainerComment?.author).toBe('reader');
+    expect(pr.actionReason).toBe('needs_response');
   });
 
   it('a review from an account with no association still counts: reviews are unchanged', async () => {
@@ -153,7 +158,7 @@ describe('issue comments count toward needs_response only from accounts with sta
   });
 });
 
-describe('checkUnrespondedComments lists only comments from accounts with standing (#1921)', () => {
+describe("checkUnrespondedComments leaves a passer-by's comments out (#1921)", () => {
   it('skips the passer-by and keeps the maintainer', () => {
     const result = checkUnrespondedComments(
       [

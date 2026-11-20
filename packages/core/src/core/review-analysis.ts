@@ -189,13 +189,29 @@ export function getFirstMaintainerResponseAt(
   return earliest;
 }
 
-/** Lower-cased logins of the humans who approved or requested changes on the PR. */
-function verdictReviewers(reviews: VerdictReview[]): Set<string> {
+/**
+ * Associations GitHub reports for an account with no tie to the repository.
+ * CONTRIBUTOR is not one of them: an outside token sees a maintainer whose
+ * organization membership is private as CONTRIBUTOR.
+ */
+const NO_STANDING_ASSOCIATIONS: ReadonlySet<string> = new Set([
+  'NONE',
+  'FIRST_TIMER',
+  'FIRST_TIME_CONTRIBUTOR',
+  'MANNEQUIN',
+]);
+
+/** Lower-cased logins of everyone who submitted a review, in any state, or an inline review comment on the PR. */
+function prReviewers(
+  reviews: Array<{ user?: { login?: string } | null }>,
+  reviewComments: ReviewComment[],
+): Set<string> {
   const logins = new Set<string>();
-  for (const review of reviews) {
-    const login = review.user?.login;
-    const hasVerdict = review.state === 'APPROVED' || review.state === 'CHANGES_REQUESTED';
-    if (login && hasVerdict && !isBotReview(review)) logins.add(login.toLowerCase());
+  for (const list of [reviews, reviewComments]) {
+    for (const item of list) {
+      const login = item.user?.login;
+      if (login) logins.add(login.toLowerCase());
+    }
   }
   return logins;
 }
@@ -205,12 +221,16 @@ function verdictReviewers(reviews: VerdictReview[]): Set<string> {
  * Combines issue comments and review comments into a timeline,
  * then finds maintainer comments after the user's last comment.
  *
- * Whose items count (#1921): every review, and an issue comment when its
- * author is an OWNER / MEMBER / COLLABORATOR ({@link isMaintainerEngagement})
- * or has approved or requested changes on this PR (codeowners often show as
- * CONTRIBUTOR). A passer-by's "any update?" does not. An issue comment with no
- * known association counts, since missing a maintainer costs more than
- * surfacing a passer-by.
+ * Whose items count (#1921): every review from another human, and every issue
+ * comment from another human except a passer-by's. A passer-by is an account
+ * whose association is NONE, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR or MANNEQUIN
+ * ({@link NO_STANDING_ASSOCIATIONS}) and that has submitted no review (in any
+ * state) and no inline review comment on this PR. So an OWNER, MEMBER,
+ * COLLABORATOR or CONTRIBUTOR always counts, anyone who reviewed the PR counts
+ * whatever their association, and an issue comment with no association data
+ * counts: missing a maintainer costs more than surfacing a passer-by. This is
+ * deliberately wider than {@link isMaintainerEngagement}, which drives the
+ * dormancy clock.
  */
 export function checkUnrespondedComments(
   comments: Array<ActorFields & { body?: string | null; created_at: string }>,
@@ -237,11 +257,11 @@ export function checkUnrespondedComments(
     createdAt: string;
     isUser: boolean;
     reviewId?: number;
-    /** True for an issue comment from an account with no standing on the PR (#1921). */
+    /** True for an issue comment from an account with no tie to the repository or the PR (#1921). */
     isPasserBy?: boolean;
   }> = [];
   const usernameLower = username.toLowerCase();
-  const reviewers = verdictReviewers(reviews);
+  const reviewers = prReviewers(reviews, reviewComments);
 
   for (const comment of comments) {
     const author = comment.user?.login || 'unknown';
@@ -251,7 +271,8 @@ export function checkUnrespondedComments(
       body: comment.body || '',
       createdAt: comment.created_at,
       isUser: author.toLowerCase() === usernameLower,
-      isPasserBy: !isMaintainerEngagement(comment, username, 'issue-comment') && !reviewers.has(author.toLowerCase()),
+      isPasserBy:
+        NO_STANDING_ASSOCIATIONS.has(comment.author_association ?? '') && !reviewers.has(author.toLowerCase()),
     });
   }
 
@@ -308,7 +329,7 @@ export function checkUnrespondedComments(
     if (item.isUser) continue; // Skip user's own comments
     if (item.author === 'unknown') continue; // Skip deleted/null accounts
     if (isBotAuthor(item.author, item.userType)) continue; // Skip bots
-    if (item.isPasserBy) continue; // Skip accounts with no standing on the PR (#1921)
+    if (item.isPasserBy) continue; // Skip accounts with no tie to the repository or the PR (#1921)
     // Skip pure acknowledgments here, not after the loop, so a later "thanks"
     // does not clear an earlier unanswered request (#1916). A review with
     // inline comments is never skipped: those carry feedback beyond the
