@@ -16,7 +16,7 @@ import {
   isRateLimitOrAuthError,
 } from './errors.js';
 import { debug, warn } from './logger.js';
-import { paginateAllDetailed } from './pagination.js';
+import { paginateAllDetailed, searchAllPages, type SearchPagesResult } from './pagination.js';
 import type { ReviewedPRActivity, ReviewedPRActivityList, ReviewedPRRef } from './reviewed-prs.js';
 import { isOwnRepo, isUntrackedOrg, parseGitHubUrl } from './urls.js';
 
@@ -127,49 +127,27 @@ class ReviewedPRFilter {
   }
 }
 
-/** One search's items across the pages that were read. */
-interface SearchPages {
-  items: SearchItem[];
-  /** `total_count` from the last page read; 0 when none was. */
-  totalCount: number;
-  /** Pages read successfully. */
-  pagesRead: number;
-  /** GitHub flagged a page `incomplete_results` (the search timed out server-side and returned what it had). */
-  incomplete: boolean;
-  /** The page whose request failed, with the error; the pages before it were kept. */
-  failure?: { page: number; error: unknown };
-}
+type SearchPages = SearchPagesResult<SearchItem>;
 
 /**
  * Read one search page by page, most recently updated first, up to
- * {@link REVIEWED_PR_SEARCH_MAX_PAGES}. A page that fails ends the search
- * with what was read so far and the failure recorded; a rate-limit or auth
+ * {@link REVIEWED_PR_SEARCH_MAX_PAGES} (`searchAllPages`). A page that fails
+ * ends the search with what was read so far and the failure recorded, the
+ * first page included: the other search still runs. A rate-limit or auth
  * error propagates instead.
  */
 async function searchPages(octokit: Octokit, q: string): Promise<SearchPages> {
-  const result: SearchPages = { items: [], totalCount: 0, pagesRead: 0, incomplete: false };
-  for (let page = 1; page <= REVIEWED_PR_SEARCH_MAX_PAGES; page++) {
-    let data: Awaited<ReturnType<Octokit['search']['issuesAndPullRequests']>>['data'];
-    try {
-      ({ data } = await octokit.search.issuesAndPullRequests({
-        q,
-        page,
-        sort: 'updated',
-        order: 'desc',
-        per_page: SEARCH_PER_PAGE,
-      }));
-    } catch (error) {
-      if (isRateLimitOrAuthError(error)) throw error;
-      result.failure = { page, error };
-      return result;
-    }
-    result.pagesRead = page;
-    result.totalCount = data.total_count;
-    if (data.incomplete_results) result.incomplete = true;
-    result.items.push(...data.items);
-    if (data.items.length < SEARCH_PER_PAGE || result.items.length >= result.totalCount) break;
+  try {
+    return await searchAllPages<SearchItem>(
+      (page) =>
+        octokit.search.issuesAndPullRequests({ q, page, sort: 'updated', order: 'desc', per_page: SEARCH_PER_PAGE }),
+      REVIEWED_PR_SEARCH_MAX_PAGES,
+      SEARCH_PER_PAGE,
+    );
+  } catch (error) {
+    if (isRateLimitOrAuthError(error)) throw error;
+    return { items: [], totalCount: 0, pagesRead: 0, incomplete: false, truncated: true, failure: { page: 1, error } };
   }
-  return result;
 }
 
 /** Why a search did not cover every result: a failed page, else the page cap; undefined when it did. */

@@ -21,7 +21,12 @@ import {
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
+import {
+  emptyPRCountsResult,
+  fetchMergedPRsSince,
+  fetchClosedPRsSince,
+  type RecentListTruncation,
+} from '../core/github-stats.js';
 import { parseGitHubUrl, issueRefKey } from '../core/urls.js';
 import {
   isBelowMinStars,
@@ -306,12 +311,18 @@ export interface DashboardFetchResult {
  * time that does not parse, issues past the comment-fetch cap) collapse to
  * one label: the monitor already logged each one, and the banner lists
  * operations. Engaged issues whose batched lookup failed were not checked
- * at all this run, so they get their own label.
+ * at all this run, so they get their own label, and so does a comment
+ * search that returned a partial list (#1928).
  */
-function engagedScanLabels(result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures'>): string[] {
+function engagedScanLabels(
+  result: Pick<FetchCommentedIssuesResult, 'warnings' | 'lookupFailures' | 'searchTruncation'>,
+): string[] {
   const labels: string[] = [];
   if (result.lookupFailures > 0) labels.push('look up engaged issues');
-  if (result.warnings.length > 0) labels.push('scan engaged issues');
+  // A partial comment search is named on its own (#1928); its sentence is one of `warnings`.
+  const { searchTruncation } = result;
+  if (searchTruncation !== undefined) labels.push(searchTruncation);
+  if (result.warnings.length > (searchTruncation === undefined ? 0 : 1)) labels.push('scan engaged issues');
   return labels;
 }
 
@@ -374,6 +385,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     };
   };
 
+  const recentListTruncations: RecentListTruncation[] = [];
   const [
     { prs, failures, warnings: fetchWarnings },
     recentlyClosedPRs,
@@ -384,8 +396,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     newClosedPRs,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
-    prMonitor.fetchRecentlyClosedPRs().catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
-    prMonitor.fetchRecentlyMergedPRs().catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
+    prMonitor
+      .fetchRecentlyClosedPRs(7, recentListTruncations)
+      .catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
+    prMonitor
+      .fetchRecentlyMergedPRs(7, recentListTruncations)
+      .catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
     prMonitor
       .fetchUserMergedPRCounts(starFilter)
       .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>())),
@@ -447,6 +463,8 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       warn(MODULE, message);
     }
   }
+  // Same for a recent-list truncation (#1928): the short label here, the full sentence already logged.
+  partialFailures.push(...recentListTruncations.map((truncation) => truncation.label));
 
   // Wrap all state mutations in a batch for a single disk write.
   // try-catch: save errors should not crash the dashboard data fetch.
