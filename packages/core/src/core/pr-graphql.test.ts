@@ -455,6 +455,69 @@ describe('normalizePRNode', () => {
   });
 });
 
+type RollupWorkflowRun = { workflow: { databaseId: number } } | null;
+const CI_WORKFLOW: RollupWorkflowRun = { workflow: { databaseId: 100 } };
+const DOCS_WORKFLOW: RollupWorkflowRun = { workflow: { databaseId: 200 } };
+
+const buildRun = (workflowRun: RollupWorkflowRun, conclusion: string, startedAt: string) => ({
+  conclusion,
+  startedAt,
+  __typename: 'CheckRun',
+  name: 'build',
+  status: 'COMPLETED',
+  checkSuite: { workflowRun },
+});
+
+const ciStatusForRollup = (nodes: unknown[]) => {
+  const commit = {
+    oid: 'abc',
+    authoredDate: '2026-02-06T00:00:00Z',
+    author: { user: { login: 'contributor' } },
+    status: null,
+    statusCheckRollup: { contexts: { nodes, totalCount: nodes.length } },
+  };
+  const outcome = normalizePRNode(makeNode({ commits: { nodes: [{ commit }] } }));
+  if (outcome.kind !== 'ok') throw new Error('expected ok');
+  return outcome.data.ciStatus;
+};
+
+describe('normalizePRNode same-named jobs across workflows (#1917)', () => {
+  it('keeps an earlier failure when a same-named job in another workflow passes later', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'FAILURE', '2026-02-06T00:00:00Z'),
+      buildRun(DOCS_WORKFLOW, 'SUCCESS', '2026-02-06T00:01:00Z'),
+    ]);
+    expect(ciStatus.status).toBe('failing');
+    expect(ciStatus.failingCheckNames).toEqual(['build']);
+  });
+
+  it('still drops a superseded failure when the same workflow is re-triggered', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'FAILURE', '2026-02-06T00:00:00Z'),
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:01:00Z'),
+    ]);
+    expect(ciStatus.status).toBe('passing');
+  });
+
+  it('collapses a cancelled earlier run of the same workflow into the later passing one', () => {
+    // A push run cancelled by a shared concurrency group, then the pull_request run.
+    const ciStatus = ciStatusForRollup([
+      buildRun(CI_WORKFLOW, 'CANCELLED', '2026-02-06T00:00:00Z'),
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:01:00Z'),
+    ]);
+    expect(ciStatus.status).toBe('passing');
+  });
+
+  it('keeps a third-party check run (no workflow run) apart from a same-named Actions job', () => {
+    const ciStatus = ciStatusForRollup([
+      buildRun(null, 'FAILURE', '2026-02-06T00:00:00Z'),
+      buildRun(CI_WORKFLOW, 'SUCCESS', '2026-02-06T00:01:00Z'),
+    ]);
+    expect(ciStatus.status).toBe('failing');
+    expect(ciStatus.failingCheckNames).toEqual(['build']);
+  });
+});
+
 describe('batchFetchPRDetails', () => {
   it('routes every PR to REST when the client has no graphql method', async () => {
     const octokit = {} as any;

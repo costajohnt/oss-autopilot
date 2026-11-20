@@ -309,6 +309,58 @@ describe('mergeStatuses', () => {
   });
 });
 
+describe('computeCIStatus check-run dedupe (#1917)', () => {
+  const noStatuses = { state: 'success', statuses: [] };
+
+  it('keeps same-named jobs from different workflows as separate checks', () => {
+    const result = computeCIStatus(
+      [
+        // The failing job started first: a bare-name dedupe would drop it.
+        {
+          name: 'build',
+          conclusion: 'failure',
+          status: 'completed',
+          started_at: '2026-02-05T00:00:00Z',
+          workflowId: 100,
+        },
+        {
+          name: 'build',
+          conclusion: 'success',
+          status: 'completed',
+          started_at: '2026-02-05T00:01:00Z',
+          workflowId: 200,
+        },
+      ],
+      noStatuses,
+    );
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['build']);
+  });
+
+  it('still keeps only the latest run of a job within one workflow', () => {
+    const result = computeCIStatus(
+      [
+        {
+          name: 'build',
+          conclusion: 'failure',
+          status: 'completed',
+          started_at: '2026-02-05T00:00:00Z',
+          workflowId: 100,
+        },
+        {
+          name: 'build',
+          conclusion: 'success',
+          status: 'completed',
+          started_at: '2026-02-05T00:01:00Z',
+          workflowId: 100,
+        },
+      ],
+      noStatuses,
+    );
+    expect(result.status).toBe('passing');
+  });
+});
+
 describe('categorizeCIStatus (#1272)', () => {
   function actionable(name: string): ClassifiedCheck {
     return { name, category: 'actionable' };
