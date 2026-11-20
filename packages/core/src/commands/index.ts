@@ -123,11 +123,19 @@ export {
 } from './list-mark-done.js';
 /** Daily merge-loop reconciliation — auto-mark curated-list entries whose PR merged (#1463). */
 export { reconcileMergedPRsWithList, findListEntryUrlByPrUrl } from './merge-loop.js';
-/** Check if new files are properly referenced/integrated. @deprecated Since #1948; will be removed in the next major version. */
+/**
+ * Check if new files are properly referenced/integrated.
+ *
+ * @deprecated Since #1948; will be removed in the next major version.
+ */
 export { runCheckIntegration } from './check-integration.js';
 /** System-health diagnostic — verifies tokens, bundle, state, scout, rate limit. */
 export { runDoctor, type DoctorCheck, type DoctorCheckStatus, type DoctorOutput } from './doctor.js';
-/** Detect formatters/linters configured in a local repository (#703). @deprecated Since #1948; will be removed in the next major version. */
+/**
+ * Detect formatters/linters configured in a local repository (#703).
+ *
+ * @deprecated Since #1948; will be removed in the next major version.
+ */
 export { runDetectFormatters } from './detect-formatters.js';
 /** Scan for locally cloned repos. */
 export { runLocalRepos } from './local-repos.js';
@@ -163,7 +171,11 @@ export type {
   VetListItemStatus,
 } from '../formatters/json.js';
 export type { ConfigOutput, ParseIssueListOutput, ParsedIssueItem, LocalReposOutput } from '../formatters/json.js';
-/** Output types of the deprecated detect-formatters and orphan-files commands. @deprecated Since #1948; will be removed in the next major version. */
+/**
+ * Output types of the deprecated detect-formatters and orphan-files commands.
+ *
+ * @deprecated Since #1948; will be removed in the next major version.
+ */
 export type { DetectFormattersOutput, CheckIntegrationOutput } from '../formatters/json.js';
 export type { MoveOutput, MoveTarget } from './move.js';
 export type {
