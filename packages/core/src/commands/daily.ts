@@ -60,7 +60,6 @@ import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { debug, warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
-import { findRepoTransfers } from '../core/repo-score-manager.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
@@ -86,6 +85,7 @@ import {
 import { fenceMergedPRNotes, runMergedPRNotesPhase } from './daily-merged-pr-notes.js';
 import { fenceReviewedPR, runReviewedPRsPhase } from './daily-reviewed-prs.js';
 import { batchOnFreshBaseline, filterDismissedIssues } from './daily-dismiss-filter.js';
+import { syncLedgersWithGitHub } from './daily-ledger.js';
 
 const MODULE = 'daily';
 
@@ -455,13 +455,9 @@ async function updateRepoScores(
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
   try {
     batchOnFreshBaseline(stateManager, () => {
-      // Re-key transferred/renamed repos before anything reads repoScores, so
-      // the old name isn't zeroed here and then re-bumped from stored PR URLs
-      // on the next load (which double counted its merges in getStats).
-      const stored = [...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()];
-      for (const [from, to] of findRepoTransfers(stored, searchedPRs)) {
-        stateManager.renameRepo(from, to);
-      }
+      // Re-key transferred repos and evict reopened/merged PRs from the closed
+      // ledger before anything below reads or writes repoScores (#1923).
+      syncLedgersWithGitHub(stateManager, searchedPRs, prs);
 
       // Reset stale repos first (so excluded/removed repos get zeroed).
       // Guard: if the API returned zero results but we have existing repos with merged PRs,

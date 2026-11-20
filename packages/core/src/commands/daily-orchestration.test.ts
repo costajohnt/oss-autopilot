@@ -61,6 +61,7 @@ const mockAddMergedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 const mockGetMergedPRs = vi.fn((): StoredMergedPR[] => []);
 const mockRenameRepo = vi.fn();
+const mockEvictClosedPRs = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
@@ -106,6 +107,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       releaseIssue: mockReleaseIssue,
       renameRepo: mockRenameRepo,
       tryReconcilePRCounts: vi.fn(),
+      evictClosedPRs: mockEvictClosedPRs,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
@@ -761,6 +763,20 @@ describe('executeDailyCheck() — repo score updates', () => {
     expect(mockRenameRepo).toHaveBeenCalledWith('old-owner/tool', 'new-org/tool');
     // The rename must land before the merged counts are written.
     expect(mockRenameRepo.mock.invocationCallOrder[0]).toBeLessThan(mockUpdateRepoScore.mock.invocationCallOrder[0]);
+  });
+
+  it('evicts reopened PRs from the closed ledger before the closed counts are written (#1923)', async () => {
+    const reopened = makePR({ repo: 'owner/repo', number: 4, status: 'waiting_on_maintainer' });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [reopened], failures: [] });
+    mockFetchUserClosedPRCounts.mockResolvedValue(makeClosedResult(new Map([['owner/other', 2]])));
+
+    await executeDailyCheck('test-token');
+
+    expect(mockEvictClosedPRs).toHaveBeenCalledWith([reopened.url]);
+    const closedWrite = mockUpdateRepoScore.mock.calls.findIndex(([repo]) => repo === 'owner/other');
+    expect(mockEvictClosedPRs.mock.invocationCallOrder[0]).toBeLessThan(
+      mockUpdateRepoScore.mock.invocationCallOrder[closedWrite],
+    );
   });
 
   it('surfaces a repo-scores warning when only SOME merged count updates fail (#1448)', async () => {

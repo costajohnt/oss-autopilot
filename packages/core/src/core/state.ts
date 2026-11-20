@@ -911,6 +911,8 @@ export class StateManager {
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
+    // A PR that merged after being recorded closed leaves the closed ledger (#1923).
+    repoScoring.evictClosedPRs(this.state, []);
     this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
@@ -977,6 +979,18 @@ export class StateManager {
     this.tryReconcilePRCounts();
     this.autoSave();
     return { added: newPRs.length, dropped };
+  }
+
+  /**
+   * Remove closed-ledger entries that are open again (`openUrls`) or sit in
+   * the merged ledger, lowering the affected repos' closed counts with them
+   * (#1923). See repoScoring.evictClosedPRs.
+   * @returns the number of entries removed
+   */
+  evictClosedPRs(openUrls: Iterable<string>): number {
+    const evicted = repoScoring.evictClosedPRs(this.state, openUrls);
+    if (evicted > 0) this.autoSave();
+    return evicted;
   }
 
   /** Returns the most recent close date, used as a watermark for incremental fetching. */

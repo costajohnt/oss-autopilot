@@ -311,6 +311,41 @@ function reconcileField(
 }
 
 /**
+ * Drop closed-ledger entries that are no longer closed without merge (#1923):
+ * every URL in the merged ledger, plus `notClosedUrls` (PRs the caller just
+ * saw open). Closed entries matching neither stay, so a closed PR that is
+ * simply outside the current fetch window is kept. Matching is by exact URL,
+ * the same key both ledgers deduplicate on.
+ *
+ * A repo's `closedWithoutMergeCount` drops to its new ledger count when it was
+ * at or below the old one, i.e. when the ledger could have been what held it
+ * up. A higher counter came from the search and is left for daily to rewrite.
+ *
+ * Idempotent. Returns the number of entries removed.
+ */
+export function evictClosedPRs(state: AgentState, notClosedUrls: Iterable<string>): number {
+  const closed = state.closedPRs ?? [];
+  const merged = state.mergedPRs ?? [];
+  const gone = new Set(notClosedUrls);
+  for (const pr of merged) gone.add(pr.url);
+  const kept = closed.filter((pr) => !gone.has(pr.url));
+  if (kept.length === closed.length) return 0;
+
+  const before = countByRepo(closed);
+  const after = countByRepo(kept);
+  state.closedPRs = kept;
+  for (const [repo, was] of before) {
+    const now = after.get(repo) ?? 0;
+    const current = state.repoScores[repo]?.closedWithoutMergeCount ?? 0;
+    if (current > now && current <= was) {
+      debug(MODULE, `Evicting reopened/merged PRs: ${repo} closedWithoutMergeCount ${current} → ${now}`);
+      updateRepoScore(state, repo, { closedWithoutMergeCount: now });
+    }
+  }
+  return closed.length - kept.length;
+}
+
+/**
  * Detect repos that GitHub now reports under a different owner/name.
  *
  * Stored PR URLs keep whatever repo name was current when they were

@@ -1285,6 +1285,37 @@ describe('StateManager merged PRs', () => {
     });
   });
 
+  describe('closed ledger eviction (#1923)', () => {
+    const url = 'https://github.com/a/b/pull/1';
+    const other = 'https://github.com/a/b/pull/2';
+
+    it('addMergedPRs removes a PR recorded closed that later merged, and the closed count drops', () => {
+      stateManager.addClosedPRs([
+        { url, title: 'reopened', closedAt: '2025-06-01T00:00:00Z' },
+        { url: other, title: 'really closed', closedAt: '2025-06-02T00:00:00Z' },
+      ]);
+      expect(stateManager.getRepoScore('a/b')?.closedWithoutMergeCount).toBe(2);
+
+      stateManager.addMergedPRs([{ url, title: 'reopened', mergedAt: '2025-06-10T00:00:00Z' }]);
+
+      expect(stateManager.getClosedPRs().map((pr) => pr.url)).toEqual([other]);
+      expect(stateManager.getRepoScore('a/b')).toMatchObject({ mergedPRCount: 1, closedWithoutMergeCount: 1 });
+    });
+
+    it('evictClosedPRs removes a PR seen open again and keeps the ones it was not given', () => {
+      stateManager.addClosedPRs([
+        { url, title: 'reopened', closedAt: '2025-06-01T00:00:00Z' },
+        { url: other, title: 'really closed', closedAt: '2025-06-02T00:00:00Z' },
+      ]);
+
+      expect(stateManager.evictClosedPRs([url])).toBe(1);
+      expect(stateManager.evictClosedPRs([url])).toBe(0);
+
+      expect(stateManager.getClosedPRs().map((pr) => pr.url)).toEqual([other]);
+      expect(stateManager.getRepoScore('a/b')?.closedWithoutMergeCount).toBe(1);
+    });
+  });
+
   describe('markPRCommentsFetched / markPRLearningsExtracted (#867)', () => {
     const URL_M = 'https://github.com/a/b/pull/1';
     const URL_C = 'https://github.com/a/b/pull/2';
