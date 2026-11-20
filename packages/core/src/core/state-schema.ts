@@ -772,6 +772,13 @@ export function malformedWorkClaimCount(raw: unknown, parsed: { workClaims: read
  * Inferred types drop the passthrough index signature ({@link KnownKeys}) so a
  * misspelled key still fails to compile.
  */
+/** One user approval of a repo's stored guidelines text (#1929). */
+export const GuidelinesReviewSchema = z.object({
+  reviewedAt: z.string(),
+  /** Hex SHA-256 of the guidelines markdown the user approved. */
+  sha256: z.string(),
+});
+
 export const AgentStateSchema = z
   .object({
     version: z.literal(4),
@@ -862,11 +869,23 @@ export const AgentStateSchema = z
      * entries are ignored on read and pruned on write.
      */
     workClaims: WorkClaimListSchema,
+
+    /**
+     * User review stamps for stored per-repo guidelines (#1929), keyed by
+     * `owner/repo`. Written only by `guidelines store`, which requires the
+     * caller to assert the user approved the exact text. The hash ties the
+     * stamp to that text: a guidelines file rewritten by a client that predates
+     * the review requirement no longer matches and reads as unreviewed.
+     * Optional so state written by older clients still parses; a map this
+     * release cannot read counts as no reviews instead of rejecting the state.
+     */
+    guidelinesReviews: z.record(z.string(), GuidelinesReviewSchema).optional().catch(undefined),
   })
   .passthrough();
 
 // ── Inferred types ───────────────────────────────────────────────────
 
+export type GuidelinesReview = z.infer<typeof GuidelinesReviewSchema>;
 export type IssueStatus = z.infer<typeof IssueStatusSchema>;
 export type FetchedPRStatus = z.infer<typeof FetchedPRStatusSchema>;
 export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;

@@ -22,7 +22,7 @@ import {
   SearchRotation,
   WorkClaim,
 } from './types.js';
-import { AgentStateSchema } from './state-schema.js';
+import { AgentStateSchema, type GuidelinesReview } from './state-schema.js';
 import { activeWorkClaims, finishWorkClaim, workClaimKey } from './work-claims.js';
 import { serializeState } from './state-prune.js';
 import {
@@ -596,6 +596,17 @@ export class StateManager {
   deleteGuidelines(repo: string): void {
     guidelinesStoreModule.deleteGuidelines(this.gistStore, repo);
     this.autoSave();
+  }
+
+  /** Record that the user approved the guidelines text hashing to `sha256` for `repo` (#1929). */
+  markGuidelinesReviewed(repo: string, sha256: string, reviewedAt: string): void {
+    this.state.guidelinesReviews = { ...this.state.guidelinesReviews, [repo]: { reviewedAt, sha256 } };
+    this.autoSave();
+  }
+
+  /** The review stamp for `repo`, or undefined when none was ever recorded (#1929). */
+  getGuidelinesReview(repo: string): GuidelinesReview | undefined {
+    return this.state.guidelinesReviews?.[repo];
   }
 
   /** List repos with non-empty guidelines stored in the Gist. */

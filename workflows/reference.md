@@ -98,8 +98,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 # Read stored guidelines for a repo
 <prefix> guidelines view --repo <owner/repo> --json
 
-# Persist guidelines (reads stdin when --content omitted)
-<prefix> guidelines store --repo <owner/repo> --content <markdown> --json
+# Persist guidelines the user has read and approved (reads stdin when --content omitted).
+# --reviewed is required and asserts that approval; refused in an unattended run (#1929).
+<prefix> guidelines store --repo <owner/repo> --reviewed --json < <file>
 
 # Tombstone the guidelines file
 <prefix> guidelines reset --repo <owner/repo> --json

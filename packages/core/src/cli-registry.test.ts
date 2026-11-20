@@ -2549,9 +2549,10 @@ describe('guidelines subcommands', () => {
       REPO,
       '--content',
       'hello',
+      '--reviewed',
     ]);
 
-    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'hello' });
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'hello', reviewed: true });
     expect(consoleLogSpy).toHaveBeenCalledWith(`Stored 5 bytes of guidelines for ${REPO}.`);
   });
 
@@ -2561,7 +2562,8 @@ describe('guidelines subcommands', () => {
       buildProgram('guidelines').parseAsync(['node', 'cli', 'guidelines', 'store', '--repo', REPO]),
     );
 
-    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'piped\n' });
+    // No --reviewed: the flag is passed through as false and the command refuses (#1929).
+    expect(mockGuidelinesStore).toHaveBeenCalledWith({ repo: REPO, content: 'piped\n', reviewed: false });
   });
 
   it('store without --content fails clearly on a TTY stdin', async () => {

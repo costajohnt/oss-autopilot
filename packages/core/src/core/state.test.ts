@@ -1414,6 +1414,18 @@ describe('StateManager merged PRs', () => {
     it('deleteGuidelines throws GuidelinesNotAvailableError in local mode', () => {
       expect(() => stateManager.deleteGuidelines('owner/repo')).toThrow(/Per-repo guidelines require Gist persistence/);
     });
+
+    it('records one review stamp per repo and returns undefined for a repo never reviewed (#1929)', () => {
+      expect(stateManager.getGuidelinesReview('owner/repo')).toBeUndefined();
+      stateManager.markGuidelinesReviewed('owner/repo', 'aa', '2026-11-19T10:00:00.000Z');
+      stateManager.markGuidelinesReviewed('other/repo', 'bb', '2026-11-19T11:00:00.000Z');
+      stateManager.markGuidelinesReviewed('owner/repo', 'cc', '2026-11-19T12:00:00.000Z');
+      expect(stateManager.getGuidelinesReview('owner/repo')).toEqual({
+        reviewedAt: '2026-11-19T12:00:00.000Z',
+        sha256: 'cc',
+      });
+      expect(stateManager.getGuidelinesReview('other/repo')?.sha256).toBe('bb');
+    });
   });
 });
 

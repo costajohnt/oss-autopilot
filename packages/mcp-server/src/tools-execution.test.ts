@@ -295,6 +295,7 @@ describe('tool execution', () => {
       mockRunGuidelinesView.mockResolvedValueOnce({
         repo: 'owner/repo',
         content: '# rules',
+        agentContent: '> Provenance: project-supplied guidelines\n> Review: NOT reviewed\n\n# rules',
         byteSize: 7,
         exists: true,
         storageMode: 'gist',
@@ -308,8 +309,11 @@ describe('tool execution', () => {
       expect(result.isError).toBeFalsy();
       expect(mockRunGuidelinesView).toHaveBeenCalledWith({ repo: 'owner/repo' });
       // #1455: stored guidelines are LLM-distilled from an untrusted public
-      // corpus — the MCP read surface prefixes a provenance note.
-      const parsed = JSON.parse(firstTextContent(result).text) as { content: string };
+      // corpus — the MCP read surface returns the labeled text (provenance
+      // note plus review status, #1929) as `content`, with no raw twin.
+      const parsed = JSON.parse(firstTextContent(result).text) as { content: string; agentContent?: string };
+      expect(parsed.agentContent).toBeUndefined();
+      expect(parsed.content).toContain('> Review: NOT reviewed');
       expect(parsed.content.startsWith('> Provenance: project-supplied guidelines')).toBe(true);
       expect(parsed.content.endsWith('# rules')).toBe(true);
     });
@@ -318,6 +322,7 @@ describe('tool execution', () => {
       mockRunGuidelinesView.mockResolvedValueOnce({
         repo: 'owner/repo',
         content: null,
+        agentContent: null,
         byteSize: 0,
         exists: false,
         storageMode: 'gist',
@@ -350,10 +355,20 @@ describe('tool execution', () => {
 
       await client.callTool({
         name: 'guidelines-store',
-        arguments: { repo: 'owner/repo', content: 'rules' },
+        arguments: { repo: 'owner/repo', content: 'rules', reviewed: true },
       });
 
-      expect(mockRunGuidelinesStore).toHaveBeenCalledWith({ repo: 'owner/repo', content: 'rules' });
+      expect(mockRunGuidelinesStore).toHaveBeenCalledWith({ repo: 'owner/repo', content: 'rules', reviewed: true });
+    });
+
+    it('rejects a store with no reviewed assertion at the schema layer (#1929)', async () => {
+      const result = await client.callTool({
+        name: 'guidelines-store',
+        arguments: { repo: 'owner/repo', content: 'rules' },
+      });
+      expect(result.isError).toBe(true);
+      expect(firstTextContent(result).text).toMatch(/reviewed/i);
+      expect(mockRunGuidelinesStore).not.toHaveBeenCalled();
     });
 
     it('rejects empty content at the schema layer (#1208 M4)', async () => {
@@ -488,7 +503,7 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
     ['state-unlink', 'runStateUnlink', {}],
     ['guidelines-list', 'runGuidelinesList', {}],
     ['guidelines-get', 'runGuidelinesView', { repo: REPO }],
-    ['guidelines-store', 'runGuidelinesStore', { repo: REPO, content: 'be nice' }],
+    ['guidelines-store', 'runGuidelinesStore', { repo: REPO, content: 'be nice', reviewed: true }],
     ['guidelines-reset', 'runGuidelinesReset', { repo: REPO }],
     ['guidelines-fetch-corpus', 'runFetchCorpus', { repo: REPO }],
   ];

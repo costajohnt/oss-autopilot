@@ -47,7 +47,7 @@ Parse the JSON envelope. `data` has:
 | `carriedPrepared` | Branches kept from an earlier run today; a re-run never drops recorded work. |
 | `implement` | The one curated-list issue to implement tonight (#1715): `url`, `repo`, `number`, `title`, `reason`; `null` when the list is absent, its Pursue tier is exhausted, or every Pursue repo has an open PR of yours. See Step 2a. |
 | `gistSyncWarning` | Present when the run could not be pushed to the Gist. Append it under "Check problems". |
-| `pendingLearnings` | Present when recently merged PRs have review feedback not yet distilled into per-repo guidelines (`repos`, `prCount`). Handled in Step 2b. |
+| `pendingLearnings` | Present when recently merged PRs have review feedback not yet distilled into per-repo guidelines (`repos`, `prCount`). Never extracted here; noted in the report (Step 2b). |
 
 If `success` is false, print the error and stop. The report is not written on failure, so the next `/oss` shows the previous run's freshness, which is the correct signal.
 
@@ -120,22 +120,18 @@ After it returns:
 The preparer never opens a PR. The branch is staged by `push-prep` like any
 other; opening the PR is the morning's decision.
 
-## Step 2b: Extract learnings from merged PRs
+## Step 2b: Leave learnings for the next attended run
 
-If `data.pendingLearnings` is present, dispatch **one** agent (Task tool,
-`subagent_type: "general-purpose"`) after the preparers finish, and wait for it:
+If `data.pendingLearnings` is present, do **not** extract. Per-repo guidelines
+are distilled from other people's PR comments and read back by later agent
+sessions, so they are stored only after the user has read and approved the
+exact text (#1929), and nobody is here to do that. The gate is in code, not
+only here: `guidelines store` refuses while `OSS_AUTOPILOT_UNATTENDED` is set.
+Append one line to the report under a `## Learnings` heading:
 
 ```
-AUTO MODE: read ${CLAUDE_PLUGIN_ROOT}/workflows/extract-learnings.md and run it in auto mode for each of these repos, one after another (never in parallel): {repos}. Auto mode means: no questions, no confirmation step, store the guidelines directly, then run `guidelines mark-extracted --repo <repo>`. If a repo's corpus has no signal, still run `guidelines mark-extracted` for it. Report one line per repo: "<repo>: updated (<n> PRs)" or "<repo>: no signal (<n> PRs)" or "<repo>: failed — <reason>".
+- {prCount} merged PR(s) in {repos} have review feedback to distill; the next `/oss` run proposes guidelines for your approval
 ```
-
-This reads public PR comments and writes only the user's own guidelines Gist,
-so it is inside the hard gates. Append the agent's per-repo lines to the report
-under a `## Learnings` heading; if the agent crashed or returned no per-repo
-lines, append `- extraction returned no result for {repos}; retried next run`
-instead. A `failed` repo is retried by the next run and by every `/oss`
-startup until it succeeds; a repo that keeps failing is the user's cue to set
-`autoExtractLearnings=false` (the failed line says so).
 
 ## Step 3: Finish
 

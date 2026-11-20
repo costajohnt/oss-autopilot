@@ -65,7 +65,9 @@ workflow is the lightweight load → edit → store path.
    - No raw secrets pattern matches (defense-in-depth, not authoritative).
 
 5. **Store via the CLI** —
-   `cat <draft-path> | cli.bundle.cjs guidelines store --repo OWNER/REPO`.
+   `cat <draft-path> | cli.bundle.cjs guidelines store --repo OWNER/REPO --reviewed`.
+   `--reviewed` states that the user saw and approved this exact text,
+   which holds here because the user wrote the edit (#1929).
 
    - On success, print a one-line confirmation with the new byte size
      and timestamp.

@@ -146,7 +146,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `state-unlink` | Disconnect from Gist persistence and switch to local-only mode | No |
 | `guidelines-list` | List repos that have stored guidelines (always empty in local mode) | Yes |
 | `guidelines-get` | Read per-repo learning guidelines extracted from past PR feedback | Yes |
-| `guidelines-store` | Persist per-repo guidelines (8 KB cap; requires Gist mode) | No |
+| `guidelines-store` | Persist per-repo guidelines the user has reviewed (`reviewed: true` required; refused when unattended; 8 KB cap; requires Gist mode) | No |
 | `guidelines-reset` | Tombstone the guidelines file for a repo | No |
 | `guidelines-fetch-corpus` | Fetch raw PR comment bundles for the host's `extract-learnings` prompt to consume | No |
 
