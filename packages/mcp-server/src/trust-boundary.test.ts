@@ -227,7 +227,22 @@ describe('user approval before a GitHub write (#1936)', () => {
     expect(asked[0].message.split('\n')[0]).toContain(count);
   });
 
-  const HIDDEN = ['\u202A', '\u202E', '\u2066', '\u2069', '\u200B', '\u200D', '\uFEFF'];
+  const HIDDEN = [
+    '\u202A',
+    '\u202E',
+    '\u2066',
+    '\u2069',
+    '\u200B',
+    '\u200D',
+    '\uFEFF',
+    '\u2060',
+    '\u200F',
+    '\u061C',
+    '\u00AD',
+    '\u{E0041}',
+    '\u0007',
+    '\u{F0000}',
+  ];
   const hiddenCases = HIDDEN.flatMap((char) => [
     ['post', { url: ISSUE, message: `fine${char}text` }, mockRunPost, char] as const,
     ['claim', { issueUrl: ISSUE, message: `mine${char}` }, mockRunClaim, char] as const,
@@ -239,7 +254,7 @@ describe('user approval before a GitHub write (#1936)', () => {
     ] as const,
   ]);
 
-  it.each(hiddenCases)('%s refuses text with an invisible character (%#)', async (name, args, run, char) => {
+  it.each(hiddenCases)('%s refuses text with invisible formatting characters (%#)', async (name, args, run, char) => {
     const code = `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
     for (const [capabilities, optIn] of [
       [FORM_HOST, ''],
@@ -249,10 +264,19 @@ describe('user approval before a GitHub write (#1936)', () => {
       const { client, asked } = await connect(capabilities, APPROVED);
       const result = await client.callTool({ name, arguments: args });
       expect(result.isError).toBe(true);
-      expect(text(result)).toContain(`invisible character (${code})`);
+      expect(text(result)).toContain(`invisible formatting characters (first: ${code})`);
       expect(asked).toEqual([]);
     }
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('accepts tabs, newlines and an emoji with a variation selector', async () => {
+    const message = 'line one\n\tindented\r\nlove \u2764\uFE0F';
+    const { client, asked } = await connect(FORM_HOST, APPROVED);
+    const result = await client.callTool({ name: 'post', arguments: { url: ISSUE, message } });
+    expect(result.isError).toBeFalsy();
+    expect(asked[0].message).toContain(message);
+    expect(mockRunPost).toHaveBeenCalledWith({ url: ISSUE, message });
   });
 
   it('claim shows a custom message verbatim', async () => {

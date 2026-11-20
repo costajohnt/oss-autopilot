@@ -66,13 +66,15 @@ const approvalSchema = z.object({
 });
 
 /**
- * Characters that change how text displays without showing themselves:
- * direction overrides and isolates (U+202A-U+202E, U+2066-U+2069) and
- * zero-width characters (U+200B-U+200D, U+FEFF). Stripping them would post
- * text other than what the user approved, so a preview containing one is
- * refused instead. Ceiling: emoji sequences joined by U+200D are refused too.
+ * Characters a form cannot show faithfully: every format character (\p{Cf}:
+ * bidi controls, zero-width characters, word joiner, soft hyphen, tag
+ * characters), private-use and unassigned code points, and C0/C1 controls
+ * other than tab, newline and carriage return. Stripping them would post text
+ * other than what the user approved, so a preview containing one is refused
+ * instead. Variation selectors (U+FE0F) are not format characters and pass.
+ * Ceiling: \p{Cf} includes U+200D, so emoji ZWJ sequences are refused too.
  */
-const HIDDEN_CHARACTERS = /[\u202A-\u202E\u2066-\u2069\u200B-\u200D\uFEFF]/u;
+const HIDDEN_CHARACTERS = /[\p{Cf}\p{Co}\p{Cn}\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/u;
 
 /** "N characters", counted in code points, for an approval preview header. */
 export function characterCount(text: string): string {
@@ -125,8 +127,9 @@ export function requireApproval<A, R>(
     if (hidden) {
       const code = hidden[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0');
       return refusal(
-        `Refusing to ${action}: the text contains an invisible character (U+${code}) that changes how it displays, ` +
-          'so the user could not see what would be sent. Remove it and try again.',
+        `Refusing to ${action}: the text contains invisible formatting characters (first: U+${code}), ` +
+          'so the user could not see exactly what would be sent. This includes the joiner inside some emoji. ' +
+          'Remove them and try again.',
       );
     }
     if (!canShowForm(hostCapabilities())) {
