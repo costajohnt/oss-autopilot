@@ -677,6 +677,30 @@ export const CLOSED_LEDGER_TRUNCATED_MESSAGE =
   `More than ${LEDGER_GAP_MAX_RESULTS} closed PRs changed since the closed-PR ledger was last filled, ` +
   'so none were stored. Run `ledger-backfill` to fetch the full history.';
 
+/**
+ * A ledger with fewer rows than this that is short of GitHub's all-time count
+ * is refetched from the start (#1504, #1925): a recent row stored ahead of the
+ * history behind it would otherwise hide that history from every gap fetch.
+ * Past it a short ledger keeps its watermark, so a contributor whose count
+ * legitimately exceeds the ledger doesn't refetch everything on every run;
+ * the count warning and `ledger-backfill` cover that case.
+ */
+export const LEDGER_BACKFILL_CEILING = 300;
+
+/**
+ * The watermark a ledger gap fetch starts from: undefined (all time) when the
+ * ledger holds `stored` rows, fewer than `allTimeCount` and under
+ * {@link LEDGER_BACKFILL_CEILING}; otherwise `watermark`. An unknown count
+ * keeps the watermark.
+ */
+export function gapFetchWatermark(
+  watermark: string | undefined,
+  stored: number,
+  allTimeCount: number | undefined,
+): string | undefined {
+  return stored < (allTimeCount ?? 0) && stored < LEDGER_BACKFILL_CEILING ? undefined : watermark;
+}
+
 /** How far before the watermark a gap fetch starts: covers clock skew and search indexing lag. */
 const LEDGER_GAP_OVERLAP_MS = 24 * 60 * 60 * 1000;
 

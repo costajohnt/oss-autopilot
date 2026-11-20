@@ -227,7 +227,7 @@ async function runClosedLedgerStep(
   options: { recent?: ClosedPR[]; allTimeCount?: number } = {},
 ): Promise<DailyWarning[]> {
   const warnings: DailyWarning[] = [];
-  const gap = await fetchClosedLedgerGap(octokit, sm, warnings);
+  const gap = await fetchClosedLedgerGap(octokit, sm, warnings, options.allTimeCount);
   storeClosedLedger(sm, {
     gap,
     warnings,
@@ -317,6 +317,60 @@ describe('closed-ledger gap filling (#1925)', () => {
           'Run `ledger-backfill` to fetch them.',
       },
     ]);
+  });
+
+  describe('a ledger an older version left short (seeded ahead of its history)', () => {
+    const BASE = 'is:pr is:closed is:unmerged is:public author:me -user:me';
+    /** `count` stored closed rows, the newest closed 2 days ago. */
+    const seed = (count: number) =>
+      sm.addClosedPRs(
+        Array.from({ length: count }, (_, i) => ({
+          url: prUrl(100 + i),
+          title: `PR ${100 + i}`,
+          closedAt: daysAgo(2 + i / 100),
+        })),
+      );
+
+    it('refetches the whole history while under the ceiling: 6 rows of 40', async () => {
+      seed(6);
+      const search = makeSearch(olderCloses);
+
+      const warnings = await runClosedLedgerStep(sm, search.octokit, { allTimeCount: 40 });
+
+      expect(queriesOf(search)).toEqual([BASE]);
+      expect(closedUrls(sm)).toEqual(expect.arrayContaining([prUrl(1), prUrl(2), prUrl(3)]));
+      expect(closedUrls(sm)).toHaveLength(9);
+      // Still short of 40 after the refetch, so the count warning stays.
+      expect(warnings).toEqual([expect.objectContaining({ operation: 'check closed-PR ledger' })]);
+    });
+
+    it('keeps the watermark and warns at the ceiling: 300 rows of 400', async () => {
+      seed(300);
+      const search = makeSearch(olderCloses);
+
+      const warnings = await runClosedLedgerStep(sm, search.octokit, { allTimeCount: 400 });
+
+      expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+      expect(closedUrls(sm)).toHaveLength(300);
+      expect(warnings).toEqual([
+        {
+          phase: 'analytics',
+          operation: 'check closed-PR ledger',
+          message:
+            'The closed-PR ledger holds 300 of the 400 closed PRs GitHub reports (100 missing). ' +
+            'Run `ledger-backfill` to fetch them.',
+        },
+      ]);
+    });
+
+    it('keeps the watermark when the count is unknown', async () => {
+      seed(6);
+      const search = makeSearch(olderCloses);
+
+      await runClosedLedgerStep(sm, search.octokit);
+
+      expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+    });
   });
 
   it('keeps untracked organisations out: the query carries the shared scope', async () => {

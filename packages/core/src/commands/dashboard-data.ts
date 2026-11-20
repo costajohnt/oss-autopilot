@@ -25,6 +25,8 @@ import {
   emptyPRCountsResult,
   fetchMergedPRsSince,
   fetchClosedPRsSince,
+  gapFetchWatermark,
+  LEDGER_BACKFILL_CEILING,
   type RecentListTruncation,
   CLOSED_LEDGER_TRUNCATED_MESSAGE,
   MERGED_LEDGER_TRUNCATED_MESSAGE,
@@ -367,19 +369,16 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   // recovered. When the stored detail count is materially below the known
   // all-time merged count, drop the watermark for a one-shot full backfill
   // (bounded by the existing pagination cap); once the ledger catches up the
-  // watermark resumes incremental fetching. The closed ledger has no such
-  // guard: the daily run no longer seeds it ahead of its gap fetch (#1925), so
-  // a closed watermark always has the history before it, and a hole left by an
-  // older version is reported by the daily count check and filled by
-  // `ledger-backfill`.
+  // watermark resumes incremental fetching. The closed ledger gets the same
+  // guard below (#1925): the daily run no longer seeds it ahead of its gap
+  // fetch, but ledgers an older version seeded that way still need to heal.
   const storedMergedCount = stateManager.getMergedPRs().length;
   const knownMergedAllTime = stateManager.getState().lastDigest?.summary?.totalMergedAllTime ?? 0;
   // Stop forcing one once the ledger has 300 entries, so a contributor whose
   // star-filtered all-time count legitimately exceeds the ledger doesn't
   // trigger a full refetch on every poll. Past that, the daily run reports a
   // short ledger and `ledger-backfill` fills it (#1924).
-  const MERGED_BACKFILL_CEILING = 300;
-  const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < MERGED_BACKFILL_CEILING;
+  const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < LEDGER_BACKFILL_CEILING;
   const mergedFetchSince = mergedNeedsBackfill ? undefined : watermark;
   if (mergedNeedsBackfill) {
     warn(
@@ -404,6 +403,10 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   };
 
   const recentListTruncations: RecentListTruncation[] = [];
+  const closedCounts = prMonitor
+    .fetchUserClosedPRCounts(starFilter)
+    .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>()));
+  const storedClosedCount = stateManager.getClosedPRs().length;
   const [
     { prs, failures, warnings: fetchWarnings },
     recentlyClosedPRs,
@@ -423,17 +426,19 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     prMonitor
       .fetchUserMergedPRCounts(starFilter)
       .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>())),
-    prMonitor
-      .fetchUserClosedPRCounts(starFilter)
-      .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>())),
+    closedCounts,
     // The same gap fetches the daily run uses (#1924, #1925). Nothing else here
     // adds ledger rows, so a failed or truncated fetch leaves the watermark alone.
     fetchMergedPRsSince(octokit, config, mergedFetchSince).catch(
       trackingCatch('fetch merged PRs for storage', { prs: [] as StoredMergedPR[], truncated: false }),
     ),
-    fetchClosedPRsSince(octokit, config, closedWatermark).catch(
-      trackingCatch('fetch closed PRs for storage', { prs: [] as StoredClosedPR[], truncated: false }),
-    ),
+    // Waits for the closed count: a ledger short of it under the ceiling is
+    // fetched from the start (gapFetchWatermark, #1925).
+    closedCounts
+      .then((counts) =>
+        fetchClosedPRsSince(octokit, config, gapFetchWatermark(closedWatermark, storedClosedCount, counts.totalCount)),
+      )
+      .catch(trackingCatch('fetch closed PRs for storage', { prs: [] as StoredClosedPR[], truncated: false })),
   ]);
 
   const newMergedPRs = gapRows(mergedGap, MERGED_LEDGER_TRUNCATED_MESSAGE, partialFailures);

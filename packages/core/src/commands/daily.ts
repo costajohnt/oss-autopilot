@@ -1234,7 +1234,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Merges and closes since each ledger's newest entry, fetched before Phase 3 adds to it (#1924, #1925).
   const [mergedGap, closedGap] = await Promise.all([
     fetchMergedLedgerGap(getOctokit(token), getStateManager(), warnings),
-    fetchClosedLedgerGap(getOctokit(token), getStateManager(), warnings),
+    fetchClosedLedgerGap(getOctokit(token), getStateManager(), warnings, closedTotalCount),
   ]);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.

@@ -9,6 +9,7 @@ import {
   CLOSED_LEDGER_TRUNCATED_MESSAGE,
   fetchClosedPRsSince,
   fetchMergedPRsSince,
+  gapFetchWatermark,
   MERGED_LEDGER_TRUNCATED_MESSAGE,
   type PRsSinceResult,
 } from '../core/github-stats.js';
@@ -227,14 +228,23 @@ export function fetchMergedLedgerGap(
  * and the dashboard's fetch then started from that newest row, so older
  * closed history was never fetched. Must run before anything in this run adds
  * to the closed ledger.
+ *
+ * A ledger an older version already left short of `allTimeCount` is fetched
+ * from the start while it is under the backfill ceiling (see
+ * gapFetchWatermark), so it heals without a manual `ledger-backfill`.
  */
 export function fetchClosedLedgerGap(
   octokit: Octokit,
-  stateManager: Pick<StateManagerLike, 'getState' | 'getClosedPRWatermark'>,
+  stateManager: Pick<StateManagerLike, 'getState' | 'getClosedPRWatermark' | 'getClosedPRs'>,
   warnings: DailyWarning[],
+  allTimeCount: number | undefined,
 ): Promise<ClosedLedgerGap> {
   const { config } = stateManager.getState();
-  const watermark = stateManager.getClosedPRWatermark();
+  const watermark = gapFetchWatermark(
+    stateManager.getClosedPRWatermark(),
+    stateManager.getClosedPRs().length,
+    allTimeCount,
+  );
   return fetchLedgerGap(
     'closed',
     () => fetchClosedPRsSince(octokit, config, watermark),
