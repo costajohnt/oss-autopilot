@@ -167,6 +167,12 @@ If the file doesn't exist at the given path, warn the user but still save the pa
 
 This path and the skipped-issues path below are saved for this machine only (`~/.oss-autopilot/local-config.json`). They are not part of Gist sync, so set them once on each machine. If a machine ends up with the wrong path (one picked up from an older synced setting or found by auto-detection), run the same `setup --set issueListPath=<path>` or `setup --set skippedIssuesPath=<path>` command on that machine to override it, or `setup --set issueListPath=` to clear it. `config --json` shows the paths in effect and where each came from (`machinePathSources`).
 
+The directories `local-repos` scans for clones are per machine too. If the user keeps clones somewhere other than `~/Documents/oss` or `~/dev`, save them as a comma-separated list (`~/` is expanded; `setup --set localRepoScanPaths=` clears it and the defaults apply):
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set localRepoScanPaths="~/code,~/projects" --json
+```
+
 ### Skipped Issues File
 
 If the user configured an issue list path, ask:

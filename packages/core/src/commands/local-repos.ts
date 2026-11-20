@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { getStateManager, debug } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
-import { getMachineRepoCache, setMachineRepoCache } from '../core/local-config.js';
+import { getMachineRepoCache, getMachineScanPaths, setMachineRepoCache } from '../core/local-config.js';
 import type { LocalReposOutput, LocalRepoInfo } from '../formatters/json.js';
 
 interface LocalReposOptions {
@@ -161,7 +161,7 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
   const state = stateManager.getState();
   const scanPaths =
     options.paths?.map((p) => path.resolve(p)) ??
-    state.config.localRepoScanPaths ??
+    getMachineScanPaths(state.config.localRepoScanPaths)?.paths ??
     DEFAULT_SCAN_PATHS.filter((p) => fs.existsSync(p));
 
   // Use cached data unless --scan is specified

@@ -258,6 +258,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'filesystem path',
   },
   {
+    key: 'localRepoScanPaths',
+    description:
+      'Directories local-repos scans for clones (per machine, not synced). Empty clears it and the defaults apply.',
+    settableVia: 'setup',
+    valueHint: 'comma-separated list of directory paths',
+  },
+  {
     key: 'diffTool',
     description: 'Default diff renderer for reviews.',
     settableVia: 'both',

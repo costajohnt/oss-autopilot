@@ -1144,6 +1144,8 @@ const ConfigKeyDefSchema = z.object({}).passthrough();
 
 const ConfigGetOutputSchema = z.object({
   config: z.record(z.string(), z.unknown()),
+  // Where each machine-local path shown comes from (#1950, #2010).
+  machinePathSources: z.record(z.string(), z.string()).optional(),
 });
 
 const ConfigSetOutputSchema = z.object({
@@ -1557,7 +1559,9 @@ export interface ConfigOutput {
    * in this machine's `local-config.json`, `synced` for the shared config
    * fallback. Omitted when neither path is configured.
    */
-  machinePathSources?: Partial<Record<'issueListPath' | 'skippedIssuesPath', 'set' | 'adopted' | 'probe' | 'synced'>>;
+  machinePathSources?: Partial<
+    Record<'issueListPath' | 'skippedIssuesPath' | 'localRepoScanPaths', 'set' | 'adopted' | 'probe' | 'synced'>
+  >;
 }
 
 /** Info about a detected issue list file */

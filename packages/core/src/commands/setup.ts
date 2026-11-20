@@ -11,7 +11,7 @@ import {
   maybeCheckpoint,
 } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
-import { MACHINE_PATH_KEYS, assertSafeMachinePath, setMachinePath, type MachinePathKey } from '../core/local-config.js';
+import { MACHINE_PATH_KEYS, assertSafeMachinePath, setMachinePath, setMachineScanPaths } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
 import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope, DIFF_TOOLS } from '../core/types.js';
 
@@ -92,6 +92,9 @@ function parseComplexIssues(value: string): 'off' | 'warm' {
   return value;
 }
 
+/** Settings kept in this machine's local file, never synced (#1950, #2010). */
+const MACHINE_LOCAL_KEYS: ReadonlySet<string> = new Set([...MACHINE_PATH_KEYS, 'localRepoScanPaths']);
+
 /**
  * Refuse unknown keys, and path values with a shell metacharacter (#1934),
  * before any pair is applied.
@@ -103,16 +106,15 @@ function prevalidateSettings(settings: string[]): void {
     if (!knownKeys.has(key)) {
       throw new ValidationError(formatUnknownKeyError(key, 'setup'));
     }
-    if ((MACHINE_PATH_KEYS as readonly string[]).includes(key)) {
-      assertSafeMachinePath(key as MachinePathKey, setting.slice(key.length + 1));
+    if (MACHINE_LOCAL_KEYS.has(key)) {
+      assertSafeMachinePath(key, setting.slice(key.length + 1));
     }
   }
 }
 
 /** True when every `key=value` names a path kept in this machine's local file. */
 function isMachineLocalOnly(settings: string[]): boolean {
-  const localKeys: readonly string[] = MACHINE_PATH_KEYS;
-  return settings.every((setting) => localKeys.includes(setting.split('=', 1)[0]));
+  return settings.every((setting) => MACHINE_LOCAL_KEYS.has(setting.split('=', 1)[0]));
 }
 
 /** Warning for the config keys retired in #1948: still accepted and stored, never read. */
@@ -229,10 +231,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             }
             stateManager.updateConfig({ minRepoScoreThreshold: threshold });
             results[key] = String(threshold);
-            break;
-          }
-          case 'skippedIssuesPath': {
-            results[key] = setMachinePath('skippedIssuesPath', value || undefined) || '(cleared)';
             break;
           }
           case 'autoExtractLearnings': {
@@ -423,8 +421,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = value;
             break;
           }
-          case 'issueListPath': {
-            results[key] = setMachinePath('issueListPath', value || undefined) || '(cleared)';
+          case 'issueListPath':
+          case 'skippedIssuesPath': {
+            results[key] = setMachinePath(key, value || undefined) || '(cleared)';
+            break;
+          }
+          case 'localRepoScanPaths': {
+            results[key] = setMachineScanPaths(value).join(', ') || '(cleared, using defaults)';
             break;
           }
           case 'diffTool': {

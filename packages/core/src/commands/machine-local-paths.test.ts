@@ -328,3 +328,58 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
     expect(cached).toMatchObject({ fromCache: true, repos: {}, scanPaths: [path.join(machineB, 'dev')] });
   });
 });
+
+describe('machine-specific scan roots with a shared Gist (#2010)', () => {
+  it('scan roots synced by another machine are not scanned or shown here, and stay in the Gist (#2010)', async () => {
+    // Both test machines share one disk, so machine A's directory is created
+    // only after machine B has looked.
+    const devA = path.join(machineA, 'dev');
+    seedGist((state) => {
+      state.config.localRepoScanPaths = [devA];
+    });
+
+    await switchTo(machineB);
+    const scanned = await runLocalRepos({ scan: true });
+    const shown = await runConfig({});
+    await getStateManager().checkpoint();
+
+    expect(scanned.scanPaths).not.toContain(devA);
+    expect(JSON.stringify(shown)).not.toContain(machineA);
+    expect(syncedState().config.localRepoScanPaths).toEqual([devA]);
+
+    // On the machine whose disk has them, they are adopted and survive an overwrite.
+    fs.mkdirSync(devA, { recursive: true });
+    await switchTo(machineA);
+    const adopted = await runLocalRepos({ scan: true });
+    expect(adopted.scanPaths).toEqual([devA]);
+    seedGist((state) => {
+      state.config.localRepoScanPaths = [path.join(machineB, 'dev')];
+    });
+    await switchTo(machineA);
+    expect(await runConfig({})).toMatchObject({
+      config: { localRepoScanPaths: [devA] },
+      machinePathSources: { localRepoScanPaths: 'adopted' },
+    });
+  });
+
+  it('setup --set localRepoScanPaths stores them on this machine only and local-repos scans them', async () => {
+    const devB = path.join(machineB, 'dev');
+    fs.mkdirSync(devB, { recursive: true });
+    seedGist(noSyncedPaths);
+
+    await switchTo(machineB);
+    await runSetup({ set: [`localRepoScanPaths=${devB}`] });
+    const scanned = await runLocalRepos({ scan: true });
+    const shown = await runConfig({});
+
+    expect(scanned.scanPaths).toEqual([devB]);
+    expect(shown).toMatchObject({
+      config: { localRepoScanPaths: [devB] },
+      machinePathSources: { localRepoScanPaths: 'set' },
+    });
+    expect(syncedState().config.localRepoScanPaths).toBeUndefined();
+
+    await runSetup({ set: ['localRepoScanPaths='] });
+    expect(await runConfig({})).not.toHaveProperty('config.localRepoScanPaths');
+  });
+});
