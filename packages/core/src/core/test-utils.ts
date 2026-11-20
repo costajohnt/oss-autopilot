@@ -211,6 +211,7 @@ export function makeStateManagerMock(
     isStarredReposStale: () => false,
     shelvePR: () => false,
     unshelvePR: () => false,
+    setShelvedPRReason: () => {},
     isPRShelved: () => false,
     dismissIssue: () => false,
     undismissIssue: () => false,

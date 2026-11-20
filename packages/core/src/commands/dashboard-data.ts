@@ -140,19 +140,20 @@ export function buildDashboardStats(
  *
  * #1352: an explicitly shelved PR the daily check would auto-unshelve
  * (`shouldAutoUnshelve`: it needs addressing and a maintainer acted after the
- * shelve, #1922) is NOT shelved for display, so the dashboard agrees
+ * shelve or the action reason is new, #1922) is NOT shelved for display, so the dashboard agrees
  * immediately rather than diverging from the CLI's headline count until the
  * next daily run.
  */
 function isShelvedForDisplay(pr: ShelvePartitionPR, config: ShelveConfig): boolean {
   const key = issueRefKey(pr.url);
   const isExplicit = (config.shelvedPRUrls || []).some((url) => (key ? issueRefKey(url) === key : url === pr.url));
-  if (isExplicit) return !shouldAutoUnshelve(pr as FetchedPR, config.shelvedPRAt);
+  if (isExplicit) return !shouldAutoUnshelve(pr as FetchedPR, config.shelvedPRInfo);
   return pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status as FetchedPR['status']);
 }
 
-type ShelvePartitionPR = { url: string; stalenessTier?: string; status?: string; lastMaintainerActivityAt?: string };
-type ShelveConfig = Pick<AgentState['config'], 'shelvedPRUrls' | 'shelvedPRAt'>;
+type ShelvePartitionPR = Pick<FetchedPR, 'url'> &
+  Partial<Pick<FetchedPR, 'stalenessTier' | 'status' | 'actionReason' | 'lastMaintainerActivityAt'>>;
+type ShelveConfig = Pick<AgentState['config'], 'shelvedPRUrls' | 'shelvedPRInfo'>;
 
 /**
  * Re-derive `digest.shelvedPRs` and `summary.totalActivePRs` from the CURRENT

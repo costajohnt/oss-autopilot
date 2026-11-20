@@ -766,8 +766,9 @@ describe('dashboard-server', () => {
         url: 'https://github.com/o/r/pull/13',
         number: 13,
         repo: 'o/r',
-        title: 'Shelved with CI already failing',
+        title: 'Shelved with a review already unanswered',
         status: 'needs_addressing',
+        actionReason: 'needs_response',
         lastMaintainerActivityAt: '2026-01-20T00:00:00Z',
       });
       const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
@@ -775,7 +776,7 @@ describe('dashboard-server', () => {
         // Stored in the casing the user typed; matched to GitHub's canonical pr.url.
         config: {
           shelvedPRUrls: ['https://github.com/O/R/pull/13'],
-          shelvedPRAt: { 'o/r#13': '2026-01-21T00:00:00.000Z' },
+          shelvedPRInfo: { 'o/r#13': { at: '2026-01-21T00:00:00.000Z', reason: 'needs_response' } },
         },
         lastDigest: digest,
       });
@@ -783,7 +784,7 @@ describe('dashboard-server', () => {
 
       // A maintainer acting after the shelve resurfaces it, as the daily check would.
       const engaged = makeState({
-        config: { shelvedPRUrls: [pr.url], shelvedPRAt: { 'o/r#13': '2026-01-19T00:00:00.000Z' } },
+        config: { shelvedPRUrls: [pr.url], shelvedPRInfo: { 'o/r#13': { at: '2026-01-19T00:00:00.000Z' } } },
         lastDigest: makeDigest({ openPRs: [pr], shelvedPRs: [] }),
       });
       expect(

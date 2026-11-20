@@ -22,14 +22,17 @@ describe('runMove', () => {
   const mockUnshelvePR = vi.fn();
   const mockSetStatusOverride = vi.fn();
   const mockClearStatusOverride = vi.fn();
+  const mockGetState = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetState.mockReturnValue({});
     mockGetStateManager.mockReturnValue({
       shelvePR: mockShelvePR,
       unshelvePR: mockUnshelvePR,
       setStatusOverride: mockSetStatusOverride,
       clearStatusOverride: mockClearStatusOverride,
+      getState: mockGetState,
       batch: (fn: () => void) => fn(),
     } as any);
   });
@@ -67,12 +70,27 @@ describe('runMove', () => {
   });
 
   describe('move to shelved', () => {
+    it('records the action reason the last digest holds for the PR (#1922)', async () => {
+      const openPRs = [
+        { url: TEST_PR_URL, status: 'needs_addressing', actionReason: 'failing_ci' },
+        { url: 'https://github.com/owner/repo/pull/2', status: 'waiting_on_maintainer' },
+      ];
+      mockGetState.mockReturnValue({ lastDigest: { openPRs } });
+
+      await runMove({ prUrl: 'https://github.com/Owner/Repo/pull/1', target: 'shelved' });
+      expect(mockShelvePR).toHaveBeenLastCalledWith('https://github.com/Owner/Repo/pull/1', 'failing_ci');
+
+      await runMove({ prUrl: openPRs[1].url, target: 'shelved' });
+      expect(mockShelvePR).toHaveBeenLastCalledWith(openPRs[1].url, 'none');
+    });
+
     it('should shelve PR and clear status override', async () => {
       mockShelvePR.mockReturnValue(true);
       mockClearStatusOverride.mockReturnValue(false);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'shelved' });
 
-      expect(mockShelvePR).toHaveBeenCalledWith(TEST_PR_URL);
+      // No digest yet: the reason is unknown and left for the daily run to record.
+      expect(mockShelvePR).toHaveBeenCalledWith(TEST_PR_URL, undefined);
       expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
 
       expect(result).toEqual({

@@ -17,6 +17,8 @@ import {
   renderGistWarning,
   CRITICAL_STATUSES,
   shouldAutoUnshelve,
+  shelveReasonOf,
+  withoutShelvedNeedsAddressing,
   applyStatusOverrides,
   computeRepoSignals,
   computeLedgerRepoSignals,
@@ -694,14 +696,16 @@ function partitionPRs(
   let digest: DailyDigest | undefined;
   try {
     batchOnFreshBaseline(stateManager, () => {
-      const shelvedPRAt = stateManager.getState().config.shelvedPRAt;
+      const shelvedPRInfo = stateManager.getState().config.shelvedPRInfo;
       for (const pr of overriddenPRs) {
         if (stateManager.isPRShelved(pr.url)) {
-          if (shouldAutoUnshelve(pr, shelvedPRAt)) {
+          if (shouldAutoUnshelve(pr, shelvedPRInfo)) {
             stateManager.unshelvePR(pr.url);
             autoUnshelvedPRs.push(toShelvedPRRef(pr));
             activePRs.push(pr);
           } else {
+            // Still shelved: keep the recorded reason current (#1922).
+            stateManager.setShelvedPRReason(pr.url, shelveReasonOf(pr));
             shelvedPRs.push(toShelvedPRRef(pr));
           }
         } else if (pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status)) {
@@ -718,11 +722,10 @@ function partitionPRs(
       // output) reflect dashboard/CLI reclassifications.
       // Note: digest.openPRs contains ALL fetched PRs (including shelved).
       // We override summary fields below to reflect active-only counts.
-      digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
-      // A PR shelved while it needs addressing stays shelved (#1922): keep it
-      // out of the Needs Addressing list the brief and --json output render.
-      const shelvedUrls = new Set(shelvedPRs.map((ref) => ref.url));
-      digest.needsAddressingPRs = digest.needsAddressingPRs.filter((pr) => !shelvedUrls.has(pr.url));
+      digest = withoutShelvedNeedsAddressing(
+        prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs),
+        shelvedPRs,
+      );
 
       // Attach shelve info to digest
       digest.shelvedPRs = shelvedPRs;
@@ -762,7 +765,7 @@ function partitionPRs(
           (recorded ? `: ${recorded.message}` : '.'),
       );
     }
-    return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: persisted };
+    return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: withoutShelvedNeedsAddressing(persisted, shelvedPRs) };
   }
   return { activePRs, shelvedPRs, autoUnshelvedPRs, digest };
 }

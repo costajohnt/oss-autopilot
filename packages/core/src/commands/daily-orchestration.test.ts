@@ -52,6 +52,7 @@ const mockSave = vi.fn();
 const mockReloadIfChanged = vi.fn(() => false);
 const mockIsPRShelved = vi.fn();
 const mockUnshelvePR = vi.fn();
+const mockSetShelvedPRReason = vi.fn();
 const mockGetStats = vi.fn();
 const mockGetIssueDismissedAt = vi.fn();
 const mockUndismissIssue = vi.fn();
@@ -109,6 +110,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       save: mockSave,
       isPRShelved: mockIsPRShelved,
       unshelvePR: mockUnshelvePR,
+      setShelvedPRReason: mockSetShelvedPRReason,
       getStats: mockGetStats,
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
@@ -469,12 +471,14 @@ describe('executeDailyCheck() — PR partitioning', () => {
     mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
     mockIsPRShelved.mockReturnValue(true);
     const state = makeDefaultState();
-    (state.config as Record<string, unknown>).shelvedPRAt = { 'owner/repo#7': '2026-01-21T00:00:00.000Z' };
+    (state.config as Record<string, unknown>).shelvedPRInfo = { 'owner/repo#7': { at: '2026-01-21T00:00:00.000Z' } };
     mockGetState.mockReturnValue(state);
 
     const result = await executeDailyCheck('test-token');
 
     expect(mockUnshelvePR).not.toHaveBeenCalled();
+    // The reason was unknown at shelve time: this run records it for later runs to compare.
+    expect(mockSetShelvedPRReason).toHaveBeenCalledWith(criticalPR.url, 'failing_ci');
     expect(result.digest.autoUnshelvedPRs).toHaveLength(0);
     expect(result.digest.shelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
     // Hidden everywhere the brief lists work: not Needs Addressing, not actionable, not active.
@@ -495,7 +499,7 @@ describe('executeDailyCheck() — PR partitioning', () => {
     mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
     mockIsPRShelved.mockReturnValue(true);
     const state = makeDefaultState();
-    (state.config as Record<string, unknown>).shelvedPRAt = { 'owner/repo#8': '2026-01-21T00:00:00.000Z' };
+    (state.config as Record<string, unknown>).shelvedPRInfo = { 'owner/repo#8': { at: '2026-01-21T00:00:00.000Z' } };
     mockGetState.mockReturnValue(state);
 
     const result = await executeDailyCheck('test-token');
@@ -503,6 +507,29 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(mockUnshelvePR).toHaveBeenCalledWith(criticalPR.url);
     expect(result.digest.autoUnshelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
     expect(result.digest.needsAddressingPRs).toContain(criticalPR.url);
+  });
+
+  it('auto-unshelves a PR shelved while healthy once its CI fails, with no maintainer activity (#1922)', async () => {
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 9,
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      lastMaintainerActivityAt: '2026-01-20T00:00:00Z',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
+    mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
+    mockIsPRShelved.mockReturnValue(true);
+    const state = makeDefaultState();
+    (state.config as Record<string, unknown>).shelvedPRInfo = {
+      'owner/repo#9': { at: '2026-01-21T00:00:00.000Z', reason: 'none' },
+    };
+    mockGetState.mockReturnValue(state);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockUnshelvePR).toHaveBeenCalledWith(criticalPR.url);
+    expect(result.digest.autoUnshelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
   });
 
   it('keeps shelved PR with non-critical status in shelvedPRs (no auto-unshelf)', async () => {
@@ -893,6 +920,27 @@ describe('executeDailyCheck() — error resilience', () => {
         expect.objectContaining({ phase: 'partition', message: expect.stringContaining('digest exploded') }),
       ]),
     );
+    consoleSpy.mockRestore();
+  });
+
+  it('keeps a shelved PR out of Needs Addressing when it falls back to the persisted digest (#1922)', async () => {
+    const shelvedCritical = makePR({ repo: 'owner/repo', number: 11, status: 'needs_addressing' });
+    const state = makeDefaultState({ lastDigest: makeDigest([shelvedCritical]) });
+    (state.config as Record<string, unknown>).shelvedPRInfo = { 'owner/repo#11': { at: '2026-01-21T00:00:00.000Z' } };
+    mockGetState.mockReturnValue(state);
+    mockFetchUserOpenPRs.mockResolvedValue({
+      prs: [{ ...shelvedCritical, lastMaintainerActivityAt: '2026-01-20T00:00:00Z' }],
+      failures: [],
+    });
+    mockIsPRShelved.mockReturnValue(true);
+    mockGenerateDigest.mockImplementation(() => {
+      throw new Error('digest exploded');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.digest.needsAddressingPRs).toEqual([]);
     consoleSpy.mockRestore();
   });
 

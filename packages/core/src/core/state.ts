@@ -1202,17 +1202,21 @@ export class StateManager {
   /**
    * Shelve a PR URL, hiding it from daily digest and capacity.
    * @param url - The PR URL to shelve
+   * @param reason - The PR's action reason right now (`shelveReasonOf`), when known
    * @returns true if newly shelved, false if already shelved
    */
-  shelvePR(url: string): boolean {
+  shelvePR(url: string, reason?: string): boolean {
     if (!this.state.config.shelvedPRUrls) {
       this.state.config.shelvedPRUrls = [];
     }
-    // Stamp every shelve, a repeat included (#1922): the stamp is what the
-    // daily run compares maintainer activity against, so re-shelving a PR
-    // acknowledges everything up to now.
+    // Record every shelve, a repeat included (#1922): the daily run compares
+    // maintainer activity and the action reason against this, so re-shelving
+    // a PR acknowledges everything up to now.
     const now = new Date();
-    this.state.config.shelvedPRAt = { ...this.state.config.shelvedPRAt, [issueRefKey(url) ?? url]: now.toISOString() };
+    this.state.config.shelvedPRInfo = {
+      ...this.state.config.shelvedPRInfo,
+      [issueRefKey(url) ?? url]: { at: now.toISOString(), reason },
+    };
     const isNew = this.shelvedIndex(url) === -1;
     if (isNew) {
       this.state.config.shelvedPRUrls.push(url);
@@ -1242,11 +1246,24 @@ export class StateManager {
       return false;
     }
     this.state.config.shelvedPRUrls.splice(index, 1);
-    if (this.state.config.shelvedPRAt) {
-      delete this.state.config.shelvedPRAt[issueRefKey(url) ?? url];
+    if (this.state.config.shelvedPRInfo) {
+      delete this.state.config.shelvedPRInfo[issueRefKey(url) ?? url];
     }
     this.autoSave();
     return true;
+  }
+
+  /**
+   * Set the action reason a shelved PR is compared against (#1922). The daily
+   * run calls this for a PR that stays shelved: to fill in a reason unknown at
+   * shelve time, and to note that the stored reason went away. No-op for a PR
+   * without a shelve record or when the reason is unchanged.
+   */
+  setShelvedPRReason(url: string, reason: string): void {
+    const info = this.state.config.shelvedPRInfo?.[issueRefKey(url) ?? url];
+    if (!info || info.reason === reason) return;
+    info.reason = reason;
+    this.autoSave();
   }
 
   /**

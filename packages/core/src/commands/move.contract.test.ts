@@ -25,6 +25,7 @@ vi.mock('../core/index.js', async () => {
       clearStatusOverride: mockClearStatusOverride,
       shelvePR: mockShelvePR,
       unshelvePR: mockUnshelvePR,
+      getState: () => ({}),
       batch: mockBatch,
       isGistMode: () => false,
     }),

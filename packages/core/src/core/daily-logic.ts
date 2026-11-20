@@ -27,6 +27,7 @@ import type {
   StalenessTier,
   ActionReason,
   AgentState,
+  DailyDigest,
   ShelvedPRRef,
   ComputedRepoSignals,
   RepoGroup,
@@ -51,25 +52,46 @@ import type {
 export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
 
 /**
+ * The action reason a shelve record stores and compares (#1922): the PR's
+ * primary reason while it needs addressing, `none` when it does not.
+ */
+export function shelveReasonOf(pr: Pick<FetchedPR, 'status' | 'actionReason'>): string {
+  return CRITICAL_STATUSES.has(pr.status) ? (pr.actionReason ?? 'needs_addressing') : 'none';
+}
+
+/**
  * Whether an explicitly shelved PR goes back to active (#1922). It must need
- * addressing, and a maintainer must have acted since it was shelved: a PR
- * shelved while it already needed addressing stays shelved until then.
- * Without a shelve stamp (shelved before `config.shelvedPRAt` existed) or a
- * known maintainer-activity time, needing addressing alone unshelves it.
+ * addressing, and something must be new since it was shelved: maintainer
+ * activity after the shelve, or an action reason other than the recorded one.
+ * A PR shelved while it already needed addressing stays shelved until then.
+ * A record without a reason (the PR was not in the digest at shelve time)
+ * only unshelves on maintainer activity; the daily run then fills the reason
+ * in. Without a shelve record (shelved before `config.shelvedPRInfo` existed)
+ * or a known maintainer-activity time, needing addressing alone unshelves it.
  *
- * @param shelvedPRAt - `config.shelvedPRAt`, keyed by `issueRefKey`
+ * @param shelvedPRInfo - `config.shelvedPRInfo`, keyed by `issueRefKey`
  */
 export function shouldAutoUnshelve(
-  pr: Pick<FetchedPR, 'url' | 'status' | 'lastMaintainerActivityAt'>,
-  shelvedPRAt: Readonly<Record<string, string>> | undefined,
+  pr: Pick<FetchedPR, 'url' | 'status' | 'actionReason' | 'lastMaintainerActivityAt'>,
+  shelvedPRInfo: AgentState['config']['shelvedPRInfo'] | undefined,
 ): boolean {
   if (!CRITICAL_STATUSES.has(pr.status)) return false;
-  const shelvedAt = shelvedPRAt?.[issueRefKey(pr.url) ?? pr.url];
-  if (!shelvedAt || !pr.lastMaintainerActivityAt) return true;
+  const info = shelvedPRInfo?.[issueRefKey(pr.url) ?? pr.url];
+  if (!info || !pr.lastMaintainerActivityAt) return true;
+  if (info.reason !== undefined && info.reason !== shelveReasonOf(pr)) return true;
   const activityMs = Date.parse(pr.lastMaintainerActivityAt);
-  const shelvedMs = Date.parse(shelvedAt);
+  const shelvedMs = Date.parse(info.at);
   // An unparseable date resurfaces the PR instead of hiding it.
   return Number.isNaN(activityMs) || Number.isNaN(shelvedMs) || activityMs > shelvedMs;
+}
+
+/**
+ * A PR shelved while it needs addressing stays shelved (#1922): keep it out
+ * of the Needs Addressing list the brief and --json output render.
+ */
+export function withoutShelvedNeedsAddressing(digest: DailyDigest, shelvedPRs: ShelvedPRRef[]): DailyDigest {
+  const shelvedUrls = new Set(shelvedPRs.map((ref) => ref.url));
+  return { ...digest, needsAddressingPRs: digest.needsAddressingPRs.filter((pr) => !shelvedUrls.has(pr.url)) };
 }
 
 /**
