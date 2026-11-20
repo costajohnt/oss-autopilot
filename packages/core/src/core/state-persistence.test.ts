@@ -187,8 +187,12 @@ describe('Concurrent State Write Protection', () => {
       const lockPath = path.join(tmpDir, 'state.json.lock');
       // Write invalid JSON to simulate a corrupt lock file
       fs.writeFileSync(lockPath, 'NOT VALID JSON', { flag: 'wx' });
+      // A corrupt lock is aged by its mtime (#1951): a fresh unreadable lock
+      // may be one its owner is still writing.
+      const aged = new Date(Date.now() - 60_000);
+      fs.utimesSync(lockPath, aged, aged);
 
-      // Should succeed because corrupt locks are treated as stale
+      // Should succeed because the corrupt lock is past the stale threshold
       acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 

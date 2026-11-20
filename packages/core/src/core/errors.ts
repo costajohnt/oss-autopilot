@@ -124,13 +124,28 @@ export class ConcurrencyError extends OssAutopilotError {
   constructor(
     public readonly expectedMtimeMs: number,
     public readonly actualMtimeMs: number,
+    message = 'Another oss-autopilot process wrote state.json concurrently. ' +
+      'Re-run the command to retry — the last write wins and no data was lost from the other process.',
   ) {
-    super(
-      'Another oss-autopilot process wrote state.json concurrently. ' +
-        'Re-run the command to retry — the last write wins and no data was lost from the other process.',
-      'CONCURRENCY_ERROR',
-    );
+    super(message, 'CONCURRENCY_ERROR');
     this.name = 'ConcurrencyError';
+  }
+}
+
+/**
+ * Thrown when the state.json advisory lock stayed held for the whole bounded
+ * wait (#1951). The write was not made. A {@link ConcurrencyError} so callers
+ * that reload and retry on a writer collision do the same here.
+ */
+export class StateLockTimeoutError extends ConcurrencyError {
+  constructor(lockPath: string, waitedMs: number) {
+    super(
+      0,
+      0,
+      `State file is locked by another process (waited ${waitedMs} ms). Nothing was written; re-run the command. ` +
+        `If no other oss-autopilot process is running, the lock expires on its own, or delete ${lockPath}.`,
+    );
+    this.name = 'StateLockTimeoutError';
   }
 }
 

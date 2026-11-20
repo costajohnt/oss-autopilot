@@ -5,69 +5,150 @@
  */
 
 import * as fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema, NEWER_WRITER_HINT, malformedWorkClaimCount, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
 import { pruneRejectedCopies } from './stale-data.js';
-import { errorMessage, ConcurrencyError } from './errors.js';
+import { errorMessage, ConcurrencyError, StateLockTimeoutError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'state';
 
-// Lock file timeout: if a lock is older than this, it is considered stale
-const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
+// A lock whose owner is gone is stale once it is older than this. The locked
+// section is a synchronous copy + write + rename (milliseconds), so 30 seconds
+// is far past any real write.
+const LOCK_TIMEOUT_MS = 30_000;
+// A lock whose PID is still alive on this host is only taken after this long:
+// the owner is most likely an unrelated process that reused the PID of a
+// crashed writer, and a live writer that is merely slow must keep its lock.
+const LIVE_LOCK_TIMEOUT_MS = 10 * 60_000;
+// Contention: poll every 25 ms for about one second, then fail (#1951).
+const LOCK_RETRY_INTERVAL_MS = 25;
+const LOCK_RETRY_ATTEMPTS = 40;
 
-/**
- * Check whether an existing lock file is stale (expired or corrupt).
- * Returns true if the lock should be considered stale and can be removed.
- */
-function isLockStale(lockPath: string): boolean {
+/** Block this thread for `ms`. saveState is synchronous, so the wait has to be too. */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function readLockFile(lockPath: string): string | null {
   try {
-    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-    return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
+    return fs.readFileSync(lockPath, 'utf8');
   } catch (err) {
-    // Lock file is unreadable or contains invalid JSON — treat as stale
-    debug(MODULE, 'Lock file unreadable or invalid JSON, treating as stale', err);
+    debug(MODULE, 'Lock file missing or unreadable', err);
+    return null;
+  }
+}
+
+function isPidAlive(pid: unknown): boolean {
+  if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
     return true;
+  } catch (err) {
+    // EPERM: the process exists but belongs to another user.
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function parseLock(content: string): { pid?: unknown; timestamp?: unknown } {
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err) {
+    debug(MODULE, 'Lock file is not valid JSON', err);
+  }
+  return parsed ?? {};
+}
+
+/** The lock file's mtime, or a time that can never look stale when it cannot be read. */
+function lockMtimeMs(lockPath: string): number {
+  try {
+    return fs.statSync(lockPath).mtimeMs;
+  } catch (err) {
+    debug(MODULE, 'Lock file disappeared while checking staleness', err);
+    return Infinity;
   }
 }
 
 /**
- * Acquire an advisory file lock using exclusive-create (`wx` flag).
- * If the lock file already exists but is stale (older than LOCK_TIMEOUT_MS or corrupt),
- * it is removed and re-acquired.
- * @throws Error if the lock is held by another active process.
+ * Return the lock's content when it is stale, or null when it must be
+ * respected (or is already gone). A lock without a usable timestamp (empty
+ * while its owner is still writing it, or corrupt) is aged by file mtime
+ * instead of being treated as stale on sight.
  */
-export function acquireLock(lockPath: string): void {
-  const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+function readStaleLock(lockPath: string): string | null {
+  const content = readLockFile(lockPath);
+  if (content === null) return null;
+  const lock = parseLock(content);
+  const since = typeof lock.timestamp === 'number' ? lock.timestamp : lockMtimeMs(lockPath);
+  const limit = isPidAlive(lock.pid) ? LIVE_LOCK_TIMEOUT_MS : LOCK_TIMEOUT_MS;
+  return Date.now() - since > limit ? content : null;
+}
+
+/** Link a wrongly claimed lock back into place; `linkSync` fails rather than overwrite a newer lock. */
+function putBackLock(claimed: string, lockPath: string): void {
+  try {
+    fs.linkSync(claimed, lockPath);
+  } catch (err) {
+    warn(MODULE, `Could not put back a live state lock: ${errorMessage(err)}`);
+  }
+}
+
+/**
+ * Remove a lock judged stale without ever removing a fresh one. The rename
+ * is the atomic claim: of several processes that judged the same lock stale,
+ * one gets the file and the rest fail with ENOENT. If the claimed file is not
+ * the lock that was judged (another process finished its own takeover in
+ * between), it is put back.
+ */
+function removeStaleLock(lockPath: string, staleContent: string): void {
+  const claimed = `${lockPath}.stale-${process.pid}-${randomUUID()}`;
+  try {
+    fs.renameSync(lockPath, claimed);
+  } catch (err) {
+    debug(MODULE, 'Stale lock already claimed or released by another process', err);
+    return;
+  }
+  if (readLockFile(claimed) !== staleContent) putBackLock(claimed, lockPath);
+  fs.rmSync(claimed, { force: true });
+}
+
+/**
+ * Exclusive-create the lock, then re-read it: this process holds the lock
+ * only if the file on disk is the one it wrote.
+ */
+function didTakeLock(lockPath: string, lockData: string): boolean {
   try {
     fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if file exists
-    return;
   } catch (err) {
-    // Lock file exists (EEXIST from 'wx' flag) — check if it is stale
-    debug(MODULE, 'Lock file already exists, checking staleness', err);
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
   }
+  return readLockFile(lockPath) === lockData;
+}
 
-  if (!isLockStale(lockPath)) {
-    throw new Error('State file is locked by another process');
+/**
+ * Acquire an advisory file lock using exclusive-create (`wx` flag).
+ * A held lock is retried for about a second; a stale one (see
+ * {@link readStaleLock}) is taken over through an atomic rename.
+ * @throws StateLockTimeoutError (a ConcurrencyError) if the lock is still
+ *   held after the wait. Nothing has been written at that point.
+ */
+export function acquireLock(lockPath: string): void {
+  const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: randomUUID() });
+  for (let attempt = 0; attempt <= LOCK_RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) sleepSync(LOCK_RETRY_INTERVAL_MS);
+    if (didTakeLock(lockPath, lockData)) return;
+    const staleContent = readStaleLock(lockPath);
+    if (staleContent !== null) {
+      removeStaleLock(lockPath, staleContent);
+      if (didTakeLock(lockPath, lockData)) return;
+    }
   }
-
-  // Stale lock detected — remove it and try to re-acquire
-  try {
-    fs.unlinkSync(lockPath);
-  } catch (err) {
-    // Another process may have removed the stale lock first — proceed to re-acquire regardless
-    debug(MODULE, 'Stale lock already removed by another process', err);
-  }
-  try {
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
-  } catch (err) {
-    // Another process grabbed the lock between unlink and write
-    debug(MODULE, 'Lock re-acquire failed (race condition)', err);
-    throw new Error('State file is locked by another process', { cause: err });
-  }
+  throw new StateLockTimeoutError(lockPath, LOCK_RETRY_ATTEMPTS * LOCK_RETRY_INTERVAL_MS);
 }
 
 /**
@@ -421,14 +502,55 @@ export function warnMalformedWorkClaims(raw: unknown, state: AgentState, source:
 }
 
 /**
+ * Refuse a state file whose schema version is above this release's. Treating
+ * it as invalid would restore an older backup over newer data.
+ */
+function assertNotNewerVersion(raw: unknown): void {
+  const version = (raw as { version?: unknown } | null)?.version;
+  const supported = AgentStateSchema.shape.version.value;
+  if (typeof version === 'number' && version > supported) {
+    const message =
+      `The state file was written by a newer oss-autopilot release (schema version ${version}; this release ` +
+      `reads up to ${supported}). Nothing was changed. Update this client and retry: run ` +
+      '`claude plugin update oss-autopilot@oss-autopilot` and restart Claude Code, or install the latest ' +
+      '@oss-autopilot packages.';
+    // The `code` makes rethrowUnlessCorrupt pass it through like a file system error.
+    throw Object.assign(new Error(message), { code: 'ESTATENEWER' });
+  }
+}
+
+/**
+ * Rethrow a load failure that is not corruption, before any file is touched:
+ * anything carrying an error `code`, i.e. a file system error (EACCES, EMFILE,
+ * EIO, EISDIR, ENOSPC, ...) or a newer-version state file (ESTATENEWER).
+ * Restoring a backup or starting fresh there would mask the real problem and
+ * can overwrite a valid state file (#1371, #1951). Only unparseable or
+ * structurally broken content returns, to be recovered.
+ */
+function rethrowUnlessCorrupt(error: unknown): void {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === 'EACCES' || code === 'EPERM') {
+    throw new Error(
+      `Permission denied reading state file (${code}): ${errorMessage(error)}. ` +
+        'This is an environment problem, not state corruption. Check the ownership and ' +
+        'permissions of ~/.oss-autopilot/state.json (e.g. run `ls -l ~/.oss-autopilot/state.json` ' +
+        'and fix with chown/chmod), then retry.',
+      { cause: error },
+    );
+  }
+  if (typeof code === 'string') throw error;
+}
+
+/**
  * Load state from file, or create initial state if none exists.
  * If the main state file is corrupted, attempts to restore from the most recent backup.
  * Performs migration from legacy ./data/ location if needed.
  * @returns Object with the loaded state, the file's mtime (for change detection),
  *   and recovery details when the main file was rejected.
- * @throws Error when the state file exists but cannot be read due to a
- *   permission error (EACCES/EPERM) — that is an environment problem, not
- *   corruption, so restore-or-fresh would mask it and risk clobbering data.
+ * @throws Error when the state file exists but cannot be read due to a file
+ *   system error (EACCES/EPERM get guidance, others are rethrown as they are)
+ *   or was written by a newer release. Neither is corruption, so
+ *   restore-or-fresh would mask it and risk clobbering data. No file is touched.
  */
 export function loadState(): LoadStateResult {
   // Try to migrate from legacy location first
@@ -447,6 +569,7 @@ export function loadState(): LoadStateResult {
       let mtimeMs = safeGetMtimeMs(statePath);
       const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
+      assertNotNewerVersion(raw);
 
       // Chain migrations: v1 → v2 → v3 → v4
       let wasMigrated = false;
@@ -512,19 +635,7 @@ export function loadState(): LoadStateResult {
       return { state, mtimeMs };
     }
   } catch (error) {
-    // Permission errors are environmental, not corruption — restoring a
-    // backup or starting fresh here would mask the real problem and risk
-    // clobbering a perfectly valid state file. Rethrow with guidance (#1371).
-    const code = (error as NodeJS.ErrnoException | null)?.code;
-    if (code === 'EACCES' || code === 'EPERM') {
-      throw new Error(
-        `Permission denied reading state file (${code}): ${errorMessage(error)}. ` +
-          'This is an environment problem, not state corruption. Check the ownership and ' +
-          'permissions of ~/.oss-autopilot/state.json (e.g. run `ls -l ~/.oss-autopilot/state.json` ' +
-          'and fix with chown/chmod), then retry.',
-        { cause: error },
-      );
-    }
+    rethrowUnlessCorrupt(error);
 
     warn(MODULE, 'Error loading state:', error);
     warn(MODULE, 'Attempting to restore from backup...');
