@@ -164,16 +164,11 @@ vi.mock('./rate-limiter.js', () => ({
   },
 }));
 
-// Wrap detectIssueList in a spy so readVettedIssues' list detection is
-// overridable per-test (#1448). Default passes through to the real
-// implementation — the #924 cache-invalidation tests depend on it reading
-// their tmp issue-list files.
-vi.mock('./startup.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./startup.js')>();
-  return {
-    ...actual,
-    detectIssueList: vi.fn(actual.detectIssueList),
-  };
+// Pass-through spy on execFileSync so the #2012 tests can count the Git
+// calls the issue-list foreign-checkout check makes.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
 });
 
 import {
@@ -188,10 +183,14 @@ import {
   type DashboardServerInfo,
 } from './dashboard-server.js';
 import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
-import { detectIssueList } from './startup.js';
+import { execFileSync } from 'node:child_process';
 import { getGitHubToken } from '../core/index.js';
 import { ConcurrencyError, ConfigurationError, StateLockTimeoutError } from '../core/errors.js';
 import { getLocalConfigPath } from '../core/paths.js';
+
+function gitCallsFor(dir: string): number {
+  return vi.mocked(execFileSync).mock.calls.filter(([cmd, args]) => cmd === 'git' && args?.includes(dir)).length;
+}
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -588,17 +587,15 @@ describe('dashboard-server', () => {
       const digest = makeDigest();
       const state = makeState({ lastDigest: digest });
 
-      // detectIssueList reports a list, but reading it throws (ENOENT here;
-      // EACCES/EIO behave the same) — previously the panel just went empty.
-      vi.mocked(detectIssueList).mockReturnValueOnce({
-        path: '/nonexistent-1448/issue-list.md',
-        source: 'configured',
-        availableCount: 0,
-        completedCount: 0,
-        blockedCount: 0,
-      });
+      // A list is configured, but reading it throws (EISDIR here: the path
+      // is a directory; ENOENT/EACCES/EIO behave the same) — previously the
+      // panel just went empty.
+      fs.rmSync(getLocalConfigPath(), { force: true });
+      const listDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-1448-'));
+      mockStateManager.getState.mockReturnValue({ ...state, config: { ...state.config, issueListPath: listDir } });
 
       const data = buildDashboardJson(digest, state, [], undefined, undefined, ['fetch recently merged PRs']);
+      fs.rmSync(listDir, { recursive: true, force: true });
 
       expect(data.vettedIssues).toBeNull();
       // Caller-provided failures are preserved; the build-local one is appended.
@@ -2636,6 +2633,46 @@ describe('dashboard-server', () => {
       // Identical payloads across two requests when nothing changes.
       expect(second.body).toBe(first.body);
       expect(JSON.parse(second.body).stats.availableIssues).toBe(1);
+    });
+
+    it('runs the git foreign-checkout check once per list path across GET /api/data calls (#2012)', async () => {
+      const baseTime = Date.now();
+      writeIssueList('## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n', baseTime);
+      await sendRequest('GET', '/api/data');
+      await sendRequest('GET', '/api/data');
+      // An edit forces a rebuild, which re-reads the list: still no new Git call.
+      writeIssueList(
+        '## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n- [#2](https://github.com/o/r/issues/2) — Second\n',
+        baseTime + 60_000,
+      );
+      const edited = await sendRequest('GET', '/api/data');
+      expect(JSON.parse(edited.body).stats.availableIssues).toBe(2);
+      // tmpdir is not a checkout: one `git rev-parse` answers it, once.
+      expect(gitCallsFor(issueListDir)).toBe(1);
+
+      // A newly configured path (as `setup --set` would write) is used on the
+      // next request, with its own single check.
+      const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-issuelist-'));
+      const otherPath = path.join(otherDir, 'potential-issue-list.md');
+      fs.writeFileSync(
+        otherPath,
+        '## Pursue\n- [#3](https://github.com/o/r/issues/3) — A\n- [#4](https://github.com/o/r/issues/4) — B\n- [#5](https://github.com/o/r/issues/5) — C\n',
+      );
+      mockStateManager.getState.mockReturnValue(
+        makeState({
+          lastDigest: makeDigest(),
+          config: { issueListPath: otherPath, skippedIssuesPath: undefined } as any,
+        }),
+      );
+      fs.rmSync(getLocalConfigPath(), { force: true }); // drop the first path's local adoption
+      try {
+        const switched = await sendRequest('GET', '/api/data');
+        expect(JSON.parse(switched.body).stats.availableIssues).toBe(3);
+        await sendRequest('GET', '/api/data');
+        expect(gitCallsFor(otherDir)).toBe(1);
+      } finally {
+        fs.rmSync(otherDir, { recursive: true, force: true });
+      }
     });
 
     it('handles a missing issue-list file without crashing', async () => {

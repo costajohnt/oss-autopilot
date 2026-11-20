@@ -23,7 +23,7 @@ import {
   storedToClosedPRs,
   type DashboardJsonData,
 } from './dashboard-data.js';
-import { detectIssueList } from './startup.js';
+import { detectIssueListPath, isForeignCheckout } from './locate-issue-list.js';
 import { parseIssueList, type ParseIssueListOutput } from './parse-list.js';
 import {
   isBelowMinStars,
@@ -38,6 +38,29 @@ import {
 
 const MODULE = 'dashboard-server';
 
+// Foreign-checkout verdicts keyed by checkout dir + GitHub username (#2012).
+// The dashboard polls /api/data, and the check runs two synchronous `git`
+// calls; the configured path and its source are still read on every call, so
+// `setup --set issueListPath=...` takes effect on the next request.
+// ponytail: a remote added to or removed from the list's checkout while the
+// dashboard runs is seen after a restart; clear this on state reload if needed.
+const foreignVerdicts = new Map<string, boolean>();
+
+function isForeignCheckoutCached(dir: string): boolean {
+  const key = `${dir}\0${getStateManager().getState().config.githubUsername}`;
+  let verdict = foreignVerdicts.get(key);
+  if (verdict === undefined) {
+    verdict = isForeignCheckout(dir);
+    foreignVerdicts.set(key, verdict);
+  }
+  return verdict;
+}
+
+/** The configured issue list path for the dashboard: no item counting, Git checked once per checkout. */
+function dashboardIssueListPath(): string | undefined {
+  return detectIssueListPath(isForeignCheckoutCached)?.path;
+}
+
 /**
  * Read and parse the vetted issue list file (non-fatal on failure).
  *
@@ -48,9 +71,9 @@ const MODULE = 'dashboard-server';
  */
 function readVettedIssues(failures?: string[]): ParseIssueListOutput | null {
   try {
-    const info = detectIssueList();
-    if (!info) return null;
-    const content = fs.readFileSync(info.path, 'utf8');
+    const listPath = dashboardIssueListPath();
+    if (!listPath) return null;
+    const content = fs.readFileSync(listPath, 'utf8');
     return parseIssueList(content);
   } catch (error) {
     warn(MODULE, `Failed to read vetted issue list: ${errorMessage(error)}`);
@@ -65,9 +88,9 @@ function readVettedIssues(failures?: string[]): ParseIssueListOutput | null {
  */
 export function getIssueListMtimeMs(): number | null {
   try {
-    const info = detectIssueList();
-    if (!info) return null;
-    return fs.statSync(info.path).mtimeMs;
+    const listPath = dashboardIssueListPath();
+    if (!listPath) return null;
+    return fs.statSync(listPath).mtimeMs;
   } catch {
     return null;
   }
