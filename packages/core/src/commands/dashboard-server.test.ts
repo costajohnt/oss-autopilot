@@ -2137,6 +2137,12 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/api/data');
       expect(result.statusCode).toBe(429);
       expect(result.headers['retry-after']).toBe('30');
+
+      // The liveness probe sits outside the limiters, so a throttled server
+      // still reads as alive (#1927).
+      const health = await sendRequest('GET', '/api/health');
+      expect(health.statusCode).toBe(200);
+      expect(JSON.parse(health.body)).toEqual({ ok: true, pid: process.pid });
     });
 
     it('should return 429 with Retry-After for POST /api/action when rate-limited', async () => {
@@ -2211,6 +2217,39 @@ describe('dashboard-server', () => {
       expect(data.code).toBe('CONCURRENCY_ERROR');
       expect(data.retryable).toBe(true);
       expect(typeof data.error).toBe('string');
+    });
+
+    it('answers 202 and refreshes in the background for Prefer: respond-async (#1927)', async () => {
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockRejectedValueOnce(new Error('GitHub API error'));
+
+      const result = await sendRequestWithHeaders('POST', '/api/refresh', {
+        origin: 'http://localhost:19876',
+        'x-csrf-token': cachedCsrfToken!,
+        prefer: 'respond-async',
+      });
+      expect(result.statusCode).toBe(202);
+      expect(JSON.parse(result.body)).toEqual({ refreshing: true });
+
+      // The background failure is not lost: it surfaces as staleness on the next read.
+      await vi.waitFor(
+        async () => {
+          const data = await sendRequest('GET', '/api/data');
+          expect(data.headers['x-dashboard-stale-reason']).toContain('background-refresh-failed: GitHub API error');
+        },
+        { timeout: 5000 },
+      );
+
+      // A later successful refresh clears it for the tests that follow.
+      vi.mocked(fetchDashboardData).mockResolvedValue({
+        digest: makeDigest(),
+        commentedIssues: [],
+        allMergedPRs: [],
+        allClosedPRs: [],
+        partialFailures: [],
+      });
+      const recovered = await sendRequest('POST', '/api/refresh');
+      expect(recovered.statusCode).toBe(200);
     });
 
     it('should reject refresh with invalid origin', async () => {
@@ -2372,7 +2411,7 @@ describe('dashboard-server', () => {
   describe('health probe', () => {
     it('isDashboardServerRunning should return false for unreachable port', async () => {
       // Use a port that is almost certainly not in use
-      const result = await isDashboardServerRunning(19_999);
+      const result = await isDashboardServerRunning(19_999, process.pid);
       expect(result).toBe(false);
     });
 

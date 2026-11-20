@@ -215,7 +215,11 @@ function shouldOpenBrowser(spaResult: LaunchResult, throttleMs: number): boolean
   return elapsed >= throttleMs;
 }
 
-async function triggerDashboardRefresh(port: number): Promise<boolean> {
+/**
+ * Returns `refresh-started` for a 202 (the server refreshes in the background
+ * and has not finished), `refreshed` for a completed refresh, null on failure.
+ */
+async function triggerDashboardRefresh(port: number): Promise<'refreshed' | 'refresh-started' | null> {
   try {
     const base = `http://127.0.0.1:${port}`;
     // POST /api/refresh is CSRF-gated and the token is only issued on the
@@ -225,23 +229,26 @@ async function triggerDashboardRefresh(port: number): Promise<boolean> {
     await prime.text().catch(() => {});
     if (!prime.ok || !csrfToken) {
       console.error(`[STARTUP] Dashboard refresh returned ${prime.status}: no CSRF token from /api/data`);
-      return false;
+      return null;
     }
     const res = await fetch(`${base}/api/refresh`, {
       method: 'POST',
-      headers: { Origin: `http://oss.localhost:${port}`, 'X-CSRF-Token': csrfToken },
+      // Ask for a 202 and a background refresh: the full GitHub fetch outlives
+      // this timeout, which used to log a failure for a refresh that then
+      // completed (#1927).
+      headers: { Origin: `http://oss.localhost:${port}`, 'X-CSRF-Token': csrfToken, Prefer: 'respond-async' },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.error(`[STARTUP] Dashboard refresh returned ${res.status}: ${body}`);
-      return false;
+      return null;
     }
     await res.text().catch(() => {});
-    return true;
+    return res.status === 202 ? 'refresh-started' : 'refreshed';
   } catch (error) {
     console.error(`[STARTUP] Could not trigger dashboard refresh: ${errorMessage(error)}`);
-    return false;
+    return null;
   }
 }
 
@@ -308,7 +315,7 @@ export async function runStartup(): Promise<StartupOutput> {
   // The dashboard's own empty-state UI renders "no PRs" cleanly, so always
   // surfacing it is the right default.
   let dashboardUrl: string | undefined;
-  let dashboardStatus: 'opened' | 'refreshed' | 'running' | undefined;
+  let dashboardStatus: 'opened' | 'refreshed' | 'refresh-started' | 'running' | undefined;
   let dashboardError: string | undefined;
 
   try {
@@ -316,8 +323,7 @@ export async function runStartup(): Promise<StartupOutput> {
     if (spaResult) {
       dashboardUrl = spaResult.url;
       if (spaResult.alreadyRunning) {
-        const refreshed = await triggerDashboardRefresh(spaResult.port);
-        dashboardStatus = refreshed ? 'refreshed' : 'running';
+        dashboardStatus = (await triggerDashboardRefresh(spaResult.port)) ?? 'running';
       } else {
         dashboardStatus = 'opened';
       }
@@ -344,6 +350,8 @@ export async function runStartup(): Promise<StartupOutput> {
     daily.briefSummary += ' | Dashboard opened in browser';
   } else if (dashboardStatus === 'refreshed') {
     daily.briefSummary += ' | Dashboard refreshed';
+  } else if (dashboardStatus === 'refresh-started') {
+    daily.briefSummary += ' | Dashboard refresh started';
   } else if (dashboardStatus === 'running') {
     daily.briefSummary += ' | Dashboard running';
   }

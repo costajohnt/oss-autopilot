@@ -867,7 +867,7 @@ describe('runStartup behavior', () => {
       'http://127.0.0.1:3001/api/refresh',
       expect.objectContaining({
         method: 'POST',
-        headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-test-token' }),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-test-token', Prefer: 'respond-async' }),
       }),
     );
     // No `lastBrowserOpenedAt` recorded yet → falls outside throttle window,
@@ -876,6 +876,22 @@ describe('runStartup behavior', () => {
     expectBrowserOpenedWith('http://oss.localhost:3001');
     expect(result.daily?.briefSummary).toContain('Dashboard refreshed');
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
+    fetchSpy.mockRestore();
+  });
+
+  it('reports a 202 as a refresh that started, not one that finished (#1927)', async () => {
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(3));
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
+    // The CSRF prime, then the 202 a `Prefer: respond-async` refresh gets.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(okResponse())
+      .mockResolvedValueOnce(new Response('{"refreshing":true}', { status: 202 }));
+
+    const result = await runStartup();
+
+    expect(result.daily?.briefSummary).toContain('Dashboard refresh started');
+    expect(result.daily?.briefSummary).not.toContain('Dashboard refreshed');
     fetchSpy.mockRestore();
   });
 

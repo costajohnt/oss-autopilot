@@ -26,7 +26,7 @@ const mockReadDashboardServerInfo = vi.fn();
 const mockRemoveDashboardServerInfo = vi.fn();
 vi.mock('./dashboard-process.js', () => ({
   findRunningDashboardServer: () => mockFindRunningDashboardServer(),
-  isDashboardServerRunning: (port: number) => mockIsDashboardServerRunning(port),
+  isDashboardServerRunning: (port: number, pid: number) => mockIsDashboardServerRunning(port, pid),
   readDashboardServerInfo: () => mockReadDashboardServerInfo(),
   removeDashboardServerInfo: () => mockRemoveDashboardServerInfo(),
 }));

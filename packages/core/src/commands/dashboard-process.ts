@@ -87,14 +87,52 @@ export function removeDashboardServerInfo(): void {
   }
 }
 
+/**
+ * Remove the PID file only when it records this process. A server that lost
+ * the file to a newer server (it was probed as dead, then replaced) must not
+ * delete the replacement's PID file on its own shutdown (#1927).
+ */
+export function removeOwnDashboardServerInfo(): void {
+  if (readDashboardServerInfo()?.pid === process.pid) removeDashboardServerInfo();
+}
+
 // ── Health Probe ───────────────────────────────────────────────────────────────
 
-export function isDashboardServerRunning(port: number): Promise<boolean> {
+/** Our health reply is a few dozen bytes; anything larger is another program. */
+const MAX_HEALTH_BODY_LENGTH = 1024;
+
+/** The `pid` field of a health reply, or undefined when the body is not ours. */
+function parseHealthPid(body: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  return (parsed as { pid?: unknown } | null)?.pid;
+}
+
+/**
+ * Probe GET /api/health, which sits outside the rate limiters and reloads no
+ * state: the old probe of /api/data read a busy or throttled server as dead
+ * (#1927). The server counts as ours only when the reply names the PID the
+ * PID file records, so another program listening on the port (or a recycled
+ * PID) never passes as the dashboard.
+ */
+export function isDashboardServerRunning(port: number, pid: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/data`, { timeout: 2000 }, (res) => {
-      // Consume response data to free up memory
-      res.resume();
-      resolve(res.statusCode === 200);
+    const req = http.get(`http://127.0.0.1:${port}/api/health`, { timeout: 2000 }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => {
+        body += chunk;
+        if (body.length > MAX_HEALTH_BODY_LENGTH) {
+          resolve(false);
+          req.destroy();
+        }
+      });
+      res.on('end', () => resolve(parseHealthPid(body) === pid));
+      res.on('error', () => resolve(false));
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => {
@@ -123,11 +161,13 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
   }
 
   // Process exists — verify it's actually our server via HTTP probe
-  if (await isDashboardServerRunning(info.port)) {
+  if (await isDashboardServerRunning(info.port, info.pid)) {
     return { port: info.port, url: `http://oss.localhost:${info.port}` };
   }
 
-  // Process exists but not responding on expected port — stale
+  // Process exists but is not answering as our server on the expected port:
+  // stale. Never signal it. The PID file outlives crashes and reboots, so the
+  // PID may have been recycled to an unrelated process (#1927).
   removeDashboardServerInfo();
   return null;
 }
