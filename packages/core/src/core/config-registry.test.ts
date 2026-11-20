@@ -63,11 +63,15 @@ describe('CONFIG_KEY_REGISTRY', () => {
     // 'both' keys must appear in both lists.
     for (const def of CONFIG_KEY_REGISTRY) {
       if (def.settableVia === 'both') {
+        // eslint-disable-next-line vitest/no-conditional-expect -- per-key branch over the config registry table; every branch asserts
         expect(setupKeys, `${def.key} marked 'both' but missing from setup keys`).toContain(def.key);
+        // eslint-disable-next-line vitest/no-conditional-expect -- per-key branch over the config registry table; every branch asserts
         expect(configKeys, `${def.key} marked 'both' but missing from config keys`).toContain(def.key);
       }
       if (def.settableVia === 'auto') {
+        // eslint-disable-next-line vitest/no-conditional-expect -- per-key branch over the config registry table; every branch asserts
         expect(setupKeys).not.toContain(def.key);
+        // eslint-disable-next-line vitest/no-conditional-expect -- per-key branch over the config registry table; every branch asserts
         expect(configKeys).not.toContain(def.key);
       }
     }

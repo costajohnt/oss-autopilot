@@ -330,6 +330,7 @@ describe('runSetup', () => {
 
     expect(result).toHaveProperty('warnings');
     if ('warnings' in result && result.warnings) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('All entries were invalid')]));
     }
     expect(mockUpdateConfig).not.toHaveBeenCalledWith(

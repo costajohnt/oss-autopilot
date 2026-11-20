@@ -40,6 +40,7 @@ export interface StateUnlinkOutput {
   previousGistId: string | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runStateShow(options: { validate?: boolean } = {}): Promise<StateShowOutput> {
   const sm = getStateManager();
   const state = sm.getState();

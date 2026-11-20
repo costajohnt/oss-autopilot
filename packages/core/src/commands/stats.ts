@@ -7,6 +7,7 @@ import { getStateManager } from '../core/index.js';
 import { computeContributionStats } from '../core/stats.js';
 import type { StatsOutput } from '../formatters/json.js';
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runStats(): Promise<StatsOutput> {
   const stateManager = getStateManager();
   const state = stateManager.getState();

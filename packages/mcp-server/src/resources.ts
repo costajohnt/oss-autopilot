@@ -127,6 +127,7 @@ export function registerResources(server: McpServer): void {
     // Titles and branch-ref names are fenced too (#1455): the MCP host LLM
     // never sees the agents' injection-awareness blocks that cover the raw
     // titles in the CLI --json envelope.
+    // eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
     wrapResource(async () =>
       (getStateManager().getState().lastDigest?.openPRs ?? []).map((pr) => fenceFetchedPRTitles(fenceFetchedPR(pr))),
     ),
@@ -142,6 +143,7 @@ export function registerResources(server: McpServer): void {
         'Pull requests that have been manually shelved, temporarily hidden from daily checks and status reports.',
       mimeType: 'application/json',
     },
+    // eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
     wrapResource(async () => getStateManager().getState().lastDigest?.shelvedPRs ?? []),
   );
 

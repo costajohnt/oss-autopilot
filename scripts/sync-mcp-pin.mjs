@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 const PACKAGE_NAME = '@oss-autopilot/mcp';
 const SERVER_KEY = 'oss-autopilot';
-const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const SEMVER = /^\d+\.\d+\.\d+(?:-[\d.a-z-]+)?$/i;
 
 function fail(message) {
   console.error(`sync-mcp-pin: ${message}`);

@@ -523,13 +523,13 @@ describe('Lazy imports', () => {
     const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf8');
 
     // There should be NO static imports from ./commands/* or ./core/index.js
-    const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
+    const staticCommandImports = src.match(/^import .+ from '\.\/commands\/[^']+';$/gm);
     expect(staticCommandImports).toBeNull();
     const staticCoreBarrelImport = src.match(/^import .+ from '\.\/core\/index\.js';$/gm);
     expect(staticCoreBarrelImport).toBeNull();
 
     // There SHOULD be dynamic imports inside action handlers
-    const dynamicImports = src.match(/await import\('\.\/(commands\/[^']+)'\)/g);
+    const dynamicImports = src.match(/await import\('\.\/commands\/[^']+'\)/g);
     expect(dynamicImports).not.toBeNull();
     expect(dynamicImports!.length).toBeGreaterThanOrEqual(20);
   });
@@ -538,7 +538,7 @@ describe('Lazy imports', () => {
     const src = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
 
     // cli.ts should import from cli-registry, not from commands/ directly
-    const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
+    const staticCommandImports = src.match(/^import .+ from '\.\/commands\/[^']+';$/gm);
     expect(staticCommandImports).toBeNull();
   });
 
@@ -603,15 +603,18 @@ describe('CLI argument parsing', () => {
       if (name === 'serve') {
         // serve intentionally lacks --json
         const jsonOpt = cmd!.options.find((o) => o.long === '--json');
+        // eslint-disable-next-line vitest/no-conditional-expect -- per-command branch over the registered command table; every branch asserts
         expect(jsonOpt, 'serve should NOT have --json').toBeUndefined();
       } else if (parentGroups.has(name)) {
         // Parent group: every subcommand must have --json instead.
         for (const sub of cmd!.commands) {
           const jsonOpt = sub.options.find((o) => o.long === '--json');
+          // eslint-disable-next-line vitest/no-conditional-expect -- per-command branch over the registered command table; every branch asserts
           expect(jsonOpt, `${name} ${sub.name()} should have --json`).toBeDefined();
         }
       } else {
         const jsonOpt = cmd!.options.find((o) => o.long === '--json');
+        // eslint-disable-next-line vitest/no-conditional-expect -- per-command branch over the registered command table; every branch asserts
         expect(jsonOpt, `command "${name}" should have --json`).toBeDefined();
       }
     }

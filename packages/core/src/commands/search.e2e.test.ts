@@ -233,16 +233,27 @@ describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
       // May be empty if no issues match the configured languages/labels, so only validate structure if non-empty
       if (candidates.length > 0) {
         const candidate = candidates[0];
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(candidate).toHaveProperty('issue');
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(typeof candidate.issue.repo).toBe('string');
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(typeof candidate.issue.number).toBe('number');
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(typeof candidate.issue.title).toBe('string');
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(typeof candidate.issue.url).toBe('string');
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(Array.isArray(candidate.issue.labels)).toBe(true);
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(candidate).toHaveProperty('recommendation');
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(['approve', 'skip', 'needs_review']).toContain(candidate.recommendation);
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(Array.isArray(candidate.reasonsToApprove)).toBe(true);
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(Array.isArray(candidate.reasonsToSkip)).toBe(true);
+        // eslint-disable-next-line vitest/no-conditional-expect -- live search can legitimately return no candidates; shape is checked when present
         expect(typeof candidate.viabilityScore).toBe('number');
       }
     });

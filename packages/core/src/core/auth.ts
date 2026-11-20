@@ -148,6 +148,7 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
     const token = await new Promise<string>((resolve, reject) => {
       execFile('gh', ['auth', 'token'], { encoding: 'utf8', timeout: 2000 }, (error, stdout) => {
         if (error) {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- the cast satisfies prefer-promise-reject-errors
           reject(error as Error);
         } else {
           resolve(stdout.trim());
@@ -196,6 +197,7 @@ export async function detectGitHubUsername(): Promise<string | null> {
     const login = await new Promise<string>((resolve, reject) => {
       execFile('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', timeout: 5000 }, (error, stdout) => {
         if (error) {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- the cast satisfies prefer-promise-reject-errors
           reject(error as Error);
         } else {
           resolve(stdout.trim());

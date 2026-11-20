@@ -12,6 +12,7 @@ export interface EvalOutput {
   markdown: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runEval(): Promise<EvalOutput> {
   const report = computeEvalReport(getStateManager().getState());
   return { report, markdown: formatEvalMarkdown(report) };

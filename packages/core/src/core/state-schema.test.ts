@@ -532,8 +532,11 @@ describe('RepoScoreSchema', () => {
       const result = RepoScoreSchema.safeParse(validRepoScore);
       expect(result.success).toBe(true);
       if (result.success) {
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.repo).toBe('owner/repo');
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.score).toBe(8);
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.signals.hasActiveMaintainers).toBe(true);
       }
     });
@@ -545,6 +548,7 @@ describe('RepoScoreSchema', () => {
       });
       expect(result.success).toBe(true);
       if (result.success) {
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.avgResponseDays).toBeNull();
       }
     });
@@ -587,8 +591,11 @@ describe('TrackedIssueSchema', () => {
       const result = TrackedIssueSchema.safeParse(validTrackedIssue);
       expect(result.success).toBe(true);
       if (result.success) {
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.id).toBe(42);
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.status).toBe('candidate');
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.vettingResult?.passedAllChecks).toBe(true);
       }
     });
@@ -603,6 +610,7 @@ describe('TrackedIssueSchema', () => {
       const result = TrackedIssueSchema.safeParse(withoutVetting);
       expect(result.success).toBe(true);
       if (result.success) {
+        // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
         expect(result.data.vettingResult).toBeUndefined();
       }
     });

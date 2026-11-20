@@ -329,6 +329,7 @@ describe('dashboard-server', () => {
     });
 
     // Verify we captured the request handler
+    // eslint-disable-next-line vitest/no-standalone-expect -- setup guard: fail fast if the server did not start
     expect(capturedHandler).not.toBeNull();
 
     // Capture the CSRF token the server now mints per start-up. Exposed on
@@ -340,6 +341,7 @@ describe('dashboard-server', () => {
     const r = await result;
     const token = r.headers['x-csrf-token'];
     cachedCsrfToken = typeof token === 'string' ? token : null;
+    // eslint-disable-next-line vitest/no-standalone-expect -- setup guard: fail fast if the server did not start
     expect(cachedCsrfToken).toBeTruthy();
   });
 

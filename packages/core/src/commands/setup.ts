@@ -417,7 +417,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             if (value !== 'local' && value !== 'gist') {
               throw new ValidationError(`Invalid value for persistence: "${value}". Must be "local" or "gist".`);
             }
-            stateManager.updateConfig({ persistence: value as 'local' | 'gist' });
+            stateManager.updateConfig({ persistence: value });
             results[key] = value;
             break;
           }
@@ -612,6 +612,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
  * Check whether initial setup has been completed.
  * @returns Setup status and configured username
  */
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runCheckSetup(): Promise<CheckSetupOutput> {
   const stateManager = getStateManager();
 

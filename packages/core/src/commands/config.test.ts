@@ -120,8 +120,11 @@ describe('runConfig', () => {
     const result = await runConfig({ listKeys: true });
     expect('keys' in result).toBe(true);
     if ('keys' in result) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.keys.length).toBeGreaterThan(10);
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.keys.some((k) => k.key === 'username')).toBe(true);
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.keys.some((k) => k.key === 'skippedIssuesPath')).toBe(true);
     }
   });

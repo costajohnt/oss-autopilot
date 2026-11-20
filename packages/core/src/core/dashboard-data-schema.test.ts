@@ -54,6 +54,7 @@ describe('validateDashboardData', () => {
     const result = validateDashboardData(payload);
     expect(result.ok).toBe(false);
     if (!result.ok) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.message).toMatch(/stats/);
     }
   });
@@ -64,6 +65,7 @@ describe('validateDashboardData', () => {
     const result = validateDashboardData(payload);
     expect(result.ok).toBe(false);
     if (!result.ok) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.message).toMatch(/mergeRate/);
     }
   });
@@ -91,6 +93,7 @@ describe('validateDashboardData', () => {
     const result = validateDashboardData({});
     expect(result.ok).toBe(false);
     if (!result.ok) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- type guard: the assertion above already pins this branch
       expect(result.message).toMatch(/\+\d+ more/);
     }
   });

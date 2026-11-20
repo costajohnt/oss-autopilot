@@ -1785,6 +1785,7 @@ describe('runDailyForDisplay()', () => {
     expect(result).toHaveProperty('repoGroups');
     // repoGroups in full result have .prs (not .prUrls)
     if (result.repoGroups.length > 0) {
+      // eslint-disable-next-line vitest/no-conditional-expect -- group shape only applies when the fixture yields groups
       expect(result.repoGroups[0]).toHaveProperty('prs');
     }
   });

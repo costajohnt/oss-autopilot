@@ -10,6 +10,7 @@ import type { DetectFormattersOutput } from '../formatters/json.js';
 import { detectFormatters, diagnoseCIFormatterFailure } from '../core/formatter-detection.js';
 import { errorMessage } from '../core/errors.js';
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runDetectFormatters(options: {
   repoPath?: string;
   ciLog?: string;

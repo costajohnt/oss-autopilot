@@ -294,7 +294,7 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
     updated_at: p.updated_at,
   }));
   const { prMergeTimesDays, mergedCount, openedCount } = summarizePRMerges(prs, 90, now);
-  const commitSummary = summarizeCommits(commitsResp.data as CommitEntry[], now);
+  const commitSummary = summarizeCommits(commitsResp.data, now);
 
   const releases = releasesResp.data;
   const lastReleaseISO = releases.length > 0 ? (releases[0].published_at ?? releases[0].created_at ?? null) : null;
