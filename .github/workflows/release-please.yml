@@ -215,8 +215,8 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@12.2.3 && npm --version
 
-      # `pnpm pack` rewrites the `workspace:^` dependency on core to the
-      # released version; `npm publish <tarball>` then needs no pnpm at all.
+      # The tarball has no runtime dependencies (core and the SDK are inlined
+      # in the bundle), so `npm publish <tarball>` needs no pnpm at all.
       - name: Build and pack @oss-autopilot/mcp
         run: |
           pnpm --filter @oss-autopilot/mcp run prepublishOnly
@@ -225,8 +225,8 @@ jobs:
       # Last gate before the publish: install the tarball that is about to be
       # published into a clean prefix, run its bin and complete an MCP
       # `initialize` over stdio, which is what .mcp.json does for every plugin
-      # user (#1943). Its dependency on core resolves from npm here, so this
-      # also proves `pnpm pack` rewrote `workspace:^` to a published version.
+      # user (#1943). The package declares no runtime dependencies (#2007), so
+      # this also proves the bundle starts with nothing else installed.
       - name: Install the tarball and run its bin
         timeout-minutes: 10
         run: bash scripts/verify-packed-tarballs.sh "$RUNNER_TEMP"/pkg-mcp/*.tgz

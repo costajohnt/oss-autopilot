@@ -9,8 +9,8 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/mcp-server.bundle.cjs"
     }
   },
   "files": [
@@ -25,13 +25,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "prepublishOnly": "pnpm run build && pnpm run bundle"
   },
-  "dependencies": {
+  "devDependencies": {
     "@oss-autopilot/core": "workspace:^",
     "zod": "^4.6.7",
     "@modelcontextprotocol/server": "^2.4.0",
-    "@modelcontextprotocol/node": "^2.1.2"
-  },
-  "devDependencies": {
+    "@modelcontextprotocol/node": "^2.1.2",
     "@types/node": "^26.4.1",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.13",

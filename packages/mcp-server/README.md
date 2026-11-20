@@ -196,6 +196,8 @@ const server = createServer();
 // Connect to your own transport
 ```
 
+The package installs no dependencies: the bin and this entry point are one self-contained bundle. The type declarations refer to `@modelcontextprotocol/server` and `@oss-autopilot/core`, so install those as dev dependencies if you need full types.
+
 ## More Information
 
 See the [main repository README](https://github.com/costajohnt/oss-autopilot) for the full documentation, including the Claude Code plugin, CLI usage, dashboard, and contributing guide.
