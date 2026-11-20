@@ -10,6 +10,7 @@ import {
   IssueConversationMonitor,
   getOctokit,
   CRITICAL_STATUSES,
+  shouldAutoUnshelve,
   applyStatusOverrides,
   collectEngagedIssues,
   toShelvedPRRef,
@@ -21,7 +22,7 @@ import {
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
-import { parseGitHubUrl } from '../core/urls.js';
+import { parseGitHubUrl, issueRefKey } from '../core/urls.js';
 import {
   isBelowMinStars,
   type DailyDigest,
@@ -137,18 +138,21 @@ export function buildDashboardStats(
  * dormant-auto-shelve rule applies (dormant + not needing attention). Mirrors
  * the partition built in fetchDashboardData (see the `freshShelved` filter).
  *
- * #1352: an explicitly shelved PR that turns critical is NOT shelved for
- * display — the daily check auto-unshelves it (`CRITICAL_STATUSES`), so the
- * dashboard must agree immediately rather than diverging from the CLI's
- * headline count until the next daily run.
+ * #1352: an explicitly shelved PR the daily check would auto-unshelve
+ * (`shouldAutoUnshelve`: it needs addressing and a maintainer acted after the
+ * shelve, #1922) is NOT shelved for display, so the dashboard agrees
+ * immediately rather than diverging from the CLI's headline count until the
+ * next daily run.
  */
-function isShelvedForDisplay(
-  pr: { url: string; stalenessTier?: string; status?: string },
-  explicitlyShelved: Set<string>,
-): boolean {
-  if (CRITICAL_STATUSES.has(pr.status as FetchedPR['status'])) return false;
-  return explicitlyShelved.has(pr.url) || pr.stalenessTier === 'dormant';
+function isShelvedForDisplay(pr: ShelvePartitionPR, config: ShelveConfig): boolean {
+  const key = issueRefKey(pr.url);
+  const isExplicit = (config.shelvedPRUrls || []).some((url) => (key ? issueRefKey(url) === key : url === pr.url));
+  if (isExplicit) return !shouldAutoUnshelve(pr as FetchedPR, config.shelvedPRAt);
+  return pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status as FetchedPR['status']);
 }
+
+type ShelvePartitionPR = { url: string; stalenessTier?: string; status?: string; lastMaintainerActivityAt?: string };
+type ShelveConfig = Pick<AgentState['config'], 'shelvedPRUrls' | 'shelvedPRAt'>;
 
 /**
  * Re-derive `digest.shelvedPRs` and `summary.totalActivePRs` from the CURRENT
@@ -167,20 +171,19 @@ function isShelvedForDisplay(
  * are honored.
  */
 export function reconcileShelvePartition(digest: DailyDigest, state: Readonly<AgentState>): void {
-  const openPRs = (digest.openPRs || []) as Array<{ url: string; stalenessTier?: string; status?: string }>;
+  const openPRs = (digest.openPRs || []) as ShelvePartitionPR[];
   const openByUrl = new Map(openPRs.map((pr) => [pr.url, pr]));
-  const explicitlyShelved = new Set(state.config.shelvedPRUrls || []);
 
   // Keep baked entries that are either off the open-PR list (daily dormant
   // partition we can't recompute here) or still shelved under current state.
   const reconciled = (digest.shelvedPRs || []).filter((ref) => {
     const pr = openByUrl.get(ref.url);
-    return !pr || isShelvedForDisplay(pr, explicitlyShelved);
+    return !pr || isShelvedForDisplay(pr, state.config);
   });
   // Add open PRs that became shelved but aren't represented in the baked list yet.
   const present = new Set(reconciled.map((ref) => ref.url));
   for (const pr of openPRs) {
-    if (!present.has(pr.url) && isShelvedForDisplay(pr, explicitlyShelved)) {
+    if (!present.has(pr.url) && isShelvedForDisplay(pr, state.config)) {
       reconciled.push(toShelvedPRRef(pr as Parameters<typeof toShelvedPRRef>[0]));
     }
   }
@@ -521,15 +524,15 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
 
       // Apply shelve partitioning for display (auto-unshelve only runs in daily check).
       // Dormant PRs are treated as shelved unless they need addressing, and a
-      // critical PR is never display-shelved (#1352) — mirrors the daily
-      // check's CRITICAL_STATUSES auto-unshelve so headline counts agree.
+      // PR the daily check would auto-unshelve is never display-shelved
+      // (#1352, #1922) so headline counts agree.
       // Partitioned over overriddenPRs (#1416): the shelve decision must use
       // the same post-override status the CLI partitions on.
-      const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
+      const shelveConfig = stateManager.getState().config;
       // Single copy of the shelve predicate (#1421): isShelvedForDisplay is
       // the same rule reconcileShelvePartition applies on rebuilds, so its
       // regression tests now guard this line too.
-      const freshShelved = overriddenPRs.filter((pr) => isShelvedForDisplay(pr, shelvedUrls));
+      const freshShelved = overriddenPRs.filter((pr) => isShelvedForDisplay(pr, shelveConfig));
       digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
       digest.autoUnshelvedPRs = [];
       digest.summary.totalActivePRs = overriddenPRs.length - freshShelved.length;

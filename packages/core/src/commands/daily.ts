@@ -16,6 +16,7 @@ import {
   requireGitHubToken,
   renderGistWarning,
   CRITICAL_STATUSES,
+  shouldAutoUnshelve,
   applyStatusOverrides,
   computeRepoSignals,
   computeLedgerRepoSignals,
@@ -693,9 +694,10 @@ function partitionPRs(
   let digest: DailyDigest | undefined;
   try {
     batchOnFreshBaseline(stateManager, () => {
+      const shelvedPRAt = stateManager.getState().config.shelvedPRAt;
       for (const pr of overriddenPRs) {
         if (stateManager.isPRShelved(pr.url)) {
-          if (CRITICAL_STATUSES.has(pr.status)) {
+          if (shouldAutoUnshelve(pr, shelvedPRAt)) {
             stateManager.unshelvePR(pr.url);
             autoUnshelvedPRs.push(toShelvedPRRef(pr));
             activePRs.push(pr);
@@ -717,6 +719,10 @@ function partitionPRs(
       // Note: digest.openPRs contains ALL fetched PRs (including shelved).
       // We override summary fields below to reflect active-only counts.
       digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
+      // A PR shelved while it needs addressing stays shelved (#1922): keep it
+      // out of the Needs Addressing list the brief and --json output render.
+      const shelvedUrls = new Set(shelvedPRs.map((ref) => ref.url));
+      digest.needsAddressingPRs = digest.needsAddressingPRs.filter((pr) => !shelvedUrls.has(pr.url));
 
       // Attach shelve info to digest
       digest.shelvedPRs = shelvedPRs;

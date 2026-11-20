@@ -457,6 +457,54 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(allGroupedPRUrls).toContain(criticalPR.url);
   });
 
+  it('keeps a PR shelved when it was shelved while already needing addressing (#1922)', async () => {
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 7,
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      lastMaintainerActivityAt: '2026-01-20T00:00:00Z',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
+    mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
+    mockIsPRShelved.mockReturnValue(true);
+    const state = makeDefaultState();
+    (state.config as Record<string, unknown>).shelvedPRAt = { 'owner/repo#7': '2026-01-21T00:00:00.000Z' };
+    mockGetState.mockReturnValue(state);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockUnshelvePR).not.toHaveBeenCalled();
+    expect(result.digest.autoUnshelvedPRs).toHaveLength(0);
+    expect(result.digest.shelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
+    // Hidden everywhere the brief lists work: not Needs Addressing, not actionable, not active.
+    expect(result.digest.needsAddressingPRs).not.toContain(criticalPR.url);
+    expect(result.actionableIssues).toHaveLength(0);
+    expect(result.repoGroups.flatMap((g) => g.prUrls)).not.toContain(criticalPR.url);
+  });
+
+  it('auto-unshelves a stamped shelved PR once a maintainer acts after the shelve (#1922)', async () => {
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 8,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      lastMaintainerActivityAt: '2026-01-22T00:00:00Z',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
+    mockGenerateDigest.mockImplementation(() => makeDigest([criticalPR]));
+    mockIsPRShelved.mockReturnValue(true);
+    const state = makeDefaultState();
+    (state.config as Record<string, unknown>).shelvedPRAt = { 'owner/repo#8': '2026-01-21T00:00:00.000Z' };
+    mockGetState.mockReturnValue(state);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(mockUnshelvePR).toHaveBeenCalledWith(criticalPR.url);
+    expect(result.digest.autoUnshelvedPRs.map((ref) => ref.url)).toEqual([criticalPR.url]);
+    expect(result.digest.needsAddressingPRs).toContain(criticalPR.url);
+  });
+
   it('keeps shelved PR with non-critical status in shelvedPRs (no auto-unshelf)', async () => {
     const shelvedWaiting = makePR({ repo: 'owner/repo', number: 5, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedWaiting], failures: [] });

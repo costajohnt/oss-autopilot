@@ -311,6 +311,7 @@ interface AgentState {
 
 Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 - `config.shelvedPRUrls: string[]` — PR URLs manually shelved (excluded from capacity and actionable items, auto-unshelved when maintainers engage)
+- `config.shelvedPRAt: Record<string, string>` — `issueRefKey` of each shelved PR mapped to when it was shelved (#1922). A shelved PR that needs addressing is auto-unshelved only when maintainer activity is newer than this stamp; entries without a stamp (shelved before the key existed) are unshelved as soon as they need addressing
 - `config.statusOverrides: Record<string, StatusOverride>` — Manual PR status overrides set via `move` command. Auto-clears when the PR has new activity
 - `config.dismissedIssues: Record<string, string>` — Issue URLs (and, since #1861 / #1857, PR URLs for merged-PR notes and review follow-ups) mapped to dismiss timestamps
 - `config.dismissedPRHeads: Record<string, string>` — PR URLs mapped to the head SHA recorded by `dismiss <pr-url> --head <sha>` (#1857); a review follow-up with a recorded head stays hidden until the head changes or a qualifying comment lands after the stamp. Cleared by `undismiss` or a dismiss without `--head`

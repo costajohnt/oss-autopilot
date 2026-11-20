@@ -396,6 +396,15 @@ export const AgentConfigSchema = z
 
     shelvedPRUrls: z.array(z.string()).default([]),
 
+    /**
+     * `issueRefKey` of a shelved PR -> ISO time it was shelved (#1922). The
+     * daily run auto-unshelves a shelved PR only for maintainer activity
+     * newer than this, so shelving a PR that already needs addressing sticks.
+     * Entries shelved before the key existed have no stamp and keep the old
+     * rule (unshelved as soon as they need addressing).
+     */
+    shelvedPRAt: z.record(z.string(), z.string()).default({}),
+
     dismissedIssues: z.record(z.string(), z.string()).default({}),
 
     /**

@@ -1208,12 +1208,27 @@ export class StateManager {
     if (!this.state.config.shelvedPRUrls) {
       this.state.config.shelvedPRUrls = [];
     }
-    if (this.state.config.shelvedPRUrls.includes(url)) {
-      return false;
+    // Stamp every shelve, a repeat included (#1922): the stamp is what the
+    // daily run compares maintainer activity against, so re-shelving a PR
+    // acknowledges everything up to now.
+    const now = new Date();
+    this.state.config.shelvedPRAt = { ...this.state.config.shelvedPRAt, [issueRefKey(url) ?? url]: now.toISOString() };
+    const isNew = this.shelvedIndex(url) === -1;
+    if (isNew) {
+      this.state.config.shelvedPRUrls.push(url);
     }
-    this.state.config.shelvedPRUrls.push(url);
     this.autoSave();
-    return true;
+    return isNew;
+  }
+
+  /**
+   * Index of a PR in `shelvedPRUrls`, matched through {@link issueRefKey} so
+   * a URL typed in different casing or with a trailing slash still finds the
+   * entry (#1922). -1 when not shelved.
+   */
+  private shelvedIndex(url: string): number {
+    const key = issueRefKey(url);
+    return (this.state.config.shelvedPRUrls ?? []).findIndex((u) => (key ? issueRefKey(u) === key : u === url));
   }
 
   /**
@@ -1222,14 +1237,14 @@ export class StateManager {
    * @returns true if removed from shelf, false if not shelved
    */
   unshelvePR(url: string): boolean {
-    if (!this.state.config.shelvedPRUrls) {
-      return false;
-    }
-    const index = this.state.config.shelvedPRUrls.indexOf(url);
+    const index = this.shelvedIndex(url);
     if (index === -1) {
       return false;
     }
     this.state.config.shelvedPRUrls.splice(index, 1);
+    if (this.state.config.shelvedPRAt) {
+      delete this.state.config.shelvedPRAt[issueRefKey(url) ?? url];
+    }
     this.autoSave();
     return true;
   }
@@ -1240,7 +1255,7 @@ export class StateManager {
    * @returns true if the PR is shelved
    */
   isPRShelved(url: string): boolean {
-    return this.state.config.shelvedPRUrls?.includes(url) ?? false;
+    return this.shelvedIndex(url) !== -1;
   }
 
   // === Dismiss / Undismiss Issues ===

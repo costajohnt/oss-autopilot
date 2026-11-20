@@ -18,7 +18,7 @@
 import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
-import { parseGitHubUrl } from './urls.js';
+import { parseGitHubUrl, issueRefKey } from './urls.js';
 import { MAINTAINER_RESPONSE_RULE } from './review-analysis.js';
 import type { AttentionSummary } from './pr-attention.js';
 import type {
@@ -49,6 +49,28 @@ import type {
  * Used for auto-unshelving shelved PRs.
  */
 export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
+
+/**
+ * Whether an explicitly shelved PR goes back to active (#1922). It must need
+ * addressing, and a maintainer must have acted since it was shelved: a PR
+ * shelved while it already needed addressing stays shelved until then.
+ * Without a shelve stamp (shelved before `config.shelvedPRAt` existed) or a
+ * known maintainer-activity time, needing addressing alone unshelves it.
+ *
+ * @param shelvedPRAt - `config.shelvedPRAt`, keyed by `issueRefKey`
+ */
+export function shouldAutoUnshelve(
+  pr: Pick<FetchedPR, 'url' | 'status' | 'lastMaintainerActivityAt'>,
+  shelvedPRAt: Readonly<Record<string, string>> | undefined,
+): boolean {
+  if (!CRITICAL_STATUSES.has(pr.status)) return false;
+  const shelvedAt = shelvedPRAt?.[issueRefKey(pr.url) ?? pr.url];
+  if (!shelvedAt || !pr.lastMaintainerActivityAt) return true;
+  const activityMs = Date.parse(pr.lastMaintainerActivityAt);
+  const shelvedMs = Date.parse(shelvedAt);
+  // An unparseable date resurfaces the PR instead of hiding it.
+  return Number.isNaN(activityMs) || Number.isNaN(shelvedMs) || activityMs > shelvedMs;
+}
 
 /**
  * ActionReason values that indicate high-priority issues blocking capacity.

@@ -335,6 +335,34 @@ describe('shelvePR / unshelvePR / isPRShelved', () => {
     expect(stateManager.isPRShelved(url2)).toBe(true);
   });
 
+  it('stamps the shelve time, restamps on a repeat shelve and drops the stamp on unshelve (#1922)', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    const old = '2020-01-01T00:00:00.000Z';
+    stateManager.shelvePR(url);
+    const stamps = stateManager.getState().config.shelvedPRAt as Record<string, string>;
+    expect(Date.parse(stamps['owner/repo#1'])).toBeGreaterThan(Date.parse(old));
+
+    stamps['owner/repo#1'] = old;
+    expect(stateManager.shelvePR(url)).toBe(false);
+    const restamped = stateManager.getState().config.shelvedPRAt['owner/repo#1'];
+    expect(Date.parse(restamped)).toBeGreaterThan(Date.parse(old));
+    expect(stateManager.getState().config.shelvedPRUrls).toEqual([url]);
+
+    stateManager.unshelvePR(url);
+    expect(stateManager.getState().config.shelvedPRAt).toEqual({});
+  });
+
+  it('matches a shelved PR regardless of URL casing or a trailing slash (#1922)', () => {
+    stateManager.shelvePR('https://github.com/Owner/Repo/pull/1/');
+    const canonical = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.isPRShelved(canonical)).toBe(true);
+    expect(stateManager.shelvePR(canonical)).toBe(false);
+    expect(stateManager.getState().config.shelvedPRUrls).toHaveLength(1);
+    expect(stateManager.unshelvePR(canonical)).toBe(true);
+    expect(stateManager.getState().config.shelvedPRUrls).toEqual([]);
+    expect(stateManager.getState().config.shelvedPRAt).toEqual({});
+  });
+
   it('should handle isPRShelved when shelvedPRUrls is undefined', () => {
     // Simulate legacy state without shelvedPRUrls
     (stateManager.getState().config as any).shelvedPRUrls = undefined;
