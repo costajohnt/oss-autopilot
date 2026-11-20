@@ -314,9 +314,13 @@ describe('repositories GitHub reports private leave the ledger (#1924)', () => {
     expect(Object.keys(sm.getState().repoScores)).toEqual(['org/repo']);
     expect(sm.getStats()).toMatchObject({ mergedPRs: 1, closedPRs: 0 });
 
-    const after = structuredClone(sm.getState());
+    // A second pass with the same read finds nothing more to remove. (The
+    // public repository's score is rewritten each pass, so compare what the
+    // eviction owns, not timestamps.)
     applyRepoMetadata(sm, metadata, []);
-    expect(sm.getState()).toEqual(after);
+    expect(storedUrls(sm)).toEqual([publicRow.url]);
+    expect(Object.keys(sm.getState().repoScores)).toEqual(['org/repo']);
+    expect(sm.evictExcludedRepos([SECRET])).toEqual({ untrackedOrgRows: 0, privateRows: 0, repos: 0 });
   });
 
   it.each([
