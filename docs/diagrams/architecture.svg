@@ -88,7 +88,7 @@ rect.c-bg-rect { fill: var(--bg); }
         <rect x="40" y="250" width="150" height="60" rx="6" class="c-frontend" stroke-width="1.5"/>
         <text x="115" y="278" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MCP Server</text>
         <text x="115" y="294" class="t-muted" font-size="9" text-anchor="middle">@oss-autopilot/mcp</text>
-        <text x="115" y="302" class="t-frontend" font-size="7" text-anchor="middle">30 tools</text>
+        <text x="115" y="302" class="t-frontend" font-size="7" text-anchor="middle">37 tools</text>
 
         <rect x="40" y="390" width="150" height="60" rx="6" class="c-mask"/>
         <rect x="40" y="390" width="150" height="60" rx="6" class="c-frontend" stroke-width="1.5"/>

@@ -11,7 +11,8 @@
  *     "N slash commands" count must match the files in `commands/`.
  *   - README's "N tools" claims must match the `registerTool()` calls in
  *     `packages/mcp-server/src/tools.ts` (same source-parse approach as
- *     `agents-contract.test.ts`).
+ *     `agents-contract.test.ts`), and so must those in the
+ *     `docs/diagrams/*.json` sources (#2008).
  *   - ARCHITECTURE's command table must have a row for every
  *     `commands/*.md` file, and reference no file that does not exist.
  *   - ARCHITECTURE's subcommand table must list every top-level command
@@ -33,6 +34,7 @@ const README = path.join(REPO_ROOT, 'README.md');
 const ARCHITECTURE = path.join(REPO_ROOT, 'ARCHITECTURE.md');
 const COMMANDS_DIR = path.join(REPO_ROOT, 'commands');
 const AGENTS_DIR = path.join(REPO_ROOT, 'agents');
+const DIAGRAMS_DIR = path.join(REPO_ROOT, 'docs/diagrams');
 
 /** Slash-command files shipped by the plugin (the source of truth). */
 function listCommandNames(): string[] {
@@ -127,6 +129,25 @@ describe('README.md ↔ MCP tool registry parity (#1379)', () => {
     expect(claims.length, 'README no longer claims an MCP tool count — update this test').toBeGreaterThan(0);
     for (const claim of claims) {
       expect(claim, `README claims ${claim} MCP tools but tools.ts registers ${registered.length}`).toBe(
+        registered.length,
+      );
+    }
+  });
+
+  it('every "N tools" count in the docs/diagrams/*.json sources matches tools.ts (#2008)', () => {
+    const registered = parseRegisteredTools();
+    const claims = fs
+      .readdirSync(DIAGRAMS_DIR)
+      .filter((name) => name.endsWith('.json'))
+      .flatMap((name) =>
+        Array.from(fs.readFileSync(path.join(DIAGRAMS_DIR, name), 'utf8').matchAll(/\b(\d+) tools\b/g), (m) => ({
+          name,
+          count: Number(m[1]),
+        })),
+      );
+    expect(claims.length, 'no diagram source claims an MCP tool count — update this test').toBeGreaterThan(0);
+    for (const { name, count } of claims) {
+      expect(count, `${name} claims ${count} MCP tools but tools.ts registers ${registered.length}`).toBe(
         registered.length,
       );
     }
