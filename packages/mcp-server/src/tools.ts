@@ -681,7 +681,7 @@ export function registerTools(server: McpServer): void {
     'post',
     {
       description:
-        "Post a comment on a GitHub issue or pull request. WARNING: posts a public comment under the authenticated user's identity. Irreversible (the comment can only be edited or deleted, not un-posted). Do not call without explicit user confirmation. Where the host supports it, the server shows the user the comment and posts only after they approve; refused in unattended runs.",
+        "Post a comment on a GitHub issue or pull request. WARNING: posts a public comment under the authenticated user's identity. Irreversible (the comment can only be edited or deleted, not un-posted). Do not call without explicit user confirmation. The server shows the user the comment and posts only after they approve; refused when the host cannot show that form, and in unattended runs.",
       inputSchema: z.object({
         url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to comment on'),
         message: z.string().min(1).describe('The comment text to post'),
@@ -691,6 +691,7 @@ export function registerTools(server: McpServer): void {
     requireApproval(
       hostCapabilities,
       'post a comment',
+      'oss-autopilot post <url> "<message>"',
       (args: Parameters<typeof runPost>[0]) =>
         `Post this comment on ${args.url} under your GitHub account?\n\n${args.message}`,
       wrapTool(runPost),
@@ -702,7 +703,7 @@ export function registerTools(server: McpServer): void {
     'claim',
     {
       description:
-        "Claim a GitHub issue by posting a comment expressing intent to work on it. WARNING: posts a public comment under the authenticated user's identity. Irreversible. Do not call without explicit user confirmation. Where the host supports it, the server shows the user the comment and posts only after they approve; refused in unattended runs.",
+        "Claim a GitHub issue by posting a comment expressing intent to work on it. WARNING: posts a public comment under the authenticated user's identity. Irreversible. Do not call without explicit user confirmation. The server shows the user the comment and posts only after they approve; refused when the host cannot show that form, and in unattended runs.",
       inputSchema: z.object({
         issueUrl: githubIssueUrlSchema.describe('Full GitHub issue URL to claim'),
         message: z.string().optional().describe('Custom claim message. If omitted, a default message is used.'),
@@ -712,6 +713,7 @@ export function registerTools(server: McpServer): void {
     requireApproval(
       hostCapabilities,
       'claim an issue',
+      'oss-autopilot claim <issue-url> ["<message>"]',
       (args: Parameters<typeof runClaim>[0]) =>
         `Claim ${args.issueUrl} by posting this comment under your GitHub account?\n\n` +
         (args.message || '(the default message, which asks the maintainers to assign the issue to you)'),

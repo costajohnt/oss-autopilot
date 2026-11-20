@@ -59,6 +59,8 @@ export function assertMcpSettablePairs(pairs: readonly string[] = []): void {
 // ── 2. User approval for GitHub writes (#1936) ────────────────────────
 
 const APPROVAL_KEY = 'approval';
+/** Opt-in for hosts that cannot show a form: their own permission prompt becomes the only approval. */
+export const ALLOW_UNCONFIRMED_ENV = 'OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES';
 const approvalSchema = z.object({
   approve: z.boolean().describe('Send this under my GitHub account'),
 });
@@ -81,9 +83,11 @@ function canShowForm(capabilities: ClientCapabilities | undefined): boolean {
  * argument, so the model cannot supply it. Anything but an accepted form with
  * the box ticked refuses.
  *
- * A host that cannot ask (no elicitation capability) runs the tool as before:
- * there the host's own permission prompt, driven by the tool's
- * `destructiveHint` and `openWorldHint` annotations, is the only approval.
+ * A host that cannot show a form (no elicitation capability, URL-only
+ * elicitation, or the stateless HTTP transport, where no capabilities are
+ * known) is refused, naming the CLI command `cli` that does the same with the
+ * user at the keyboard. Setting {@link ALLOW_UNCONFIRMED_ENV}=1 lets such a
+ * host run the tool on its own permission prompt instead.
  * An unattended run is refused before anything is asked.
  *
  * `hostCapabilities` returns what the connected host declared, read per call.
@@ -91,6 +95,7 @@ function canShowForm(capabilities: ClientCapabilities | undefined): boolean {
 export function requireApproval<A, R>(
   hostCapabilities: () => ClientCapabilities | undefined,
   action: string,
+  cli: string,
   preview: (args: A) => string,
   handler: (args: A) => Promise<R>,
 ): (args: A, ctx: ServerContext) => Promise<R | InputRequiredResult | ReturnType<typeof refusal>> {
@@ -100,7 +105,14 @@ export function requireApproval<A, R>(
     } catch (e) {
       return refusal(errorMessage(e));
     }
-    if (!canShowForm(hostCapabilities())) return handler(args);
+    if (!canShowForm(hostCapabilities())) {
+      if (process.env[ALLOW_UNCONFIRMED_ENV] === '1') return handler(args);
+      return refusal(
+        `Refusing to ${action}: this MCP host cannot show the user an approval form. ` +
+          `The user can run it in a terminal instead: ${cli}. ` +
+          `To let this host's own permission prompt be the only approval, start the server with ${ALLOW_UNCONFIRMED_ENV}=1.`,
+      );
+    }
     const answer = inputResponse(ctx.mcpReq.inputResponses, APPROVAL_KEY);
     if (answer.kind === 'missing') {
       return inputRequired({

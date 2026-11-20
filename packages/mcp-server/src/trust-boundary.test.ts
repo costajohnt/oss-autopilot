@@ -20,8 +20,13 @@ vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
 
 import { getStateManager } from '@oss-autopilot/core';
 import { runConfig, runSetup } from '@oss-autopilot/core/commands';
-import { createServer } from './server.js';
-import { assertMcpSettable, assertMcpSettablePairs, mcpSettableKeys } from './trust-boundary.js';
+import { APPROVAL_TIMEOUT_MS, createServer } from './server.js';
+import {
+  ALLOW_UNCONFIRMED_ENV as ALLOW_UNCONFIRMED,
+  assertMcpSettable,
+  assertMcpSettablePairs,
+  mcpSettableKeys,
+} from './trust-boundary.js';
 
 const ISSUE = 'https://github.com/owner/repo/issues/1';
 const UNATTENDED = 'OSS_AUTOPILOT_UNATTENDED';
@@ -226,14 +231,76 @@ describe('user approval before a GitHub write (#1936)', () => {
     expect(writer.run).not.toHaveBeenCalled();
   });
 
-  it.each([
+  const NO_FORM_HOSTS: Array<[label: string, capabilities: Record<string, unknown>]> = [
     ['declares no elicitation', {}],
     ['can only open URLs', { elicitation: { url: {} } }],
-  ])('a host that %s runs the tool on its own permission prompt', async (_label, capabilities) => {
-    const { client } = await connect(capabilities);
+  ];
+  const noFormCases = writers.flatMap(([name, writer]) =>
+    NO_FORM_HOSTS.map(([label, capabilities]) => [name, label, writer, capabilities] as const),
+  );
+
+  it.each(noFormCases)(
+    '%s refuses on a host that %s and names the CLI command',
+    async (name, _label, writer, capabilities) => {
+      const { client } = await connect(capabilities);
+      const result = await client.callTool({ name, arguments: writer.args });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain(`oss-autopilot ${name} `);
+      expect(text(result)).toContain(ALLOW_UNCONFIRMED);
+      expect(writer.run).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(noFormCases)(
+    '%s runs on a host that %s once the user opts in',
+    async (name, _label, writer, capabilities) => {
+      vi.stubEnv(ALLOW_UNCONFIRMED, '1');
+      const { client } = await connect(capabilities);
+      const result = await client.callTool({ name, arguments: writer.args });
+      expect(result.isError).toBeFalsy();
+      expect(writer.run).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('only the exact value 1 opts in', async () => {
+    vi.stubEnv(ALLOW_UNCONFIRMED, 'true');
+    const { client } = await connect();
     const result = await client.callTool({ name: 'post', arguments: WRITERS.post.args });
-    expect(result.isError).toBeFalsy();
-    expect(mockRunPost).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBe(true);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('a form-capable host is still asked when the opt-in is set', async () => {
+    vi.stubEnv(ALLOW_UNCONFIRMED, '1');
+    const { client, asked } = await connect(FORM_HOST, { action: 'decline' });
+    const result = await client.callTool({ name: 'post', arguments: WRITERS.post.args });
+    expect(result.isError).toBe(true);
+    expect(asked).toHaveLength(1);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it('refuses with "timed out" when the user leaves the form unanswered', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { client, asked } = await connect(FORM_HOST, new Promise(() => {}));
+      // The client's own request timeout (60 s by default) must not fire first.
+      const pending = client.callTool(
+        { name: 'post', arguments: WRITERS.post.args },
+        { timeout: 2 * APPROVAL_TIMEOUT_MS },
+      );
+      let settled = false;
+      void pending.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(APPROVAL_TIMEOUT_MS - 1);
+      expect(asked).toHaveLength(1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await pending;
+      expect(result.isError).toBe(true);
+      expect(text(result)).toMatch(/timed out/);
+      expect(mockRunPost).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a host that declares form elicitation explicitly is asked', async () => {

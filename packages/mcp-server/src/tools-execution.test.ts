@@ -515,6 +515,9 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
   let client: Client;
 
   beforeAll(async () => {
+    // This client cannot show an approval form; the gated tools run on the
+    // opt-in (the approval itself is covered in trust-boundary.test.ts).
+    vi.stubEnv('OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES', '1');
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -523,6 +526,7 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await client.close();
   });
 
