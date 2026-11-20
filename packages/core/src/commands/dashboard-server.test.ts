@@ -1163,6 +1163,34 @@ describe('dashboard-server', () => {
       expect(mockRunMove).toHaveBeenCalledTimes(1);
     });
 
+    it('sends a ConfigurationError message from the action instead of a generic 500 (#1951)', async () => {
+      mockRunMove.mockRejectedValueOnce(new ConfigurationError('Update this client and retry'));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body)).toMatchObject({ error: 'Update this client and retry', retryable: false });
+    });
+
+    it('sends a ConfigurationError message thrown by the pre-request reload (#1951)', async () => {
+      mockStateManager.reloadIfChanged.mockImplementationOnce(() => {
+        throw new ConfigurationError('The state file was written by a newer oss-autopilot release');
+      });
+
+      const result = await sendRequest('GET', '/api/data');
+
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body)).toMatchObject({
+        error: 'The state file was written by a newer oss-autopilot release',
+        code: 'CONFIGURATION_ERROR',
+        retryable: false,
+      });
+    });
+
     it('returns a machine-readable 409 when the retry also hits ConcurrencyError', async () => {
       mockRunMove
         .mockRejectedValueOnce(new ConcurrencyError(1000, 2000))

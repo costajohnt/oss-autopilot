@@ -96,6 +96,10 @@ function readStaleLock(lockPath: string): string | null {
   const lock = parseLock(content);
   // Saving is synchronous, so a process that is acquiring is not inside the
   // locked section: a lock with its own PID is a leftover, stale now.
+  // ponytail: assumes one PID namespace and one writer thread per process.
+  // Containers sharing the data directory with colliding PIDs rely on the
+  // commit-point check in saveState; add a host/boot id to the lock if that
+  // setup becomes real.
   if (lock.pid === process.pid) return content;
   const stamped = typeof lock.timestamp === 'number' ? lock.timestamp : Infinity;
   const since = Math.min(stamped, lockMtimeMs(lockPath));
@@ -192,16 +196,13 @@ export function acquireLock(lockPath: string): string {
 }
 
 /**
- * Release an advisory file lock, but only if it is this caller's: the exact
- * content {@link acquireLock} returned when `held` is given, otherwise any
- * lock carrying this process's PID. A missing lock is ignored; any other
+ * Release an advisory file lock, but only if it still holds `held`, the
+ * content {@link acquireLock} returned. A missing lock is ignored; any other
  * failure is warned about, never thrown (this runs in a `finally`).
  */
-export function releaseLock(lockPath: string, held?: string): void {
+export function releaseLock(lockPath: string, held: string): void {
   try {
-    const content = readLockFile(lockPath);
-    const isOwn = held === undefined ? parseLock(content ?? '').pid === process.pid : content === held;
-    if (isOwn) fs.unlinkSync(lockPath);
+    if (readLockFile(lockPath) === held) fs.unlinkSync(lockPath);
   } catch (err) {
     if (errnoCode(err) !== 'ENOENT') warn(MODULE, `Could not release the state lock ${lockPath}: ${errorMessage(err)}`);
   }
@@ -575,7 +576,11 @@ function assertDiskStateNotNewer(statePath: string): void {
   try {
     raw = JSON.parse(fs.readFileSync(statePath, 'utf8'));
   } catch (err) {
-    debug(MODULE, 'No readable state file to version-check before save', err);
+    // No file yet, or one that does not parse: nothing to protect. Any other
+    // failure is worth a warning, but the save still goes ahead.
+    const isExpected = errnoCode(err) === 'ENOENT' || err instanceof SyntaxError;
+    if (isExpected) debug(MODULE, 'No parseable state file to version-check before save', err);
+    else warn(MODULE, `Could not version-check the state file before save: ${errorMessage(err)}`);
     return;
   }
   assertNotNewerVersion(raw, 'state file');
@@ -828,13 +833,37 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
   }
 }
 
+// Read failures that usually clear on their own: worth one retry before a reload fails its caller.
+const TRANSIENT_READ_CODES = new Set(['EMFILE', 'ENFILE', 'EBUSY', 'EAGAIN']);
+
+/**
+ * loadState for a reload. A file that vanished since the stat is "no change"
+ * (null); a transient resource error is retried once after a short pause.
+ * Everything else loadState throws (newer-version state, EACCES, a second
+ * failure) propagates: swallowing it would leave a long-lived process on old
+ * state that its next save writes over the file (#1951).
+ */
+function loadStateForReload(): LoadStateResult | null {
+  try {
+    return loadState();
+  } catch (error) {
+    const code = errnoCode(error) ?? '';
+    if (code === 'ENOENT') return null;
+    if (!TRANSIENT_READ_CODES.has(code)) throw error;
+    warn(MODULE, `State reload hit ${code}, retrying once: ${errorMessage(error)}`);
+  }
+  sleepSync(LOCK_RETRY_INTERVAL_MS);
+  return loadState();
+}
+
 /**
  * Re-read state from disk if the file has been modified since the last load/save.
  * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
  * @returns The new state and mtime if reloaded, or null if no change detected
  *   (or the file is gone).
- * @throws Whatever {@link loadState} throws: a newer-version state file or a
- *   file system error must reach the caller, not be served as stale state.
+ * @throws What {@link loadState} throws, after one retry for transient
+ *   resource errors: a newer-version state file or a persistent file system
+ *   error must reach the caller, not be served as stale state.
  */
 export function reloadStateIfChanged(lastLoadedMtimeMs: number): LoadStateResult | null {
   const statePath = getStatePath();
@@ -848,10 +877,8 @@ export function reloadStateIfChanged(lastLoadedMtimeMs: number): LoadStateResult
     return null;
   }
   if (currentMtimeMs === lastLoadedMtimeMs) return null;
-  // Whatever loadState throws (newer-version state, a file system error)
-  // propagates: swallowing it would leave a long-lived process on old state
-  // that its next save writes over the file (#1951).
-  const result = loadState();
+  const result = loadStateForReload();
+  if (result === null) return null;
   // Re-stat only on the recovery paths. There loadState rewrote the file
   // itself (backup restore) or returned 0 (fresh state), and a current mtime
   // stops a reload on every request. On the clean path the baseline was

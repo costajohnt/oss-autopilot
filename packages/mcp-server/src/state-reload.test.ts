@@ -253,6 +253,25 @@ describe('per-tool-call state reload + concurrency retry (#1439)', () => {
     expect(mockStateManager.reloadIfChanged).toHaveBeenCalledTimes(1);
   });
 
+  it('a resource read serves cached state when the reload fails: it changes nothing (#1951)', async () => {
+    mockStateManager.reloadIfChanged.mockImplementation(() => {
+      throw new Error('EIO: i/o error, read');
+    });
+    mockRunStatus.mockResolvedValueOnce({ ok: true });
+
+    const result = await client.readResource({ uri: 'oss://status' });
+
+    expect(result.contents).toHaveLength(1);
+  });
+
+  it('a resource read still fails on state from a newer release (#1951)', async () => {
+    mockStateManager.reloadIfChanged.mockImplementation(() => {
+      throw new MockNewerStateVersionError('update this client');
+    });
+
+    await expect(client.readResource({ uri: 'oss://status' })).rejects.toThrow(/update this client/);
+  });
+
   it('gist mode refreshes (throttled inside GistStateStore) instead of reading the local file', async () => {
     mockEnsureGistPersistence.mockResolvedValue('gist');
     mockStateManager.isGistMode.mockReturnValue(true);

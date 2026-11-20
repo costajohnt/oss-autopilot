@@ -650,6 +650,8 @@ export class GistStateStore {
         // An unreadable oversized file is not a conflict: refresh + retry
         // would hit the same wall, so surface it as-is.
         if (readErr instanceof GistFileSizeError) throw readErr;
+        // Nor is a Gist from a newer release: the answer is to update, not to re-run (#1951).
+        if (readErr instanceof NewerStateVersionError) throw readErr;
         if (isRateLimitError(readErr)) throw readErr;
         throw new GistConcurrencyError(preReadEtag, null);
       }
@@ -740,6 +742,8 @@ export class GistStateStore {
       this.lastRefreshError = null;
       return { status: 'refreshed' };
     } catch (err) {
+      // Not a failed fetch: the Gist is fine and this client is too old for it (#1951).
+      if (err instanceof NewerStateVersionError) throw err;
       const error = err instanceof Error ? err : new Error(String(err));
       warn(MODULE, `refreshFromGist failed: ${error.message}`);
       this.lastRefreshError = error;

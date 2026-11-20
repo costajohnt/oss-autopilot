@@ -1336,6 +1336,36 @@ describe('GistStateStore', () => {
       expect(fs.readdirSync(tmpDir).filter((name) => name.includes('.rejected-'))).toEqual([]);
     });
 
+    it('refreshFromGist throws for a Gist a newer release wrote instead of reporting a failed fetch', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'refresh-newer');
+      octokit.gists.get
+        .mockResolvedValueOnce(makeGistResponse('refresh-newer', makeStateJson()))
+        .mockResolvedValueOnce(makeGistResponse('refresh-newer', makeStateJson({ version: 5 })));
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+
+      await expect(store.refreshFromGist()).rejects.toThrow(NewerStateVersionError);
+      // The attempt still stamped the throttle.
+      await expect(store.refreshFromGist()).resolves.toMatchObject({ status: 'throttled' });
+    });
+
+    it('push reports a newer-version Gist found by the pre-write re-read as the update error, not a conflict', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'push-newer');
+      octokit.gists.get
+        .mockResolvedValueOnce({ ...makeGistResponse('push-newer', makeStateJson()), headers: { etag: 'W/"v1"' } })
+        .mockResolvedValueOnce({
+          ...makeGistResponse('push-newer', makeStateJson({ version: 5 })),
+          headers: { etag: 'W/"v2"' },
+        });
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+
+      await expect(store.push()).rejects.toThrow(NewerStateVersionError);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+    });
+
     it.each(['bootstrap', 'bootstrapWithMigration'] as const)(
       '%s refuses a local cache written by a newer release instead of starting fresh',
       async (method) => {

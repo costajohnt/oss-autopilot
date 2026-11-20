@@ -5,7 +5,7 @@
  * mocking the whole daily pipeline.
  */
 
-import { getStateManager, isCoveredByDismiss, type CommentedIssue } from '../core/index.js';
+import { getStateManager, isCoveredByDismiss, NewerStateVersionError, type CommentedIssue } from '../core/index.js';
 import { warn } from '../core/logger.js';
 import type { DailyWarning } from '../formatters/json.js';
 import { recordWarning } from './daily-warnings.js';
@@ -16,6 +16,21 @@ type StateManagerLike = Pick<
   ReturnType<typeof getStateManager>,
   'reloadIfChanged' | 'batch' | 'getIssueDismissedAt' | 'undismissIssue'
 >;
+
+/**
+ * Reload state where the run only wants to pick up a config edit made while
+ * it was fetching. A failed reload there is not worth the run (the digest is
+ * already saved): it becomes a warning and the run continues on in-memory
+ * state. State written by a newer release still stops it (#1951).
+ */
+export function reloadOrWarn(stateManager: Pick<StateManagerLike, 'reloadIfChanged'>, warnings: DailyWarning[]): void {
+  try {
+    stateManager.reloadIfChanged();
+  } catch (err) {
+    if (err instanceof NewerStateVersionError) throw err;
+    recordWarning(warnings, 'state-load', 'reload state before capacity check', err);
+  }
+}
 
 /**
  * Run a batch against a baseline that is fresh as of right now.

@@ -220,8 +220,10 @@ function gistInitFailureReason(e: unknown, isRepairTool: boolean): string {
     );
   }
   if (!(isRepairTool && e instanceof ConfigurationError)) throw e;
-  // A GistDiscoveryError carries its own remedy; the scope hint below would mislead.
-  if (e instanceof GistDiscoveryError) return `initialization failed (${message})`;
+  // A GistDiscoveryError or a newer-version error carries its own remedy; the scope hint below would mislead.
+  if (e instanceof GistDiscoveryError || e instanceof NewerStateVersionError) {
+    return `initialization failed (${message})`;
+  }
   return e instanceof GistFileSizeError
     ? `initialization failed (${message}). To fix it, ${GIST_FILE_SIZE_REMEDY}`
     : `initialization failed (${message}) — fix the Gist setup ` +

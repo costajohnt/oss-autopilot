@@ -22,6 +22,7 @@ const {
   MockConfigurationError,
   MockGistFileSizeError,
   MockGistDiscoveryError,
+  MockNewerStateVersionError,
 } = vi.hoisted(() => {
   // Stand-ins for the core error classes (the whole module is mocked, so
   // tools.ts's instanceof checks run against THESE classes).
@@ -43,6 +44,12 @@ const {
       this.name = 'MockGistDiscoveryError';
     }
   }
+  class MockNewerStateVersionError extends MockConfigurationError {
+    constructor(message: string) {
+      super(message);
+      this.name = 'MockNewerStateVersionError';
+    }
+  }
   return {
     mockGetGitHubTokenAsync: vi.fn(),
     mockEnsureGistPersistence: vi.fn(),
@@ -50,6 +57,7 @@ const {
     MockConfigurationError,
     MockGistFileSizeError,
     MockGistDiscoveryError,
+    MockNewerStateVersionError,
   };
 });
 
@@ -124,7 +132,7 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   GIST_FILE_SIZE_REMEDY: 'trim repoScores and searchSeen, or run state-unlink',
   ConcurrencyError: class ConcurrencyError extends Error {},
   StateLockTimeoutError: class StateLockTimeoutError extends Error {},
-  NewerStateVersionError: class NewerStateVersionError extends Error {},
+  NewerStateVersionError: MockNewerStateVersionError,
   GistConcurrencyError: class GistConcurrencyError extends Error {},
 }));
 
@@ -390,6 +398,18 @@ describe('ensureGistInit retry semantics (#1368)', () => {
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
       },
     );
+
+    it('a repair tool running through newer-version state gets the update message without the Gist setup hint (#1951)', async () => {
+      const commands = await import('@oss-autopilot/core/commands');
+      vi.mocked(commands.runStateUnlink).mockResolvedValueOnce({ ok: true } as never);
+      mockEnsureGistPersistence.mockRejectedValueOnce(new MockNewerStateVersionError('Update this client and retry'));
+
+      const result = await client.callTool({ name: 'state-unlink', arguments: {} });
+
+      const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+      expect(payload.gistInitWarning).toContain('Update this client and retry');
+      expect(payload.gistInitWarning).not.toMatch(/fix the Gist setup/);
+    });
 
     it('a non-repair tool still fails hard on the same ConfigurationError (#1202)', async () => {
       mockEnsureGistPersistence.mockRejectedValueOnce(new MockConfigurationError('Gist token lacks the gist scope'));

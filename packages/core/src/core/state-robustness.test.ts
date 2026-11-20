@@ -122,6 +122,16 @@ function failStateReads(error: Error): void {
   failReadsWhere((file) => file === getStatePath(), error);
 }
 
+/** Fail the first `times` reads of the state file, then read it for real. */
+function failStateReadTimes(times: number, error: Error): void {
+  const seen = { count: 0 };
+  failReadsWhere((file) => {
+    if (file !== getStatePath()) return false;
+    seen.count += 1;
+    return seen.count <= times;
+  }, error);
+}
+
 function failLockReads(error: Error): void {
   failReadsWhere((file) => file === lockPath(), error);
 }
@@ -313,7 +323,7 @@ describe('lock ownership and lock-file errors', () => {
   });
 
   it('warns instead of throwing when the lock cannot be released, and stays quiet when it is gone', () => {
-    releaseLock(lockPath());
+    releaseLock(lockPath(), 'never taken');
     expect(errorLines()).toEqual([]);
 
     const held = acquireLock(lockPath());
@@ -399,6 +409,50 @@ describe('reload and save against state this client must not touch', () => {
     failStateReads(error);
 
     expect(() => manager.reloadIfChanged()).toThrow(error);
+  });
+
+  it.each(['EMFILE', 'ENFILE', 'EBUSY', 'EAGAIN'])('reloadIfChanged retries a transient %s once', (code) => {
+    writeState(stateJson('mine'));
+    const manager = new StateManager(false);
+    writeState(stateJson('edited-elsewhere'));
+    touchState();
+    const wait = stubWait();
+    failStateReadTimes(1, errnoError(code));
+
+    expect(manager.reloadIfChanged()).toBe(true);
+    expect(manager.getState().config.githubUsername).toBe('edited-elsewhere');
+    expect(wait).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloadIfChanged surfaces a transient error that persists past the retry', () => {
+    writeState(stateJson('mine'));
+    const manager = new StateManager(false);
+    touchState();
+    stubWait();
+    const error = errnoError('EMFILE');
+    failStateReadTimes(2, error);
+
+    expect(() => manager.reloadIfChanged()).toThrow(error);
+  });
+
+  it('reloadIfChanged treats a file that vanishes between the stat and the read as no change', () => {
+    writeState(stateJson('mine'));
+    const manager = new StateManager(false);
+    touchState();
+    failStateReads(errnoError('ENOENT'));
+
+    expect(manager.reloadIfChanged()).toBe(false);
+    expect(manager.getState().config.githubUsername).toBe('mine');
+  });
+
+  it('save warns and still writes when the pre-save version check cannot read the file', () => {
+    writeState(stateJson('on-disk'));
+    failStateReads(errnoError('EIO'));
+
+    saveState(createFreshState());
+
+    expect(errorLines().join('\n')).toMatch(/Could not version-check the state file before save: EIO/);
+    expect(readStateFile()).toMatchObject({ config: { githubUsername: '' } });
   });
 
   it('reloadIfChanged still treats a deleted state file as no change', () => {

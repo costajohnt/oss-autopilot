@@ -1929,8 +1929,12 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
     let reason = `Gist initialization failed: ${errorMessage(err)}`;
     if (err instanceof GistFileSizeError) {
       reason = `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`;
-    } else if (err instanceof ConfigurationError && !(err instanceof GistDiscoveryError)) {
-      // A GistDiscoveryError carries its own remedy; the scope hint would mislead (#1926).
+    } else if (
+      err instanceof ConfigurationError &&
+      !(err instanceof GistDiscoveryError) &&
+      !(err instanceof NewerStateVersionError)
+    ) {
+      // A GistDiscoveryError or a newer-version error carries its own remedy; the scope hint would mislead (#1926).
       reason = `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`;
     }
     cause = { reason };
