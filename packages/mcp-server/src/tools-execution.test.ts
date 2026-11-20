@@ -58,6 +58,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runGuidelinesStore: mockRunGuidelinesStore,
   runGuidelinesReset: mockRunGuidelinesReset,
   runFetchCorpus: mockRunFetchCorpus,
+  runPolicyGet: vi.fn(),
   runFeatures: vi.fn(),
   runStateShow: vi.fn(),
   runStateSync: vi.fn(),
@@ -514,6 +515,7 @@ describe('every registered tool executes through wrapTool (smoke)', () => {
     ['guidelines-store', 'runGuidelinesStore', { repo: REPO, content: 'be nice', reviewed: true }],
     ['guidelines-reset', 'runGuidelinesReset', { repo: REPO }],
     ['guidelines-fetch-corpus', 'runFetchCorpus', { repo: REPO }],
+    ['policy-get', 'runPolicyGet', { repo: REPO }],
   ];
 
   let client: Client;

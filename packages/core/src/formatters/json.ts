@@ -20,7 +20,8 @@ import type {
   ActionMenu,
   WorkClaim,
 } from '../core/types.js';
-import { WorkClaimSchema } from '../core/state-schema.js';
+import { RepoPolicySchema, WorkClaimSchema } from '../core/state-schema.js';
+import type { RepoPolicySummary } from '../core/repo-policy.js';
 import type { ContributionStats } from '../core/stats.js';
 import type { RepoCapStatus } from '../core/repo-cap.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
@@ -775,6 +776,29 @@ const CandidateLinkedPRSchema = z.object({
   isStalled: z.boolean(),
 });
 
+/** Enumerated fields of a repo's contribution policy (#1953); no quoted text, so no fence. */
+export const RepoPolicySummarySchema = RepoPolicySchema.pick({
+  aiPolicy: true,
+  cla: true,
+  prGate: true,
+  commitRules: true,
+  maxOpenAiPRs: true,
+  reviewedByUser: true,
+});
+
+/** `policy get` / `policy set` (#1953). Quoted repo text arrives in `<github-content>` fences. */
+export const PolicyGetOutputSchema = z.object({
+  repo: z.string(),
+  policy: RepoPolicySummarySchema.extend({
+    updatedAt: z.string(),
+    blocklisted: z.boolean(),
+    disclosureText: z.string().optional(),
+    sources: z.string().optional(),
+  }).nullable(),
+  blocklistChange: z.enum(['added', 'removed']).optional(),
+  gistSyncWarning: z.string().optional(),
+});
+
 const SearchCandidateSchema = z.object({
   issue: z.object({
     repo: z.string(),
@@ -815,6 +839,8 @@ const SearchCandidateSchema = z.object({
   /** True when this candidate filled a diversity slot (#1244) — surfaced so
    * the user can see the counterweight working, not just its absence. */
   diversitySlot: z.boolean().optional(),
+  /** The repo's stored contribution policy (#1953), when one is recorded. */
+  policy: RepoPolicySummarySchema.optional(),
 });
 
 /** Per-repo open-PR cap status (core/repo-cap.ts). */
@@ -852,12 +878,15 @@ export const PrPreflightOutputSchema = z.object({
   checks: z.array(PrPreflightCheckSchema),
 });
 
+const PolicyBanSchema = z.object({ repo: z.string(), reviewedByUser: z.boolean() });
+
 export const SearchOutputSchema = z.object({
   candidates: z.array(SearchCandidateSchema),
   excludedRepos: z.array(z.string()),
   aiPolicyBlocklist: z.array(z.string()),
   hiddenOwnPRCount: z.number().int().nonnegative(),
   reposAtCap: z.array(z.string()),
+  policyBannedRepos: z.array(PolicyBanSchema).optional(),
   rateLimitWarning: z.string().optional(),
   // Skip file unreadable — search ran with an empty skip list (#1448).
   // Optional: absent on clean runs.
@@ -1225,6 +1254,12 @@ export const RepoVetOutputSchema = z.object({
    * stored score into a hard --json contract throw (#1465 review).
    */
   historyScore: z.number().optional(),
+  /**
+   * The repo's contribution policy (#1953): the user's record, else what this
+   * run read from CONTRIBUTING and the PR template; the blocklist reads as a
+   * ban. Not stored (`vet` stores it). Absent when nothing is known.
+   */
+  policy: RepoPolicySummarySchema.optional(),
 });
 /**
  * The CLI wrapper renames the core function's `repo` metadata object to
@@ -1450,12 +1485,14 @@ export interface SearchCandidate {
   boostReasons?: string[];
   /** True when this candidate filled a diversity slot (#1244). */
   diversitySlot?: boolean;
+  /** The repo's stored contribution policy (#1953), when one is recorded. */
+  policy?: RepoPolicySummary;
 }
 
 export interface SearchOutput {
   candidates: SearchCandidate[];
   excludedRepos: string[];
-  /** Repos with known anti-AI contribution policies, filtered from search results (#108). */
+  /** Repos filtered from search results for banning AI-assisted contributions: `config.aiPolicyBlocklist` plus bans the user confirmed with `policy set` (#108, #1953). */
   aiPolicyBlocklist: string[];
   /** Candidates dropped because the authenticated user already has an open PR
    * linked to the issue (#1354). Surfaced as a count so the filter is visible. */
@@ -1463,6 +1500,12 @@ export interface SearchOutput {
   /** Repos left out of discovery because they are at the per-repo open-PR
    * cap (`maxOpenPRsColdRepo` / `maxOpenPRsPerRepo`); empty when none. */
   reposAtCap: string[];
+  /**
+   * Stored `banned` contribution policies (#1953). Reviewed ones are in
+   * `aiPolicyBlocklist` and filtered; unreviewed ones (vet read them from the
+   * docs) stay searchable, and their candidates carry `policy`. Absent when none.
+   */
+  policyBannedRepos?: Array<{ repo: string; reviewedByUser: boolean }>;
   /** Set when the seen-set write could not be pushed to the Gist (#1629);
    * the local cache has it but the next startup's Gist refetch will drop it. */
   gistSyncWarning?: string;
@@ -1790,6 +1833,13 @@ export interface VetOutput {
    * in `excludeRepos`; `reason` says which.
    */
   repoCap?: RepoCapStatus;
+  /**
+   * The repo's contribution policy (#1953): what this vet read from its docs,
+   * or the user's record when one is set, with `config.aiPolicyBlocklist`
+   * read as a ban. `banned` makes the recommendation `skip`. Absent when
+   * nothing is known. Quoted lines: `policy get`.
+   */
+  policy?: RepoPolicySummary;
   /** Set when the vet-time prediction (#1824) could not be saved locally. */
   pickRecordError?: string;
   /** Set when the saved prediction could not be pushed to the Gist. */

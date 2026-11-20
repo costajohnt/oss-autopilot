@@ -734,6 +734,33 @@ export const GuidelinesReviewSchema = z.object({
   sha256: z.string(),
 });
 
+/** Longest quoted source line or disclosure text a repo policy keeps (#1953): the text is from other people's repos. */
+export const POLICY_QUOTE_MAX = 200;
+
+/**
+ * Per-repo contribution policy (#1953). Only enumerated values plus short
+ * quoted source lines: policy text comes from files in other people's repos.
+ */
+const PolicyQuoteSchema = z.string().max(POLICY_QUOTE_MAX);
+const PolicySourceSchema = z.object({ file: z.string().max(100), quotedLine: PolicyQuoteSchema });
+const CommitRuleIdSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
+
+export const RepoPolicySchema = z.object({
+  aiPolicy: z.enum(['allowed', 'disclosure-required', 'banned', 'unknown']),
+  /** The line the repo asks for, quoted from its docs. Untrusted: fence it before handing it to an agent. */
+  disclosureText: PolicyQuoteSchema.optional(),
+  cla: z.enum(['none', 'required', 'unknown']),
+  /** Short ids such as `conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`. */
+  commitRules: z.array(CommitRuleIdSchema).max(10),
+  prGate: z.enum(['none', 'claim-first', 'maintainer-label', 'collaborators-only', 'unknown']),
+  maxOpenAiPRs: z.number().int().positive().optional(),
+  /** Where each rule came from. `quotedLine` is untrusted. */
+  source: z.array(PolicySourceSchema).max(10),
+  /** True once the user set it with `policy set`; vet never overwrites such a record. */
+  reviewedByUser: z.boolean(),
+  updatedAt: z.string(),
+});
+
 export const AgentStateSchema = z
   .object({
     version: z.literal(4),
@@ -817,12 +844,23 @@ export const AgentStateSchema = z
      * the next save.
      */
     guidelinesReviews: z.record(z.string(), z.unknown()).optional().catch(undefined),
+
+    /**
+     * Per-repo contribution policies (#1953), keyed by lowercase `owner/repo`.
+     * Written by `vet` (reviewedByUser: false) and `policy set` (true). Kept as
+     * written and validated per entry on read (`StateManager.getRepoPolicy`),
+     * like `guidelinesReviews`, so an entry a newer release wrote is not
+     * dropped here. `config.aiPolicyBlocklist` stays the older ban list and is
+     * read as `aiPolicy: 'banned'` on top of these (core/repo-policy.ts).
+     */
+    repoPolicies: z.record(z.string(), z.unknown()).optional().catch(undefined),
   })
   .passthrough();
 
 // ── Inferred types ───────────────────────────────────────────────────
 
 export type GuidelinesReview = z.infer<typeof GuidelinesReviewSchema>;
+export type RepoPolicy = z.infer<typeof RepoPolicySchema>;
 export type IssueStatus = z.infer<typeof IssueStatusSchema>;
 export type FetchedPRStatus = z.infer<typeof FetchedPRStatusSchema>;
 export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;

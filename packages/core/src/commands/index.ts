@@ -90,6 +90,8 @@ export { runGuidelinesView } from './guidelines.js';
 export { runGuidelinesStore } from './guidelines.js';
 /** Tombstone a guidelines file so subsequent reads return null. */
 export { runGuidelinesReset } from './guidelines.js';
+/** Read a repo's contribution policy (#1953). `policy set` / `reset` are CLI-only. */
+export { runPolicyGet } from './policy.js';
 /** Fetch raw PR comment bundles for the host's extract-learnings prompt. */
 export { runFetchCorpus } from './guidelines.js';
 
@@ -185,6 +187,8 @@ export type {
   GuidelinesResetOutput,
   FetchCorpusOutput,
 } from './guidelines.js';
+export type { PolicyGetOutput } from './policy.js';
+export type { RepoPolicySummary } from '../core/repo-policy.js';
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
 export type {
   WorkClaimOptions,

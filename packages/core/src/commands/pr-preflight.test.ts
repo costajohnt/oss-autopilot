@@ -129,6 +129,8 @@ beforeEach(() => {
   mocks.getState.mockReturnValue({
     config: { githubUsername: 'me', maxOpenPRsPerRepo: 2, maxOpenPRsColdRepo: 0, excludeRepos: [] },
     repoScores: {},
+    // A merged PR there: not a first contribution, so no recorded policy is a pass.
+    mergedPRs: [{ url: 'https://github.com/up/proj/pull/1' }],
   });
   mocks.reposGet.mockResolvedValue({ data: { default_branch: 'main', permissions: { push: false } } });
   mocks.getBranch.mockImplementation(() => Promise.resolve({ data: { commit: { sha: upstreamHead() } } }));
@@ -166,6 +168,7 @@ describe('runPrPreflight: a ready branch', () => {
       ['working-tree', 'pass'],
       ['competing-work', 'pass'],
       ['repo-cap', 'pass'],
+      ['repo-policy', 'pass'],
     ]);
     expect(mocks.reposGet).toHaveBeenCalledWith({ owner: 'up', repo: 'proj' });
     expect(mocks.getBranch).toHaveBeenCalledWith({ owner: 'up', repo: 'proj', branch: 'main' });
@@ -361,7 +364,11 @@ describe('runPrPreflight: competing work and repo cap', () => {
   });
 
   it('skips the cap check, not the whole gate, when the username is not configured', async () => {
-    mocks.getState.mockReturnValue({ config: { githubUsername: '' } });
+    mocks.getState.mockReturnValue({
+      config: { githubUsername: '' },
+      repoScores: {},
+      mergedPRs: [{ url: 'https://github.com/up/proj/pull/1' }],
+    });
 
     const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: false });
 
@@ -431,6 +438,7 @@ describe('runPrPreflight: without GitHub', () => {
       ['working-tree', 'pass'],
       ['competing-work', 'skipped'],
       ['repo-cap', 'skipped'],
+      ['repo-policy', 'pass'],
     ]);
     expect(summaryOf(data, 'repo-cap')).toContain('no GitHub token');
     expect(mocks.reposGet).not.toHaveBeenCalled();
@@ -514,6 +522,53 @@ describe('runPrPreflight: input validation', () => {
   });
 });
 
+describe('runPrPreflight: repo contribution policy (#1953)', () => {
+  it('fails for a repo in aiPolicyBlocklist, whatever is stored', async () => {
+    mocks.getState.mockReturnValue({
+      config: { githubUsername: 'me', excludeRepos: [], aiPolicyBlocklist: ['Up/Proj'] },
+      repoScores: {},
+      mergedPRs: [{ url: 'https://github.com/up/proj/pull/1' }],
+      repoPolicies: {
+        'up/proj': {
+          aiPolicy: 'allowed',
+          cla: 'none',
+          commitRules: [],
+          prGate: 'none',
+          source: [],
+          reviewedByUser: true,
+          updatedAt: '2026-11-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: true });
+
+    expect(data.verdict).toBe('fail');
+    expect(statusOf(data, 'repo-policy')).toBe('fail');
+    expect(summaryOf(data, 'repo-policy')).toContain('does not accept AI-assisted contributions');
+  });
+
+  it('finds a merged history under a differently cased repoScores key', async () => {
+    mocks.getState.mockReturnValue({
+      config: { githubUsername: 'me', excludeRepos: [] },
+      repoScores: { 'Up/Proj': { repo: 'Up/Proj', mergedPRCount: 3 } },
+    });
+
+    const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: true });
+
+    expect(statusOf(data, 'repo-policy')).toBe('pass');
+  });
+
+  it('warns on a first contribution with no recorded policy', async () => {
+    mocks.getState.mockReturnValue({ config: { githubUsername: 'me', excludeRepos: [] }, repoScores: {} });
+
+    const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: true });
+
+    expect(statusOf(data, 'repo-policy')).toBe('warn');
+    expect(summaryOf(data, 'repo-policy')).toContain('policy set --repo up/proj');
+  });
+});
+
 describe('printPrPreflight', () => {
   it('prints the verdict and one line per check', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -524,6 +579,6 @@ describe('printPrPreflight', () => {
     const lines = log.mock.calls.map((call) => String(call[0]));
     expect(lines[0]).toBe('\nPR preflight: FAIL  (detached HEAD) -> up/proj:main');
     expect(lines).toContain('  [fail] head-branch: detached HEAD: check out a feature branch before opening a PR');
-    expect(lines).toHaveLength(7);
+    expect(lines).toHaveLength(8);
   });
 });

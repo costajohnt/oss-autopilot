@@ -89,6 +89,7 @@ const REGISTERED_MCP_TOOLS = new Set([
   'guidelines-store',
   'guidelines-reset',
   'guidelines-fetch-corpus',
+  'policy-get',
 ]);
 
 // Shared with docs-contract.test.ts via test-lib so the two parsers cannot

@@ -27,6 +27,7 @@
     "orphan-files",
     "overnight",
     "parse-issue-list",
+    "policy",
     "post",
     "pr-preflight",
     "pr-template",

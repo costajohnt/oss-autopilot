@@ -89,7 +89,7 @@ Then add the server to your MCP client config:
 }
 ```
 
-The MCP server exposes 36 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
+The MCP server exposes 37 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
 
 </details>
 

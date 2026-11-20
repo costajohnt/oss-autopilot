@@ -8,6 +8,8 @@ import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { repoCapField } from '../core/repo-cap.js';
+import { banNote, derivePolicy, effectivePolicy, policyField, quote, type RepoPolicy } from '../core/repo-policy.js';
+import { recordVetPolicy } from './policy.js';
 import {
   getStateManager,
   getOctokit,
@@ -79,6 +81,8 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     slmTriage: candidate.slmTriage ?? null,
     grade,
     ...repoCapField(getStateManager().getState(), candidate.issue.repo),
+    // Last: a banned policy overrides the recommendation and adds a skip reason.
+    ...(await policyFields(candidate)),
   };
   // A fix already being built somewhere (#1856) overrides the grade: the
   // issue is skipped like one with a linked PR, and no pick is recorded.
@@ -89,6 +93,45 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
 
   const pick = await pickFor(output);
   return { ...output, ...(await persistPickSnapshots(getStateManager(), pick ? [pick] : [])) };
+}
+
+const BANNED_REASON = 'repo policy: the project does not accept AI-assisted contributions';
+
+type ScoutCandidate = Awaited<ReturnType<Awaited<ReturnType<typeof createAutopilotScout>>['vetIssue']>>;
+
+/**
+ * The repo's contribution policy as far as vet read it (#1953): scout's
+ * CONTRIBUTING text through the policy parsers, plus scout's own anti-LLM scan
+ * (which also reads README and CODE_OF_CONDUCT). Null when vet read nothing or the
+ * scan result is missing.
+ */
+function vetPolicy(candidate: ScoutCandidate): RepoPolicy | null {
+  const guidelines = candidate.vettingResult.contributionGuidelines;
+  const scan = candidate.antiLLMPolicy as ScoutCandidate['antiLLMPolicy'] | undefined;
+  // Without scout's README / CODE_OF_CONDUCT scan the AI reading is partial: record nothing.
+  if (!scan) return null;
+  const docs = guidelines?.rawContent ? [{ file: 'CONTRIBUTING.md', content: guidelines.rawContent }] : [];
+  if (docs.length === 0 && !scan.matched) return null;
+  const policy = derivePolicy(docs);
+  if (guidelines?.claRequired) policy.cla = 'required';
+  if (!scan.matched || policy.aiPolicy === 'banned') return policy;
+  const line = { file: scan.sourceFile ?? 'repo docs', quotedLine: quote(scan.matchedKeywords.join(', ')) };
+  return { ...policy, aiPolicy: 'banned', source: [line, ...policy.source].slice(0, 10) };
+}
+
+/** Record what vet read, then report the policy that applies; a ban makes the issue a skip. */
+async function policyFields(candidate: ScoutCandidate): Promise<Partial<VetOutput>> {
+  const repo = candidate.issue.repo;
+  const derived = vetPolicy(candidate);
+  if (derived) await recordVetPolicy(repo, derived);
+  const policy = effectivePolicy(getStateManager().getState(), repo, derived ?? undefined);
+  if (policy?.aiPolicy !== 'banned') return policyField(policy);
+  // One ban reason: scout's when its scan matched (then ours only adds how to lift it), else ours.
+  const note = banNote(policy, repo);
+  let reason: string | null = BANNED_REASON + note;
+  if (candidate.antiLLMPolicy?.matched) reason = note === '' ? null : `repo policy${note}`;
+  const reasonsToSkip = reason === null ? candidate.reasonsToSkip : [...candidate.reasonsToSkip, reason];
+  return { ...policyField(policy), recommendation: 'skip', reasonsToSkip };
 }
 
 /**

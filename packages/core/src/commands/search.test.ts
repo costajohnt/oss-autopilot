@@ -136,6 +136,39 @@ describe('runSearch', () => {
     expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
   });
 
+  it('lists stored bans and gives candidates from an unreviewed-ban repo the policy summary (#1953)', async () => {
+    const unreviewed = {
+      aiPolicy: 'banned',
+      cla: 'none',
+      commitRules: [],
+      prGate: 'none',
+      source: [],
+      reviewedByUser: false,
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    };
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        config: { excludeRepos: [], aiPolicyBlocklist: [] },
+        repoPolicies: { 'owner/repo': unreviewed },
+      }),
+      getRepoScore: vi.fn().mockReturnValue(null),
+      getSearchSeen: vi.fn().mockReturnValue([]),
+      setSearchSeen: vi.fn(),
+      setSearchRotation: vi.fn(),
+    } as any);
+    mockSearch.mockResolvedValue({
+      candidates: [unlockCandidate(1, {})],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: [],
+    });
+
+    const result = await runSearch({ maxResults: 5, record: false });
+
+    expect(result.policyBannedRepos).toEqual([{ repo: 'owner/repo', reviewedByUser: false }]);
+    expect(result.candidates[0].policy).toMatchObject({ aiPolicy: 'banned', reviewedByUser: false });
+  });
+
   it('hands excludeUrls to the scout factory so scout skips them before vetting', async () => {
     mockSearch.mockResolvedValue({ candidates: [], excludedRepos: [], aiPolicyBlocklist: [], strategiesUsed: [] });
     const excludeUrls = ['https://github.com/o/r/issues/7'];

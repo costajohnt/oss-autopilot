@@ -43,6 +43,7 @@ const EXPECTED_TOOLS = [
   'guidelines-store',
   'guidelines-reset',
   'guidelines-fetch-corpus',
+  'policy-get',
 ] as const;
 
 // The full table (#1936): a new tool has to be classified here before the
@@ -95,6 +96,8 @@ const EXPECTED_ANNOTATIONS: Record<(typeof EXPECTED_TOOLS)[number], Record<strin
   'guidelines-store': REMOVES,
   'guidelines-reset': REMOVES,
   'guidelines-fetch-corpus': LOCAL,
+  // Read-only on purpose: `policy set` is CLI-only (#1953).
+  'policy-get': READ,
 };
 
 describe('MCP tool registrations', () => {
@@ -139,8 +142,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 36 tools', () => {
-    expect(tools).toHaveLength(36);
+  it('registers exactly 37 tools', () => {
+    expect(tools).toHaveLength(37);
   });
 
   it('registers all expected tool names', () => {

@@ -21,7 +21,7 @@ import {
   SearchRotation,
   WorkClaim,
 } from './types.js';
-import { AgentStateSchema, GuidelinesReviewSchema, type GuidelinesReview } from './state-schema.js';
+import { AgentStateSchema, GuidelinesReviewSchema, type GuidelinesReview, type RepoPolicy } from './state-schema.js';
 import { activeWorkClaims, finishWorkClaim, workClaimKey } from './work-claims.js';
 import { serializeState } from './state-prune.js';
 import {
@@ -612,6 +612,14 @@ export class StateManager {
   getGuidelinesReview(repo: string): GuidelinesReview | undefined {
     const parsed = GuidelinesReviewSchema.safeParse(this.state.guidelinesReviews?.[repo]);
     return parsed.success ? parsed.data : undefined;
+  }
+
+  /** Store `policy` for `repo` (#1953), or delete the record when `policy` is null. Keys are lowercase. */
+  setRepoPolicy(repo: string, policy: RepoPolicy | null): void {
+    const key = repo.toLowerCase();
+    const rest = Object.fromEntries(Object.entries(this.state.repoPolicies ?? {}).filter(([k]) => k !== key));
+    this.state.repoPolicies = policy ? { ...rest, [key]: policy } : rest;
+    this.autoSave();
   }
 
   /** List repos with non-empty guidelines stored in the Gist. */

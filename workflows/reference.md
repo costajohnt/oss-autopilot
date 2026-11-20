@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `draft`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `pr-preflight`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
+Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `draft`, `eval`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `policy`, `pr-preflight`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `work`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -189,7 +189,7 @@ The flow, every time:
 <prefix> repo-cap <owner/repo> --json
 
 # Gate before a PR is opened, run in the clone or worktree (or with --dir): upstream drift, base and
-# head branch, working tree, competing work on the issue, repo cap. The verdict is pass | warn | fail
+# head branch, working tree, competing work on the issue, repo cap, repo contribution policy. The verdict is pass | warn | fail
 # (exit 1 on fail); each checks[] entry has id, status (pass | warn | fail | skipped), summary, details.
 # Reads only; --fetch refreshes <remote>/<base> first. No token, or --local: network checks come back
 # skipped. Exit 1 with success: true is a fail verdict; success: false means the gate did not run.
@@ -198,6 +198,16 @@ The flow, every time:
 # Compute the fresh repo health rubric (1–10 rubricScore + verdict) for owner/repo;
 # includes the cached historyScore when one exists (#1271, #1465 — docs/repo-scores.md)
 <prefix> repo-vet <owner/repo> --json
+
+# Per-repo contribution policy (#1953): aiPolicy (allowed | disclosure-required | banned | unknown),
+# cla (none | required | unknown), commitRules, prGate (none | claim-first | maintainer-label |
+# collaborators-only | unknown), maxOpenAiPRs. vet records what it reads from CONTRIBUTING unreviewed;
+# set records what the user confirmed (refused unattended; vet never overwrites it). A repo in
+# aiPolicyBlocklist reads as banned whatever is stored; set --ai-policy banned adds the repo to that list and
+# any other --ai-policy takes it off (reset leaves it). disclosureText and sources come back fenced.
+<prefix> policy get --repo <owner/repo> --json
+<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
+<prefix> policy reset --repo <owner/repo> --json
 ```
 
 ### Dashboard
