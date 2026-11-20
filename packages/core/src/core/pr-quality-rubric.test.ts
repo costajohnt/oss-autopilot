@@ -9,10 +9,11 @@ import { describe, it, expect } from 'vitest';
 import {
   PR_QUALITY_RUBRIC,
   totalScoredWeight,
-  getRubricCheck,
   FOCUSED_CHANGES_THRESHOLDS,
   TITLE_LENGTH_BUDGET,
 } from './pr-quality-rubric.js';
+
+const getRubricCheck = (id: string) => PR_QUALITY_RUBRIC.find((c) => c.id === id);
 
 describe('PR_QUALITY_RUBRIC', () => {
   it('scored weights total exactly 100', () => {
@@ -44,12 +45,6 @@ describe('PR_QUALITY_RUBRIC', () => {
   it('lookup returns the canonical entry', () => {
     expect(getRubricCheck('issueReference')?.label).toBe('Issue Reference');
     expect(getRubricCheck('focusedChanges')?.weight).toBe(20);
-  });
-
-  it('lookup returns undefined for unknown ids', () => {
-    // Cast to bypass the strict id type — the lookup itself must
-    // tolerate misuse without throwing.
-    expect(getRubricCheck('nope' as never)).toBeUndefined();
   });
 
   it('focused-changes description embeds the canonical thresholds', () => {

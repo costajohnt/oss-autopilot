@@ -124,10 +124,6 @@ export {
   buildStarFilter,
   firstMaintainerResponseFromDigest,
   lastReviewStateFromDigest,
-  formatActionHint,
-  formatBriefSummary,
-  formatSummary,
-  printDigest,
 } from './daily-logic.js';
 export {
   collectEngagedIssues,

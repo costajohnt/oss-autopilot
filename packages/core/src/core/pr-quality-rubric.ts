@@ -136,15 +136,6 @@ export const PR_QUALITY_RUBRIC: readonly PRQualityCheck[] = [
 ] as const;
 
 /**
- * Look up a check by id. Used by `compliance-score.ts` to wire the
- * scored checks to their canonical weight without hardcoding the
- * value in two places.
- */
-export function getRubricCheck(id: PRQualityCheck['id']): PRQualityCheck | undefined {
-  return PR_QUALITY_RUBRIC.find((c) => c.id === id);
-}
-
-/**
  * Sum of the weights for scored checks. Should equal 100. Tests pin
  * this so a future edit that fails to balance the weights surfaces
  * at CI time rather than silently shipping a < 100 rubric.

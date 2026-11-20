@@ -15,7 +15,6 @@ import type {
   RepoSignals,
   TrackedIssue,
   IssueVettingResult,
-  IssueScope,
   DiffTool,
   AgentConfig,
   AgentState,
@@ -517,12 +516,6 @@ export const PROJECT_CATEGORIES = ProjectCategorySchema.options;
 export const ISSUE_SCOPES = IssueScopeSchema.options;
 
 export const DIFF_TOOLS: readonly DiffTool[] = DiffToolSchema.options;
-
-export const SCOPE_LABELS: Record<IssueScope, string[]> = {
-  beginner: ['good first issue', 'help wanted', 'easy', 'up-for-grabs', 'first-timers-only', 'beginner'],
-  intermediate: ['enhancement', 'feature', 'feature-request', 'contributions welcome'],
-  advanced: ['proposal', 'RFC', 'accepted', 'design'],
-};
 
 // ── Issue discovery types (used by formatters and test utilities) ──
 
