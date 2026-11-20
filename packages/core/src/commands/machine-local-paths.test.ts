@@ -171,6 +171,16 @@ describe('machine-specific paths with a shared Gist (#1950)', () => {
     expect(detectIssueList()).toMatchObject({ path: fs.realpathSync(vault.list), source: 'configured' });
   });
 
+  it('setup --set stores a relative list path as absolute, so it works from any directory (#1933)', async () => {
+    seedGist(noSyncedPaths);
+    const vault = makeVault(machineA);
+    await switchTo(machineA);
+    process.chdir(path.join(machineA, 'vault'));
+    await runSetup({ set: ['issueListPath=open-source/potential-issue-list.md'] });
+    process.chdir(testHome);
+    expect(detectIssueList()).toMatchObject({ path: fs.realpathSync(vault.list), source: 'configured' });
+  });
+
   it('a probe hit saved by an earlier build is not trusted as configured (#1933)', async () => {
     seedGist(noSyncedPaths);
     const vault = makeVault(machineA);

@@ -46,86 +46,119 @@ export function persistConfigPath(key: 'issueListPath' | 'skippedIssuesPath', ab
   }
 }
 
-/**
- * Locate the curated issue-list file this machine is configured to use.
- * Returns undefined when no list is configured or it is missing; callers
- * treat that as "user has no curated list". A file found in the current
- * directory is never returned here: see {@link suggestIssueListPath} (#1933).
- *
- * The returned path is ABSOLUTE (#1577): a relative configured value is
- * resolved against CWD once and persisted, so the vet -> skip ->
- * list-maintenance flow no longer depends on `/oss` running from the list's
- * parent directory.
- */
-export function detectIssueListPath(): IssueListLocation | undefined {
-  try {
-    const { config } = getStateManager().getState();
-    const configuredPath = getMachinePath('issueListPath', config);
-    // A `probe` record was saved without the user confirming it (a build
-    // between #1950 and #1933 did that), so it is not trusted as configured.
-    if (configuredPath && getMachinePathSource('issueListPath', config) !== 'probe') {
-      // Resolve a relative configured value against CWD to an absolute path so
-      // the location is stable no matter where `/oss` runs (#1577).
-      const resolved = path.resolve(configuredPath);
-      if (fs.existsSync(resolved)) {
-        if (resolved !== configuredPath) persistConfigPath('issueListPath', resolved);
-        return { path: resolved, source: 'configured' };
-      }
-      // A path WAS configured but nothing is there. Surface it prominently
-      // instead of silently degrading to undefined (#1577): a large configured
-      // list being ignored is otherwise easy to miss.
-      warn(
-        'startup',
-        `Configured issueListPath not found at ${resolved} (cwd ${process.cwd()}). ` +
-          `Set an absolute issueListPath, or run from its directory.`,
-      );
-    }
-  } catch (error) {
-    warn('startup', `Could not read issueListPath from state: ${errorMessage(error)}`);
+const SET_HINT = 'run `setup --set issueListPath=<absolute path>` to use it';
+
+/** The issue-list setting in effect, before any check on the file. */
+function configuredIssueList(isQuiet = false): { value: string; source: string } | undefined {
+  const { config } = getStateManager().getState();
+  const value = getMachinePath('issueListPath', config);
+  const source = getMachinePathSource('issueListPath', config);
+  // A `probe` record was saved without the user confirming it (a build
+  // between #1950 and #1933 did that). The synced value, if any, applies.
+  if (source === 'probe') {
+    if (!isQuiet) warn('startup', `issueListPath ${value} was auto-detected and never confirmed; ${SET_HINT}`);
+    return config.issueListPath ? { value: config.issueListPath, source: 'synced' } : undefined;
   }
-  return undefined;
+  return value && source ? { value, source } : undefined;
 }
 
 /**
- * True when the current directory is a git checkout whose origin is not a
- * GitHub repository owned by `username`. Reads the local remote only; no
- * network. A directory that is not a checkout, or has no origin, is not
- * foreign.
+ * Locate the curated issue-list file this machine is configured to use.
+ * Returns undefined when none is configured, or the configured value is
+ * relative, missing, or (unless the user set it on this machine) inside
+ * someone else's checkout. Callers treat that as "no curated list". A file
+ * found in the current directory is never returned here: see
+ * {@link suggestIssueListPath} (#1933).
  */
-function cwdIsForeignCheckout(username: string): boolean {
-  let remote: string;
+export function detectIssueListPath(): IssueListLocation | undefined {
+  let configured: ReturnType<typeof configuredIssueList>;
   try {
-    remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-  } catch {
-    return false;
+    configured = configuredIssueList();
+  } catch (error) {
+    warn('startup', `Could not read issueListPath from state: ${errorMessage(error)}`);
+    return undefined;
   }
-  const owner = /^(?:(?:https|ssh|git):\/\/)?(?:[^@/]+@)?github\.com[:/]([^/]+)\//.exec(remote)?.[1];
-  return !owner || !username || !isOwnRepo(owner, username);
+  if (!configured) return undefined;
+  const { value, source } = configured;
+  // Resolving a relative value against the current directory would pick up
+  // whatever file is there (#1933); setup and config store absolute paths.
+  if (!path.isAbsolute(value)) {
+    warn('startup', `Ignoring relative issueListPath ${value}; ${SET_HINT}`);
+    return undefined;
+  }
+  if (!fs.existsSync(value)) {
+    warn('startup', `Configured issueListPath not found at ${value}.`);
+    return undefined;
+  }
+  // A value the user did not set here (synced, adopted) is checked like a
+  // probe hit: it may point into a checkout that is not theirs.
+  if (source !== 'set' && isForeignCheckout(path.dirname(value))) {
+    warn('startup', `Ignoring issueListPath ${value}: its checkout has a remote not owned by you; ${SET_HINT}`);
+    return undefined;
+  }
+  return { path: value, source: 'configured' };
+}
+
+/** The owner segment of a remote URL on any host (`https://h/o/r`, `ssh://u@h:22/o/r`, `u@h:o/r`). */
+function remoteOwner(url: string): string | undefined {
+  return (/^[a-z][\w+.-]*:\/\/[^/]+\/([^/]+)\//i.exec(url) ?? /^(?:[^@/]+@)?[^/:]+:([^/]+)\//.exec(url))?.[1];
+}
+
+/**
+ * True when `dir` is inside a Git checkout that has a remote not owned by
+ * the configured user (owner path segment, any host, case-insensitive). A
+ * fork clone with an `upstream` remote is foreign, and so is a checkout with
+ * no remotes or one Git refuses to read. Not a checkout, or no Git: false.
+ * Reads local Git config only; no network.
+ */
+function isForeignCheckout(dir: string): boolean {
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    if (git('rev-parse', '--is-inside-work-tree').trim() !== 'true') return false;
+  } catch (error) {
+    // "dubious ownership" is a checkout Git will not read: foreign.
+    return /dubious ownership/.test(String((error as { stderr?: unknown }).stderr));
+  }
+  let username = '';
+  let urls: string[];
+  try {
+    username = getStateManager().getState().config.githubUsername;
+    urls = git('config', '--get-regexp', String.raw`^remote\..*\.url$`)
+      .trim()
+      .split('\n')
+      .map((line) => line.slice(line.indexOf(' ') + 1));
+  } catch {
+    return true; // no remotes, or git failed inside a checkout
+  }
+  return !username || urls.some((url) => !isOwnRepo(remoteOwner(url) ?? '', username));
 }
 
 /**
  * A curated list found at a known path under the current directory, offered
  * for the user to confirm (#1933). Nothing is saved: the prompt layer asks,
  * and a yes is stored with `setup --set issueListPath=<path>`. Until then the
- * file is not used as the list. No suggestion during an unattended run, or
- * when the current directory is someone else's checkout (a repository can
- * ship an `issues.md`).
+ * file is not used as the list. Offered only when no list is configured, the
+ * run is attended, the path has no shell metacharacters, and the current
+ * directory is not someone else's checkout (a repository can ship an
+ * `issues.md`).
  */
 export function suggestIssueListPath(): IssueListLocation | undefined {
   if (process.env[UNATTENDED_ENV] !== undefined) return undefined;
-  let username = '';
   try {
-    username = getStateManager().getState().config.githubUsername;
+    if (configuredIssueList(true)) return undefined;
   } catch (error) {
-    warn('startup', `Could not read githubUsername from state: ${errorMessage(error)}`);
+    warn('startup', `Could not read issueListPath from state: ${errorMessage(error)}`);
+    return undefined;
   }
-  if (cwdIsForeignCheckout(username)) return undefined;
-  for (const probe of ['open-source/potential-issue-list.md', 'oss/issue-list.md', 'issues.md']) {
-    if (fs.existsSync(probe)) return { path: path.resolve(probe), source: 'auto-detected' };
+  const probe = ['open-source/potential-issue-list.md', 'oss/issue-list.md', 'issues.md'].find((p) => fs.existsSync(p));
+  if (!probe) return undefined;
+  const found = path.resolve(probe);
+  // The path goes into a quoted shell command in the prompt layer.
+  if (/["$\\`\p{Cc}]/u.test(found)) return undefined;
+  if (isForeignCheckout(process.cwd())) {
+    warn('startup', `Found ${found}, not offered because this checkout has a remote not owned by you; ${SET_HINT}`);
+    return undefined;
   }
-  return undefined;
+  return { path: found, source: 'auto-detected' };
 }

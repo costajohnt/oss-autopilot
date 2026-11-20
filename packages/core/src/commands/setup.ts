@@ -222,8 +222,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'skippedIssuesPath': {
-            setMachinePath('skippedIssuesPath', value || undefined);
-            results[key] = value || '(cleared)';
+            results[key] = setMachinePath('skippedIssuesPath', value || undefined) || '(cleared)';
             break;
           }
           case 'autoExtractLearnings': {
@@ -413,8 +412,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'issueListPath': {
-            setMachinePath('issueListPath', value || undefined);
-            results[key] = value || '(cleared)';
+            results[key] = setMachinePath('issueListPath', value || undefined) || '(cleared)';
             break;
           }
           case 'diffTool': {

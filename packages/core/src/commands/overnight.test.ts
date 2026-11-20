@@ -226,6 +226,10 @@ describe('runOvernight', () => {
     expect(sm.setLastOvernight.mock.invocationCallOrder[0]).toBeLessThan(mockCheckpoint.mock.invocationCallOrder[0]);
     expect(out.reportPath).toBe(path.join(tmp.dir, `overnight-${reportDateFor(new Date(out.runAt))}.md`));
     expect(fs.readFileSync(out.reportPath, 'utf8')).toContain('## Queued for preparation (1)');
+    // No list configured on this machine: one line saying how to set it (#1933).
+    const hint = 'no curated issue list configured on this machine; run setup --set issueListPath=<abs path>';
+    expect(out.warnings).toEqual([{ phase: 'issue-list', operation: 'find curated issue list', message: hint }]);
+    expect(fs.readFileSync(out.reportPath, 'utf8')).toContain(`- [issue-list] find curated issue list: ${hint}`);
     expect(sm.setLastOvernight).toHaveBeenCalledWith({
       runAt: out.runAt,
       reportPath: out.reportPath,

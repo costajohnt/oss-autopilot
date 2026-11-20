@@ -146,10 +146,14 @@ export function getMachinePathSource(
 
 /**
  * Set (or, with `undefined` or an empty string, clear) a path setting for
- * this machine only, recording how the value was obtained.
+ * this machine only, recording how the value was obtained. A relative value
+ * is stored resolved against the current directory (#1933), so it never
+ * depends on where a later command runs. Returns what was stored.
  */
-export function setMachinePath(key: MachinePathKey, value = '', source: MachinePathSource = 'set'): void {
-  updateLocalConfig({ [key]: { path: value, source } });
+export function setMachinePath(key: MachinePathKey, value = '', source: MachinePathSource = 'set'): string {
+  const stored = value && path.resolve(value);
+  updateLocalConfig({ [key]: { path: stored, source } });
+  return stored;
 }
 
 /** The cache with only the repos whose checkout is on this machine's disk. */

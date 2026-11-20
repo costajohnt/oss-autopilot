@@ -137,7 +137,8 @@ export type DailyWarningPhase =
   | 'state-load'
   | 'closed-pr-status'
   | 'merged-pr-notes'
-  | 'reviewed-prs';
+  | 'reviewed-prs'
+  | 'issue-list';
 
 /**
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
@@ -420,6 +421,7 @@ const DailyWarningPhaseSchema = z.enum([
   'closed-pr-status',
   'merged-pr-notes',
   'reviewed-prs',
+  'issue-list',
 ]);
 
 const DailyWarningSchema = z.object({

@@ -41,36 +41,11 @@ export function countIssueListItems(content: string): {
 }
 
 /**
- * Detect the configured issue list file.
- * @param shouldSuggest - With no configured list, return a list found in
- *   the current directory as `source: 'auto-detected'` for the user to confirm
- *   (#1933). Only `/oss` startup asks; nothing about it is saved.
- * @returns Issue list info with path and item counts, or undefined if not found
+ * The skipped-issues file for a configured list: the configured path (a
+ * relative one anchored to the list's directory), else `skipped-issues.md`
+ * next to the list, saved for this machine when found.
  */
-export function detectIssueList(shouldSuggest = false): IssueListInfo | undefined {
-  // Path lookup lives in locate-issue-list.ts (#1463), shared with the daily merge-loop.
-  const located = detectIssueListPath() ?? (shouldSuggest ? suggestIssueListPath() : undefined);
-  if (!located) return undefined;
-  const issueListPath = located.path;
-  const source: IssueListInfo['source'] = located.source;
-
-  // 4. Count available/completed items
-  let availableCount = 0;
-  let completedCount = 0;
-  let blockedCount = 0;
-  let readError: string | undefined;
-  try {
-    const content = fs.readFileSync(issueListPath, 'utf8');
-    ({ availableCount, completedCount, blockedCount } = countIssueListItems(content));
-  } catch (error) {
-    // Surface the failure in the envelope (#1448): a 0/0 count from an
-    // unreadable list is indistinguishable from a genuinely empty list, and
-    // an agent seeing 0 available may trigger a redundant fresh search.
-    readError = errorMessage(error);
-    console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, readError);
-  }
-
-  // 5. Detect skipped issues file
+function detectSkippedIssuesPath(issueListPath: string): string | undefined {
   let skippedIssuesPath: string | undefined;
 
   // Check config first. A relative skippedIssuesPath is anchored to the issue
@@ -105,7 +80,7 @@ export function detectIssueList(shouldSuggest = false): IssueListInfo | undefine
   // (#1330). Without persistence, the auto-detect printed the path on
   // every startup but nothing else honored it — search would re-surface
   // already-skipped candidates round after round.
-  if (!skippedIssuesPath && issueListPath) {
+  if (!skippedIssuesPath) {
     const defaultSkipPath = path.join(path.dirname(issueListPath), 'skipped-issues.md');
     if (fs.existsSync(defaultSkipPath)) {
       skippedIssuesPath = defaultSkipPath;
@@ -114,8 +89,7 @@ export function detectIssueList(shouldSuggest = false): IssueListInfo | undefine
         // shouldn't rewrite the value on every run if it is already there.
         // The write goes to this machine's local settings (#1950).
         const current = getMachinePath('skippedIssuesPath', getStateManager().getState().config);
-        // A suggested list is not confirmed yet (#1933), so neither is its skip file.
-        if (!current && source === 'configured') {
+        if (!current) {
           setMachinePath('skippedIssuesPath', defaultSkipPath, 'probe');
         }
       } catch (err) {
@@ -126,6 +100,43 @@ export function detectIssueList(shouldSuggest = false): IssueListInfo | undefine
       }
     }
   }
+
+  return skippedIssuesPath;
+}
+
+/**
+ * Detect the configured issue list file.
+ * @param shouldSuggest - With no configured list, return a list found in
+ *   the current directory as `source: 'auto-detected'` for the user to confirm
+ *   (#1933). Only `/oss` startup asks; nothing about it is saved.
+ * @returns Issue list info with path and item counts, or undefined if not found
+ */
+export function detectIssueList(shouldSuggest = false): IssueListInfo | undefined {
+  // Path lookup lives in locate-issue-list.ts (#1463), shared with the daily merge-loop.
+  const located = detectIssueListPath() ?? (shouldSuggest ? suggestIssueListPath() : undefined);
+  if (!located) return undefined;
+  const issueListPath = located.path;
+  const source: IssueListInfo['source'] = located.source;
+
+  // 4. Count available/completed items
+  let availableCount = 0;
+  let completedCount = 0;
+  let blockedCount = 0;
+  let readError: string | undefined;
+  try {
+    const content = fs.readFileSync(issueListPath, 'utf8');
+    ({ availableCount, completedCount, blockedCount } = countIssueListItems(content));
+  } catch (error) {
+    // Surface the failure in the envelope (#1448): a 0/0 count from an
+    // unreadable list is indistinguishable from a genuinely empty list, and
+    // an agent seeing 0 available may trigger a redundant fresh search.
+    readError = errorMessage(error);
+    console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, readError);
+  }
+
+  // 5. Detect skipped issues file. A suggested list is not confirmed yet
+  // (#1933), so its directory is not searched for one.
+  const skippedIssuesPath = source === 'configured' ? detectSkippedIssuesPath(issueListPath) : undefined;
 
   return {
     path: issueListPath,

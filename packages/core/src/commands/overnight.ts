@@ -181,10 +181,23 @@ export function pickImplementCandidate(
   return null;
 }
 
-/** The curated list's available items, or null when there is no readable list. */
-function loadListItems(): { items: ReturnType<typeof parseIssueList>['available']; path: string } | null {
+/**
+ * The curated list's available items, or null when there is no readable list.
+ * With no list configured, says so in `warnings` (#1933): a probed file is
+ * never used here, so a machine that relied on one needs the path set.
+ */
+function loadListItems(
+  warnings: DailyWarning[],
+): { items: ReturnType<typeof parseIssueList>['available']; path: string } | null {
   const located = detectIssueListPath();
-  if (!located) return null;
+  if (!located) {
+    warnings.push({
+      phase: 'issue-list',
+      operation: 'find curated issue list',
+      message: 'no curated issue list configured on this machine; run setup --set issueListPath=<abs path>',
+    });
+    return null;
+  }
   try {
     return { items: parseIssueList(fs.readFileSync(located.path, 'utf8')).available, path: located.path };
   } catch (err) {
@@ -339,7 +352,8 @@ export async function runOvernight(): Promise<OvernightOutput> {
   const languageOf = (repo: string) => sm.getRepoScore(repo)?.language;
   const { prepare, judgment } = bucketize(daily, languageOf);
   const previous = sm.getLastOvernight();
-  const list = loadListItems();
+  const warnings = [...daily.warnings];
+  const list = loadListItems(warnings);
   // Attempts survive across runs; the ones whose issue left the list are
   // dropped so a re-added issue can be tried again.
   const attempts = (previous?.implementAttempts ?? []).filter((a) => !list || list.items.some((i) => i.url === a.url));
@@ -351,9 +365,9 @@ export async function runOvernight(): Promise<OvernightOutput> {
     prepare,
     judgment,
     implement,
+    warnings,
     attention: daily.attention,
     failures: daily.failures,
-    warnings: daily.warnings,
   };
   const reportPath = reportPathFor(now);
   // A re-run on the same date (launchd retry, manual) must not drop branches
