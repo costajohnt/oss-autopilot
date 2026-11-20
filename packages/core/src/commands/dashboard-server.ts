@@ -22,7 +22,7 @@ import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } fro
 import type { MoveTarget } from './move.js';
 import { fetchDashboardData, type ActionRequest } from './dashboard-data.js';
 import { openInBrowser } from './startup.js';
-import { writeDashboardServerInfo, removeDashboardServerInfo } from './dashboard-process.js';
+import { writeDashboardServerInfo, removeOwnDashboardServerInfo } from './dashboard-process.js';
 import { RateLimiter } from './rate-limiter.js';
 import { GistSyncCoordinator } from './dashboard-gist-sync.js';
 import { DashboardCache, getIssueListMtimeMs } from './dashboard-cache.js';
@@ -290,6 +290,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
 
       // ── API routes ─────────────────────────────────────────────────────
+      // Liveness probe for isDashboardServerRunning (#1927). Deliberately
+      // outside the rate limiters and free of state reloads so a busy or
+      // throttled server still answers.
+      if (url === '/api/health' && method === 'GET') {
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
       if (url === '/api/data' && method === 'GET') {
         const check = dataLimiter.check();
         if (!check.allowed) {
@@ -601,32 +609,57 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   }
 
   // ── POST /api/refresh handler ────────────────────────────────────────────
-  async function handleRefresh(_req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function refreshFromGitHub(currentToken: string): Promise<void> {
+    // Clear PRE-EXISTING loss notices before the reload: by now they have
+    // been visible across the degraded window. Order matters — this
+    // refresh's own reloadState may RECOVER and produce a fresh notice,
+    // which must survive into the rebuild below, not be wiped 10 lines
+    // after its creation (#1433 pass-2).
+    gistSync.clearRecoveryLossNotices();
+    await reloadState();
+    warn(MODULE, 'Refreshing dashboard data from GitHub...');
+    const result = await fetchDashboardData(currentToken);
+    cache.adoptFetchResult(result);
+    cache.rebuild(gistSync.stateManager.getState(), result.allMergedPRs, result.allClosedPRs);
+    // This refresh just fetched GitHub successfully, so a prior
+    // background-refresh failure is no longer current (#1487) — clear it as
+    // the background success path does.
+    cache.lastBackgroundRefreshError = null;
+  }
+
+  /** Run a refresh nobody awaits; a failure surfaces as staleness on /api/data (#1205). */
+  async function refreshInBackground(currentToken: string): Promise<void> {
+    try {
+      await refreshFromGitHub(currentToken);
+    } catch (error) {
+      cache.lastBackgroundRefreshError = errorMessage(error);
+      warn(MODULE, `Background data refresh failed (serving cached data): ${cache.lastBackgroundRefreshError}`);
+    }
+  }
+
+  async function handleRefresh(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const currentToken = token || getGitHubToken();
     if (!currentToken) {
       sendError(res, 401, 'No GitHub token available. Cannot refresh data.');
       return;
     }
 
+    // A caller that does not consume the payload (startup's refresh trigger)
+    // asks for `Prefer: respond-async` and gets a 202 at once: the refresh is
+    // a full GitHub fetch that outlives any sensible client timeout (#1927).
+    // The SPA omits the header because it renders the response body.
+    if (req.headers['prefer'] === 'respond-async') {
+      void refreshInBackground(currentToken);
+      sendJson(res, 202, { refreshing: true });
+      return;
+    }
+
     try {
-      // Clear PRE-EXISTING loss notices before the reload: by now they have
-      // been visible across the degraded window. Order matters — this
-      // refresh's own reloadState may RECOVER and produce a fresh notice,
-      // which must survive into the rebuild below, not be wiped 10 lines
-      // after its creation (#1433 pass-2).
-      gistSync.clearRecoveryLossNotices();
-      await reloadState();
-      warn(MODULE, 'Refreshing dashboard data from GitHub...');
-      const result = await fetchDashboardData(currentToken);
-      cache.adoptFetchResult(result);
-      cache.rebuild(gistSync.stateManager.getState(), result.allMergedPRs, result.allClosedPRs);
-      // This manual refresh just fetched GitHub successfully, so a prior
-      // background-refresh failure is no longer current (#1487) — clear it as
-      // the background success path does, then emit the staleness headers. A
-      // gist-divergence marker that survived a failed pull inside reloadState
-      // still surfaces via getStateStaleness, so the SPA stays honest even
-      // when the GitHub fetch succeeds but the gist remains unreachable.
-      cache.lastBackgroundRefreshError = null;
+      await refreshFromGitHub(currentToken);
+      // Emit the staleness headers: a gist-divergence marker that survived a
+      // failed pull inside reloadState still surfaces via getStateStaleness,
+      // so the SPA stays honest even when the GitHub fetch succeeds but the
+      // gist remains unreachable.
       applyStalenessHeaders(res);
       sendJson(res, 200, cache.jsonData);
     } catch (error) {
@@ -804,7 +837,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // ── Clean shutdown ───────────────────────────────────────────────────────
   const shutdown = () => {
     warn(MODULE, 'Shutting down dashboard server...');
-    removeDashboardServerInfo();
+    removeOwnDashboardServerInfo();
     server.close(() => {
       process.exit(0);
     });

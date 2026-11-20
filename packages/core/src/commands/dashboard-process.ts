@@ -87,14 +87,28 @@ export function removeDashboardServerInfo(): void {
   }
 }
 
+/**
+ * Remove the PID file only when it records this process. A server that lost
+ * the file to a newer server (it was probed as dead, then replaced) must not
+ * delete the replacement's PID file on its own shutdown (#1927).
+ */
+export function removeOwnDashboardServerInfo(): void {
+  if (readDashboardServerInfo()?.pid === process.pid) removeDashboardServerInfo();
+}
+
 // ── Health Probe ───────────────────────────────────────────────────────────────
 
+/**
+ * Probe GET /api/health. Any HTTP response counts as alive: the status says
+ * nothing about liveness, and requiring a 200 from the rate-limited,
+ * state-reloading /api/data read a busy server as dead (#1927).
+ */
 export function isDashboardServerRunning(port: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/data`, { timeout: 2000 }, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/api/health`, { timeout: 2000 }, (res) => {
       // Consume response data to free up memory
       res.resume();
-      resolve(res.statusCode === 200);
+      resolve(true);
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => {
@@ -127,7 +141,17 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
     return { port: info.port, url: `http://oss.localhost:${info.port}` };
   }
 
-  // Process exists but not responding on expected port — stale
+  // Process exists but not responding on expected port. Stop it before
+  // dropping the PID file: left alive it becomes an orphan no later launch can
+  // find, and the replacement server walks to the next port (#1927).
+  try {
+    process.kill(info.pid, 'SIGTERM');
+  } catch (err) {
+    // ESRCH = exited since the existence check above
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') {
+      warn(MODULE, `Could not stop unresponsive dashboard server (PID ${info.pid}): ${(err as Error).message}`);
+    }
+  }
   removeDashboardServerInfo();
   return null;
 }

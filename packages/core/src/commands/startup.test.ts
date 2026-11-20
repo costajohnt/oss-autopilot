@@ -867,7 +867,7 @@ describe('runStartup behavior', () => {
       'http://127.0.0.1:3001/api/refresh',
       expect.objectContaining({
         method: 'POST',
-        headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-test-token' }),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-test-token', Prefer: 'respond-async' }),
       }),
     );
     // No `lastBrowserOpenedAt` recorded yet → falls outside throttle window,

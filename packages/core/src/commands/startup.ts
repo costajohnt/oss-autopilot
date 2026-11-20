@@ -229,7 +229,10 @@ async function triggerDashboardRefresh(port: number): Promise<boolean> {
     }
     const res = await fetch(`${base}/api/refresh`, {
       method: 'POST',
-      headers: { Origin: `http://oss.localhost:${port}`, 'X-CSRF-Token': csrfToken },
+      // Ask for a 202 and a background refresh: the full GitHub fetch outlives
+      // this timeout, which used to log a failure for a refresh that then
+      // completed (#1927).
+      headers: { Origin: `http://oss.localhost:${port}`, 'X-CSRF-Token': csrfToken, Prefer: 'respond-async' },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
