@@ -43,7 +43,7 @@
     },
     {
       "file": "workflows/review-follow-ups.md",
-      "purpose": "Re-review the changes and answer the questions on PRs the user reviewed after the author pushed or replied, via review-panel and draft-review-post (#1857)"
+      "purpose": "Re-review the changes and answer the questions on PRs the user reviewed after the author pushed or replied, via review-panel, posting approved draft files (#1857)"
     },
     {
       "file": "workflows/plan-review.md",

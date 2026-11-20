@@ -44,7 +44,7 @@ OSS Autopilot checks every open PR you have on GitHub and sorts them into what n
 
 - Node.js 22 or newer
 - [GitHub CLI](https://cli.github.com/) installed and logged in (`gh auth login`), or a `GITHUB_TOKEN` in your environment
-- For the plugin: [Claude Code](https://claude.com/claude-code), plus `npm` and network access on first run (see below)
+- For the plugin: [Claude Code](https://claude.com/claude-code)
 
 CI runs on Ubuntu and macOS. Windows is untested.
 
@@ -63,7 +63,7 @@ Restart Claude Code, then:
 
 Setup asks for your GitHub username, the languages and labels you care about, and how many PRs you want open at once. After that, run `/oss` whenever you want to check in.
 
-**About the first run.** The plugin ships as source. The first `/setup-oss` or `/oss` installs dependencies and builds the CLI inside the plugin directory, so it needs `npm` (or `pnpm`) and a network connection, and it takes longer than later runs. If the build fails, see [Troubleshooting](#troubleshooting).
+**About the first run.** The marketplace install ships the CLI and dashboard prebuilt, taken from the published `@oss-autopilot/core` package. Nothing is installed or built in the plugin directory. The bundled MCP server is fetched by `npx` at a pinned version the first time Claude Code starts it.
 
 ## Other ways to run it
 
@@ -89,7 +89,7 @@ Then add the server to your MCP client config:
 }
 ```
 
-The MCP server exposes 35 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
+The MCP server exposes 37 tools, 6 resources, and 4 prompts. `@latest` means you get new releases automatically; pin a version (`@oss-autopilot/mcp@<version>`) if you would rather update on your own schedule.
 
 </details>
 
@@ -119,8 +119,11 @@ npm install @oss-autopilot/core
 ```
 
 ```typescript
+import { ensureGistPersistence, requireGitHubToken } from '@oss-autopilot/core';
 import { runDaily, runSearch } from '@oss-autopilot/core/commands';
 
+// The CLI runs this before every command. Skip it and a machine set up for Gist sync reads and writes local state only.
+await ensureGistPersistence(requireGitHubToken());
 const digest = await runDaily();
 const issues = await runSearch({ maxResults: 10 });
 ```
@@ -162,7 +165,7 @@ The plugin adds 9 slash commands:
 
 **Commands:** `/oss`, `/oss-search`, `/oss-overnight`, `/oss-dashboard`, `/oss-guidelines`, `/pr-ready`, `/plan-ready`, `/setup-oss`, `/oss-help`
 
-The plugin also ships 8 specialized agents that Claude dispatches for you:
+The plugin also ships 9 specialized agents that Claude dispatches for you:
 
 | Agent | Job |
 |-------|-----|
@@ -174,6 +177,7 @@ The plugin also ships 8 specialized agents that Claude dispatches for you:
 | `repo-evaluator` | Judges whether a repo is worth your time before you start |
 | `contribution-strategist` | Looks at your history and suggests where to focus |
 | `overnight-preparer` | Prepares one fix branch in a local worktree during `/oss-overnight` |
+| `learnings-extractor` | Drafts per-repo guideline proposals from past PR feedback for you to approve; has no shell, file or store tool |
 
 Agents exist only in the Claude Code plugin. MCP and CLI users get the same underlying data through tools and commands.
 
@@ -236,7 +240,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `languages` | (chosen at setup) | Languages for issue search |
 | `labels` | (chosen at setup) | Issue labels for issue search |
 | `squashByDefault` | `true` | Squash commits before merge (`true`, `false`, or `"ask"`) |
-| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push repo-cap check warns before opening a new one |
+| `excludeRepos` | `[]` | Repos to leave out of issue discovery. PRs already open there are still tracked; the pre-push `pr-preflight` gate (its `repo-cap` check) warns before opening a new one |
 | `excludeOrgs` | `[]` | Orgs to leave out of issue discovery. PRs already open there are still tracked |
 | `untrackedOrgs` | `[]` | Orgs whose PRs are not tracked at all (for example, your employer). Discovery is unaffected |
 | `avoidRepos` | `[]` | Repos to rank lower in search without excluding them |
@@ -244,7 +248,7 @@ oss-autopilot config maxActivePRs 5      # set one value
 | `includeDocIssues` | `true` | Include documentation issues in search |
 | `complexIssues` | `off` | `warm` relaxes issue vetting in repos where you already have a merged PR, so larger and maintainer-filed issues surface there |
 | `autoExtractLearnings` | `true` | After a PR merges, extract what the maintainers asked for into per-repo guidelines |
-| `issueListPath` | (none) | Path to your own curated issue list |
+| `issueListPath` | (none) | Path to your own curated issue list (set per machine, not synced) |
 | `projectCategories` | `[]` | Categories to prioritize (nonprofit, devtools, and so on) |
 | `preferredOrgs` | `[]` | Orgs to prioritize |
 
@@ -296,13 +300,15 @@ brew install gh        # macOS; see https://cli.github.com for other platforms
 gh auth login
 ```
 
-**The plugin's first-run build failed**
+**`BUILD_FAILED` when a command starts**
+
+Installed from the marketplace: the prebuilt CLI bundle is missing from the plugin directory. Reinstall the plugin.
+
+Running a source checkout (`claude --plugin-dir .`): the bundle is built from `pnpm-lock.yaml` and needs pnpm. There is no `npm install` fallback.
 
 ```bash
-find ~/.claude/plugins -name "oss-autopilot" -type d    # locate the plugin
-cd <that path>/packages/core
-npm install
-npm run bundle
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm --filter @oss-autopilot/core run bundle
 ```
 
 **My PRs do not show up**

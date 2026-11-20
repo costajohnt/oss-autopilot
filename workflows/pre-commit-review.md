@@ -82,7 +82,7 @@ Before dispatching review agents, run the repo's lint and test commands to catch
 
 1. **Detect and run linter/type checker**: Check for `package.json` scripts (`lint`, `typecheck`, `tsc`), `Makefile` targets, or language-specific tooling. Run the detected command(s). If no linter is detected, skip and note: "No linter detected — skipping pre-review lint."
 
-2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. The structured detection lives at `packages/core/src/core/ci-enforced-tools.ts` (`getCIEnforcedTools`) — call it with the well-known config snippets to get back a typed `CIEnforcedTool[]` instead of stitching `cat`/`grep` output in markdown (#1286). The function reads:
+2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. Read:
    - `.pre-commit-config.yaml` — lists hooks that run on every commit/PR. Save the list of repo URLs and hook IDs as `enforcedTools`.
    - `.github/workflows/*.yml` (or `.gitlab-ci.yml`, `Jenkinsfile`, etc.) — look for tool invocations in CI job steps.
    - `Makefile` targets referenced by CI — if CI runs `make lint`, check what `make lint` actually invokes.
@@ -212,7 +212,18 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
 | `inline` | Run the appropriate diff command based on `changeSource` and **output the full diff as a markdown code block in your text response** |
 | `sourcetree` | Run `stree .` to open the repo in SourceTree. Tell the user: "Opened in SourceTree — review the diff there." |
 | `vscode` | Run `code --diff` for each changed file against its HEAD version. Tell the user: "Opened diffs in VS Code." |
-| `custom` | Read `data.config.diffToolCustomCommand` and run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+| `custom` | Read `data.config.diffToolCustomCommand`. Before the first use in a session, show the user the exact stored command and ask (see below); then run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+| any other value | A newer release added it. Use the `inline` action; never run `diffToolCustomCommand` for it. |
+
+**Custom diff command: confirm before the first run in a session.** The stored command is a setting, and settings sync between machines, so the text may not be what the user typed on this one. Never run it unseen. Print the command verbatim in a code block, then use AskUserQuestion:
+  ```
+  Question: "Run this stored diff command? It runs on your machine with the repo path appended."
+  Header: "Diff command"
+  Options:
+    - "Run it" — Use this command for the rest of the session
+    - "Show the diff inline instead" — Do not run it; print the diff here
+  ```
+Only "Run it" permits running the command, and only the exact text shown. If the stored command differs later in the session, ask again. On "Show the diff inline instead", use the `inline` action and tell the user they can change the setting with `oss-autopilot setup --set diffToolCustomCommand="<command>"` or `--set diffTool=inline`. The command can only be set from a terminal: the MCP `config` and `setup` tools refuse `diffToolCustomCommand` and `diffTool=custom`.
 
 - **If the diff command or external tool fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly (the user has explicitly chosen to proceed without reviewing the raw diff).
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
@@ -236,9 +247,10 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
 
 1. **Detect tooling** from lint/format configs gathered in sub-step 2. Check in order — **use the first match that supports auto-fix**:
    - `package.json` scripts: prefer fix-oriented scripts first: `lint:fix`, `format`, `fmt`. A plain `lint` script (without `:fix`) typically only reports issues — only use it as a last resort and note it will report but not auto-fix. **Important:** `npm run` scripts typically run on the entire project. Only use a script if it accepts file arguments via `--` passthrough (e.g., `npm run format -- {changed files}`). If the script does not accept file arguments, skip it and fall back to running the underlying tool directly on changed files.
-   - `biome.json` / `biome.jsonc` → `npx biome check --write {changed files}`
-   - `.prettierrc*` or `prettier` in devDependencies → `npx prettier --write {changed files}`
-   - `.eslintrc*` or `eslint.config.*` → `npx eslint --fix {changed files}`
+   - `biome.json` / `biome.jsonc` → `npx --no-install biome check --write {changed files}`
+   - `.prettierrc*` or `prettier` in devDependencies → `npx --no-install prettier --write {changed files}`
+   - `.eslintrc*` or `eslint.config.*` → `npx --no-install eslint --fix {changed files}`
+   - `--no-install` makes `npx` use the project's own installed version and fail instead of downloading one. If it fails because the tool is not installed, report that and skip the formatter; do not drop the flag.
    - `Makefile` with `fmt` or `format` target → `make fmt` or `make format` (project-wide by design; no file list)
    - `Cargo.toml` → `cargo fmt` (project-wide by design; no file list)
    - `pyproject.toml` with `[tool.ruff]` or `[tool.black]` → `ruff format {changed files}` or `black {changed files}`
@@ -332,15 +344,13 @@ On "Done for now":
 - **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
 - **Never post without explicit, unambiguous user approval.**
 
-> **Other comment-posting paths also have safeguards.** The `pr-responder` agent defaults to saving drafts to a temp file (user posts manually) and only posts when explicitly requested. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
+> **Other comment-posting paths also have safeguards.** The `pr-responder` agent saves its draft in the tool's draft directory ("Draft Files" in `workflows/reference.md`) and posts it with `post --body-file ... --expect-sha256` only when the user explicitly asks; the replies drafted in `review-issue-replies.md`, `closed-pr-status-update.md`, `merged-pr-notes.md`, `dormant-pr-follow-up.md` and `review-follow-ups.md` use the same flow with the "Approval to post" rules. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
 
 **If the push was in response to maintainer feedback:**
 
 **7a. Classify the feedback — does a comment add value, or does the diff speak for itself? (#904)**
 
 Before drafting, decide whether a comment is actually needed. When the fix is self-evident from the diff, a comment that restates it wastes the maintainer's attention. Err on the side of skipping — the push is already a response.
-
-> **Source of truth (#1286):** the skip-vs-draft rule lives at `packages/core/src/core/comment-decision.ts` (`shouldDraftResponse`). The same function is consumed by the `pr-responder` agent. The bullets below are the human-facing render of that rule — edit the function first if the rule changes.
 
 **Skip the comment entirely if ALL of these are true:**
 - Every piece of maintainer feedback addressed in this push maps to a concrete code change (e.g. "avoid `T.untyped` here", "add a nil check", "rename this variable")
@@ -369,7 +379,15 @@ When in doubt, lean toward skipping — the diff already communicates the functi
    - Mention anything intentionally left unchanged only if the maintainer will wonder about it
    - Match the thread's tone and length (see the `contribution-ethics` skill for AI-tell avoidance and the `pr-etiquette` skill for general response style)
 
-2. **Output the drafted comment as a blockquote in your text response** so the user can read it.
+2. **Stage the draft and show it from the file** (#1930; "Draft Files" in `workflows/reference.md`). Get the draft path, in the tool's own owner-only draft directory (never `/tmp`); the command prints it:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path {owner}--{repo}-pr-{pr_number}-comment.md
+   ```
+   Write the drafted comment to that path with the Write tool, then read it back:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
+   ```
+   Output `data.content`, complete, inside a code fence longer than any run of backticks in it, so the user reads the text the file holds. Keep `data.sha256`. **If the write or `draft show` fails:** report the error, display the draft text so the user can copy it, and stop this sub-step. Do NOT fall back to an inline `--body` or a message argument: shell metacharacters in code review comments run as commands.
 
 3. **After** the draft is visible in your response, use AskUserQuestion:
    ```
@@ -383,11 +401,11 @@ When in doubt, lean toward skipping — the diff already communicates the functi
    ```
 
 4. Handle choice:
-   - **"Post this response":** Only proceed if the AskUserQuestion response contains one of these acceptance phrases (case-insensitive): "Post this response", "post it", "post the comment", "option 1", or "yes, post". Any other response — including generic confirmations like "yes", "ok", "looks good", or "User has answered your questions" — does NOT qualify. **Negation check:** If the response also contains a negation word ("don't", "no", "not", "wait", "cancel", "stop", "actually", "never mind", "changed my mind") in the same sentence as the acceptance phrase, treat it as ambiguous and default to Skip. When proceeding: write comment to `/tmp/pr-comment-{pr_number}.md` and verify the file exists and is non-empty. **If write fails:** report the error, display the draft text so the user can copy it, and provide the `gh pr comment --body-file` command for manual use — do NOT fall back to inline `--body`, as shell metacharacters in code review comments may corrupt the content. If write succeeds, post via `gh pr comment {pr_number} --repo {upstream_repo} --body-file /tmp/pr-comment-{pr_number}.md`. Verify exit code 0, then delete the temp file.
-   - **"Edit before posting":** Let the user modify the draft, then re-present for approval with the same AskUserQuestion. The same acceptance phrases, negation check, and ambiguous-response rules apply — do not loosen the criteria on subsequent rounds. **Loop bound:** After 3 rounds of "Edit before posting" without a successful post, inform the user: "Multiple edit rounds without posting. The draft is saved at `/tmp/pr-comment-{pr_number}.md` — you can post manually via `gh pr comment`." Then treat as Skip and exit. **Do not delete the temp file** in this case — the user needs it for manual posting.
-   - **"Skip":** No comment posted. This is the safe default.
+   - **"Post this response":** Only proceed if the AskUserQuestion response contains one of these acceptance phrases (case-insensitive): "Post this response", "post it", "post the comment", "option 1", or "yes, post". Any other response — including generic confirmations like "yes", "ok", "looks good", or "User has answered your questions" — does NOT qualify. **Negation check:** If the response also contains a negation word ("don't", "no", "not", "wait", "cancel", "stop", "actually", "never mind", "changed my mind") in the same sentence as the acceptance phrase, treat it as ambiguous and default to Skip. When proceeding: post the file with the hash of the text you displayed, `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {pr_url} --body-file "<draft-path>" --expect-sha256 <data.sha256> --json`. The command refuses, before posting, when the file no longer holds that text: run `draft show` again, display the current text and ask again. On `success: true`, delete the draft (`rm -- "<draft-path>"`).
+   - **"Edit before posting":** Let the user modify the draft. If they dictated the change, write the file again; if they edited the file themselves, leave it. Either way run `draft show` again, display the new `data.content`, keep the new `data.sha256`, then re-present for approval with the same AskUserQuestion. The same acceptance phrases, negation check, and ambiguous-response rules apply — do not loosen the criteria on subsequent rounds. **Loop bound:** After 3 rounds of "Edit before posting" without a successful post, inform the user: "Multiple edit rounds without posting. The draft is saved at `<draft-path>` — you can post manually via `gh pr comment`." Then treat as Skip and exit. **Do not delete the temp file** in this case — the user needs it for manual posting.
+   - **"Skip":** No comment posted. This is the safe default. Delete the draft (`rm -- "<draft-path>"`).
    - **Ambiguous or unclear response:** Treat as "Skip". Report: "Could not determine your choice — defaulting to skip (no comment posted). You can post manually via `gh pr comment`."
 
-5. **If `gh pr comment` fails (for either "Post" or "Edit" path):** Report the error, display the drafted comment so the user can copy it, and offer: "Retry" / "Copy and post manually" / "Skip". **Before retrying**, check whether the comment was actually posted despite the error: run `gh pr view {pr_number} --repo {upstream_repo} --json comments` and check if any comment by the authenticated user, posted within the last 5 minutes, starts with the first 100 characters of the draft content. If already posted, inform the user: "The comment appears to have been posted despite the error — please verify on GitHub." Do not retry if the comment is already present. If the duplicate check command itself fails, inform the user that both post and verification failed, display the draft, and recommend they check the PR on GitHub manually before retrying. Clean up the temp file (`/tmp/pr-comment-{pr_number}.md`) after this sub-step completes — except when the user selected "Copy and post manually" (they need the file). Do NOT silently proceed without the comment.
+5. **If the post fails for a reason other than a hash mismatch (for either "Post" or "Edit" path):** Report the error, display the drafted comment so the user can copy it, and offer: "Retry" / "Copy and post manually" / "Skip". **Before retrying**, check whether the comment was actually posted despite the error: run `gh pr view {pr_number} --repo {upstream_repo} --json comments` and check if any comment by the authenticated user, posted within the last 5 minutes, starts with the first 100 characters of the draft content. If already posted, inform the user: "The comment appears to have been posted despite the error — please verify on GitHub." Do not retry if the comment is already present. If the duplicate check command itself fails, inform the user that both post and verification failed, display the draft, and recommend they check the PR on GitHub manually before retrying. Clean up the temp file (`<draft-path>`) after this sub-step completes — except when the user selected "Copy and post manually" (they need the file). Do NOT silently proceed without the comment.
 
 **After this sub-step completes (or is skipped):** If currently in Phase C's sequential loop (from `work-through-issues.md`), return there to process the next item. Otherwise, return to "After Each Action" in the core router (`commands/oss.md`).

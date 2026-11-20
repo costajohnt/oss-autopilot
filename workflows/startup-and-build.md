@@ -46,8 +46,9 @@ After the bash call completes, jump straight to displaying the brief summary and
 Run **everything** in a single bash call. The CLI's `startup` command handles auth, setup, daily fetch, interactive dashboard launch, version detection, and issue list detection internally. The output is a single JSON envelope.
 
 ```bash
-# Rebuild CLI bundle if stale (#1292). Helper checks src/, package.json, and
-# tsconfig.json against dist/cli.bundle.cjs and exits 0/1/2/3.
+# Ensure the CLI bundle is current (#1292). Marketplace installs ship it
+# prebuilt (exit 0, nothing installed). A source checkout rebuilds a stale
+# bundle from pnpm-lock.yaml only (#1935). Exits 0/1/2/3.
 CLI_HELPER_RC=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-startup-cli-build.log 2>&1 || CLI_HELPER_RC=$?
 if [ "$CLI_HELPER_RC" = "2" ]; then
@@ -69,7 +70,7 @@ case $DASHBOARD_HELPER_RC in
   2)
     if grep -q "pnpm is required" /tmp/oss-dashboard-build.log; then
       OSS_DASHBOARD_BUILD_STATUS=missing-pnpm
-      OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: npm install -g pnpm"
+      OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: corepack enable, or npm install -g pnpm@10.27.0"
     else
       OSS_DASHBOARD_BUILD_STATUS=failed
       OSS_DASHBOARD_BUILD_ERROR_TAIL=$(tail -5 /tmp/oss-dashboard-build.log 2>/dev/null | tr '\n' ' ' | tr -s ' ')
@@ -106,8 +107,10 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 | `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | Show `Dashboard: <url>` so user can re-open it |
 | `data.dashboardBuildStatus` | `'fresh' \| 'rebuilt' \| 'failed' \| 'missing-pnpm'` (when set by the workflow) | If `'failed'` or `'missing-pnpm'`, render the warning below before the action menu |
 | `data.dashboardBuildErrorTail` | Last few lines of the dashboard build log when `dashboardBuildStatus` is a failure | Quote in the warning so the user sees what broke |
-| `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount`, `blockedCount` (blocked items are not in `availableCount`) |
+| `data.issueList` | Issue list info (if detected) | `hasIssueList` = present with `source: "configured"`; extract `path`, `source`, `availableCount`, `completedCount`, `blockedCount` (blocked items are not in `availableCount`). `source: "auto-detected"` is only a suggestion, see **Suggested issue list** below |
 | `data.overnight` | Latest `/oss-overnight` run (#1574): `runAt`, `reportPath`, `ageHours` (absent with `runAtInvalid: true` when the timestamp is unparseable), `prepareCount`, `judgmentCount`, `preparedCount`, `reportAvailable` (`local`, `gist` or `none`, #1698) | If present and `ageHours < 24`, show one line before the action menu: `Overnight report (<ageHours>h ago): <preparedCount> branches prepared, <judgmentCount> need your judgment — <reportPath>`. When `reportAvailable` is `gist`, the run happened on another machine: say `(published from another machine; read it with \`overnight report\`)` instead of the path. Older than 24h or `runAtInvalid`: say nothing. |
+
+**Suggested issue list (#1933):** When `data.issueList.source === "auto-detected"`, no list is configured on this machine and the CLI found a list file under the current directory (never in someone else's checkout). It has not saved it, and nothing (merge-loop, overnight, vet-list, the dashboard) uses it. Before the action menu, ask once with AskUserQuestion: "Use `<path>` (<availableCount> available) as your curated issue list on this machine?" with "Yes, use it" / "No". On yes, run `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issueListPath="<path>" --json` and treat the list as present (`hasIssueList` true). On no, set `hasIssueList` false and do not read or edit the file this session. Never save it without the user's yes.
 
 **Routing based on parsed data:**
 - `data.authError` is present → Tell the user: show `data.authError` message. Then offer recovery: "Run `gh auth login` to authenticate, then run `/oss` again." End the session — do not continue to Summary or Action Menu without valid auth.
@@ -119,7 +122,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 ```
 Warning: Dashboard build {failed|requires pnpm} — `/oss-dashboard` may show stale data until rebuilt.
   {data.dashboardBuildErrorTail}
-  Rebuild: cd ${CLAUDE_PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/dashboard run build
+  Rebuild: cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build
 ```
 
 Skip the warning when `data.dashboardBuildStatus` is `'fresh'`, `'rebuilt'`, or absent (CLI invoked outside the plugin workflow).
@@ -130,9 +133,9 @@ Skip the warning when `data.dashboardBuildStatus` is `'fresh'`, `'rebuilt'`, or 
 
 Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
 
-- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`. Common causes: missing Node.js 22+, stale `node_modules` (delete and reinstall), npm permission issues.
+- **Build failure** (BUILD_FAILED sentinel): the `BUILD_FAILED:` line states the fix. Marketplace install with a missing prebuilt bundle: reinstall the plugin. Source checkout: install pnpm, then `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle`. Never suggest an install that ignores the lockfile.
 - **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
 - **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 22+).
-- **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `/tmp/oss-dashboard-build.log` for build errors. Rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT}/packages/dashboard && npm install && npm run build`.
+- **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `/tmp/oss-dashboard-build.log` for build errors. Marketplace installs ship the dashboard prebuilt next to the CLI bundle. In a source checkout, rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build`.
 
 **Return:** Core router (`commands/oss.md`) — **Summary** section with the parsed startup data.

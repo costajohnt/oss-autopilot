@@ -28,7 +28,7 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
 
 1. **Read the PR thread.** Run `gh pr view {prUrl} --comments` and read the notes in context (the excerpts are truncated and fenced; use the live thread for the draft). When `maintainerCommits > 0`, also run `gh pr view {prUrl} --json commits --jq '.commits[] | [.authors[0].login, .messageHeadline] | @tsv'` and identify exactly what the maintainer changed. Confirm the user has not already replied (a comment posted seconds after the CLI's fetch would be missed); if they have, say so and skip to the next entry.
 
-2. **Classify each note** with the categories in `agents/pr-responder.md` ("Comment Decision Logic") and the rule in `packages/core/src/core/comment-decision.ts` (`shouldDraftResponse`):
+2. **Classify each note** with the categories in `agents/pr-responder.md` ("Comment Decision Logic"):
    - `appreciation` (thanks or praise and nothing else) → one-line acknowledgment. The CLI's `thanksOnly` is a keyword heuristic; confirm it against the thread before relying on it.
    - A commit pushed on top (`kind: "commit"`), a reworked API, or any note explaining what changed before merge → short reply that names the specific change ("the positional argument reads better than the flag, agreed") and, if the user disagrees or sees a problem, says so.
    - A note about what happens next (ships in the next release, follow-up issue opened) → brief acknowledgment that mentions the specific thing, or nothing if the user prefers; ask.
@@ -41,9 +41,24 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
    - **Skip, don't ask again** — run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss {prUrl} --json` for each PR in the group (`dismiss` accepts PR URLs and re-stamps a PR that was dismissed before, so a skip after a newer note moves the cutoff forward). The dismiss timestamp lands after the newest note, which is exactly what the daily run checks, so the entry does not return unless a newer note lands. Move to the next entry.
    - **Defer** — leave everything as is; the entry returns next session until the user comments on the PR, dismisses it, or the PR leaves the recently-merged window. Move to the next entry.
 
-4. **Draft the reply.** One to three sentences. An acknowledgment is one specific line (what the user is glad landed, or a reply to what the maintainer said); a reply to a change names the change. Tone constraints (mirror `agents/pr-responder.md` "Avoid AI tells"): no formulaic "Thanks for the review!" opener, no restating the PR, no AI attribution (see `skills/contribution-ethics/SKILL.md`).
+4. **Draft the reply.** Apply "Before drafting a comment" (`workflows/reference.md`) for the PR's repo first: when it says hand off, draft nothing for this entry, tell the user why, and move on. One to three sentences. An acknowledgment is one specific line (what the user is glad landed, or a reply to what the maintainer said); a reply to a change names the change. Tone constraints (mirror `agents/pr-responder.md` "Avoid AI tells"): no formulaic "Thanks for the review!" opener, no restating the PR, no AI attribution (see `skills/contribution-ethics/SKILL.md`).
 
-5. **Route through `draft-review-post`.** Pass the comment text and the target URL (`{prUrl}`), with a hint that this is a PR comment so the skill emits `gh pr comment {prUrl} --body-file ...`. **Never post directly.** The skill saves the draft and waits for the user's approval; the user posts.
+5. **Stage the draft and post only after approval** (the flow in "Draft Files", `workflows/reference.md`; never under `/tmp`, never as a shell argument):
+   1. Get a draft path (`<unix-ts>` from `date +%s`) and save the comment to the printed path **with the Write tool** (use the path literally and quoted):
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path <owner>--<repo>-<pr-number>-merged-<unix-ts>.md
+      ```
+   2. Read it back once:
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
+      ```
+      Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/reference.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+   3. Only on a "Post this comment" answer that passes those rules, post it:
+      ```bash
+      GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {prUrl} --body-file "<draft-path>" --expect-sha256 <sha256> --json
+      ```
+      **Never post without that approval.**
+   4. On `success: true`, delete the draft (`rm -- "<draft-path>"`). Delete it too when the user decides not to post.
 
 6. **After a group acknowledgment is posted**, run the `dismiss` command from step 3 for each entry whose `ackCoveredBy` points at the PR that received it. The CLI also treats the user's comment on the carrier as covering the group, so this is belt and braces: the covered PRs stay out even if a later run reads the thread before the comment is visible.
 
@@ -51,10 +66,10 @@ Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredB
 
 ## Scope
 
-**In scope:** drafting one reply per listed PR (or per thanks-only group), routed through `draft-review-post`; dismissing a PR URL when the user picks "Skip, don't ask again" or when its group's acknowledgment was posted elsewhere.
+**In scope:** drafting one reply per listed PR (or per thanks-only group) and posting it once the user approves the exact text; dismissing a PR URL when the user picks "Skip, don't ask again" or when its group's acknowledgment was posted elsewhere.
 
 **Out of scope:** reopening or re-pushing to the merged PR, opening follow-up issues or PRs for a maintainer's "could you also..." (offer to add it to the user's issue list instead), any other edit to local state.
 
-**Error handling:** If a `gh` read fails, show the error and offer to skip the entry. If `dismiss` returns `{ success: false }`, show the `error` field; the entry will simply come back next session. Once the user posts a comment, the entry drops out of the next daily run on its own.
+**Error handling:** If a `gh` read fails, show the error and offer to skip the entry. If `dismiss` returns `{ success: false }`, show the `error` field; the entry will simply come back next session. If `post` returns `{ success: false }`, show the `error` field and keep the draft; a hash mismatch means the file changed since the user saw it, so go back to `draft show`. Once the comment is posted, the entry drops out of the next daily run on its own.
 
-**Return:** Core router (`commands/oss.md`) — **After Each Action** section (Tier 2: a comment was drafted; no Tier 1 actions were taken).
+**Return:** Core router (`commands/oss.md`) — **After Each Action** section (Tier 2: a comment was drafted or posted; no Tier 1 actions were taken).

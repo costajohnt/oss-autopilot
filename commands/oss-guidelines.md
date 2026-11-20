@@ -19,7 +19,7 @@ the full extraction.
 
 ## What it does
 
-> **Bundle freshness:** the steps below prefer the MCP tools (no bundle needed). If you fall back to a `cli.bundle.cjs` call, first ensure the bundle reflects the installed plugin version — the plugin ships no prebuilt bundle, so a stale one can persist after an update. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}"` once before the first bundle call (exit 2 = build failed: stop and surface it). Skip this entirely when using the MCP tools.
+> **Bundle freshness:** the steps below prefer the MCP tools (no bundle needed). If you fall back to a `cli.bundle.cjs` call, first ensure the bundle is current — marketplace installs ship it prebuilt, but a source checkout can hold a stale one. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}"` once before the first bundle call (exit 2 = build failed: stop and surface it). Skip this entirely when using the MCP tools.
 
 1. **Resolve the target repo.**
    - If an argument was passed, use it verbatim.
@@ -36,14 +36,18 @@ the full extraction.
 
    ```
    ## Guidelines for {owner}/{repo}
-   Stored: {byteSize} bytes, last updated {timestamp}
+   Stored: {byteSize} bytes. {review status}
 
    {markdown content}
    ```
 
-   Read via `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get`
-   when available; fall back to
-   `cli.bundle.cjs guidelines view --repo OWNER/REPO --json` otherwise.
+   Read via `cli.bundle.cjs guidelines view --repo OWNER/REPO --json`
+   and render its raw `content` field. Do not render the
+   `guidelines-get` MCP tool's output here: that is the agent-facing
+   form, wrapped in a label and an escaping fence. The review status
+   comes from `reviewedAt`: "Reviewed by you on {date}." when it is set,
+   "Not reviewed: stored before review was required, or changed since by
+   an older client." when it is null (#1929).
 
 3. **Offer follow-up actions.** Use `AskUserQuestion`:
    - **Re-extract from recent PRs** — dispatches the

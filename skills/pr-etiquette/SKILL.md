@@ -125,7 +125,7 @@ Add a screenshots section only when the change is visible and the template or a 
 
 Be patient, not pushy. Only follow up once per timeframe. Check if maintainers are active elsewhere before escalating.
 
-**Workflow:** `workflows/dormant-pr-follow-up.md` operationalizes this cadence — run via the `/oss` router or the action menu. It surfaces dormant PRs, buckets them into tiers, and drafts a tier-appropriate follow-up through the `draft-review-post` skill (never auto-posts).
+**Workflow:** `workflows/dormant-pr-follow-up.md` operationalizes this cadence — run via the `/oss` router or the action menu. It surfaces dormant PRs, buckets them into tiers, and drafts a tier-appropriate follow-up as a draft file and posts it only after the user approves the exact text (never auto-posts).
 
 ## PR Quality Checklist
 
@@ -149,7 +149,7 @@ Before submitting any PR, verify:
 - [ ] **Branch Naming**: Follows convention (`feature/`, `fix/`, `docs/`)
 - [ ] **Screenshots**: Only for visible changes when the template or a maintainer asks
 
-> **Source of truth:** This checklist mirrors the canonical rubric at `packages/core/src/core/pr-quality-rubric.ts`. The `pr-compliance-checker` agent's scoring (`computeComplianceScore`) reads its weights and the `< 10 files, < 400 lines` threshold from that file. Edit the rubric source first, then update this checklist; a CI test pins that the scored weights total 100.
+> **Source of truth:** This checklist mirrors the canonical rubric at `pr-quality-rubric.ts` in the oss-autopilot repository source (core package; not shipped with the plugin). The `pr-compliance-checker` agent's scoring (`computeComplianceScore`) reads its weights and the `< 10 files, < 400 lines` threshold from that file. Edit the rubric source first, then update this checklist; a CI test pins that the scored weights total 100.
 
 **Tip:** Use the `pr-compliance-checker` agent to validate your PR before requesting review.
 

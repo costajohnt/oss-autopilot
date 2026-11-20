@@ -38,7 +38,7 @@ Route based on choice:
 
 ### Pre-Search: Ensure the CLI bundle is current
 
-The plugin ships **no** prebuilt bundle (`packages/*/dist/` is gitignored), so a stale or missing `cli.bundle.cjs` from a previous version can persist in the plugin cache after an update. `/oss` rebuilds on startup, but this command runs the bundle directly — so rebuild it here first, or a freshly-updated plugin would run old code (e.g. the pre-1-10 grade or pre-skip-list-fix behavior). Run the canonical helper before any bundle invocation:
+Marketplace installs ship `cli.bundle.cjs` prebuilt and the helper below is a no-op there. In a source checkout (`claude --plugin-dir .`) the bundle is gitignored and can be stale or missing, and this command runs the bundle directly, so run the canonical helper before any bundle invocation:
 
 ```bash
 CLI_BUILD_RC=0
@@ -48,7 +48,7 @@ if [ "$CLI_BUILD_RC" = "2" ]; then
 fi
 ```
 
-If the output contains `CLI_BUILD_FAILED` (helper exit code 2), the bundle is stale and could not be rebuilt — **stop**, show the build error, and suggest `cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install && npm run bundle`. Do NOT run the search against a stale bundle. Exit codes 0 (current) and 1 (rebuilt) are both fine — proceed.
+If the output contains `CLI_BUILD_FAILED` (helper exit code 2), the bundle is missing or stale and could not be rebuilt — **stop** and show the build error, whose `BUILD_FAILED:` line states the fix (reinstall the plugin for a marketplace install; `cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle` for a source checkout). Do NOT run the search against a stale bundle. Exit codes 0 (current) and 1 (rebuilt) are both fine — proceed.
 
 ### Dispatch Scout Search
 
@@ -159,13 +159,9 @@ Use AskUserQuestion:
    - owner/repo#123 (score: 4) — Issue title
    ```
 
-   Append each filtered issue to the skip file:
+   Append each filtered issue to the skip file. The command reads the configured skipped-issues path itself; never paste a stored path into shell text:
    ```bash
-   SKIP_FILE="{skippedIssuesPath}"
-   if [ ! -f "$SKIP_FILE" ]; then
-     printf '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
-   fi
-   echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" skip-add "{issue_url}" --json
    ```
 
    **Important:** `searchRoundScores` should use the **unfiltered** mean (all vetted scores) so diminishing returns detection remains accurate.
@@ -175,9 +171,10 @@ Use AskUserQuestion:
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" list-move-tier "{issue_url}" \
      --tier {pursue|maybe|skip} \
-     --list-path "{issueListPath}" \
      --json
    ```
+
+   Leave out `--list-path`: the command reads the configured issue list path itself, so a stored path is never pasted into shell text.
 
    The command preserves blank lines and sub-bullets between entries, is idempotent (re-running with the same tier is a no-op), and creates the target tier section if it doesn't already exist. It does NOT create list entries: if the issue URL is missing from the list (e.g. step 1 was skipped or wrote a different URL), the command exits non-zero with `success: false` (#1355) — add the entry under `## Pending Vet` first, then re-run the move.
 
@@ -198,11 +195,7 @@ Use AskUserQuestion:
 - Dispatch single `issue-scout` agent, present result
 - If vet result recommendation is "skip", append the issue to the skip file:
   ```bash
-  SKIP_FILE="{skippedIssuesPath}"
-  if [ ! -f "$SKIP_FILE" ]; then
-    printf '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
-  fi
-  echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
+  node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" skip-add "{issue_url}" --json
   ```
 - Offer: "Start working on this issue" / "Pick a different one" / "Done for now"
 - Record score: `searchRoundScores.push(score)` → **Diminishing Returns Check**

@@ -88,7 +88,7 @@ Use the MCP / CLI / gh path above.
 
 ### 2. Check Branch Freshness
 
-**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `cli.bundle.cjs config --json` (the read-only CLI path below; the MCP config tool is a get-or-set mutator and is deliberately not granted to this agent); a user with clones in `~/code/` or `~/projects/` configures those paths once and avoids the silent-fallback footgun (#1247 Improvement 1).
+**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `cli.bundle.cjs config --json` (the read-only CLI path below; the MCP config tool is a get-or-set mutator and is deliberately not granted to this agent); a user with clones in `~/code/` or `~/projects/` sets those paths once per machine with `setup --set localRepoScanPaths=~/code,~/projects` (stored in `~/.oss-autopilot/local-config.json`, not synced, #2010) and avoids the silent-fallback footgun (#1247 Improvement 1).
 
 ```bash
 # Read configured scan paths (run once per session):
@@ -102,9 +102,10 @@ Once the clone is located:
 cd /path/to/repo
 git checkout <pr-branch>
 git remote add upstream https://github.com/<upstream-owner>/<repo>.git 2>/dev/null
-git fetch upstream <main-branch>
-git log --oneline HEAD..upstream/<main-branch> | wc -l
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-preflight --local --fetch --base <main-branch> --json
 ```
+
+`--local` makes no GitHub call and `<main-branch>` is the PR's base branch. Read `data.behind`: the number of commits the branch is behind `data.remote`/`data.base` after a fetch (`null` means the ref could not be fetched; the `upstream-drift` entry's `summary` says why). Ignore the other `data.checks` entries and the exit code here: they gate a new PR. `success: false` means the command did not run; report the error instead of a count.
 
 If behind, check review state first via `gh pr view NUMBER --repo OWNER/REPO --json reviewDecision,reviews`:
 
@@ -122,7 +123,7 @@ Read `pr.ciCategorization.category` (#1272) — five mutually-exclusive states p
 | `all_passing` | Every reported check is green | None |
 | `failing` | At least one actionable failure (tests/lint/build) | Tier 2: investigate + recommend |
 | `blocked` | Checks pending; often awaiting maintainer trigger | Suggest asking for rerun |
-| `not_running` | No checks reported | Investigate workflows / fork-actions |
+| `not_running` | No checks reported | None if the repo has no `.github/workflows` (no CI configured). Otherwise checks may not be registered yet or could not be read: investigate workflows / fork-actions |
 | `fork_limitation` | Failures exist but ALL are fork-perm / auth-gate | Informational, not actionable |
 
 `pr.ciCategorization.summary` is a short pre-rendered description; render it verbatim if displaying inline. Do NOT re-derive the category from `failingCheckNames` + `classifiedChecks` — the typed function is the canonical source.
@@ -228,4 +229,4 @@ Before any push (including post-rebase force-pushes and CI fix commits):
 
 ## Post-merge learnings (#867, #1696)
 
-When you observe that one of the user's PRs has just transitioned to merged, do nothing extra: the next `/oss` startup extracts learnings from it in the background (`autoExtractLearnings`, default on), or offers an `extract_learnings` menu item when that setting is off. Do not run `workflows/extract-learnings.md` yourself and do not prompt for it.
+When you observe that one of the user's PRs has just transitioned to merged, do nothing extra: the next `/oss` startup drafts learnings from it in the background (the `learnings-extractor` agent) and asks the user before storing them (`autoExtractLearnings`, default on), or offers an `extract_learnings` menu item when that setting is off. Do not run `workflows/extract-learnings.md` yourself and do not prompt for it.

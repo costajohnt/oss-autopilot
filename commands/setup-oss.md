@@ -12,9 +12,9 @@ Customize your OSS Autopilot preferences. This is **optional** — the tool work
 
 ## Step 0: Ensure CLI is Built and Available
 
-This flow delegates entirely to the CLI. There is no markdown-only fallback — if the CLI cannot be built, ask the user to install Node 22+ and re-run.
+This flow delegates entirely to the CLI. There is no markdown-only fallback — if the CLI is unavailable, ask the user to install Node 22+ and re-run.
 
-Build the CLI on first run (auto-installs deps). Delegates to `scripts/build-cli-if-stale.sh` (#1292), which detects an existing-but-stale bundle as well as a missing one — the prior existence-only check would happily reuse a bundle from a stale checkout:
+Marketplace installs ship the CLI bundle prebuilt, so nothing is installed or built on the user's machine and the helper below exits 0. In a source checkout (`claude --plugin-dir .`) the same helper, `scripts/build-cli-if-stale.sh` (#1292), detects a missing or stale bundle and rebuilds it from `pnpm-lock.yaml` only (`pnpm install --frozen-lockfile --ignore-scripts`); without pnpm it fails instead of running an unlocked install (#1935):
 
 ```bash
 CLI_HELPER_RC=0
@@ -24,11 +24,11 @@ if [ "$CLI_HELPER_RC" = "2" ]; then
 fi
 ```
 
-**If the build succeeded but the bundle file still isn't there**, or **if `node` is unavailable**: Stop the flow and tell the user:
+**If `node` is unavailable**: Stop the flow and tell the user:
 
-> "OSS Autopilot setup needs the CLI. Install Node.js 22+ from <https://nodejs.org>, then re-run `/setup-oss`. (Alternative: build manually with `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`.)"
+> "OSS Autopilot setup needs the CLI. Install Node.js 22+ from <https://nodejs.org>, then re-run `/setup-oss`."
 
-**If output starts with `BUILD_FAILED`**: Show the error lines and the same install/re-run guidance. Common causes: missing Node 22+, stale `node_modules`, no network for `npm install`.
+**If output starts with `BUILD_FAILED`**: Stop and show the error lines; the `BUILD_FAILED:` line states the fix. A marketplace install with a missing bundle needs the plugin reinstalled. A source checkout needs pnpm and `cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle`. Never suggest an install that ignores the lockfile.
 
 Then verify the CLI is callable:
 
@@ -164,6 +164,14 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issue
 ```
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
+
+This path and the skipped-issues path below are saved for this machine only (`~/.oss-autopilot/local-config.json`). They are not part of Gist sync, so set them once on each machine. If a machine ends up with the wrong path (one picked up from an older synced setting or found by auto-detection), run the same `setup --set issueListPath=<path>` or `setup --set skippedIssuesPath=<path>` command on that machine to override it, or `setup --set issueListPath=` to clear it. `config --json` shows the paths in effect and where each came from (`machinePathSources`).
+
+The directories `local-repos` scans for clones are per machine too. If the user keeps clones somewhere other than `~/Documents/oss` or `~/dev`, save them as a comma-separated list (`~/` is expanded; `setup --set localRepoScanPaths=` clears it and the defaults apply):
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set localRepoScanPaths="~/code,~/projects" --json
+```
 
 ### Skipped Issues File
 
