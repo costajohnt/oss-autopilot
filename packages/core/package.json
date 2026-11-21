@@ -70,7 +70,7 @@
     "@octokit/plugin-throttling": "^11.0.5",
     "@octokit/rest": "^22.0.1",
     "@oss-scout/core": "^1.14.2",
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
