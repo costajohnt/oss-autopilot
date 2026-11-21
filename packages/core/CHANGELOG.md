@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.43.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.43.0...core-v3.43.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* bump the production-dependencies group across 1 directory with 3 updates ([#2017](https://github.com/costajohnt/oss-autopilot/issues/2017)) ([16379d6](https://github.com/costajohnt/oss-autopilot/commit/16379d67a7b77cf0b8c4d8fee12f88970221d7d9))
+
 ## [3.43.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.5...core-v3.43.0) (2026-11-20)
 
 
