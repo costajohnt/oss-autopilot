@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>Keep up with your open source pull requests. A Claude Code plugin, an MCP server, and a standalone CLI.</em>
+  <em>Find issues likely to get merged, keep your open PRs moving, and learn what each maintainer wants. A Claude Code plugin, an MCP server, and a standalone CLI.</em>
 </p>
 
 <p align="center">
@@ -17,9 +17,12 @@
 
 ---
 
-If you contribute to more than a couple of projects, PRs go stale without you noticing. A maintainer asks for a change, CI breaks after a rebase, a branch picks up a conflict, and you find out two weeks later.
+Getting a PR merged as an outside contributor depends on more than the code: picking an issue the maintainers actually want fixed, in a repo that reviews outside work, then keeping up with the review until it lands. OSS Autopilot helps with each part.
 
-OSS Autopilot checks every open PR you have on GitHub and sorts them into what needs you and what is waiting on someone else. For the ones that need you, it helps draft the reply, diagnose the CI failure, or rebase the branch. You approve each push and each comment before it goes out.
+- **Finds issues likely to get merged.** Search scores each candidate on your history with the repo (past merges and closures), the maintainers' recent activity, review speed and merge rate, and whether the repo has contribution guidelines. Issues that are already claimed or have a linked PR are filtered out. See [Finding new issues](#finding-new-issues).
+- **Keeps your open PRs moving.** Every open PR you have is checked and sorted into what needs you (changes requested, an unanswered maintainer comment, failing CI, a merge conflict) and what is waiting on someone else, so replies go out promptly and branches don't go stale. See [The daily check](#the-daily-check).
+- **Shows all of it in a dashboard.** PRs by status, contribution charts, and controls to shelve or re-prioritize. See [Dashboard](#dashboard).
+- **Learns how each repo wants code written.** Maintainers have different preferences. After a PR merges, the feedback from its review is distilled into per-repo guidelines that inform your next contribution there. See [`/oss-guidelines`](#commands).
 
 ![OSS Autopilot demo](docs/images/demo.gif)
 
