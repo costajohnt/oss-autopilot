@@ -19,6 +19,21 @@
 
 export type SettableVia = 'setup' | 'config' | 'both' | 'auto';
 
+/**
+ * How far a write of the key has to be trusted (#2035, #2036). Callers that
+ * act for someone other than the person at the keyboard (the MCP server)
+ * derive what they refuse from this, so a new key is classified where it is
+ * defined instead of in a denylist kept somewhere else.
+ *
+ *   - `preference`: shapes what the tool suggests or how it behaves; anyone may set it.
+ *   - `path`: a file or directory the tool then reads as the user's own input
+ *     (a value set by the user skips the foreign-checkout check) or rewrites.
+ *   - `command`: a value a later workflow runs as a command.
+ *   - `safeguard`: a list that stops the tool from acting (the AI-policy ban
+ *     list); removing an entry lifts a ban.
+ */
+export type ConfigTrust = 'preference' | 'path' | 'command' | 'safeguard';
+
 export interface ConfigKeyDef {
   /** The key as users type it (may differ from the underlying state field, e.g. `dormantDays` → `dormantThresholdDays`). */
   key: string;
@@ -28,6 +43,10 @@ export interface ConfigKeyDef {
   settableVia: SettableVia;
   /** Short hint for the expected value shape (e.g. `"number"`, `"owner/repo"`, `"comma-separated list"`). */
   valueHint: string;
+  /** See {@link ConfigTrust}. Absent means `preference`. */
+  trust?: ConfigTrust;
+  /** Values that make a write of this otherwise `preference` key a `command` write (e.g. `diffTool=custom`). */
+  commandValues?: readonly string[];
 }
 
 export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
@@ -161,6 +180,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Repos (owner/repo) with anti-AI contribution policies to block from discovery.',
     settableVia: 'setup',
     valueHint: 'comma-separated list of owner/repo',
+    trust: 'safeguard',
   },
   {
     key: 'avoidRepos',
@@ -250,12 +270,14 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Path to a text file of extra issue URLs to surface (per machine, not synced).',
     settableVia: 'both',
     valueHint: 'filesystem path',
+    trust: 'path',
   },
   {
     key: 'skippedIssuesPath',
     description: 'Path to the skipped-issues file (entries are permanent; per machine, not synced).',
     settableVia: 'setup',
     valueHint: 'filesystem path',
+    trust: 'path',
   },
   {
     key: 'localRepoScanPaths',
@@ -263,18 +285,21 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Directories local-repos scans for clones (per machine, not synced). Empty clears it and the defaults apply.',
     settableVia: 'setup',
     valueHint: 'comma-separated list of directory paths',
+    trust: 'path',
   },
   {
     key: 'diffTool',
     description: 'Default diff renderer for reviews.',
     settableVia: 'both',
     valueHint: 'one of: inline,sourcetree,vscode,custom',
+    commandValues: ['custom'],
   },
   {
     key: 'diffToolCustomCommand',
     description: 'Shell command template used when diffTool=custom.',
     settableVia: 'both',
     valueHint: 'shell command with {old}/{new} placeholders',
+    trust: 'command',
   },
 
   // ── Behavior ─────────────────────────────────────────────────────────
@@ -358,6 +383,16 @@ export function isKnownKey(key: string): boolean {
 
 export function getKeyDef(key: string): ConfigKeyDef | undefined {
   return KEY_INDEX.get(key);
+}
+
+/**
+ * The trust tier of writing `value` to `key` (see {@link ConfigTrust}).
+ * Unknown keys read as `preference`; the commands reject them anyway.
+ */
+export function getKeyTrust(key: string, value?: string): ConfigTrust {
+  const def = KEY_INDEX.get(key);
+  if (value !== undefined && def?.commandValues?.includes(value)) return 'command';
+  return def?.trust ?? 'preference';
 }
 
 /** Keys accepted by the `setup --set` command (includes `both`). */

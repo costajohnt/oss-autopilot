@@ -7,6 +7,7 @@ import {
   CONFIG_KEY_REGISTRY,
   getConfigKeys,
   getKeyDef,
+  getKeyTrust,
   getSetupKeys,
   isKnownKey,
   suggestKey,
@@ -75,6 +76,35 @@ describe('CONFIG_KEY_REGISTRY', () => {
         expect(configKeys).not.toContain(def.key);
       }
     }
+  });
+});
+
+describe('getKeyTrust (#2035, #2036)', () => {
+  it('classifies every key above preference, so a new one is a deliberate choice', () => {
+    const tiers = Object.fromEntries(
+      CONFIG_KEY_REGISTRY.filter((def) => getKeyTrust(def.key) !== 'preference').map((def) => [
+        def.key,
+        getKeyTrust(def.key),
+      ]),
+    );
+    expect(tiers).toEqual({
+      aiPolicyBlocklist: 'safeguard',
+      issueListPath: 'path',
+      skippedIssuesPath: 'path',
+      localRepoScanPaths: 'path',
+      diffToolCustomCommand: 'command',
+    });
+  });
+
+  it('reads a command value of an otherwise preference key as command', () => {
+    expect(getKeyTrust('diffTool', 'custom')).toBe('command');
+    expect(getKeyTrust('diffTool', 'vscode')).toBe('preference');
+    expect(getKeyTrust('diffTool')).toBe('preference');
+  });
+
+  it('reads unknown keys as preference (the commands reject them)', () => {
+    expect(getKeyTrust('no-such-key', 'custom')).toBe('preference');
+    expect(getKeyTrust('__proto__')).toBe('preference');
   });
 });
 

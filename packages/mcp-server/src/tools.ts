@@ -20,6 +20,7 @@ import {
   runVerifyIssue,
   runIssueThread,
   runVetList,
+  configuredIssueListPath,
   runTrack,
   runComplianceScore,
   runRepoVet,
@@ -70,6 +71,7 @@ import {
   assertMcpSettable,
   assertMcpSettablePairs,
   framed,
+  mcpRefusedSettings,
   mcpSettableKeys,
   requireApproval,
 } from './trust-boundary.js';
@@ -104,8 +106,11 @@ const githubIssueOrPrUrlSchema = z
 // Known config-key enum (#1053) sourced from @oss-autopilot/core so it stays
 // in sync with the CLI surface. Union of setup + config keys — the config
 // tool delegates to both `runConfig` and `runSetup` internally. Keys whose
-// value a later workflow runs as a command are left out (#1934).
+// trust tier is above `preference` (a command, a path, the AI-policy ban
+// list) are left out (#1934, #2035, #2036).
 const KNOWN_CONFIG_KEYS = mcpSettableKeys([...new Set([...getSetupKeys(), ...getConfigKeys()])]);
+/** The settings the `config` and `setup` tools refuse, for their descriptions (#2035). */
+const MCP_REFUSED_SETTINGS = mcpRefusedSettings().join(', ');
 const configKeySchema = KNOWN_CONFIG_KEYS.length > 0 ? z.enum(KNOWN_CONFIG_KEYS as [string, ...string[]]) : z.string(); // defensive: if the registry is empty, fall back to the old shape
 
 /** One-shot Gist persistence activation (memoized per process, #1368). */
@@ -577,14 +582,29 @@ export function registerTools(server: McpServer): void {
       description:
         'Re-vet all available issues in the curated issue list for freshness. Runs the deterministic verify-issue check per entry (closing-vs-mention aware), so each row carries the authoritative availability verdict and a verification sub-object — no per-entry re-check needed.',
       inputSchema: z.object({
-        issueListPath: z.string().optional().describe('Path to issue list file (auto-detected if not specified)'),
+        issueListPath: z
+          .string()
+          .optional()
+          .describe(
+            'Path to the issue list file. Defaults to the configured list; any other path is refused (the user sets the list in a terminal).',
+          ),
         concurrency: z.number().optional().describe('Max parallel vet operations (default: 5)'),
         prune: z.boolean().optional().describe('After vetting, remove completed/skipped items from the file'),
       }),
       // Destructive: prune rewrites the issue list file.
       annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    wrapTool(runVetList),
+    // Only the list the user configured (#2035): a path from a tool argument
+    // would make a cloned repository's file the list vetted and pruned.
+    wrapTool(async (args: Parameters<typeof runVetList>[0] = {}) => {
+      if (args.issueListPath !== undefined && path.resolve(args.issueListPath) !== configuredIssueListPath()) {
+        throw new Error(
+          'vet-list only reads the issue list configured on this machine. Leave issueListPath out, or the user sets ' +
+            'another list in a terminal: oss-autopilot setup --set issueListPath=<absolute path>',
+        );
+      }
+      return runVetList(args);
+    }),
   );
 
   // 5. track — Inspect PR metadata (read-only; v2 does not persist a tracking list)
@@ -741,7 +761,7 @@ export function registerTools(server: McpServer): void {
     'config',
     {
       description:
-        'Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value. diffToolCustomCommand and diffTool=custom cannot be set here: the user sets them in a terminal.',
+        `Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value. ${MCP_REFUSED_SETTINGS} cannot be set here: the user sets them in a terminal.`,
       inputSchema: z.object({
         key: configKeySchema
           .optional()
@@ -799,7 +819,7 @@ export function registerTools(server: McpServer): void {
     'setup',
     {
       description:
-        'Run OSS Autopilot setup to configure preferences like languages, interests, and contribution goals.',
+        `Run OSS Autopilot setup to configure preferences like languages, interests, and contribution goals. ${MCP_REFUSED_SETTINGS} cannot be set here: the user sets them in a terminal.`,
       inputSchema: z.object({
         reset: z.boolean().optional().describe('If true, reset all preferences to defaults before running setup'),
         set: z

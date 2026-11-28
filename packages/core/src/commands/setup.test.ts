@@ -2,7 +2,7 @@
  * Tests for setup and check-setup commands
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
@@ -182,6 +182,35 @@ describe('runSetup', () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ aiPolicyBlocklist: ['valid/repo'] });
     consoleSpy.mockRestore();
+  });
+
+  describe('aiPolicyBlocklist during an unattended run (#2036)', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.each([
+      ['an empty value', ['aiPolicyBlocklist=']],
+      ['a value that drops a repo', ['aiPolicyBlocklist=other/repo']],
+      ['a drop after a harmless pair', ['languages=go', 'aiPolicyBlocklist=']],
+    ])('refuses %s before applying anything', async (_label, set) => {
+      vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+      await expect(runSetup({ set })).rejects.toThrow(
+        /Refusing to remove repos from aiPolicyBlocklist during an unattended run/,
+      );
+      expect(mockUpdateConfig).not.toHaveBeenCalled();
+    });
+
+    it('still adds repos, and keeps a repo whatever its case', async () => {
+      vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+      await runSetup({ set: ['aiPolicyBlocklist=Matplotlib/Matplotlib, other/repo'] });
+      expect(mockUpdateConfig).toHaveBeenCalledWith({ aiPolicyBlocklist: ['Matplotlib/Matplotlib', 'other/repo'] });
+    });
+
+    it('lets an attended run shrink the list', async () => {
+      await runSetup({ set: ['aiPolicyBlocklist='] });
+      expect(mockUpdateConfig).toHaveBeenCalledWith({ aiPolicyBlocklist: [] });
+    });
   });
 
   it('should set avoidRepos as a whole-list replace, filtering invalid entries (#1464)', async () => {

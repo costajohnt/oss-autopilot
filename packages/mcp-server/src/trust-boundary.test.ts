@@ -6,15 +6,17 @@
  * functions that would reach GitHub are replaced.
  */
 import * as fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 
-const { mockRunPost, mockRunClaim, mockRunGuidelinesStore } = vi.hoisted(() => ({
+const { mockRunPost, mockRunClaim, mockRunGuidelinesStore, mockRunVetList } = vi.hoisted(() => ({
   mockRunPost: vi.fn(),
   mockRunClaim: vi.fn(),
   mockRunGuidelinesStore: vi.fn(),
+  mockRunVetList: vi.fn(),
 }));
 
 vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
@@ -22,6 +24,7 @@ vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
   runPost: mockRunPost,
   runClaim: mockRunClaim,
   runGuidelinesStore: mockRunGuidelinesStore,
+  runVetList: mockRunVetList,
 }));
 
 import { getStateManager } from '@oss-autopilot/core';
@@ -32,6 +35,7 @@ import {
   APPROVAL_TIMEOUT_MS,
   assertMcpSettable,
   assertMcpSettablePairs,
+  mcpRefusedSettings,
   mcpSettableKeys,
 } from './trust-boundary.js';
 
@@ -82,6 +86,7 @@ beforeEach(() => {
   mockRunPost.mockReset().mockResolvedValue({ commentUrl: 'https://github.com/owner/repo/issues/1#c1', url: ISSUE });
   mockRunClaim.mockReset().mockResolvedValue({ commentUrl: 'https://github.com/owner/repo/issues/1#c2' });
   mockRunGuidelinesStore.mockReset().mockResolvedValue({ repo: 'owner/repo', byteSize: 7, stored: true });
+  mockRunVetList.mockReset().mockResolvedValue({ results: [], summary: {} });
 });
 
 afterEach(async () => {
@@ -200,7 +205,8 @@ describe('path settings a shell would interpret (#1934)', () => {
     const { client } = await connect();
     const result = await client.callTool({ name, arguments: args });
     expect(result.isError).toBe(true);
-    expect(text(result)).toMatch(/a path may not contain/);
+    // Path keys are refused over MCP whatever the value (#2035); the CLI cases below keep the metacharacter check.
+    expect(text(result)).toMatch(/cannot be set through the MCP server/);
     expect(await paths()).toEqual(before);
   });
 
@@ -214,6 +220,108 @@ describe('path settings a shell would interpret (#1934)', () => {
     const before = await paths();
     await expect(runConfig({ key: 'issueListPath', value: PLANTED })).rejects.toThrow(/a path may not contain/);
     expect(await paths()).toEqual(before);
+  });
+});
+
+describe('paths and the AI-policy ban list are terminal-only (#2035, #2036)', () => {
+  const CLONE_LIST = '/abs/clone/issues.md';
+  const REFUSED = [
+    'aiPolicyBlocklist',
+    'issueListPath',
+    'skippedIssuesPath',
+    'localRepoScanPaths',
+    'diffTool=custom',
+    'diffToolCustomCommand',
+  ];
+  const blocklist = () => config().aiPolicyBlocklist;
+
+  beforeEach(async () => {
+    await runSetup({ set: ['aiPolicyBlocklist=banned/repo', 'languages=typescript'] });
+  });
+
+  it('derives the refused settings from the registry and leaves them out of the config key enum', async () => {
+    expect(mcpRefusedSettings()).toEqual(REFUSED);
+    const { client } = await connect();
+    const { tools } = await client.listTools();
+    const schema = tools.find((tool) => tool.name === 'config')?.inputSchema as {
+      properties?: { key?: { enum?: string[] } };
+    };
+    const keys = schema.properties?.key?.enum ?? [];
+    for (const key of ['aiPolicyBlocklist', 'issueListPath', 'skippedIssuesPath', 'localRepoScanPaths']) {
+      expect(keys).not.toContain(key);
+    }
+    expect(keys).toEqual(expect.arrayContaining(['languages', 'diffTool', 'username']));
+    for (const name of ['config', 'setup']) {
+      const description = tools.find((tool) => tool.name === name)?.description ?? '';
+      for (const setting of REFUSED) expect(description).toContain(setting);
+    }
+  });
+
+  it.each([
+    ['config', { key: 'issueListPath', value: CLONE_LIST }],
+    ['setup', { set: [`issueListPath=${CLONE_LIST}`] }],
+    ['setup', { set: ['skippedIssuesPath=/abs/clone/skipped.md'] }],
+    ['setup', { set: ['localRepoScanPaths=/abs/clone'] }],
+    ['setup', { set: ['aiPolicyBlocklist='] }],
+    ['setup', { set: ['aiPolicyBlocklist=other/repo'] }],
+    ['setup', { set: ['languages=go', 'aiPolicyBlocklist='] }],
+  ])('MCP %s refuses %j and stores nothing', async (name, args) => {
+    const before = await paths();
+    const { client } = await connect();
+    const result = await client.callTool({ name, arguments: args });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/cannot be set through the MCP server/);
+    expect(text(result)).toContain('oss-autopilot setup --set ');
+    expect(await paths()).toEqual(before);
+    expect(blocklist()).toEqual(['banned/repo']);
+    expect(config().languages).toEqual(['typescript']);
+  });
+
+  it('the CLI still sets them', async () => {
+    await runSetup({ set: ['aiPolicyBlocklist=other/repo'] });
+    expect(blocklist()).toEqual(['other/repo']);
+  });
+
+  describe('vet-list', () => {
+    let dir: string;
+
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oa-vet-list-'));
+    });
+
+    afterEach(async () => {
+      await runSetup({ set: ['issueListPath='] });
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('refuses a path when no list is configured', async () => {
+      const planted = path.join(dir, 'issues.md');
+      fs.writeFileSync(planted, '## Pursue\n');
+      const { client } = await connect();
+      const result = await client.callTool({ name: 'vet-list', arguments: { issueListPath: planted, prune: true } });
+      expect(result.isError).toBe(true);
+      expect(mockRunVetList).not.toHaveBeenCalled();
+    });
+
+    it('vets only the configured list', async () => {
+      const mine = path.join(dir, 'mine.md');
+      const planted = path.join(dir, 'issues.md');
+      fs.writeFileSync(mine, '## Pursue\n');
+      fs.writeFileSync(planted, '## Pursue\n');
+      await runSetup({ set: [`issueListPath=${mine}`] });
+      const { client } = await connect();
+
+      const other = await client.callTool({ name: 'vet-list', arguments: { issueListPath: planted, prune: true } });
+      expect(other.isError).toBe(true);
+      expect(text(other)).toMatch(/only reads the issue list configured on this machine/);
+      expect(mockRunVetList).not.toHaveBeenCalled();
+
+      const same = await client.callTool({ name: 'vet-list', arguments: { issueListPath: mine } });
+      expect(same.isError).toBeFalsy();
+      const unset = await client.callTool({ name: 'vet-list', arguments: {} });
+      expect(unset.isError).toBeFalsy();
+      expect(mockRunVetList).toHaveBeenCalledTimes(2);
+    });
   });
 });
 
