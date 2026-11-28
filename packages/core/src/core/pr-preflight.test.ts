@@ -621,7 +621,7 @@ describe('checkRepoPolicy: disclosure-required against the staged body (#2040)',
 describe('checkRepoPolicy: maintainer-label against the issue labels (#2040)', () => {
   const rule = 'Please wait until a maintainer adds the `status: accepted` label before opening a PR.';
   const source = [{ file: 'CONTRIBUTING.md', quotedLine: rule }];
-  const recorded = policy({ prGate: 'maintainer-label', source, reviewedByUser: true, gateLabel: 'status: accepted' });
+  const recorded = policy({ source, prGate: 'maintainer-label', reviewedByUser: true, gateLabel: 'status: accepted' });
   const gated = { ...READY, issueUrl: ISSUE_URL, policy: recorded };
   const statusFor = (...issueLabels: string[]) => checkRepoPolicy({ ...gated, issueLabels }).status;
 

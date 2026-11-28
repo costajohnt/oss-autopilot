@@ -408,7 +408,7 @@ const LOOKS_ACCEPTED = / (?:accepted|approved|ready|triaged|confirmed|help ?want
 const NOT_YET = / (?:not|no|needs?|awaiting|pending|waiting|un\w+) /;
 const REJECTED = / (?:wont ?fix|won t fix|invalid|duplicate|not planned|rejected|declined|stale) /;
 
-function sameLabel(a: string, b: string): boolean {
+function isSameLabel(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
@@ -428,7 +428,8 @@ function labelProblem(labels: readonly string[], policy: RepoPolicy, repo: strin
     return `no gate label is recorded: check the issue's labels (details.issueLabels) against the rule in details.sources, then record the label once with ${record}${lookalikeHint(labels)}`;
   }
   if (labels.length === 0) return 'the issue has no labels';
-  if (!labels.some((label) => sameLabel(label, gate))) {
+  const hasGate = labels.some((label) => isSameLabel(label, gate));
+  if (!hasGate) {
     return `the issue does not carry the recorded gate label (details.gateLabel)${lookalikeHint(labels)}`;
   }
   const closing = labels.find((label) => REJECTED.test(words(label)));
