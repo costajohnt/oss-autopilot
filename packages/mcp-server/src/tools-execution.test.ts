@@ -373,6 +373,15 @@ describe('tool execution', () => {
       expect(mockRunGuidelinesStore).toHaveBeenCalledWith({ repo: 'owner/repo', content: 'rules', reviewed: true });
     });
 
+    it('passes reviewed: false through, so core refuses it (#2054)', async () => {
+      await client.callTool({
+        name: 'guidelines-store',
+        arguments: { repo: 'owner/repo', content: 'rules', reviewed: false },
+      });
+
+      expect(mockRunGuidelinesStore).toHaveBeenLastCalledWith({ repo: 'owner/repo', content: 'rules', reviewed: false });
+    });
+
     it('rejects a store with no reviewed assertion at the schema layer (#1929)', async () => {
       const result = await client.callTool({
         name: 'guidelines-store',

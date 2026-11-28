@@ -5,12 +5,13 @@
  * Core is real here and runs under the suite's temp HOME; only the two
  * functions that would reach GitHub are replaced.
  */
+import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { createMcpHandler } from '@modelcontextprotocol/server';
+import { createMcpHandler, createRequestStateCodec } from '@modelcontextprotocol/server';
 
 const { mockRunPost, mockRunClaim, mockRunGuidelinesStore, mockRunGuidelinesReset, mockRunVetList } = vi.hoisted(
   () => ({
@@ -32,13 +33,14 @@ vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
 }));
 
 import { getStateManager } from '@oss-autopilot/core';
-import { runConfig, runSetup } from '@oss-autopilot/core/commands';
+import { DEFAULT_CLAIM_MESSAGE, runConfig, runSetup } from '@oss-autopilot/core/commands';
 import { createServer } from './server.js';
 import {
   ALLOW_UNCONFIRMED_ENV as ALLOW_UNCONFIRMED,
   APPROVAL_TIMEOUT_MS,
   assertMcpSettable,
   assertMcpSettablePairs,
+  framed,
   mcpRefusedSettings,
   mcpSettableKeys,
 } from './trust-boundary.js';
@@ -411,6 +413,14 @@ describe('user approval before a GitHub write (#1936)', () => {
     expect(asked[0].message).toContain('I can take this one.');
   });
 
+  it('claim with an empty message shows the default text, which is what core posts for it (#2054)', async () => {
+    const { client, asked } = await connect(FORM_HOST, APPROVED);
+    await client.callTool({ name: 'claim', arguments: { issueUrl: ISSUE, message: '' } });
+    expect(asked[0].message.endsWith(framed('comment', DEFAULT_CLAIM_MESSAGE))).toBe(true);
+    // runClaim turns '' into DEFAULT_CLAIM_MESSAGE (pinned in core's comments.test.ts).
+    expect(mockRunClaim).toHaveBeenCalledWith({ issueUrl: ISSUE, message: '' });
+  });
+
   const REFUSALS: Array<[label: string, answer: unknown]> = [
     ['declines', { action: 'decline' }],
     ['cancels', { action: 'cancel' }],
@@ -541,6 +551,17 @@ describe('user approval before a GitHub write (#1936)', () => {
       expect(writer.run).not.toHaveBeenCalled();
     },
   );
+
+  it.each(writers)('%s refuses in an unattended run even with the opt-in set (#2054)', async (name, writer) => {
+    // Unattended wins: the opt-in replaces the form, never the person.
+    vi.stubEnv(UNATTENDED, '1');
+    vi.stubEnv(ALLOW_UNCONFIRMED, '1');
+    const { client } = await connect();
+    const result = await client.callTool({ name, arguments: writer.args });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/unattended run/);
+    expect(writer.run).not.toHaveBeenCalled();
+  });
 
   it('guidelines-store refuses in an unattended run through the core check', async () => {
     vi.stubEnv(UNATTENDED, '1');
@@ -744,6 +765,23 @@ describe('an approval covers only the arguments the user saw (#2015)', () => {
   ])('refuses a requestState that was %s', async (_label, tamper) => {
     const client = await connectModern();
     const requestState = tamper(await askFirst(client));
+    const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/approval does not match these arguments/);
+    expect(mockRunPost).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['all zeros', Buffer.alloc(32)],
+    ['a fixed test value', Buffer.alloc(32, 7)],
+  ])('refuses a state signed with a key that is %s, even for the right arguments (#2054)', async (_label, key) => {
+    // Everything but the key is right: the shape, the action, the arguments' hash.
+    const forger = createRequestStateCodec<{ args: string; id: string }>({ key, ttlSeconds: APPROVAL_TIMEOUT_MS / 1000 });
+    const args = createHash('sha256')
+      .update(JSON.stringify(['post a comment', ARGS]))
+      .digest('hex');
+    const requestState = await forger.mint({ args, id: randomUUID() });
+    const client = await connectModern();
     const result = await call(client, ARGS, { inputResponses: ACCEPTED, requestState });
     expect(result.isError).toBe(true);
     expect(text(result)).toMatch(/approval does not match these arguments/);

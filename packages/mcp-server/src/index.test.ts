@@ -557,35 +557,30 @@ describe('approval gate over the HTTP transport (#2054)', { timeout: 30_000 }, (
     expect(fetched()).toContain('POST https://api.github.com/repos/owner/repo/issues/1/comments');
   });
 
-  it('PROBE sdk clients', async () => {
+  it('an SDK client that declares a form is refused without being asked', async () => {
+    // The SDK client negotiates a pre-2026 revision here (this transport does
+    // not offer 2026-07-28), so its capabilities reach only the initialize POST.
     const handle = await startServer();
-    const url = new URL(`http://127.0.0.1:${handle.port}/mcp`);
-    const opts = { requestInit: { headers: { Authorization: `Bearer ${handle.token}` } } };
-    for (const [label, options] of [
-      ['default+form', { capabilities: { elicitation: {} } }],
-      ['default+form+manual', { capabilities: { elicitation: {} }, inputRequired: { autoFulfill: false } }],
-      ['default-noform', {}],
-    ] as const) {
-      const client = new Client({ name: 'test-client', version: '1.0.0' }, options as never);
-      let asked = 0;
-      if ('capabilities' in options) {
-        client.setRequestHandler('elicitation/create', async () => {
-          asked += 1;
-          return { action: 'accept', content: { approve: true } } as never;
-        });
-      }
-      try {
-        await client.connect(new StreamableHTTPClientTransport(url, opts));
-        console.log('PROBE', label, 'version', client.getNegotiatedProtocolVersion?.());
-        const r = await client.callTool({ name: 'post', arguments: WRITERS[0][1] }, { allowInputRequired: true } as never);
-        console.log('PROBE', label, 'asked', asked, JSON.stringify(r));
-      } catch (e) {
-        console.log('PROBE', label, 'threw', String(e));
-      } finally {
-        await client.close();
-      }
+    const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: { elicitation: {} } });
+    let asked = 0;
+    client.setRequestHandler('elicitation/create', async () => {
+      asked += 1;
+      return { action: 'accept', content: { approve: true } };
+    });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
+      }),
+    );
+    try {
+      const result = await client.callTool({ name: 'post', arguments: WRITERS[0][1] });
+      expect(result.isError).toBe(true);
+      expect((result.content as Array<{ text: string }>)[0].text).toContain(NO_FORM);
+      expect(asked).toBe(0);
+      expect(fetched()).toEqual([]);
+    } finally {
+      await client.close();
     }
-    console.log('PROBE fetched', JSON.stringify(fetched()));
   });
 });
 
