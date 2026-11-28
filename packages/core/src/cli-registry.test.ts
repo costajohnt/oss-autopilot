@@ -2517,7 +2517,13 @@ describe('pr-preflight command (#1952)', () => {
   it('--body-file is passed through (#2040)', async () => {
     mockRunPrPreflight.mockResolvedValue(data);
 
-    await buildProgram('pr-preflight').parseAsync(['node', 'cli', 'pr-preflight', '--body-file', 'oss-o-r-7-pr-body.md']);
+    await buildProgram('pr-preflight').parseAsync([
+      'node',
+      'cli',
+      'pr-preflight',
+      '--body-file',
+      'oss-o-r-7-pr-body.md',
+    ]);
 
     expect(mockRunPrPreflight).toHaveBeenCalledWith(expect.objectContaining({ bodyFile: 'oss-o-r-7-pr-body.md' }));
   });

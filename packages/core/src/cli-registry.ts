@@ -1837,7 +1837,10 @@ export const commands: CLICommandDef[] = [
         .option('--base <branch>', 'Branch the PR will target (default: the upstream default branch)')
         .option('--fetch', 'Fetch the upstream target branch first instead of reporting a stale ref')
         .option('--local', 'Skip every GitHub read: local checks and numbers only')
-        .option('--body-file <path>', 'Staged PR body (a file in the draft directory) to check the disclosure rule against')
+        .option(
+          '--body-file <path>',
+          'Staged PR body (a file in the draft directory) to check the disclosure rule against',
+        )
         .option('--json', 'Output as JSON')
         .action(async (issue: string | undefined, options: PrPreflightCliOptions) => {
           const { PrPreflightOutputSchema } = await import('./formatters/json.js');
@@ -2408,7 +2411,10 @@ Load it with:
         .description('Record the policy you confirmed for a repo (merged over what is stored; refused when unattended)')
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
         .option('--ai-policy <value>', 'allowed | disclosure-required | banned | unknown')
-        .option('--disclosure-text <text>', 'The disclosure line to put in the PR body; pr-preflight checks the body for it')
+        .option(
+          '--disclosure-text <text>',
+          'The disclosure line to put in the PR body; pr-preflight checks the body for it',
+        )
         .option('--cla <value>', 'none | required | unknown')
         .option('--pr-gate <value>', 'none | claim-first | maintainer-label | collaborators-only | unknown')
         .option(

@@ -360,7 +360,10 @@ function disclosureAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string):
     return [[true, `${required}: add the line in details.disclosureText to the PR body and pass it with --body-file`]];
   }
   return [
-    [!hasDisclosure(facts.prBody, line), `${required}: the PR body does not contain the line in details.disclosureText`],
+    [
+      !hasDisclosure(facts.prBody, line),
+      `${required}: the PR body does not contain the line in details.disclosureText`,
+    ],
   ];
 }
 
@@ -378,15 +381,22 @@ function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: str
   if (policy.prGate !== 'maintainer-label') return [];
   const wants = `${repo} wants a maintainer to accept the issue first`;
   if (!facts.issueUrl) {
-    return [[true, `${wants}: pass the issue so preflight can read its labels, or confirm it carries their approval label`]];
+    return [
+      [true, `${wants}: pass the issue so preflight can read its labels, or confirm it carries their approval label`],
+    ];
   }
   const labels = facts.issueLabels;
   if (labels === null) {
     const why = skipReason(facts, facts.labelsError, 'the labels were not read');
-    return [[true, `${wants} and the issue's labels could not be read (${why}): confirm it carries their approval label`]];
+    return [
+      [true, `${wants} and the issue's labels could not be read (${why}): confirm it carries their approval label`],
+    ];
   }
-  const found = labels.length === 0 ? 'the issue has no labels' : "none of the issue's labels (details.issueLabels) reads as one";
-  return [[!labels.some(isApprovalLabel), `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`]];
+  const found =
+    labels.length === 0 ? 'the issue has no labels' : "none of the issue's labels (details.issueLabels) reads as one";
+  return [
+    [!labels.some(isApprovalLabel), `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`],
+  ];
 }
 
 /** The open AI-PR limit when it cannot fail: the count is unknown, or the limit was read from the docs and not reviewed. */
@@ -449,7 +459,8 @@ export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
     ...summarizePolicy(policy),
     ...fencePolicyText(repo, policy),
     // Label names are set in someone else's repository: fenced like the quoted lines.
-    ...(labels !== null && labels.length > 0 && { issueLabels: wrapUntrustedContent(labels.join('\n'), 'issue-labels') }),
+    ...(labels !== null &&
+      labels.length > 0 && { issueLabels: wrapUntrustedContent(labels.join('\n'), 'issue-labels') }),
   };
   const stop = policyStop(facts, policy, repo);
   if (stop) return check(id, 'fail', stop, details);

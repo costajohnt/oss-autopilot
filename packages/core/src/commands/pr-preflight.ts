@@ -213,7 +213,8 @@ async function gatherNetworkFacts(
   // The cap gates a new PR, so it runs only for an issue; its search needs the username.
   const cap: Attempt<RepoCapStatus> = parsed && login ? await attempt(() => runRepoCap({ repo })) : NOT_RUN;
   // One more read only where the recorded policy waits for a maintainer's label (#2040).
-  const labels: Attempt<string[]> = parsed && needsLabels ? await attempt(() => fetchIssueLabels(octokit, parsed)) : NOT_RUN;
+  const labels: Attempt<string[]> =
+    parsed && needsLabels ? await attempt(() => fetchIssueLabels(octokit, parsed)) : NOT_RUN;
   return {
     networkSkip: null,
     github: github.value,

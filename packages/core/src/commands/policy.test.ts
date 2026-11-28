@@ -138,14 +138,20 @@ describe('policy set', () => {
   it('drops a stored disclosure excerpt when the user confirms disclosure-required without --disclosure-text (#2040)', async () => {
     const excerpt = '…you must disclose AI assistance in the PR…';
     const source = [{ file: 'CONTRIBUTING.md', quotedLine: excerpt }];
-    fake.state.repoPolicies = { [REPO]: vetPolicy({ aiPolicy: 'disclosure-required', disclosureText: excerpt, source }) };
+    fake.state.repoPolicies = {
+      [REPO]: vetPolicy({ aiPolicy: 'disclosure-required', disclosureText: excerpt, source }),
+    };
     expect((await runPolicyGet({ repo: REPO })).policy?.disclosureText).toBeUndefined();
 
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required' });
     expect(out.policy?.disclosureText).toBeUndefined();
     expect(fake.state.repoPolicies[REPO]).not.toHaveProperty('disclosureText');
 
-    const set = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required', disclosureText: 'Assisted-by: Some Tool' });
+    const set = await runPolicySet({
+      repo: REPO,
+      aiPolicy: 'disclosure-required',
+      disclosureText: 'Assisted-by: Some Tool',
+    });
     expect(extractFromFence(String(set.policy?.disclosureText))).toBe('Assisted-by: Some Tool');
   });
 

@@ -588,7 +588,14 @@ describe('checkRepoPolicy (#1953)', () => {
   });
 
   describe('disclosure-required against the staged body (#2040)', () => {
-    const recorded = { ...READY, policy: policy({ aiPolicy: 'disclosure-required', disclosureText: 'Assisted-by: Some Tool', reviewedByUser: true }) };
+    const recorded = {
+      ...READY,
+      policy: policy({
+        aiPolicy: 'disclosure-required',
+        disclosureText: 'Assisted-by: Some Tool',
+        reviewedByUser: true,
+      }),
+    };
 
     it('passes when the body contains the recorded line, ignoring case and line wrapping', () => {
       const prBody = 'Fixes the crash.\n\nassisted-by:\n  some   tool\n';
