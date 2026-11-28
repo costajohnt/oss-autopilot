@@ -183,10 +183,11 @@ export async function stopStaleDashboardServer(): Promise<LaunchResult | null> {
  * Returns the server URL if launched successfully, or null if the SPA assets
  * are not available (dashboard is skipped).
  *
- * If a server from the current version is already running (detected via PID
- * file + health probe), returns its URL without launching a new one. A server
- * from another version is stopped first, even when the assets are missing and
- * no replacement can be launched (#1709).
+ * If a server from the current or a newer version is already running
+ * (detected via PID file + health probe), returns its URL without launching a
+ * new one. A server from an older version is stopped first, even when the
+ * assets are missing and no replacement can be launched (#1709). See
+ * stopStaleDashboardServer for the rules.
  */
 export async function launchDashboardServer(options?: {
   port?: number;
