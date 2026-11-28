@@ -12,11 +12,13 @@
  *   - README's "N tools" claims must match the `registerTool()` calls in
  *     `packages/mcp-server/src/tools.ts` (same source-parse approach as
  *     `agents-contract.test.ts`), and so must those in the
- *     `docs/diagrams/*.json` sources (#2008).
+ *     `docs/diagrams/*.json` sources and their rendered `*.svg` (#2008, #2052).
  *   - ARCHITECTURE's command table must have a row for every
  *     `commands/*.md` file, and reference no file that does not exist.
  *   - ARCHITECTURE's subcommand table must list every top-level command
- *     registered in `cli-registry.ts` (deprecated ones may be absent) (#2002).
+ *     registered in `cli-registry.ts` (deprecated ones may be absent) (#2002),
+ *     and every subcommand of a command group, naming none that is not
+ *     registered (#2052).
  *
  * Parsers are tolerant of formatting (whitespace, surrounding prose) but
  * strict on content (exact name sets, exact counts).
@@ -134,11 +136,13 @@ describe('README.md ↔ MCP tool registry parity (#1379)', () => {
     }
   });
 
-  it('every "N tools" count in the docs/diagrams/*.json sources matches tools.ts (#2008)', () => {
+  it('every "N tools" count in the docs/diagrams/*.json sources and rendered *.svg matches tools.ts (#2008, #2052)', () => {
     const registered = parseRegisteredTools();
-    const claims = fs
-      .readdirSync(DIAGRAMS_DIR)
-      .filter((name) => name.endsWith('.json'))
+    const files = fs.readdirSync(DIAGRAMS_DIR).filter((name) => name.endsWith('.json') || name.endsWith('.svg'));
+    // The SVG is regenerated from the JSON manually (export-svg.mjs needs a local
+    // archify and Chrome), so the rendered file can lag its source.
+    expect(files.some((name) => name.endsWith('.svg'))).toBe(true);
+    const claims = files
       .flatMap((name) =>
         Array.from(fs.readFileSync(path.join(DIAGRAMS_DIR, name), 'utf8').matchAll(/\b(\d+) tools\b/g), (m) => ({
           name,
@@ -199,6 +203,30 @@ function firstColumnCells(): string[][] {
   return cells;
 }
 
+/**
+ * The names the subcommand table documents. Every name in a cell counts,
+ * the first included (#2052): `work claim` / `finish` documents `work claim`
+ * and `work finish`, and a slash-joined name such as
+ * `guidelines list/view` documents each part.
+ */
+function documentedCommands(): { topLevel: Set<string>; subcommands: Map<string, Set<string>> } {
+  const topLevel = new Set<string>();
+  const subcommands = new Map<string, Set<string>>();
+  for (const [first, ...rest] of firstColumnCells()) {
+    const space = first.indexOf(' ');
+    if (space === -1) {
+      for (const name of [first, ...rest]) topLevel.add(name);
+      continue;
+    }
+    const group = first.slice(0, space);
+    topLevel.add(group);
+    const subs = subcommands.get(group) ?? new Set<string>();
+    for (const name of [first.slice(space + 1), ...rest].flatMap((n) => n.split('/'))) subs.add(name.trim());
+    subcommands.set(group, subs);
+  }
+  return { topLevel, subcommands };
+}
+
 describe('ARCHITECTURE.md subcommand table ↔ cli-registry parity (#2002)', () => {
   // Deprecated commands may stay out of the table until they are removed.
   const DEPRECATED = new Set(['orphan-files', 'detect-formatters']);
@@ -208,25 +236,25 @@ describe('ARCHITECTURE.md subcommand table ↔ cli-registry parity (#2002)', () 
   const registered = new Map((program.commands as readonly Command[]).map((c) => [c.name(), c]));
 
   it('the table lists every registered top-level command and no unregistered one', () => {
-    const inTable = new Set<string>();
-    const badSubcommands: string[] = [];
-    for (const [first, ...rest] of firstColumnCells()) {
-      const [group, sub] = first.split(' ', 2);
-      inTable.add(group);
-      if (sub === undefined) {
-        for (const name of rest) inTable.add(name);
-        continue;
-      }
-      const subs = new Set((registered.get(group)?.commands ?? []).map((c) => c.name()));
-      for (const name of rest) if (!subs.has(name)) badSubcommands.push(`${group} ${name}`);
-    }
-    const missing = (program.commands as readonly Command[])
-      .map((c) => c.name())
-      .filter((n) => !inTable.has(n) && !DEPRECATED.has(n));
-    const stale = [...inTable].filter((n) => !registered.has(n));
+    const { topLevel } = documentedCommands();
+    const missing = [...registered.keys()].filter((n) => !topLevel.has(n) && !DEPRECATED.has(n));
+    const stale = [...topLevel].filter((n) => !registered.has(n));
     expect(missing, `ARCHITECTURE.md subcommand table is missing rows for: ${missing.join(', ')}`).toEqual([]);
     expect(stale, `ARCHITECTURE.md subcommand table names unregistered commands: ${stale.join(', ')}`).toEqual([]);
-    expect(badSubcommands, `ARCHITECTURE.md subcommand table names unregistered subcommands`).toEqual([]);
+  });
+
+  it('the table names every registered subcommand of each group and no unregistered one (#2052)', () => {
+    const { subcommands } = documentedCommands();
+    const missing: string[] = [];
+    const stale: string[] = [];
+    for (const [group, command] of registered) {
+      const subs = (command.commands as readonly Command[]).map((c) => c.name());
+      const documented = subcommands.get(group) ?? new Set<string>();
+      for (const name of subs) if (!documented.has(name)) missing.push(`${group} ${name}`);
+      for (const name of documented) if (!subs.includes(name)) stale.push(`${group} ${name}`);
+    }
+    expect(missing, `ARCHITECTURE.md subcommand table is missing: ${missing.join(', ')}`).toEqual([]);
+    expect(stale, `ARCHITECTURE.md subcommand table names unregistered subcommands: ${stale.join(', ')}`).toEqual([]);
   });
 
   it('the "N commands that skip" localOnly count matches the registry', () => {

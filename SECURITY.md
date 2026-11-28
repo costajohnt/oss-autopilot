@@ -49,7 +49,7 @@ All data lives under `~/.oss-autopilot/`.
 ### Network Security
 
 - **HTTPS only.** API calls go to `api.github.com` over HTTPS. One other GitHub host is used: with Gist sync on, a state file too large for the Gist API to return inline is read from its `raw_url`, and the request is refused unless that URL is HTTPS on `gist.githubusercontent.com`.
-- **No third-party services contacted, apart from the npm registry.** The CLI communicates exclusively with GitHub. A marketplace install of the plugin ships the CLI prebuilt and installs nothing on first run. In a source checkout, the plugin's build check (`scripts/build-cli-if-stale.sh`) installs dependencies from the npm registry when it builds, only at the versions pinned in `pnpm-lock.yaml` (`pnpm install --frozen-lockfile --ignore-scripts`), and fails instead of installing when pnpm or the lockfile is missing. The plugin's MCP server is started with `npx` at a pinned version, which downloads that package and its dependencies from the npm registry.
+- **No third-party services contacted, apart from the npm registry.** The CLI communicates exclusively with GitHub. A marketplace install of the plugin ships the CLI prebuilt and installs nothing on first run. In a source checkout, the plugin's build check (`scripts/build-cli-if-stale.sh`) installs dependencies from the npm registry when it builds, only at the versions pinned in `pnpm-lock.yaml` (`pnpm install --frozen-lockfile --ignore-scripts`), and fails instead of installing when pnpm or the lockfile is missing. The plugin's MCP server is started with `npx` at a pinned version, which downloads that one package from the npm registry: it ships as a single bundle and declares no runtime dependencies (#2007).
 - **Rate limit handling.** The Octokit client uses `@octokit/plugin-throttling` to respect API rate limits rather than hammering endpoints on failure.
 
 ### Plugin Security
@@ -86,7 +86,7 @@ The attack surface is intentionally minimal.
 
 All public APIs follow [semantic versioning](https://semver.org/) from 1.0 forward:
 
-- **CLI commands** — All 26 commands, their flags, and `--json` output structure
+- **CLI commands** — Every registered command, its flags, and its `--json` output structure
 - **Library exports** — The programmatic API from `@oss-autopilot/core`
 - **Plugin interface** — Commands, agents, and skills
 - **MCP server** — Tools, resources, and prompts (separately versioned as `@oss-autopilot/mcp`)

@@ -142,7 +142,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `doctor` | `doctor.ts` | System-health diagnostic — token, bundle, state, scout, rate limit |
 | `cleanup` | `cleanup.ts` | List (and with `--apply` remove) stale overnight worktrees and rejected state copies under `~/.oss-autopilot` |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
-| `guidelines list/view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
+| `guidelines list/view/store/mark-extracted/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867); `mark-extracted` stamps a repo's fetched PRs so `daily` stops reporting them as unextracted (#1696) |
 | `draft path` / `show` | `draft.ts` | Stage text for the user's approval in the owner-only draft directory (`~/.oss-autopilot/tmp`); `show` returns the text with the SHA-256 to pass back as `--expect-sha256` (#1930) |
 | `policy get` / `set` / `reset` | `policy.ts` | Per-repo contribution policy: AI policy, disclosure, CLA, commit rules, PR gate (#1953) |
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
