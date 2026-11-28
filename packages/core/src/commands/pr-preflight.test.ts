@@ -603,7 +603,6 @@ function stageBody(text: string): string {
 }
 
 describe('runPrPreflight: the staged body and the issue labels (#2040)', () => {
-
   afterEach(() => {
     fs.rmSync(path.join(os.homedir(), '.oss-autopilot'), { recursive: true, force: true });
   });

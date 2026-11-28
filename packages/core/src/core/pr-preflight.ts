@@ -398,7 +398,10 @@ function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: str
   const found =
     labels.length === 0 ? 'the issue has no labels' : "none of the issue's labels (details.issueLabels) reads as one";
   return [
-    [!labels.some((label) => isApprovalLabel(label)), `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`],
+    [
+      !labels.some((label) => isApprovalLabel(label)),
+      `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`,
+    ],
   ];
 }
 
