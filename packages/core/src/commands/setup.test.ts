@@ -248,9 +248,9 @@ describe('runSetup', () => {
         reapply?.();
         return Promise.resolve(null);
       });
-      await expect(
-        runSetup({ set: ['aiPolicyBlocklist=matplotlib/matplotlib,new/repo'] }),
-      ).rejects.toThrow(/Refusing to remove repos from aiPolicyBlocklist/);
+      await expect(runSetup({ set: ['aiPolicyBlocklist=matplotlib/matplotlib,new/repo'] })).rejects.toThrow(
+        /Refusing to remove repos from aiPolicyBlocklist/,
+      );
     });
 
     it('lets an attended run shrink the list', async () => {
