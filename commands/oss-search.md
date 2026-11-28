@@ -42,9 +42,10 @@ Marketplace installs ship `cli.bundle.cjs` prebuilt and the helper below is a no
 
 ```bash
 CLI_BUILD_RC=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-search-cli-build.log 2>&1 || CLI_BUILD_RC=$?
+OSS_LOG_DIR="$HOME/.oss-autopilot/logs"; mkdir -p -m 700 "$OSS_LOG_DIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >"$OSS_LOG_DIR/oss-search-cli-build.log" 2>&1 || CLI_BUILD_RC=$?
 if [ "$CLI_BUILD_RC" = "2" ]; then
-  echo "CLI_BUILD_FAILED"; tail -5 /tmp/oss-search-cli-build.log
+  echo "CLI_BUILD_FAILED"; tail -5 "$OSS_LOG_DIR/oss-search-cli-build.log"
 fi
 ```
 

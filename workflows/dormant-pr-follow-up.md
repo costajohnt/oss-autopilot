@@ -68,7 +68,7 @@ If the user picks **"Draft a follow-up for one"**, ask which PR (text response w
 
 ## 4. Draft the Follow-Up
 
-Apply "Before drafting a comment" (`workflows/reference.md`) for the PR's repo first: when it says hand off, draft nothing for this PR, tell the user why, and move on.
+Apply "Before drafting a comment" (`workflows/draft-files.md`) for the PR's repo first: when it says hand off, draft nothing for this PR, tell the user why, and move on.
 
 Select the tier-specific template based on the PR's bucket and paraphrase — don't post the exact template text verbatim, since maintainers notice formulaic openings.
 
@@ -90,7 +90,7 @@ For a close candidate, offer the close-with-offer-to-reopen draft by default ins
 
 ## 5. Stage, Approve, Post
 
-Follow "Draft Files" in `workflows/reference.md` (never under `/tmp`, never as a shell argument):
+Follow "Draft Files" in `workflows/draft-files.md` (never under `/tmp`, never as a shell argument):
 
 1. Get a draft path (`<unix-ts>` from `date +%s`) and save the follow-up to the printed path **with the Write tool** (use the path literally and quoted):
    ```bash
@@ -100,7 +100,7 @@ Follow "Draft Files" in `workflows/reference.md` (never under `/tmp`, never as a
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft show "<draft-path>" --json
    ```
-   Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/reference.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. For a close candidate, say in the same message, before asking: "Posting does not close the PR; after it posts, close it yourself with `gh pr close <url>`." After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
+   Show the user `data.content`, complete, inside a code fence longer than any run of backticks in it; `data.sha256` is the hash of exactly that text (`<sha256>` below). Ask for approval as in "Approval to post" (`workflows/draft-files.md`): an AskUserQuestion with Post this comment / Edit before posting / Don't post. For a close candidate, say in the same message, before asking: "Posting does not close the PR; after it posts, close it yourself with `gh pr close <url>`." After an edit, rerun `draft show` and show the new text (write the file again only when the user dictated the change in chat).
 3. Only on a "Post this comment" answer that passes those rules, post it:
    ```bash
    GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {url} --body-file "<draft-path>" --expect-sha256 <sha256> --json
@@ -123,6 +123,6 @@ Per the skill: **only one follow-up per timeframe.** If `daysSinceActivity < 7` 
 ## Cross-references
 
 - Policy: `skills/pr-etiquette/SKILL.md` §"Following Up on Dormant PRs".
-- Draft/post protocol: "Draft Files" in `workflows/reference.md` (mandatory for any externally-visible comment).
+- Draft/post protocol: "Draft Files" in `workflows/draft-files.md` (mandatory for any externally-visible comment).
 - Router: `commands/oss.md`.
 - Menu integration: `workflows/action-menu.md`.

@@ -50,7 +50,7 @@ workflow is the lightweight load → edit → store path.
    Get its path from
    `cli.bundle.cjs draft path guidelines-edit-<owner>--<repo>.md`: the
    tool's own owner-only draft directory, never `/tmp` (#1930; see
-   "Draft Files" in `workflows/reference.md`).
+   "Draft Files" in `workflows/draft-files.md`).
 
 3. **Show the rendered content to the user** and offer:
    - "Open in default editor" — call `${EDITOR:-vi} <path>` for the

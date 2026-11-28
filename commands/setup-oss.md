@@ -18,9 +18,10 @@ Marketplace installs ship the CLI bundle prebuilt, so nothing is installed or bu
 
 ```bash
 CLI_HELPER_RC=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-setup-cli-build.log 2>&1 || CLI_HELPER_RC=$?
+OSS_LOG_DIR="$HOME/.oss-autopilot/logs"; mkdir -p -m 700 "$OSS_LOG_DIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >"$OSS_LOG_DIR/oss-setup-cli-build.log" 2>&1 || CLI_HELPER_RC=$?
 if [ "$CLI_HELPER_RC" = "2" ]; then
-  echo "BUILD_FAILED"; tail -5 /tmp/oss-setup-cli-build.log; exit 1
+  echo "BUILD_FAILED"; tail -5 "$OSS_LOG_DIR/oss-setup-cli-build.log"; exit 1
 fi
 ```
 
