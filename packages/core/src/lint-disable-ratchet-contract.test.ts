@@ -27,25 +27,29 @@ const DIRECTIVE_RE = /(?:\/\/|\/\*)\s*eslint-disable(?:-next-line|-line)?\s[^\n]
 
 function sourceFiles(dir: string): string[] {
   const files: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
     if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...sourceFiles(full));
-    else if (SOURCE_RE.test(entry.name)) files.push(full);
+    if (entry.isDirectory()) {
+      files.push(...sourceFiles(full));
+    } else if (SOURCE_RE.test(entry.name)) {
+      files.push(full);
+    }
   }
   return files;
 }
 
-function countDisables(): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const pkg of PACKAGES) {
-    for (const file of sourceFiles(path.join(REPO_ROOT, 'packages', pkg))) {
-      if (file === __filename) continue;
-      const hits = fs.readFileSync(file, 'utf8').match(DIRECTIVE_RE)?.length ?? 0;
-      if (hits > 0) counts.set(path.relative(REPO_ROOT, file), hits);
-    }
-  }
-  return counts;
+/** Directive count per file (repo-relative path), files with none omitted. */
+function countDisables(): Array<[string, number]> {
+  const files = PACKAGES.flatMap((pkg) => sourceFiles(path.join(REPO_ROOT, 'packages', pkg)));
+  return files
+    .filter((file) => file !== __filename)
+    .map((file): [string, number] => [
+      path.relative(REPO_ROOT, file),
+      fs.readFileSync(file, 'utf8').match(DIRECTIVE_RE)?.length ?? 0,
+    ])
+    .filter(([, hits]) => hits > 0);
 }
 
 describe('vitest eslint-disable ratchet (#2056)', () => {
@@ -62,8 +66,8 @@ describe('vitest eslint-disable ratchet (#2056)', () => {
 
   it(`has at most ${MAX_VITEST_DISABLES} inline disables of vitest rules`, () => {
     const counts = countDisables();
-    const total = [...counts.values()].reduce((sum, n) => sum + n, 0);
-    const listing = [...counts].map(([file, n]) => `  ${file}: ${n}`).join('\n');
+    const total = counts.reduce((sum, [, n]) => sum + n, 0);
+    const listing = counts.map(([file, n]) => `  ${file}: ${n}`).join('\n');
     expect(
       total,
       `${total} eslint-disable directives name a vitest/ rule, above the recorded ${MAX_VITEST_DISABLES}. ` +
