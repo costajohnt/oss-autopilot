@@ -24,7 +24,6 @@ vi.mock('../core/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../core/index.js')>();
   h.fetchUserMergedPRCounts = vi.fn();
   h.fetchRecentlyMergedPRs = vi.fn();
-  h.fetchUserClosedPRCounts = vi.fn();
   const empty = {
     repos: new Map(),
     monthlyCounts: {},
@@ -32,11 +31,12 @@ vi.mock('../core/index.js', async (importOriginal) => {
     dailyActivityCounts: {},
     searchedPRs: [],
   };
+  h.fetchUserClosedPRCounts = vi.fn().mockResolvedValue({ ...empty, truncated: false });
 
   class MockPRMonitor {
     fetchUserOpenPRs = vi.fn().mockResolvedValue({ prs: [], failures: [] });
     fetchUserMergedPRCounts = h.fetchUserMergedPRCounts;
-    fetchUserClosedPRCounts = h.fetchUserClosedPRCounts.mockResolvedValue({ ...empty, truncated: false });
+    fetchUserClosedPRCounts = h.fetchUserClosedPRCounts;
     fetchRepoMetadata = vi.fn(
       async (repos: string[]) =>
         new Map(repos.map((r) => [r, { stars: r === 'tiny/repo' ? 10 : 1000, language: null }])),
