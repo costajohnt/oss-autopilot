@@ -417,10 +417,10 @@ const TYPE_LABEL = /^\s*(?:bug|enhancement|feature|documentation|docs|question|i
 function isNamedNearLabel(rule: string, name: string): boolean {
   const tokens = rule.trim().split(' ');
   const phrase = name.trim().split(' ');
-  const isLabelWord = (at: number): boolean => tokens[at]?.startsWith('label') === true;
+  const isLabelWord = (at: number): boolean => (tokens[at] ?? '').startsWith('label');
   for (let at = 0; at + phrase.length <= tokens.length; at++) {
-    if (!phrase.every((word, i) => tokens[at + i] === word)) continue;
-    if (isLabelWord(at + phrase.length) || [1, 2, 3].some((back) => isLabelWord(at - back))) return true;
+    const isHere = phrase.every((word, i) => tokens[at + i] === word);
+    if (isHere && (isLabelWord(at + phrase.length) || [1, 2, 3].some((back) => isLabelWord(at - back)))) return true;
   }
   return false;
 }
@@ -434,8 +434,7 @@ const QUOTED_SPAN = /[`"\u{201C}\u{201D}]([^`"\u{201C}\u{201D}]{1,60})[`"\u{201C
  * the words next to "label".
  */
 function isNamedInRule(quotedLine: string, name: string): boolean {
-  const spans: string[] = [];
-  for (const match of quotedLine.matchAll(QUOTED_SPAN)) spans.push(words(match[1]));
+  const spans = Array.from(quotedLine.matchAll(QUOTED_SPAN), (match) => words(match[1]));
   if (spans.length > 0) return spans.includes(name);
   return isNamedNearLabel(words(quotedLine), name);
 }
