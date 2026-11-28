@@ -26,7 +26,7 @@
 import type { Octokit } from '@octokit/rest';
 import { CIStatusResult } from './types.js';
 import { computeCIStatus, type RawCheckRun, type RawCombinedStatus } from './ci-analysis.js';
-import { getLatestChangesRequestedReview, type ActivityEvent, type ReviewComment } from './review-analysis.js';
+import { getChangesRequestedCommitSha, type ActivityEvent, type ReviewComment } from './review-analysis.js';
 import { commitDateOf } from './commit-date.js';
 import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
@@ -465,7 +465,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   const commit = node.commits.nodes[0]?.commit;
   // The commit the latest change request was made against and its parent: a
   // head rebased off that parent has not addressed the review (#2042).
-  const reviewedSha = getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
+  const reviewedSha = getChangesRequestedCommitSha(reviews);
   const reviewedCommit = node.reviews.nodes.find((r) => r.commit?.oid === reviewedSha)?.commit;
   const commitInfo: CommitInfo = {
     date: commitDateOf({

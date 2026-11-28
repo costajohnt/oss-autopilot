@@ -95,7 +95,7 @@ export function getStandingApprovalDate(reviews: VerdictReview[], login: string 
  * Bot reviews are skipped (#1840): a bot re-reviewing every push would otherwise
  * move the date past the author's fix commit.
  */
-export function getLatestChangesRequestedReview<
+function getLatestChangesRequestedReview<
   T extends {
     state?: string | null;
     submitted_at?: string | null;
@@ -126,6 +126,23 @@ export function getLatestChangesRequestedDate(
   }>,
 ): string | undefined {
   return getLatestChangesRequestedReview(reviews)?.submitted_at ?? undefined;
+}
+
+/**
+ * The head commit the latest CHANGES_REQUESTED review (from any human
+ * reviewer) was submitted against. A head moved onto a new parent since then
+ * was rebased, not amended, so its new committer date says nothing about the
+ * review (#2042).
+ */
+export function getChangesRequestedCommitSha(
+  reviews: Array<{
+    state?: string | null;
+    submitted_at?: string | null;
+    user?: { login?: string; type?: string | null } | null;
+    commit_id?: string | null;
+  }>,
+): string | undefined {
+  return getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
 }
 
 /**

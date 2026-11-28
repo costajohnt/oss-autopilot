@@ -32,7 +32,7 @@ import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
 import { getCIStatus } from './ci-analysis.js';
-import { type ActivityEvent, type ReviewComment, getLatestChangesRequestedReview } from './review-analysis.js';
+import { type ActivityEvent, type ReviewComment, getChangesRequestedCommitSha } from './review-analysis.js';
 import type { MergedPRActivity, MergedPRActivityList } from './merged-pr-notes.js';
 import type { ReviewedPRActivity, ReviewedPRActivityList } from './reviewed-prs.js';
 import {
@@ -140,11 +140,14 @@ function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
  * CI status, reviews, merge conflicts, and maintainer comments are enriched
  * for each PR to compute a {@link FetchedPRStatus}.
  */
+type RestCommit = Awaited<ReturnType<Octokit['repos']['getCommit']>>['data'];
+
+function firstParentSha(data: RestCommit): string | undefined {
+  return data.parents?.[0]?.sha;
+}
+
 /** The date-rule inputs of a REST `repos.getCommit` response (#1919, #2042). */
-function restCommitDates(
-  data: Awaited<ReturnType<Octokit['repos']['getCommit']>>['data'],
-  reviewedSha: string | undefined,
-): CommitDates {
+function restCommitDates(data: RestCommit, reviewedSha: string | undefined): CommitDates {
   return {
     authorDate: data.commit.author?.date,
     committerDate: data.commit.committer?.date,
@@ -152,7 +155,7 @@ function restCommitDates(
     committerLogin: data.committer?.login,
     authorEmail: data.commit.author?.email,
     committerEmail: data.commit.committer?.email,
-    parentSha: data.parents?.[0]?.sha,
+    parentSha: firstParentSha(data),
     reviewedSha,
   };
 }
@@ -537,9 +540,7 @@ export class PRMonitor {
     // pipeline decides via `needCommitDate` and invokes this thunk lazily.
     // A PR with a status override is the exception: override auto-clear keys
     // on the commit date (#1713), so fetch it up front for those PRs only.
-    // The commit the latest change request was made against: a head rebased
-    // off its parent since then has not addressed it by being rebased (#2042).
-    const reviewedSha = getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
+    const reviewedSha = getChangesRequestedCommitSha(reviews);
     const commitInfo = findRefKey(config.statusOverrides, prUrl)
       ? await this.fetchCommitInfo(owner, repo, ghPR.head.sha, reviewedSha)
       : () => this.fetchCommitInfo(owner, repo, ghPR.head.sha, reviewedSha);
@@ -650,15 +651,13 @@ export class PRMonitor {
    * treats the rebase as unknown (#2042). Rate-limit and auth errors propagate.
    */
   private async fetchFirstParentSha(owner: string, repo: string, sha: string): Promise<string | undefined> {
-    let res: Awaited<ReturnType<Octokit['repos']['getCommit']>>;
     try {
-      res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
+      return firstParentSha((await this.octokit.repos.getCommit({ owner, repo, ref: sha })).data);
     } catch (err) {
       if (isRateLimitOrAuthError(err)) throw err;
       warn(MODULE, `Failed to fetch reviewed commit ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
-      return;
+      return undefined;
     }
-    return res.data.parents?.[0]?.sha;
   }
 
   /**
