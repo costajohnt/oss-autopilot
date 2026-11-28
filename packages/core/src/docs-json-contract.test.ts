@@ -39,6 +39,7 @@ const startupSchema = (daily: ZodType) =>
     dashboardBuildErrorTail: z.unknown(),
     issueList: z.unknown(),
     overnight: z.unknown(),
+    staleData: z.object({ worktrees: z.number(), oldWorktrees: z.number(), rejected: z.number() }).optional(),
   });
 
 /** `<command>[ <subcommand>]` → the schema `executeAction` validates its `--json` output against. */

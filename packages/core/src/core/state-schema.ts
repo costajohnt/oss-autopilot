@@ -163,6 +163,14 @@ export const StoredMergedPRSchema = z
     commentsFetchedAt: z.string().datetime().optional(),
     /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
     learningsExtractedAt: z.string().datetime().optional(),
+    /**
+     * When a guideline proposal built from this PR was written for review
+     * (#2041). The proposal file is machine-local, so `learningsProposedOn`
+     * names the machine holding it; another machine does not re-extract.
+     */
+    learningsProposedAt: z.iso.datetime().optional(),
+    /** Machine id (`~/.oss-autopilot/machine-id`) of the machine holding the proposal (#2041). */
+    learningsProposedOn: z.string().optional(),
     ...LedgerPredictionFields,
   })
   .passthrough();
@@ -185,6 +193,14 @@ export const StoredClosedPRSchema = z
     commentsFetchedAt: z.string().datetime().optional(),
     /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
     learningsExtractedAt: z.string().datetime().optional(),
+    /**
+     * When a guideline proposal built from this PR was written for review
+     * (#2041). The proposal file is machine-local, so `learningsProposedOn`
+     * names the machine holding it; another machine does not re-extract.
+     */
+    learningsProposedAt: z.iso.datetime().optional(),
+    /** Machine id (`~/.oss-autopilot/machine-id`) of the machine holding the proposal (#2041). */
+    learningsProposedOn: z.string().optional(),
     ...LedgerPredictionFields,
     /** Why it closed unmerged (#1824), set by ledger-backfill. */
     closeReason: openEnum(CLOSE_REASONS).optional(),

@@ -113,6 +113,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 
 # Stamp fetched PRs as extracted so daily stops reporting them (#1696)
 <prefix> guidelines mark-extracted --repo <owner/repo> --json
+
+# Record that the proposal file waits for review on this machine, so other machines do not re-extract it (#2041)
+<prefix> guidelines mark-proposed --repo <owner/repo> --json
 ```
 
 The full extraction workflow lives at [`workflows/extract-learnings.md`](extract-learnings.md). Guidelines require Gist persistence; standalone-mode users see `'local-unavailable'` storage mode.
