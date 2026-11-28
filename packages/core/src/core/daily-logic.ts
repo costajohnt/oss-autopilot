@@ -62,11 +62,22 @@ export function shelveReasonsOf(pr: Pick<FetchedPR, 'status' | 'actionReason' | 
 }
 
 /**
+ * Action reasons only a maintainer's comment or review creates. The recorded
+ * reasons come from the last digest, which can predate the shelve, so one of
+ * these missing from the record proves nothing; it is new only when the
+ * maintainer activity behind it came after the shelve (#2043).
+ */
+const MAINTAINER_ACTION_REASONS: ReadonlySet<string> = new Set<ActionReason>(['needs_response', 'needs_changes']);
+
+/**
  * Whether an explicitly shelved PR goes back to active (#1922). It must need
  * addressing, and something must be new since it was shelved: maintainer
  * activity after the shelve, or an action reason not among the recorded ones.
  * A PR shelved while it already needed addressing stays shelved until then,
- * also when one of its recorded reasons clears or comes back.
+ * also when one of its recorded reasons clears or comes back. A
+ * maintainer-driven reason (needs_response, needs_changes) missing from the
+ * record counts only through maintainer activity after the shelve, since the
+ * digest the record came from may be older than that activity (#2043).
  * A record without reasons (the PR was not in the digest at shelve time)
  * only unshelves on maintainer activity; the daily run then fills the reasons
  * in. Without a shelve record (shelved before `config.shelvedPRInfo` existed)
@@ -82,7 +93,8 @@ export function shouldAutoUnshelve(
   const info = shelvedPRInfo?.[issueRefKey(pr.url) ?? pr.url];
   if (!info || !pr.lastMaintainerActivityAt) return true;
   const known = info.reasons;
-  if (known && shelveReasonsOf(pr).some((reason) => !known.includes(reason))) return true;
+  const isNew = (reason: string): boolean => !MAINTAINER_ACTION_REASONS.has(reason) && !known?.includes(reason);
+  if (known && shelveReasonsOf(pr).some((reason) => isNew(reason))) return true;
   const activityMs = Date.parse(pr.lastMaintainerActivityAt);
   const shelvedMs = Date.parse(info.at);
   // An unparseable date resurfaces the PR instead of hiding it.
