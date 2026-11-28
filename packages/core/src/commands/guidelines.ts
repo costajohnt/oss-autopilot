@@ -243,7 +243,12 @@ export function guidelineProposalStatus(
     const at = Date.parse(pr.learningsProposedAt);
     if (at > cutoff && (newest === null || at > newest)) newest = at;
   }
-  return { repo, proposalPath, proposalAgeDays: newest === null ? null : ageDays(newest), proposalOnThisMachine: false };
+  return {
+    repo,
+    proposalPath,
+    proposalAgeDays: newest === null ? null : ageDays(newest),
+    proposalOnThisMachine: false,
+  };
 }
 
 /** Read the per-repo guidelines for `repo`. Returns a `local-unavailable` envelope in non-Gist mode. */

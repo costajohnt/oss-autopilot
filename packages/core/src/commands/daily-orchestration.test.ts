@@ -2006,7 +2006,12 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
       repos: ['foo/bar'],
       prCount: 1,
       proposals: [
-        { repo: 'foo/bar', proposalPath: guidelineProposalPath('foo/bar'), proposalAgeDays: null, proposalOnThisMachine: false },
+        {
+          repo: 'foo/bar',
+          proposalPath: guidelineProposalPath('foo/bar'),
+          proposalAgeDays: null,
+          proposalOnThisMachine: false,
+        },
       ],
     });
     expect(result.warnings.find((w) => w.operation === 'auto-extract learnings')).toBeUndefined();
@@ -2044,7 +2049,12 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
     const result = await executeDailyCheck('test-token');
 
     expect(result.pendingLearnings?.proposals).toEqual([
-      { repo: 'foo/bar', proposalPath: guidelineProposalPath('foo/bar'), proposalAgeDays: 2, proposalOnThisMachine: false },
+      {
+        repo: 'foo/bar',
+        proposalPath: guidelineProposalPath('foo/bar'),
+        proposalAgeDays: 2,
+        proposalOnThisMachine: false,
+      },
     ]);
   });
 
