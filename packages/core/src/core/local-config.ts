@@ -22,6 +22,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { getLocalConfigPath } from './paths.js';
 import { atomicWriteFileSync } from './state-persistence.js';
+import { preserveRejected } from './stale-data.js';
 import { LocalRepoCacheSchema, type LocalRepoCache } from './state-schema.js';
 import { errorMessage, ValidationError } from './errors.js';
 import { warn } from './logger.js';
@@ -78,10 +79,8 @@ type LocalConfig = z.infer<typeof LocalConfigSchema>;
  * not overwrite what the user had. Returns a note for the warning.
  */
 function setAsideUnreadable(filePath: string): string {
-  const rejectedPath = `${filePath}.rejected-${Date.now()}`;
   try {
-    fs.renameSync(filePath, rejectedPath);
-    return `kept as ${rejectedPath}`;
+    return `kept as ${preserveRejected(filePath, 'move')}`;
   } catch (err) {
     return `could not be set aside (${errorMessage(err)})`;
   }

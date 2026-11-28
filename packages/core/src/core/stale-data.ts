@@ -1,19 +1,19 @@
 /**
  * Retention for the rejected state copies under `~/.oss-autopilot` (#1956).
  *
- * `state.json.rejected-<ms>` (state-persistence.ts),
- * `state-cache.json.rejected-<ms>` (gist-state-store.ts) and
- * `local-config.json.rejected-<ms>` (local-config.ts) preserve a file that
- * failed validation so the user can recover it by hand. Nothing
+ * {@link preserveRejected} keeps a file that failed validation as
+ * `<name>.json.rejected-<ms>` beside it so the user can recover it by hand:
+ * `state.json` (state-persistence.ts), `state-cache.json`
+ * (gist-state-store.ts) and `local-config.json` (local-config.ts). Nothing
  * reads them back, and one bad night can write dozens.
  *
  * Kept: the newest {@link REJECTED_KEEP} of each kind, the oldest of each kind
  * (the first copy of an incident is the one most likely to hold the state
  * from before it), and every copy younger than {@link REJECTED_MIN_AGE_DAYS}.
  * Only direct children of the data
- * directory whose names match what the code itself writes are considered, and
- * only regular files: a symlink or a directory with a matching name is left
- * alone.
+ * directory named like what {@link preserveRejected} writes are considered,
+ * and only regular files: a symlink or a directory with a matching name is
+ * left alone.
  */
 
 import * as fs from 'node:fs';
@@ -32,7 +32,8 @@ export const WORKTREE_MIN_AGE_DAYS = 14;
 /** Directory names the overnight preparer gives its worktrees: `<owner>-<repo>-<n>`, `...-issue-<n>`. */
 export const WORKTREE_NAME = /^[\w.-]+-\d+$/;
 
-const REJECTED_PATTERN = /^(state|state-cache|local-config)\.json\.rejected-(\d+)$/;
+/** `<kind>.json.rejected-<ms>`, the name {@link preserveRejected} gives any `<kind>.json`. */
+const REJECTED_PATTERN = /^([\w-]+)\.json\.rejected-(\d+)$/;
 
 /** True when `child`, with every symlink resolved, sits strictly inside `parent`. */
 export function isInside(parent: string, child: string): boolean {
@@ -122,6 +123,30 @@ export function countStaleData(dataDir: string, now: number = Date.now()): Stale
     oldWorktrees: old.length,
     rejected: staleRejectedCopies(dataDir, now).length,
   };
+}
+
+/** How {@link preserveRejected} keeps the rejected file. */
+export type RejectedCopySource =
+  /** Copy the file; the copy keeps its mode. */
+  | 'copy'
+  /** Rename the file out of the way, so the next write cannot overwrite it. */
+  | 'move'
+  /** Write this text instead (owner-only), for content that was never on disk. */
+  | { content: string };
+
+/**
+ * Keep a file that failed validation as `<filePath>.rejected-<ms>` for
+ * recovery by hand, then prune its directory's rejected copies past retention
+ * ({@link pruneRejectedCopies}, which never throws). Returns the copy's path.
+ * Throws when the copy cannot be made; callers report that their own way.
+ */
+export function preserveRejected(filePath: string, source: RejectedCopySource): string {
+  const rejectedPath = `${filePath}.rejected-${Date.now()}`;
+  if (source === 'copy') fs.copyFileSync(filePath, rejectedPath);
+  else if (source === 'move') fs.renameSync(filePath, rejectedPath);
+  else fs.writeFileSync(rejectedPath, source.content, { encoding: 'utf8', mode: 0o600 });
+  pruneRejectedCopies(path.dirname(rejectedPath));
+  return rejectedPath;
 }
 
 export interface PruneResult {
