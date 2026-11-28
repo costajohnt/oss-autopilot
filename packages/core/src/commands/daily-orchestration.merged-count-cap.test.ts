@@ -132,6 +132,15 @@ function evaluatedAt(): Record<string, string> {
   return Object.fromEntries(Object.values(h.sm.getState().repoScores).map((rs) => [rs.repo, rs.lastEvaluatedAt]));
 }
 
+/** One daily run at `at` against searchCounts(closedForBig). */
+async function runDaily(at: string, closedForBig = 1) {
+  vi.setSystemTime(at);
+  const { merged, closed } = searchCounts(closedForBig);
+  h.fetchUserMergedPRCounts.mockResolvedValue(merged);
+  h.fetchUserClosedPRCounts.mockResolvedValue(closed);
+  await executeDailyCheck('test-token');
+}
+
 describe('executeDailyCheck() — merged count past the search pagination cap (#1897)', () => {
   beforeEach(() => {
     h.sm = new StateManager(true);
@@ -181,14 +190,6 @@ describe('executeDailyCheck() — merged count past the search pagination cap (#
 
 describe('executeDailyCheck() — a repo whose counts net to no change is not re-evaluated (#2045)', () => {
   const T0 = '2026-11-01T00:00:00.000Z';
-
-  async function runDaily(at: string, closedForBig = 1) {
-    vi.setSystemTime(at);
-    const { merged, closed } = searchCounts(closedForBig);
-    h.fetchUserMergedPRCounts.mockResolvedValue(merged);
-    h.fetchUserClosedPRCounts.mockResolvedValue(closed);
-    await executeDailyCheck('test-token');
-  }
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
