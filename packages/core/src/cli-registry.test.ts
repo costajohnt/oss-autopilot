@@ -264,6 +264,7 @@ const mockGuidelinesView = vi.fn();
 const mockGuidelinesStore = vi.fn();
 const mockGuidelinesReset = vi.fn();
 const mockFetchCorpus = vi.fn();
+const mockMarkProposed = vi.fn();
 const mockPolicyGet = vi.fn();
 const mockPolicySet = vi.fn();
 const mockPolicyReset = vi.fn();
@@ -279,6 +280,7 @@ vi.mock('./commands/guidelines.js', () => ({
   runGuidelinesStore: mockGuidelinesStore,
   runGuidelinesReset: mockGuidelinesReset,
   runFetchCorpus: mockFetchCorpus,
+  runMarkProposed: mockMarkProposed,
 }));
 
 const mockReadApprovedDraft = vi.fn();
@@ -2870,6 +2872,15 @@ describe('guidelines subcommands', () => {
     expect(mockFetchCorpus).toHaveBeenCalledWith({ repo: REPO, limit: 7, forceRefetch: true });
     expect(consoleLogSpy).toHaveBeenCalledWith(`Fetched 3 PR comment bundle(s) for ${REPO}.`);
     expect(consoleLogSpy).toHaveBeenCalledWith('  Skipped 2 PR(s) already processed (use --force to re-fetch).');
+  });
+
+  it('mark-proposed passes the repo and prints the count and path (#2041)', async () => {
+    mockMarkProposed.mockResolvedValue({ repo: REPO, path: '/d/guidelines-p.md', marked: 2 });
+
+    await buildProgram('guidelines').parseAsync(['node', 'cli', 'guidelines', 'mark-proposed', '--repo', REPO]);
+
+    expect(mockMarkProposed).toHaveBeenCalledWith({ repo: REPO });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Marked 2 PR(s) in ${REPO} as proposed (/d/guidelines-p.md).`);
   });
 
   it('fetch-corpus omits the skipped line when nothing was skipped', async () => {

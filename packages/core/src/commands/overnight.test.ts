@@ -291,7 +291,7 @@ describe('runOvernight', () => {
   });
 
   it('forwards pendingLearnings from the daily check (#1696)', async () => {
-    const pending = { repos: ['a/b'], prCount: 1 };
+    const pending = { repos: ['a/b'], prCount: 1, proposals: [] };
     mockDaily.mockResolvedValue({
       actionableIssues: [],
       commentedIssues: [],

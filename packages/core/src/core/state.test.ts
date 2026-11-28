@@ -1427,6 +1427,20 @@ describe('StateManager merged PRs', () => {
       stateManager.markPRLearningsExtracted(URL_C, '2026-04-26T01:00:00Z');
       expect(stateManager.getClosedPRs()[0].learningsExtractedAt).toBe('2026-04-26T01:00:00Z');
     });
+
+    it('stamps the proposal time and machine on merged and closed PRs, dropping the machine when unknown (#2041)', () => {
+      stateManager.markPRLearningsProposed(URL_M, '2026-04-26T02:00:00Z', 'machine-a');
+      stateManager.markPRLearningsProposed(URL_C, '2026-04-26T02:00:00Z', 'machine-a');
+      expect(stateManager.getMergedPRs()[0]).toMatchObject({
+        learningsProposedAt: '2026-04-26T02:00:00Z',
+        learningsProposedOn: 'machine-a',
+      });
+      expect(stateManager.getClosedPRs()[0].learningsProposedOn).toBe('machine-a');
+
+      stateManager.markPRLearningsProposed(URL_M, '2026-04-27T02:00:00Z', undefined);
+      expect(stateManager.getMergedPRs()[0].learningsProposedAt).toBe('2026-04-27T02:00:00Z');
+      expect(stateManager.getMergedPRs()[0]).not.toHaveProperty('learningsProposedOn');
+    });
   });
 
   describe('per-repo guidelines (#867)', () => {

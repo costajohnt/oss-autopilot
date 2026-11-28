@@ -184,6 +184,7 @@ vi.mock('../core/state.js', () => ({
 
 // Import AFTER all mocks are declared
 import { executeDailyCheck, runDaily, runDailyForDisplay } from './daily.js';
+import { guidelineProposalPath } from './guidelines.js';
 import { requireGitHubToken } from '../core/index.js';
 
 // ---------------------------------------------------------------------------
@@ -2001,8 +2002,50 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
     const result = await executeDailyCheck('test-token');
 
     expect(result.actionMenu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
-    expect(result.pendingLearnings).toEqual({ repos: ['foo/bar'], prCount: 1 });
+    expect(result.pendingLearnings).toEqual({
+      repos: ['foo/bar'],
+      prCount: 1,
+      proposals: [
+        { repo: 'foo/bar', proposalPath: guidelineProposalPath('foo/bar'), proposalAgeDays: null, proposalOnThisMachine: false },
+      ],
+    });
     expect(result.warnings.find((w) => w.operation === 'auto-extract learnings')).toBeUndefined();
+  });
+
+  it('in auto mode, reports a proposal waiting on this machine so the host does not re-extract (#2041)', async () => {
+    const state = stateWithListAndLedger();
+    (state.config as Record<string, unknown>).autoExtractLearnings = true;
+    mockGetState.mockReturnValue(state);
+    mockIsGistMode.mockReturnValue(true);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+    const file = guidelineProposalPath('foo/bar');
+    fs.writeFileSync(file, '## Testing\n');
+    try {
+      const result = await executeDailyCheck('test-token');
+      expect(result.pendingLearnings?.proposals).toEqual([
+        { repo: 'foo/bar', proposalPath: file, proposalAgeDays: 0, proposalOnThisMachine: true },
+      ]);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  });
+
+  it('in auto mode, reports a proposal another machine stamped through the Gist (#2041)', async () => {
+    const state = stateWithListAndLedger();
+    (state.config as Record<string, unknown>).autoExtractLearnings = true;
+    Object.assign((state.mergedPRs as Array<Record<string, unknown>>)[0], {
+      learningsProposedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 - 60_000).toISOString(),
+      learningsProposedOn: 'another-machine',
+    });
+    mockGetState.mockReturnValue(state);
+    mockIsGistMode.mockReturnValue(true);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.pendingLearnings?.proposals).toEqual([
+      { repo: 'foo/bar', proposalPath: guidelineProposalPath('foo/bar'), proposalAgeDays: 2, proposalOnThisMachine: false },
+    ]);
   });
 
   it('in auto mode without Gist persistence, warns once per run and offers no menu item (#1696)', async () => {

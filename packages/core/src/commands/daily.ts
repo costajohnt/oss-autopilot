@@ -53,6 +53,7 @@ import {
   type FetchCommentedIssuesResult,
   type PRCheckFailure,
   type RepoGroup,
+  type StoredMergedPR,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { DEFAULT_CONCURRENCY, runWorkerPool } from '../core/concurrency.js';
@@ -75,6 +76,7 @@ import {
   type PendingLearnings,
 } from '../formatters/json.js';
 import { reconcileMergedPRsWithList } from './merge-loop.js';
+import { guidelineProposalStatus } from './guidelines.js';
 import {
   describeError,
   httpStatusLabel,
@@ -1318,12 +1320,18 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     if (unextractedMergeCount > 0 && sm.getState().config.autoExtractLearnings) {
       unextractedMergeCount = 0;
       if (sm.isGistMode()) {
-        const repos = new Set<string>();
+        const byRepo = new Map<string, StoredMergedPR[]>();
         for (const pr of unextracted) {
           const parsed = parseGitHubUrl(pr.url);
-          if (parsed) repos.add(`${parsed.owner}/${parsed.repo}`);
+          if (!parsed) continue;
+          const repo = `${parsed.owner}/${parsed.repo}`;
+          byRepo.set(repo, [...(byRepo.get(repo) ?? []), pr]);
         }
-        pendingLearnings = { repos: [...repos].sort(), prCount: unextracted.length };
+        const repos = [...byRepo.keys()].sort();
+        // Which of them already have a proposal waiting, here or on another
+        // machine (#2041), so the host neither computes paths nor re-extracts.
+        const proposals = repos.map((repo) => guidelineProposalStatus(repo, byRepo.get(repo) ?? []));
+        pendingLearnings = { repos, prCount: unextracted.length, proposals };
       } else {
         warnings.push({
           phase: 'merge-loop',

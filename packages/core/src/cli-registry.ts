@@ -100,8 +100,8 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, eval, track, comments,
- *    startup, dismiss, undismiss, stats, policy reset, and the five
- *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
+ *    startup, dismiss, undismiss, stats, policy reset, and the
+ *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted/mark-proposed).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
  * (`draft path` / `draft show` have neither: their shapes are pinned by `commands/draft.test.ts`.)
@@ -2327,6 +2327,23 @@ Load it with:
             async () => (await import('./commands/guidelines.js')).runMarkExtracted({ repo: options.repo }),
             (data) => {
               console.log(`Marked ${data.marked} PR(s) in ${data.repo} as extracted.`);
+            },
+          );
+        });
+
+      group
+        .command('mark-proposed')
+        .description(
+          'Record that the guideline proposal file for a repo waits for review on this machine, so other machines do not re-extract it (#2041)',
+        )
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/guidelines.js')).runMarkProposed({ repo: options.repo }),
+            (data) => {
+              console.log(`Marked ${data.marked} PR(s) in ${data.repo} as proposed (${data.path}).`);
             },
           );
         });
