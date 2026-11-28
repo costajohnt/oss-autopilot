@@ -62,6 +62,16 @@ export default defineConfig({
         'src/core/errors.ts': { statements: 88, branches: 88, functions: 86, lines: 91 },
         'src/core/state-persistence.ts': { statements: 90, branches: 87, functions: 96, lines: 90 },
         'src/core/gist-state-store.ts': { statements: 83, branches: 88, functions: 96, lines: 87 },
+        // The PR preflight and repo-policy gates (#2054), same rule, measured
+        // on 2026-11-27 after #2061:
+        //   commands/policy.ts        96.12 / 95.60 / 92.59 / 98.09
+        //   commands/pr-preflight.ts  99.32 / 93.69 / 100   / 100
+        //   core/pr-preflight.ts      99.60 / 98.61 / 100   / 100
+        //   core/repo-policy.ts       98.95 / 95.39 / 100   / 100
+        'src/commands/policy.ts': { statements: 92, branches: 91, functions: 88, lines: 94 },
+        'src/commands/pr-preflight.ts': { statements: 95, branches: 89, functions: 96, lines: 96 },
+        'src/core/pr-preflight.ts': { statements: 95, branches: 94, functions: 96, lines: 96 },
+        'src/core/repo-policy.ts': { statements: 94, branches: 91, functions: 96, lines: 96 },
       },
     },
   },

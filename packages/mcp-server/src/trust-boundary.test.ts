@@ -776,7 +776,10 @@ describe('an approval covers only the arguments the user saw (#2015)', () => {
     ['a fixed test value', Buffer.alloc(32, 7)],
   ])('refuses a state signed with a key that is %s, even for the right arguments (#2054)', async (_label, key) => {
     // Everything but the key is right: the shape, the action, the arguments' hash.
-    const forger = createRequestStateCodec<{ args: string; id: string }>({ key, ttlSeconds: APPROVAL_TIMEOUT_MS / 1000 });
+    const forger = createRequestStateCodec<{ args: string; id: string }>({
+      key,
+      ttlSeconds: APPROVAL_TIMEOUT_MS / 1000,
+    });
     const args = createHash('sha256')
       .update(JSON.stringify(['post a comment', ARGS]))
       .digest('hex');

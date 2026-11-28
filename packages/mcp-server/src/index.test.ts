@@ -468,7 +468,7 @@ describe('approval gate over the HTTP transport (#2054)', { timeout: 30_000 }, (
         "  const url = typeof input === 'string' ? input : (input.href ?? input.url);",
         "  const method = init?.method ?? input.method ?? 'GET';",
         '  appendFileSync(process.env.OA_TEST_FETCH_LOG, `${method} ${url}\\n`);',
-        "  return new Response('{\"message\":\"Bad credentials\"}', {",
+        '  return new Response(\'{"message":"Bad credentials"}\', {',
         '    status: 401,',
         "    headers: { 'content-type': 'application/json' },",
         '  });',

@@ -379,7 +379,11 @@ describe('tool execution', () => {
         arguments: { repo: 'owner/repo', content: 'rules', reviewed: false },
       });
 
-      expect(mockRunGuidelinesStore).toHaveBeenLastCalledWith({ repo: 'owner/repo', content: 'rules', reviewed: false });
+      expect(mockRunGuidelinesStore).toHaveBeenLastCalledWith({
+        repo: 'owner/repo',
+        content: 'rules',
+        reviewed: false,
+      });
     });
 
     it('rejects a store with no reviewed assertion at the schema layer (#1929)', async () => {
