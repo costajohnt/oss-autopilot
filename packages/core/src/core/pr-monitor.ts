@@ -652,7 +652,8 @@ export class PRMonitor {
    */
   private async fetchFirstParentSha(owner: string, repo: string, sha: string): Promise<string | undefined> {
     try {
-      return firstParentSha((await this.octokit.repos.getCommit({ owner, repo, ref: sha })).data);
+      const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
+      return firstParentSha(res.data);
     } catch (err) {
       if (isRateLimitOrAuthError(err)) throw err;
       warn(MODULE, `Failed to fetch reviewed commit ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
