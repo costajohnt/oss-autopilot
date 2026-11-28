@@ -112,7 +112,13 @@ function closedLedger(repo: string, count: number): StoredClosedPR[] {
 
 /** The count searches for the #2045 runs: big/repo has `closedForBig` closed PRs. */
 function searchCounts(closedForBig: number) {
-  const base = { monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {}, searchedPRs: [], truncated: false };
+  const base = {
+    monthlyCounts: {},
+    monthlyOpenedCounts: {},
+    dailyActivityCounts: {},
+    searchedPRs: [],
+    truncated: false,
+  };
   return {
     // tiny/repo is below minStars, so the star-filtered search leaves it out.
     merged: { ...base, repos: new Map([['big/repo', { count: 3, lastMergedAt: '2026-01-01T00:00:00Z' }]]) },
