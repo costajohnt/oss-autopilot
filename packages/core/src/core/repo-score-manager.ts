@@ -209,10 +209,10 @@ export function restoreUnchangedEvaluations(state: AgentState, snapshot: Outcome
   let restored = 0;
   for (const [repo, before] of snapshot) {
     const rs = state.repoScores[repo];
-    if (!rs || rs.lastEvaluatedAt === before.lastEvaluatedAt) continue;
-    if (outcomeFingerprint(rs) !== before.fingerprint) continue;
-    rs.lastEvaluatedAt = before.lastEvaluatedAt;
-    restored++;
+    if (rs && rs.lastEvaluatedAt !== before.lastEvaluatedAt && outcomeFingerprint(rs) === before.fingerprint) {
+      rs.lastEvaluatedAt = before.lastEvaluatedAt;
+      restored++;
+    }
   }
   return restored;
 }

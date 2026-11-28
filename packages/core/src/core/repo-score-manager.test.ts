@@ -448,17 +448,23 @@ describe('getLowScoringRepos', () => {
 describe('restoreUnchangedEvaluations (#2045)', () => {
   const EVALUATED = daysAgo(40);
 
-  function stateWith(mergedPRCount: number, closedWithoutMergeCount: number) {
+  /** One repo with 5 merged and 2 closed PRs, last evaluated 40 days ago. */
+  function makeState() {
     return makeAgentState({
       config: { minRepoScoreThreshold: 10 },
       repoScores: {
-        'a/repo': makeRepoScore({ repo: 'a/repo', mergedPRCount, closedWithoutMergeCount, lastEvaluatedAt: EVALUATED }),
+        'a/repo': makeRepoScore({
+          repo: 'a/repo',
+          mergedPRCount: 5,
+          closedWithoutMergeCount: 2,
+          lastEvaluatedAt: EVALUATED,
+        }),
       },
     });
   }
 
   it('keeps the old time when a count is lowered and raised back to where it was', () => {
-    const state = stateWith(5, 2);
+    const state = makeState();
     const snapshot = snapshotOutcomes(state);
 
     // The stale reset (or a capped search count), then the ledger raise.
@@ -473,7 +479,7 @@ describe('restoreUnchangedEvaluations (#2045)', () => {
   });
 
   it('keeps the new time when the outcome evidence did change', () => {
-    const state = stateWith(5, 2);
+    const state = makeState();
     const snapshot = snapshotOutcomes(state);
 
     updateRepoScore(state, 'a/repo', { mergedPRCount: 0 });
@@ -484,7 +490,7 @@ describe('restoreUnchangedEvaluations (#2045)', () => {
   });
 
   it('leaves repos created after the snapshot, and removed ones, alone', () => {
-    const state = stateWith(5, 2);
+    const state = makeState();
     const snapshot = snapshotOutcomes(state);
     delete state.repoScores['a/repo'];
     updateRepoScore(state, 'b/new', { mergedPRCount: 1 });

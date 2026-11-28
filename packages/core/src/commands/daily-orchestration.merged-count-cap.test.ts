@@ -101,6 +101,31 @@ function ledger(repo: string, count: number): StoredMergedPR[] {
   }));
 }
 
+/** `count` closed-without-merge ledger rows in `repo`. */
+function closedLedger(repo: string, count: number): StoredClosedPR[] {
+  return Array.from({ length: count }, (_, i) => ({
+    url: `https://github.com/${repo}/pull/${100 + i}`,
+    title: `Closed ${i}`,
+    closedAt: '2026-01-02T00:00:00Z',
+  }));
+}
+
+/** The count searches for the #2045 runs: big/repo has `closedForBig` closed PRs. */
+function searchCounts(closedForBig: number) {
+  const base = { monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {}, searchedPRs: [], truncated: false };
+  return {
+    // tiny/repo is below minStars, so the star-filtered search leaves it out.
+    merged: { ...base, repos: new Map([['big/repo', { count: 3, lastMergedAt: '2026-01-01T00:00:00Z' }]]) },
+    // old/repo's closed PRs fall outside the search; its ledger holds 2.
+    closed: { ...base, repos: new Map([['big/repo', closedForBig]]) },
+  };
+}
+
+/** Each scored repo's lastEvaluatedAt. */
+function evaluatedAt(): Record<string, string> {
+  return Object.fromEntries(Object.values(h.sm.getState().repoScores).map((rs) => [rs.repo, rs.lastEvaluatedAt]));
+}
+
 describe('executeDailyCheck() — merged count past the search pagination cap (#1897)', () => {
   beforeEach(() => {
     h.sm = new StateManager(true);
@@ -150,38 +175,10 @@ describe('executeDailyCheck() — merged count past the search pagination cap (#
 
 describe('executeDailyCheck() — a repo whose counts net to no change is not re-evaluated (#2045)', () => {
   const T0 = '2026-11-01T00:00:00.000Z';
-  const closedLedger = (repo: string, count: number): StoredClosedPR[] =>
-    Array.from({ length: count }, (_, i) => ({
-      url: `https://github.com/${repo}/pull/${100 + i}`,
-      title: `Closed ${i}`,
-      closedAt: '2026-01-02T00:00:00Z',
-    }));
-  const counts = (closedForBig: number) => ({
-    merged: {
-      // tiny/repo is below minStars, so the star-filtered search leaves it out.
-      repos: new Map([['big/repo', { count: 3, lastMergedAt: '2026-01-01T00:00:00Z' }]]),
-      monthlyCounts: {},
-      monthlyOpenedCounts: {},
-      dailyActivityCounts: {},
-      searchedPRs: [],
-      truncated: false,
-    },
-    closed: {
-      // old/repo's closed PRs fall outside the search; its ledger holds 2.
-      repos: new Map([['big/repo', closedForBig]]),
-      monthlyCounts: {},
-      monthlyOpenedCounts: {},
-      dailyActivityCounts: {},
-      searchedPRs: [],
-      truncated: false,
-    },
-  });
-  const evaluatedAt = () =>
-    Object.fromEntries(Object.values(h.sm.getState().repoScores).map((rs) => [rs.repo, rs.lastEvaluatedAt]));
 
   async function runDaily(at: string, closedForBig = 1) {
     vi.setSystemTime(at);
-    const { merged, closed } = counts(closedForBig);
+    const { merged, closed } = searchCounts(closedForBig);
     h.fetchUserMergedPRCounts.mockResolvedValue(merged);
     h.fetchUserClosedPRCounts.mockResolvedValue(closed);
     await executeDailyCheck('test-token');
