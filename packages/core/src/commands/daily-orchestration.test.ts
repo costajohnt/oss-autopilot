@@ -1759,13 +1759,19 @@ describe('runDaily()', () => {
 
   it('returns a DailyOutput with deduplicated data', async () => {
     vi.mocked(requireGitHubToken).mockReturnValue('test-token');
+    const pr = makePR({ repo: 'owner/repo', number: 7, status: 'needs_addressing', actionReason: 'needs_response' });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [pr], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([pr]));
 
     const result = await runDaily();
 
-    expect(result).toHaveProperty('digest');
-    expect(result).toHaveProperty('capacity');
-    expect(result).toHaveProperty('summary');
-    expect(result).toHaveProperty('briefSummary');
+    // The full PR object lives once, in digest.openPRs; every other place
+    // that mentions the PR carries only its URL (#287).
+    expect(result.digest.openPRs.map((p) => p.url)).toEqual([pr.url]);
+    expect(result.digest.needsAddressingPRs).toEqual([pr.url]);
+    expect(result.repoGroups).toEqual([{ repo: 'owner/repo', prUrls: [pr.url] }]);
+    expect(result.actionableIssues.map((i) => i.prUrl)).toEqual([pr.url]);
+    expect(result.actionableIssues[0]).not.toHaveProperty('pr');
   });
 
   it('propagates errors to the caller', async () => {
@@ -1780,17 +1786,19 @@ describe('runDailyForDisplay()', () => {
   it('returns a full DailyCheckResult with non-deduplicated data', async () => {
     vi.mocked(requireGitHubToken).mockReturnValue('test-token');
 
+    const pr = makePR({ repo: 'owner/repo', number: 8, status: 'needs_addressing', actionReason: 'needs_response' });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [pr], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([pr]));
+
     const result = await runDailyForDisplay();
 
-    // Full result has digest with FetchedPR objects (not URL strings)
-    expect(result).toHaveProperty('digest');
-    expect(result).toHaveProperty('capacity');
-    expect(result).toHaveProperty('repoGroups');
-    // repoGroups in full result have .prs (not .prUrls)
-    if (result.repoGroups.length > 0) {
-      // eslint-disable-next-line vitest/no-conditional-expect -- group shape only applies when the fixture yields groups
-      expect(result.repoGroups[0]).toHaveProperty('prs');
-    }
+    // Full result carries FetchedPR objects everywhere, not URL strings.
+    expect(result.digest.needsAddressingPRs.map((p) => p.url)).toEqual([pr.url]);
+    expect(result.repoGroups).toHaveLength(1);
+    expect(result.repoGroups[0].repo).toBe('owner/repo');
+    expect(result.repoGroups[0].prs.map((p) => p.url)).toEqual([pr.url]);
+    expect(result.repoGroups[0]).not.toHaveProperty('prUrls');
+    expect(result.actionableIssues.map((i) => i.pr.url)).toEqual([pr.url]);
   });
 });
 
