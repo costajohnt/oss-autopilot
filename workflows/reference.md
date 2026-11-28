@@ -227,8 +227,10 @@ On a command that posts or stores the text, `--body-file` and `--from-file` requ
 # aiPolicyBlocklist reads as banned whatever is stored; set --ai-policy banned adds the repo to that list and
 # any other --ai-policy takes it off (reset leaves it). disclosureText and sources come back fenced.
 # disclosureText is only a line the user set (--disclosure-text); the repo's own rule is in sources.
+# gateLabel is the issue label a maintainer-label gate waits for, only ever set by the user (--gate-label,
+# "" clears); pr-preflight passes that gate only when the issue carries exactly that label.
 <prefix> policy get --repo <owner/repo> --json
-<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
+<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--gate-label <name>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
 <prefix> policy reset --repo <owner/repo> --json
 ```
 

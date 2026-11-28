@@ -793,6 +793,7 @@ export const PolicyGetOutputSchema = z.object({
     updatedAt: z.string(),
     blocklisted: z.boolean(),
     disclosureText: z.string().optional(),
+    gateLabel: z.string().optional(),
     sources: z.string().optional(),
   }).nullable(),
   blocklistChange: z.enum(['added', 'removed']).optional(),

@@ -39,6 +39,7 @@ interface PolicySetCliOptions {
   repo: string;
   aiPolicy?: string;
   disclosureText?: string;
+  gateLabel?: string;
   cla?: string;
   prGate?: string;
   commitRules?: string;
@@ -2444,6 +2445,10 @@ Load it with:
         .option('--cla <value>', 'none | required | unknown')
         .option('--pr-gate <value>', 'none | claim-first | maintainer-label | collaborators-only | unknown')
         .option(
+          '--gate-label <name>',
+          'The issue label a maintainer-label gate waits for; pr-preflight passes only on this exact label ("" clears)',
+        )
+        .option(
           '--commit-rules <ids>',
           'Comma-separated: conventional-commits, dco-signoff, no-closing-keyword-in-commit ("" clears)',
         )
@@ -2558,6 +2563,7 @@ function printPolicy(data: import('./commands/policy.js').PolicyGetOutput): void
   if (policy.commitRules.length > 0) console.log(`  Commit rules: ${policy.commitRules.join(', ')}`);
   if (policy.maxOpenAiPRs !== undefined) console.log(`  Max open AI-assisted PRs: ${policy.maxOpenAiPRs}`);
   if (policy.disclosureText) console.log(`  Disclosure: ${policy.disclosureText}`);
+  if (policy.gateLabel) console.log(`  Gate label: ${policy.gateLabel}`);
   if (policy.sources) console.log(`  Sources: ${policy.sources}`);
 }
 

@@ -362,18 +362,23 @@ export function isUnreadable(state: PolicyState, repo: string): boolean {
 }
 
 /**
- * `policy` without a `disclosureText` that is an excerpt of the repo's own rule
- * rather than a line the user set (#2040). Releases before that stored the
- * excerpt vet read; `policy set --ai-policy disclosure-required` without
+ * `policy` with `disclosureText` and `gateLabel` only where the user set them
+ * (#2040). Neither is ever read from repo text, so an unreviewed record keeps
+ * neither. Releases before that stored the excerpt vet read as
+ * `disclosureText`; `policy set --ai-policy disclosure-required` without
  * `--disclosure-text` then kept it and marked the record reviewed. Either way
  * the text equals the quoted line `vet` put in `source`, which still carries it.
  */
-function withoutDerivedDisclosure(policy: RepoPolicy): RepoPolicy {
-  const { disclosureText, ...rest } = policy;
-  if (disclosureText === undefined) return policy;
+function withUserTextOnly(policy: RepoPolicy): RepoPolicy {
+  const { disclosureText, gateLabel, ...rest } = policy;
+  if (disclosureText === undefined && gateLabel === undefined) return policy;
   if (!policy.reviewedByUser) return rest;
   const isExcerpt = policy.source.some((s) => s.file !== 'user' && s.quotedLine === disclosureText);
-  return isExcerpt ? rest : policy;
+  return {
+    ...rest,
+    ...(disclosureText !== undefined && !isExcerpt && { disclosureText }),
+    ...(gateLabel !== undefined && { gateLabel }),
+  };
 }
 
 /**
@@ -385,7 +390,7 @@ function withoutDerivedDisclosure(policy: RepoPolicy): RepoPolicy {
 export function storedPolicy(state: PolicyState, repo: string): RepoPolicy | null {
   const raw = rawEntry(state, repo);
   const parsed = RepoPolicySchema.safeParse(raw);
-  if (parsed.success) return withoutDerivedDisclosure(parsed.data);
+  if (parsed.success) return withUserTextOnly(parsed.data);
   if (raw?.aiPolicy !== 'banned') return null;
   return { ...UNKNOWN_POLICY, aiPolicy: 'banned', reviewedByUser: raw.reviewedByUser === true, updatedAt: EPOCH };
 }
@@ -479,14 +484,21 @@ export function policyField(policy: RepoPolicy | null): { policy?: RepoPolicySum
 }
 
 /**
- * Quoted lines and disclosure text inside `<github-content>` fences, for
- * agent-facing output. `disclosureText` is only ever a line the user set.
+ * Quoted lines, disclosure text and the gate label inside `<github-content>`
+ * fences, for agent-facing output. `disclosureText` and `gateLabel` are only
+ * ever what the user set.
  */
-export function fencePolicyText(repo: string, policy: RepoPolicy): { disclosureText?: string; sources?: string } {
+export function fencePolicyText(
+  repo: string,
+  policy: RepoPolicy,
+): { disclosureText?: string; gateLabel?: string; sources?: string } {
   const lines = policy.source.map((s) => `${s.file}: ${s.quotedLine}`);
   return {
     ...(policy.disclosureText !== undefined && {
       disclosureText: wrapUntrustedContent(policy.disclosureText, repo, { source: 'repo-policy' }),
+    }),
+    ...(policy.gateLabel !== undefined && {
+      gateLabel: wrapUntrustedContent(policy.gateLabel, repo, { source: 'repo-policy' }),
     }),
     ...(lines.length > 0 && { sources: wrapUntrustedContent(lines.join('\n'), repo, { source: 'repo-policy' }) }),
   };

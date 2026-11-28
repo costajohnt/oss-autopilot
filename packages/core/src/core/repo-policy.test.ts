@@ -105,6 +105,10 @@ describe('derivePolicy: prGate from fixture CONTRIBUTING files', () => {
     expect(derivePolicy([]).prGate).toBe('unknown');
   });
 
+  it('never records which label is the gate: only the user sets gateLabel (#2040)', () => {
+    expect(fromFixture('maintainer-label')).not.toHaveProperty('gateLabel');
+  });
+
   it.each([
     'We only accept pull requests from collaborators at this time.',
     'We do not accept external pull requests at this time.',
