@@ -50,9 +50,10 @@ Run **everything** in a single bash call. The CLI's `startup` command handles au
 # prebuilt (exit 0, nothing installed). A source checkout rebuilds a stale
 # bundle from pnpm-lock.yaml only (#1935). Exits 0/1/2/3.
 CLI_HELPER_RC=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-startup-cli-build.log 2>&1 || CLI_HELPER_RC=$?
+OSS_LOG_DIR="$HOME/.oss-autopilot/logs"; mkdir -p -m 700 "$OSS_LOG_DIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >"$OSS_LOG_DIR/oss-startup-cli-build.log" 2>&1 || CLI_HELPER_RC=$?
 if [ "$CLI_HELPER_RC" = "2" ]; then
-  echo "BUILD_FAILED"; tail -5 /tmp/oss-startup-cli-build.log; exit 1
+  echo "BUILD_FAILED"; tail -5 "$OSS_LOG_DIR/oss-startup-cli-build.log"; exit 1
 fi
 
 # Build dashboard SPA if stale (#1292). Helper handles workspace:* / pnpm
@@ -63,17 +64,17 @@ fi
 OSS_DASHBOARD_BUILD_STATUS=fresh
 OSS_DASHBOARD_BUILD_ERROR_TAIL=""
 DASHBOARD_HELPER_RC=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-dashboard-build.log 2>&1 || DASHBOARD_HELPER_RC=$?
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >"$OSS_LOG_DIR/oss-dashboard-build.log" 2>&1 || DASHBOARD_HELPER_RC=$?
 case $DASHBOARD_HELPER_RC in
   0) OSS_DASHBOARD_BUILD_STATUS=fresh ;;
   1) OSS_DASHBOARD_BUILD_STATUS=rebuilt ;;
   2)
-    if grep -q "pnpm is required" /tmp/oss-dashboard-build.log; then
+    if grep -q "pnpm is required" "$OSS_LOG_DIR/oss-dashboard-build.log"; then
       OSS_DASHBOARD_BUILD_STATUS=missing-pnpm
       OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: corepack enable, or npm install -g pnpm@10.27.0"
     else
       OSS_DASHBOARD_BUILD_STATUS=failed
-      OSS_DASHBOARD_BUILD_ERROR_TAIL=$(tail -5 /tmp/oss-dashboard-build.log 2>/dev/null | tr '\n' ' ' | tr -s ' ')
+      OSS_DASHBOARD_BUILD_ERROR_TAIL=$(tail -5 "$OSS_LOG_DIR/oss-dashboard-build.log" 2>/dev/null | tr '\n' ' ' | tr -s ' ')
     fi
     ;;
   *) ;;  # exit 3 (invocation error) — leave status=fresh, no warning surfaced
@@ -81,7 +82,7 @@ esac
 export OSS_DASHBOARD_BUILD_STATUS OSS_DASHBOARD_BUILD_ERROR_TAIL
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN
-node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json --compact 2>/tmp/oss-startup-stderr.log
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json --compact 2>/dev/null
 ```
 
 ## Parse Output
@@ -114,7 +115,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 
 **Routing based on parsed data:**
 - `data.authError` is present → Tell the user: show `data.authError` message. Then offer recovery: "Run `gh auth login` to authenticate, then run `/oss` again." End the session — do not continue to Summary or Action Menu without valid auth.
-- `data.setupComplete === false` → Auto-detection failed (gh CLI not available or not authenticated). Tell the user: "I couldn't auto-detect your GitHub username. You'll need to set up first." Use AskUserQuestion to let them choose "Run setup (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and return to the core router (`commands/oss.md`) **Summary** section with the daily result as `data.daily`.
+- `data.setupComplete === false` → Auto-detection failed (gh CLI not available or not authenticated). Tell the user: "I couldn't auto-detect your GitHub username. You'll need to set up first." Use AskUserQuestion to let them choose "Run setup (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json 2>/dev/null`), use `data.version` from the startup output already received, and return to the core router (`commands/oss.md`) **Summary** section with the daily result as `data.daily`.
 - `data.daily` is present → Return to the core router (`commands/oss.md`) **Summary** section.
 
 **Dashboard build warning (#1293):** When `data.dashboardBuildStatus === 'failed'` or `'missing-pnpm'`, render this one-time line above the action menu (after `briefSummary`, before the menu itself):
@@ -136,6 +137,6 @@ Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field)
 - **Build failure** (BUILD_FAILED sentinel): the `BUILD_FAILED:` line states the fix. Marketplace install with a missing prebuilt bundle: reinstall the plugin. Source checkout: install pnpm, then `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run bundle`. Never suggest an install that ignores the lockfile.
 - **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
 - **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 22+).
-- **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `/tmp/oss-dashboard-build.log` for build errors. Marketplace installs ship the dashboard prebuilt next to the CLI bundle. In a source checkout, rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build`.
+- **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `~/.oss-autopilot/logs/oss-dashboard-build.log` for build errors. Marketplace installs ship the dashboard prebuilt next to the CLI bundle. In a source checkout, rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT} && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @oss-autopilot/core run build && pnpm --filter @oss-autopilot/dashboard run build`.
 
 **Return:** Core router (`commands/oss.md`) — **Summary** section with the parsed startup data.

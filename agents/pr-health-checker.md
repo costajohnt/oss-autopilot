@@ -199,7 +199,7 @@ The split:
 1. **Direct resolution** (1–3 files, small/clear diffs): `git rebase upstream/<main>`, resolve markers, `git add`, `git rebase --continue`, then force-with-lease push per the rebase protocol (per-push approval).
 2. **Squash and re-apply** (upstream refactored; rebase produces 5+ conflicts, files renamed/moved/deleted, API surface changed):
    ```bash
-   git diff main...HEAD > /tmp/my-changes.patch
+   mkdir -p -m 700 ~/.oss-autopilot/logs && git diff main...HEAD > ~/.oss-autopilot/logs/my-changes.patch
    git checkout upstream/<main> && git checkout -b <branch>-v2
    # Re-apply manually on the new structure, then push and update the PR head (or open a new PR).
    ```

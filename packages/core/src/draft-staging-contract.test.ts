@@ -1,15 +1,16 @@
 /**
- * CI gate (#1930): the prompt layer never stages text under `/tmp`, and never
- * puts text to post or store on a shell command line.
+ * CI gate (#1930, #2051): the prompt layer never writes under `/tmp`, and
+ * never puts text to post or store on a shell command line.
  *
  * Text posted or stored under the user's name goes through the tool's own
  * draft directory (`draft path`, `draft show`, then `--body-file` or
  * `--from-file` with `--expect-sha256`; see "Draft Files" in
- * workflows/reference.md). `/tmp` is shared: another local user can pre-create
+ * workflows/draft-files.md). `/tmp` is shared: another local user can pre-create
  * or swap a file there between the user's approval and the command reading it.
  *
- * A `/tmp/` path in a prompt file fails unless it is on the allowlist below
- * with the reason it carries no text that is later posted, stored or committed.
+ * Any `/tmp/` path in a prompt file fails, with no allowlist (#2051): a build
+ * log or a diff the flow reads back goes to `~/.oss-autopilot/logs/` (created
+ * with `mkdir -p -m 700`), and a capture nothing reads goes to `/dev/null`.
  *
  * Limit: a text scan. `mktemp`, `$TMPDIR`, `/var/tmp` and `/private/tmp` fail
  * too, but a draft staged in some other shared directory is not seen.
@@ -24,22 +25,6 @@ import path from 'node:path';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 const PROMPT_DIRS = ['commands', 'workflows', 'agents', 'skills'];
-
-/** Key: `<file> <path prefix>`. Value: why this `/tmp` use is scratch, not a draft. */
-const ALLOWED_TMP: Record<string, string> = {
-  'commands/oss-dashboard.md /tmp/oss-dashboard-build.log': 'build log, only tailed to show an error',
-  'commands/oss-dashboard.md /tmp/oss-dashboard-cli-build.log': 'build log, only tailed to show an error',
-  'commands/oss-search.md /tmp/oss-search-cli-build.log': 'build log, only tailed to show an error',
-  'commands/setup-oss.md /tmp/oss-setup-cli-build.log': 'build log, only tailed to show an error',
-  'commands/oss.md /tmp/oss-startup-stderr.log': 'stderr of the startup command, read for diagnostics only',
-  'workflows/startup-and-build.md /tmp/oss-startup-cli-build.log': 'build log, only tailed to show an error',
-  'workflows/startup-and-build.md /tmp/oss-dashboard-build.log': 'build log, grepped and tailed to show an error',
-  'workflows/startup-and-build.md /tmp/oss-startup-stderr.log': 'stderr of the startup command, diagnostics only',
-  'workflows/pre-commit-review.md /tmp/pre-format.diff':
-    'baseline diff compared against after a formatter run; never posted, stored or committed',
-  'agents/pr-health-checker.md /tmp/my-changes.patch':
-    "backup of the user's own diff, re-applied by hand; never posted or stored",
-};
 
 /** A `/tmp/...` path, but not the `tmp` directory of some other path (`~/.oss-autopilot/tmp/x`). */
 const TMP_PATH = /(?<![\w.~-])\/tmp\/[\w.{}<>$/-]*/g;
@@ -57,23 +42,12 @@ function readPrompt(file: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
 }
 
-function isAllowedTmp(file: string, tmpPath: string): boolean {
-  return Object.keys(ALLOWED_TMP).some((key) => {
-    const [allowedFile, prefix] = key.split(' ', 2);
-    return allowedFile === file && tmpPath.startsWith(prefix);
-  });
-}
-
-/** `<file>: <match>` for every match of the global `pattern` in the prompt files, minus allowlisted `/tmp` paths. */
+/** `<file>: <match>` for every match of the global `pattern` in the prompt files. */
 function findInPrompts(pattern: RegExp): string[] {
-  return PROMPT_FILES.flatMap((file) =>
-    (readPrompt(file).match(pattern) ?? [])
-      .filter((match) => !isAllowedTmp(file, match))
-      .map((match) => `${file}: ${match}`),
-  );
+  return PROMPT_FILES.flatMap((file) => (readPrompt(file).match(pattern) ?? []).map((match) => `${file}: ${match}`));
 }
 
-describe('prompt files do not stage drafts under /tmp (#1930)', () => {
+describe('prompt files do not write under /tmp (#1930, #2051)', () => {
   it('sanity: the scan sees the prompt layer', () => {
     expect(PROMPT_FILES.length).toBeGreaterThan(20);
     expect(PROMPT_FILES).toContain('workflows/extract-learnings.md');
@@ -81,25 +55,50 @@ describe('prompt files do not stage drafts under /tmp (#1930)', () => {
   });
 
   it('the path pattern matches a /tmp path and skips the draft directory', () => {
-    const sample = 'cat /tmp/a-{pr}.md >/tmp/b.log `~/.oss-autopilot/tmp/c.md` "$HOME/x/tmp/d"';
-    expect(sample.match(TMP_PATH)?.map((found) => found.slice(1))).toEqual(['tmp/a-{pr}.md', 'tmp/b.log']);
+    const sample =
+      'cat /tmp/a-{pr}.md >/tmp/b.log 2>/tmp/e.log `~/.oss-autopilot/tmp/c.md` "$HOME/x/tmp/d" ~/.oss-autopilot/logs/f.diff';
+    expect(sample.match(TMP_PATH)?.map((found) => found.slice(1))).toEqual(['tmp/a-{pr}.md', 'tmp/b.log', 'tmp/e.log']);
   });
 
-  it('every /tmp path in a prompt file is an allowlisted scratch use', () => {
-    const offenders = findInPrompts(TMP_PATH);
+  it('no prompt file names a /tmp path', () => {
     expect(
-      offenders,
-      'Stage text for posting or storing with `draft path` (see "Draft Files" in workflows/reference.md), ' +
-        'or add a scratch use to ALLOWED_TMP with its reason',
+      findInPrompts(TMP_PATH),
+      'Stage text for posting or storing with `draft path` (see "Draft Files" in workflows/draft-files.md); ' +
+        'write a log or diff the flow reads back under ~/.oss-autopilot/logs/ (mkdir -p -m 700 first), ' +
+        'and send a capture nothing reads to /dev/null',
     ).toEqual([]);
   });
+});
 
-  it('every allowlist entry is still in use', () => {
-    const stale = Object.keys(ALLOWED_TMP).filter((key) => {
-      const [file, prefix] = key.split(' ', 2);
-      return !readPrompt(file).includes(prefix);
-    });
-    expect(stale, 'Remove these entries from ALLOWED_TMP').toEqual([]);
+describe('the draft and approval protocol is written once, in workflows/draft-files.md (#2051)', () => {
+  const PROTOCOL_FILE = 'workflows/draft-files.md';
+  /** A citation of a protocol section that sends the reader to reference.md instead. */
+  const STALE_CITATION =
+    /"(?:Draft Files|Before drafting a comment|Approval to post)"[^"\n]{0,20}`workflows\/reference\.md`/g;
+  /** The approval phrase list; only the protocol file may state it. */
+  const PHRASE_LIST = /"yes, post"/g;
+
+  it('the protocol file has every section', () => {
+    const text = readPrompt(PROTOCOL_FILE);
+    expect(text).toMatch(/^## Draft Files \(#1930\)$/m);
+    expect(text).toMatch(/^### Before drafting a comment \(#2009\)$/m);
+    expect(text).toMatch(/^### Approval to post \(#2009\)$/m);
+  });
+
+  it('no other prompt file has a heading for "Before drafting a comment" or "Approval to post"', () => {
+    const heading = /^#{1,6} (?:Before drafting a comment|Approval to post)\b.*$/gm;
+    expect(findInPrompts(heading).filter((hit) => !hit.startsWith(`${PROTOCOL_FILE}:`))).toEqual([]);
+  });
+
+  it('only the protocol file states the approval phrase list', () => {
+    expect(readPrompt(PROTOCOL_FILE).match(PHRASE_LIST)).toHaveLength(1);
+    expect(findInPrompts(PHRASE_LIST).filter((hit) => !hit.startsWith(`${PROTOCOL_FILE}:`))).toEqual([]);
+  });
+
+  it('every citation of a protocol section names the protocol file', () => {
+    expect('("Draft Files" in `workflows/reference.md`)'.match(STALE_CITATION)).toHaveLength(1);
+    expect('"Approval to post" (`workflows/draft-files.md`)'.match(STALE_CITATION)).toBeNull();
+    expect(findInPrompts(STALE_CITATION), `Cite ${PROTOCOL_FILE}`).toEqual([]);
   });
 });
 
@@ -130,7 +129,7 @@ describe('prompt files do not hand drafts to an external skill (#2009)', () => {
     expect(
       findInPrompts(SKILL_NAME),
       'Stage the text with `draft path` / `draft show` and post it with `--body-file` and `--expect-sha256` ' +
-        '(see "Draft Files" in workflows/reference.md)',
+        '(see "Draft Files" in workflows/draft-files.md)',
     ).toEqual([]);
   });
 });

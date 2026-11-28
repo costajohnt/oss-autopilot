@@ -262,7 +262,7 @@ Only "Run it" permits running the command, and only the exact text shown. If the
 
 2. **If no tooling detected:** Skip this sub-step. Report: "No linter/formatter detected — skipping auto-format." Proceed to staging.
 
-3. **Capture baseline diff** before running the formatter so you can identify what the formatter changed vs. what you changed: `git diff > /tmp/pre-format.diff`. This baseline is used in step 5 to distinguish functional hunks from formatter-added hunks.
+3. **Capture baseline diff** before running the formatter so you can identify what the formatter changed vs. what you changed: `mkdir -p -m 700 ~/.oss-autopilot/logs && git diff > ~/.oss-autopilot/logs/pre-format.diff`. This baseline is used in step 5 to distinguish functional hunks from formatter-added hunks.
 
 4. **Run the formatter** on the changed files only (not the entire repo — see file-scoping notes in item 1). Use a 60-second timeout on the bash command. Report what command is being run:
    > "Running `{command}` on changed files..."
@@ -344,7 +344,7 @@ On "Done for now":
 - **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
 - **Never post without explicit, unambiguous user approval.**
 
-> **Other comment-posting paths also have safeguards.** The `pr-responder` agent saves its draft in the tool's draft directory ("Draft Files" in `workflows/reference.md`) and posts it with `post --body-file ... --expect-sha256` only when the user explicitly asks; the replies drafted in `review-issue-replies.md`, `closed-pr-status-update.md`, `merged-pr-notes.md`, `dormant-pr-follow-up.md` and `review-follow-ups.md` use the same flow with the "Approval to post" rules. The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
+> **Other comment-posting paths also have safeguards.** The `pr-responder` agent saves its draft in the tool's draft directory ("Draft Files" in `workflows/draft-files.md`) and posts it with `post --body-file ... --expect-sha256` only when the user explicitly asks; the replies drafted in `review-issue-replies.md`, `closed-pr-status-update.md`, `merged-pr-notes.md`, `dormant-pr-follow-up.md` and `review-follow-ups.md` use the same flow with the "Approval to post" rules (`workflows/draft-files.md`). The CLI `post` command is a programmatic tool invoked by callers — the safety gate is in the caller (this workflow or `pr-responder`), not the CLI itself.
 
 **If the push was in response to maintainer feedback:**
 
@@ -379,7 +379,7 @@ When in doubt, lean toward skipping — the diff already communicates the functi
    - Mention anything intentionally left unchanged only if the maintainer will wonder about it
    - Match the thread's tone and length (see the `contribution-ethics` skill for AI-tell avoidance and the `pr-etiquette` skill for general response style)
 
-2. **Stage the draft and show it from the file** (#1930; "Draft Files" in `workflows/reference.md`). Get the draft path, in the tool's own owner-only draft directory (never `/tmp`); the command prints it:
+2. **Stage the draft and show it from the file** (#1930; "Draft Files" in `workflows/draft-files.md`). Get the draft path, in the tool's own owner-only draft directory (never `/tmp`); the command prints it:
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" draft path {owner}--{repo}-pr-{pr_number}-comment.md
    ```
@@ -395,14 +395,14 @@ When in doubt, lean toward skipping — the diff already communicates the functi
    Header: "PR Comment"
 
    Options:
-   1. "Post this response" — "Post the comment as drafted"
+   1. "Post this comment" — "Post the comment as drafted"
    2. "Edit before posting" — "Modify the draft first"
    3. "Skip — don't post a comment (Recommended)" — "Push is enough, no comment needed"
    ```
 
 4. Handle choice:
-   - **"Post this response":** Only proceed if the AskUserQuestion response contains one of these acceptance phrases (case-insensitive): "Post this response", "post it", "post the comment", "option 1", or "yes, post". Any other response — including generic confirmations like "yes", "ok", "looks good", or "User has answered your questions" — does NOT qualify. **Negation check:** If the response also contains a negation word ("don't", "no", "not", "wait", "cancel", "stop", "actually", "never mind", "changed my mind") in the same sentence as the acceptance phrase, treat it as ambiguous and default to Skip. When proceeding: post the file with the hash of the text you displayed, `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {pr_url} --body-file "<draft-path>" --expect-sha256 <data.sha256> --json`. The command refuses, before posting, when the file no longer holds that text: run `draft show` again, display the current text and ask again. On `success: true`, delete the draft (`rm -- "<draft-path>"`).
-   - **"Edit before posting":** Let the user modify the draft. If they dictated the change, write the file again; if they edited the file themselves, leave it. Either way run `draft show` again, display the new `data.content`, keep the new `data.sha256`, then re-present for approval with the same AskUserQuestion. The same acceptance phrases, negation check, and ambiguous-response rules apply — do not loosen the criteria on subsequent rounds. **Loop bound:** After 3 rounds of "Edit before posting" without a successful post, inform the user: "Multiple edit rounds without posting. The draft is saved at `<draft-path>` — you can post manually via `gh pr comment`." Then treat as Skip and exit. **Do not delete the temp file** in this case — the user needs it for manual posting.
+   - **"Post this comment":** Only proceed if the answer is approval under "Approval to post" (`workflows/draft-files.md`): its acceptance phrases, negation check and handling of everything else decide ("Don't post" there is "Skip" here). When proceeding: post the file with the hash of the text you displayed, `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post {pr_url} --body-file "<draft-path>" --expect-sha256 <data.sha256> --json`. The command refuses, before posting, when the file no longer holds that text: run `draft show` again, display the current text and ask again. On `success: true`, delete the draft (`rm -- "<draft-path>"`).
+   - **"Edit before posting":** Let the user modify the draft. If they dictated the change, write the file again; if they edited the file themselves, leave it. Either way run `draft show` again, display the new `data.content`, keep the new `data.sha256`, then re-present for approval with the same AskUserQuestion. The same "Approval to post" acceptance phrases, negation check, and ambiguous-response rules apply — do not loosen the criteria on subsequent rounds. **Loop bound:** After 3 rounds of "Edit before posting" without a successful post, inform the user: "Multiple edit rounds without posting. The draft is saved at `<draft-path>` — you can post manually via `gh pr comment`." Then treat as Skip and exit. **Do not delete the temp file** in this case — the user needs it for manual posting.
    - **"Skip":** No comment posted. This is the safe default. Delete the draft (`rm -- "<draft-path>"`).
    - **Ambiguous or unclear response:** Treat as "Skip". Report: "Could not determine your choice — defaulting to skip (no comment posted). You can post manually via `gh pr comment`."
 

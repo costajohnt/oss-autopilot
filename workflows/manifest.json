@@ -26,6 +26,10 @@
       "purpose": "Shared multi-agent review-dispatch template (consumed by both review workflows)"
     },
     {
+      "file": "workflows/draft-files.md",
+      "purpose": "Draft files, the check before drafting a comment, and the one approval rule for posting (#1930, #2009)"
+    },
+    {
       "file": "workflows/review-issue-replies.md",
       "purpose": "Issue reply triage and dismiss handler"
     },

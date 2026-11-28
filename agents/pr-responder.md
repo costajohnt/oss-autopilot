@@ -182,7 +182,7 @@ If unverifiable claims remain:
 
 ### 7. Save the draft
 
-Stage the draft in the tool's own owner-only draft directory, never under `/tmp`, where another local user could swap the file between the user's approval and the post (#1930; "Draft Files" in `workflows/reference.md`).
+Stage the draft in the tool's own owner-only draft directory, never under `/tmp`, where another local user could swap the file between the user's approval and the post (#1930; "Draft Files" in `workflows/draft-files.md`).
 
 1. Get the path (`<unix-ts>` from `date +%s`, so two drafts for one PR do not collide):
    ```bash

@@ -87,6 +87,7 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
 | `workflows/draft-first-workflow.md` | Full new contribution pipeline (10 steps) | After selecting an issue and implementing changes |
 | `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |
 | `workflows/reference.md` | CLI command syntax, agent name reference, AskUserQuestion Validation Protocol | On demand when command syntax or validation rules are needed |
+| `workflows/draft-files.md` | Draft files, the check before drafting a comment, and the one approval rule for posting | Before staging any text to post or store |
 
 ## Startup
 
@@ -231,7 +232,7 @@ Use AskUserQuestion with these options:
 
 **Routing:**
 - **Search for issues** → Invoke `/oss-search` directly (passing session state: `hasIssueList`, `availableCount`, `completedCount`, `issueListPath`). No intermediate hop.
-- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run `startup --json` (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-startup-stderr.log`) and parse the result from the top (same routing as the initial startup call). If it fails, show the error and suggest checking `gh auth status`.
+- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run `startup --json` (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json 2>/dev/null`) and parse the result from the top (same routing as the initial startup call). If it fails, show the error and suggest checking `gh auth status`.
 - **Just exploring** → Show a brief tip: "Run `/oss` whenever you want to check on your contributions. It works best when you have a few open PRs to track." Then end.
 
 **Skip this step** if `totalActivePRs > 0` — go directly to **Action Menu**.

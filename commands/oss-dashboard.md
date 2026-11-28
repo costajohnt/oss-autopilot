@@ -23,11 +23,12 @@ Then run everything in a single bash call:
 # are no-ops there. In a source checkout they rebuild stale output from
 # pnpm-lock.yaml only (frozen install, #1935).
 CLI_HELPER_RC=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-dashboard-cli-build.log 2>&1 || CLI_HELPER_RC=$?
+OSS_LOG_DIR="$HOME/.oss-autopilot/logs"; mkdir -p -m 700 "$OSS_LOG_DIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >"$OSS_LOG_DIR/oss-dashboard-cli-build.log" 2>&1 || CLI_HELPER_RC=$?
 if [ "$CLI_HELPER_RC" = "2" ]; then
-  echo '{"error":"CLI build failed","details":"'"$(tail -5 /tmp/oss-dashboard-cli-build.log | tr '\n' ' ')"'"}'; exit 1
+  echo '{"error":"CLI build failed","details":"'"$(tail -5 "$OSS_LOG_DIR/oss-dashboard-cli-build.log" | tr '\n' ' ')"'"}'; exit 1
 fi
-"${CLAUDE_PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-dashboard-build.log 2>&1 || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >"$OSS_LOG_DIR/oss-dashboard-build.log" 2>&1 || true
 
 # Pick a platform-appropriate browser opener. $BROWSER wins when set.
 open_url() {
