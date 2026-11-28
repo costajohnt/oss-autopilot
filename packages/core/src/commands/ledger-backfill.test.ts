@@ -434,7 +434,8 @@ const HISTORY_START = Date.parse('2020-01-01T00:00:00Z');
 /** `LARGE_HISTORY` search items of one kind, each created a minute after the last. */
 function largeHistory(kind: 'merged' | 'closed') {
   return Array.from({ length: LARGE_HISTORY }, (_, i) => {
-    const at = new Date(HISTORY_START + i * 60_000).toISOString().replace('.000Z', 'Z');
+    const created = new Date(HISTORY_START + i * 60_000);
+    const at = created.toISOString().replace('.000Z', 'Z');
     return {
       html_url: `https://github.com/o/${kind}/pull/${i + 1}`,
       title: `${kind} ${i + 1}`,
@@ -454,8 +455,8 @@ const LARGE_CLOSED = largeHistory('closed');
  */
 function answerLargeHistory(params: { q: string; page: number; per_page: number }) {
   const items = params.q.includes('is:unmerged') ? LARGE_CLOSED : LARGE_MERGED;
-  const from = /created:>=(\S+)/.exec(params.q)?.[1] ?? '';
-  const matching = items.filter((item) => item.created_at >= from);
+  const from = Date.parse(/created:>=(\S+)/.exec(params.q)?.[1] ?? '') || 0;
+  const matching = items.filter((item) => Date.parse(item.created_at) >= from);
   const start = (params.page - 1) * params.per_page;
   return Promise.resolve({
     data: { total_count: matching.length, items: matching.slice(start, start + params.per_page) },

@@ -24,7 +24,8 @@ vi.mock('./state.js', () => ({
 
 const { PRMonitor } = await import('./pr-monitor.js');
 
-const RECENT = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+const RECENT = twoDaysAgo.toISOString();
 
 /** One page of a search that GitHub flagged incomplete: a partial list. */
 function partialPage(mergedAt: string | null) {
@@ -54,7 +55,8 @@ describe('PRMonitor recent-list wrappers pass truncations through (#1928)', () =
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue(partialPage(RECENT));
     const truncations: RecentListTruncation[] = [];
 
-    const prs = await new PRMonitor('fake-token').fetchRecentlyMergedPRs(7, truncations);
+    const monitor = new PRMonitor('fake-token');
+    const prs = await monitor.fetchRecentlyMergedPRs(7, truncations);
 
     expect(prs).toHaveLength(1);
     expect(truncations).toHaveLength(1);
@@ -65,7 +67,8 @@ describe('PRMonitor recent-list wrappers pass truncations through (#1928)', () =
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue(partialPage(null));
     const truncations: RecentListTruncation[] = [];
 
-    const prs = await new PRMonitor('fake-token').fetchRecentlyClosedPRs(7, truncations);
+    const monitor = new PRMonitor('fake-token');
+    const prs = await monitor.fetchRecentlyClosedPRs(7, truncations);
 
     expect(prs).toHaveLength(1);
     expect(truncations).toHaveLength(1);

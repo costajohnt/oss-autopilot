@@ -103,8 +103,8 @@ const OLDER_CLOSES = [
 /** A Search API stand-in over OLDER_CLOSES that honors the `updated:>` bound; merged searches find nothing. */
 function answerSearch({ q }: { q: string }) {
   if (!q.includes('is:unmerged')) return Promise.resolve({ data: { total_count: 0, items: [] } });
-  const since = /updated:>(\S+)/.exec(q)?.[1] ?? '';
-  const items = OLDER_CLOSES.filter((item) => item.updated_at > since);
+  const since = Date.parse(/updated:>(\S+)/.exec(q)?.[1] ?? '') || 0;
+  const items = OLDER_CLOSES.filter((item) => Date.parse(item.updated_at) > since);
   return Promise.resolve({ data: { total_count: items.length, items } });
 }
 

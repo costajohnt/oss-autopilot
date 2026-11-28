@@ -153,7 +153,7 @@ function repeated(status: number, count: number): number[] {
 }
 
 /** Stands in for the shutdown handler's force-exit timer, so it never fires. */
-const idleTimer = { unref: () => undefined };
+const idleTimer = { unref: vi.fn() };
 
 /**
  * Run the SIGTERM handler a server added since `before` was read, with the
@@ -161,7 +161,7 @@ const idleTimer = { unref: () => undefined };
  * has closed and the handler asked to exit.
  */
 async function shutDownServer(before: ReturnType<typeof process.listeners>): Promise<void> {
-  const exit = vi.spyOn(process, 'exit').mockReturnValue(undefined as never);
+  const exit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as typeof process.exit);
   const added = process.listeners('SIGTERM').filter((listener) => !before.includes(listener));
   expect(added).toHaveLength(1);
   const timer = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(idleTimer as never);
@@ -376,7 +376,7 @@ describe('dashboard server over a real loopback socket (#1940)', { timeout: 30_0
 
     it('leaves the PID file of a newer server that replaced this one', async () => {
       const port = await startOnFreePort();
-      const newer = { pid: process.pid + 1, port, startedAt: '2030-01-01T00:00:00.000Z' };
+      const newer = { port, pid: process.pid + 1, startedAt: '2030-01-01T00:00:00.000Z' };
       writeDashboardServerInfo(newer);
 
       await shutDownServer(signalListeners[sigterm]);
