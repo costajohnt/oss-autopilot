@@ -104,6 +104,8 @@ npx @oss-autopilot/core@latest init <your-github-username>
 npx @oss-autopilot/core@latest daily          # human-readable digest
 npx @oss-autopilot/core@latest daily --json   # structured output
 npx @oss-autopilot/core@latest doctor         # check token, state, rate limit
+npx @oss-autopilot/core@latest cleanup        # list stale overnight worktrees; --apply removes the safe ones
+npx @oss-autopilot/core@latest policy get --repo owner/repo   # contribution policy recorded for a repo
 
 # or install it
 npm install -g @oss-autopilot/core
