@@ -730,14 +730,12 @@ describe('checkRepoPolicy (#1953)', () => {
     expect(extractFromFence(fenced)).toBe(disclosureText);
   });
 
-
   it('warns for claim-first until the user is assigned', () => {
     const claim = { ...READY, issueUrl: ISSUE_URL, policy: policy({ prGate: 'claim-first' }) };
     expect(checkRepoPolicy(claim).summary).toContain('get assigned before opening the PR');
     const assigned = { ...claim, issue: { ...withIssue({}).issue!, assignees: ['ME'] } };
     expect(checkRepoPolicy(assigned).status).toBe('pass');
   });
-
 
   it('only warns for an unreviewed collaborators-only reading: the heuristic may have misread the docs', () => {
     const facts = { ...READY, policy: policy({ prGate: 'collaborators-only' }) };
