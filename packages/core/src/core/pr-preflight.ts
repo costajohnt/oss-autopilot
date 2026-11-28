@@ -333,9 +333,18 @@ function normalized(text: string): string {
 
 /** HTML comments (a closed one, or an unclosed one to the end) and unchecked task-list lines: template text, not a statement. */
 const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
-const UNCHECKED_TASK = /^\s*[-*+]\s+\[ \].*$/gm;
-const NOT_WORD_BEFORE = String.raw`(?<![\p{L}\p{N}_])`;
-const NOT_WORD_AFTER = String.raw`(?![\p{L}\p{N}_])`;
+const UNCHECKED_TASK = /^\s*[-*+]\s+\[ \]/;
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
+
+/** `wanted` occurs in `text` with no letter or digit right before it, nor right after unless `isOpenEnded`. */
+function hasWholeMatch(text: string, wanted: string, isOpenEnded: boolean): boolean {
+  for (let at = text.indexOf(wanted); at !== -1; at = text.indexOf(wanted, at + 1)) {
+    const before = text[at - 1] ?? ' ';
+    const after = text[at + wanted.length] ?? ' ';
+    if (!WORD_CHAR.test(before) && (isOpenEnded || !WORD_CHAR.test(after))) return true;
+  }
+  return false;
+}
 
 /**
  * The body states the recorded line: outside HTML comments and unchecked
@@ -346,9 +355,9 @@ function hasDisclosure(body: string, line: string): boolean {
   const isCut = line.endsWith('…');
   const wanted = normalized(isCut ? line.slice(0, -1) : line);
   if (wanted === '') return false;
-  const stated = normalized(body.replaceAll(HTML_COMMENT, ' ').replaceAll(UNCHECKED_TASK, ' '));
-  const escaped = wanted.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  return new RegExp(NOT_WORD_BEFORE + escaped + (isCut ? '' : NOT_WORD_AFTER), 'u').test(stated);
+  const lines = body.replaceAll(HTML_COMMENT, ' ').split('\n');
+  const stated = normalized(lines.filter((l) => !UNCHECKED_TASK.test(l)).join('\n'));
+  return hasWholeMatch(stated, wanted, isCut);
 }
 
 /**
@@ -405,25 +414,30 @@ const TYPE_LABEL = /^\s*(?:bug|enhancement|feature|documentation|docs|question|i
  * then the name ("labeled as approved"), or the name right before it ("the
  * accepted label").
  */
-function namesLabel(rule: string, name: string): boolean {
-  const phrase = name.trim();
-  const after = new RegExp(String.raw` label\w* (?:\S+ ){0,2}?${phrase} `);
-  const before = new RegExp(String.raw` ${phrase} label`);
-  return after.test(rule) || before.test(rule);
+function isNamedNearLabel(rule: string, name: string): boolean {
+  const tokens = rule.trim().split(' ');
+  const phrase = name.trim().split(' ');
+  const isLabelWord = (at: number): boolean => tokens[at]?.startsWith('label') === true;
+  for (let at = 0; at + phrase.length <= tokens.length; at++) {
+    if (!phrase.every((word, i) => tokens[at + i] === word)) continue;
+    if (isLabelWord(at + phrase.length) || [1, 2, 3].some((back) => isLabelWord(at - back))) return true;
+  }
+  return false;
 }
 
 /** A quoted span in a rule line: `status: accepted`, "approved". Single quotes are left out: they are also apostrophes. */
-const QUOTED_SPAN = /[`"\u201C\u201D]([^`"\u201C\u201D]{1,60})[`"\u201C\u201D]/g;
+const QUOTED_SPAN = /[`"\u{201C}\u{201D}]([^`"\u{201C}\u{201D}]{1,60})[`"\u{201C}\u{201D}]/gu;
 
 /**
  * The rule line names the label. A line that quotes names is matched against
  * those exactly, so `accepted` is not `status: accepted`; an unquoted line by
  * the words next to "label".
  */
-function ruleNames(quotedLine: string, name: string): boolean {
-  const spans = [...quotedLine.matchAll(QUOTED_SPAN)].map((m) => words(m[1]));
+function isNamedInRule(quotedLine: string, name: string): boolean {
+  const spans: string[] = [];
+  for (const match of quotedLine.matchAll(QUOTED_SPAN)) spans.push(words(match[1]));
   if (spans.length > 0) return spans.includes(name);
-  return namesLabel(words(quotedLine), name);
+  return isNamedNearLabel(words(quotedLine), name);
 }
 
 /** Labels the repo's own rule names in a quoted `source` line, not marked "not yet". */
@@ -431,7 +445,7 @@ function gateLabels(labels: readonly string[], policy: RepoPolicy): string[] {
   return labels.filter((label) => {
     const name = words(label);
     if (name.trim() === '' || TYPE_LABEL.test(name) || NOT_YET.test(name)) return false;
-    return policy.source.some((s) => ruleNames(s.quotedLine, name));
+    return policy.source.some((s) => isNamedInRule(s.quotedLine, name));
   });
 }
 
