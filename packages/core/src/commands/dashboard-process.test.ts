@@ -28,6 +28,7 @@ const {
   findRunningDashboardServer,
   probeDashboardServer,
   isDashboardServeProcess,
+  isDashboardServeCommand,
 } = await import('./dashboard-process.js');
 
 /** Answer the next probe with this response body, or with a connection error when null. */
@@ -252,36 +253,74 @@ describe('probeDashboardServer (#1882)', () => {
   });
 });
 
-describe.skipIf(process.platform === 'win32')('isDashboardServeProcess (#1882)', () => {
-  it('identifies a process whose command line is `dashboard serve`', async () => {
-    const child = spawn(process.execPath, [
-      '-e',
-      'setInterval(() => {}, 1000)',
-      'dashboard',
-      'serve',
-      '--port',
-      '3000',
-    ]);
-    try {
-      await new Promise((resolve) => child.once('spawn', resolve));
-      expect(isDashboardServeProcess(child.pid!)).toBe(true);
-    } finally {
-      child.kill();
-    }
+describe('isDashboardServeCommand (#1882)', () => {
+  it.each([
+    ['the bundle', 'node /p/packages/core/dist/cli.bundle.cjs dashboard serve --port 3000 --no-open'],
+    ['an absolute node with flags', '/usr/local/bin/node --enable-source-maps /p/dist/cli.bundle.cjs dashboard serve'],
+    ['the npm bin', 'node /usr/local/bin/oss-autopilot dashboard serve --port 3000'],
+    ['a source entry', 'node /p/packages/core/src/cli.js dashboard serve'],
+  ])('accepts %s', (_label, command) => {
+    expect(isDashboardServeCommand(command)).toBe(true);
   });
 
-  it('does not identify an unrelated process', async () => {
-    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'dashboard']);
+  it.each([
+    ['node -e with the words as arguments', "node -e setInterval(()=>{},1000) dashboard serve"],
+    ['a shell wrapper', 'bash -c sleep 5; echo grep -rn dashboard serve'],
+    ['grep for the words', 'grep -rn dashboard serve /p/cli.bundle.cjs'],
+    ['a non-node runner of the bundle', 'bun /p/dist/cli.bundle.cjs dashboard serve'],
+    ['another subcommand', 'node /p/dist/cli.bundle.cjs dashboard launch'],
+    ['another script before the subcommand', 'node /p/other.js /p/dist/cli.bundle.cjs dashboard serve'],
+    ['an empty command line', ''],
+  ])('rejects %s', (_label, command) => {
+    expect(isDashboardServeCommand(command)).toBe(false);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('isDashboardServeProcess (#1882)', () => {
+  let tmpDir: string;
+  let entry: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-serve-'));
+    entry = path.join(tmpDir, 'cli.bundle.cjs');
+    fs.writeFileSync(entry, 'setInterval(() => {}, 1000);\n');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  async function withChild(command: string, args: string[], check: (pid: number) => void): Promise<void> {
+    const child = spawn(command, args);
     try {
       await new Promise((resolve) => child.once('spawn', resolve));
-      expect(isDashboardServeProcess(child.pid!)).toBe(false);
+      check(child.pid!);
     } finally {
       child.kill();
     }
+  }
+
+  it('identifies `node <tmp>/cli.bundle.cjs dashboard serve`', async () => {
+    await withChild(process.execPath, [entry, 'dashboard', 'serve', '--port', '3000'], (pid) => {
+      expect(isDashboardServeProcess(pid)).toBe(true);
+    });
+  });
+
+  it('does not identify `node -e ... dashboard serve`', async () => {
+    await withChild(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'dashboard', 'serve'], (pid) => {
+      expect(isDashboardServeProcess(pid)).toBe(false);
+    });
+  });
+
+  it("does not identify `bash -c '... dashboard serve'`", async () => {
+    await withChild('bash', ['-c', 'sleep 5; echo grep -rn dashboard serve'], (pid) => {
+      expect(isDashboardServeProcess(pid)).toBe(false);
+    });
   });
 
   it('does not identify a PID with no process', async () => {
-    const child = spawn(process.execPath, ['-e', '', 'dashboard', 'serve']);
+    const child = spawn(process.execPath, [entry, 'dashboard', 'serve']);
+    child.kill();
     await new Promise((resolve) => child.once('exit', resolve));
 
     expect(isDashboardServeProcess(child.pid!)).toBe(false);

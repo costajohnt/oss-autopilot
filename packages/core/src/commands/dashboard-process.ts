@@ -192,12 +192,37 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
 
 const PS_PATHS = ['/bin/ps', '/usr/bin/ps'];
 
+/** The CLI entries a server is started from: the bundle, a source entry, or the npm bin. */
+const CLI_ENTRY = /^(?:cli\.(?:bundle\.cjs|ts|js)|oss-autopilot)$/;
+
+/**
+ * True only for the command line the launchers spawn: `node [--flags] <cli
+ * entry> dashboard serve ...`. Matching "dashboard serve" anywhere in argv
+ * would accept a recycled PID now running e.g. `grep -rn "dashboard serve"`
+ * or a shell wrapper. Anything else, including paths with spaces and a tsx
+ * dev server, reads as false, which only ever means "never signal".
+ */
+export function isDashboardServeCommand(command: string): boolean {
+  const tokens = command.trim().split(/\s+/);
+  if (!/^node(?:js)?$/.test(path.basename(tokens[0]))) return false;
+  let i = 1;
+  while (tokens[i]?.startsWith('-')) i++;
+  const entry = tokens[i];
+  return (
+    entry !== undefined &&
+    CLI_ENTRY.test(path.basename(entry)) &&
+    tokens[i + 1] === 'dashboard' &&
+    tokens[i + 2] === 'serve'
+  );
+}
+
 /**
  * True only when the process at `pid` is a `dashboard serve` process, read
- * from its command line. This is what lets a caller signal a server that does
- * not answer `/api/health` (#1882) without ever signalling a PID that was
- * recycled to an unrelated program (#1927). Anything that cannot be checked
- * (no `ps`, as on Windows, or an exited PID) reads as false.
+ * from its command line (see isDashboardServeCommand). This is what lets a
+ * caller signal a server that does not answer `/api/health` (#1882) without
+ * ever signalling a PID that was recycled to an unrelated program (#1927).
+ * Anything that cannot be checked (no `ps`, as on Windows, or an exited PID)
+ * reads as false.
  */
 export function isDashboardServeProcess(pid: number): boolean {
   // An absolute path, so a `ps` earlier on PATH cannot answer for it.
@@ -209,7 +234,7 @@ export function isDashboardServeProcess(pid: number): boolean {
       timeout: 2000,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return /\sdashboard\s+serve(?:\s|$)/.test(command);
+    return isDashboardServeCommand(command);
   } catch {
     return false;
   }

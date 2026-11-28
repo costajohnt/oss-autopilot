@@ -65,6 +65,6 @@ echo "$RESULT"
 
 Parse the JSON output (the CLI's `{ success, data, error }` envelope):
 
-- If `data.status` is `"already_running"`: Show `Dashboard: <data.url>` (already open in browser). If the system didn't have a usable browser opener, tell the user to open the URL manually.
+- If `data.status` is `"already_running"`: Show `Dashboard: <data.url>` (already open in browser). If the system didn't have a usable browser opener, tell the user to open the URL manually. If that page never loads, the running server may be from a newer plugin version than this session, which this command never replaces: tell the user to run `/oss-dashboard` from a session on the latest plugin version (restart Claude Code after updating), or to stop the process recorded in `~/.oss-autopilot/dashboard-server.pid` and run `/oss-dashboard` again.
 - If `data.status` is `"launched"`: Show `Dashboard opened: <data.url>`. Same caveat for headless systems. Server logs are in `data.logFile`.
 - If `success` is false or the output is not JSON: Show the `error` message (or the raw output). The message names the log file when the server failed to start, so the user can inspect the dashboard server output. If the error is a build failure, show the `BUILD_FAILED` line from the details: it carries the fix (reinstall the plugin for a marketplace install; `pnpm install --frozen-lockfile --ignore-scripts` plus a rebuild for a source checkout). Never suggest an install that ignores the lockfile.
