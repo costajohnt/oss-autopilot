@@ -225,9 +225,12 @@ describe('pruneRejectedCopies', () => {
   });
 });
 
-describe('preserveRejected (#2048)', () => {
-  const live = () => path.join(ctx.dataDir, 'future.json');
+/** A data file of a kind the retention pattern does not name. */
+function live(): string {
+  return path.join(ctx.dataDir, 'future.json');
+}
 
+describe('preserveRejected (#2048)', () => {
   it('copies the file beside itself as <name>.rejected-<ms>, keeping its mode', () => {
     fs.writeFileSync(live(), 'bad', { mode: 0o640 });
     fs.chmodSync(live(), 0o640);
@@ -254,7 +257,7 @@ describe('preserveRejected (#2048)', () => {
   it('writes content that was never on disk owner-only', () => {
     const copy = preserveRejected(live(), { content: 'from the gist' });
     expect(fs.readFileSync(copy, 'utf8')).toBe('from the gist');
-    if (process.platform !== 'win32') expect(fs.statSync(copy).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(copy).mode & 0o777).toBe(0o600);
     expect(fs.existsSync(live())).toBe(false);
   });
 

@@ -15,11 +15,11 @@ const PR = 'https://github.com/owner/repo/pull/9';
 const OWN = 'https://github.com/owner/repo/issues/12';
 
 function complianceStatus(body: string): string {
-  const meta = { title: 'fix: x', body, branch: 'fix/x', filesChangedCount: 1, additions: 1, deletions: 0, files: [] };
+  const meta = { body, title: 'fix: x', branch: 'fix/x', filesChangedCount: 1, additions: 1, deletions: 0, files: [] };
   return computeComplianceScore(meta).checks.issueReference.status;
 }
 
-function commitBreaksRule(message: string): boolean {
+function isCommitRuleBroken(message: string): boolean {
   const facts = {
     repo: 'up/proj',
     branchCommits: [message],
@@ -45,6 +45,7 @@ describe('closing keywords across consumers (#2048)', () => {
     ['Fixes:#12', OWN, 'pass', true],
     ['fixes other/lib#12', 'https://github.com/other/lib/issues/12', 'pass', true],
     ['Closes https://github.com/o/r/issues/12', 'https://github.com/o/r/issues/12', 'pass', true],
+    // eslint-disable-next-line unicorn/prefer-https -- the http form is the case under test
     ['Closes http://github.com/o/r/issues/12', 'https://github.com/o/r/issues/12', 'pass', true],
     ['Fixes https://github.com/o/r/pull/12', undefined, 'fail', false],
     ['resolves #1, #2', 'https://github.com/owner/repo/issues/1', 'pass', true],
@@ -62,7 +63,7 @@ describe('closing keywords across consumers (#2048)', () => {
   ])('%j: ledger %s, compliance %s, commit rule broken %s', (text, ledger, compliance, broken) => {
     expect(closingIssueUrl(text, PR)).toBe(ledger);
     expect(complianceStatus(text)).toBe(compliance);
-    expect(commitBreaksRule(text)).toBe(broken);
+    expect(isCommitRuleBroken(text)).toBe(broken);
   });
 });
 

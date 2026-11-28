@@ -197,7 +197,7 @@ export interface ClosingRef {
  */
 export function findClosingRefs(text: string, options: { markdown?: boolean } = {}): ClosingRef[] {
   const scanned = options.markdown ? stripNonProse(text.slice(0, MAX_BODY_CHARS)) : text;
-  return [...scanned.matchAll(CLOSING_REF_RE)].map((m) => ({
+  return Array.from(scanned.matchAll(CLOSING_REF_RE), (m) => ({
     repo: m[1] ?? m[3] ?? null,
     number: Number(m[2] ?? m[4]),
   }));
