@@ -130,6 +130,7 @@ describe('normalizePRNode', () => {
         submitted_at: '2026-02-05T00:00:00Z',
         state: 'CHANGES_REQUESTED',
         id: 900,
+        commit_id: null,
       },
     ]);
     expect(d.commitInfo).toEqual({ date: '2026-02-06T00:00:00Z', author: 'contributor' });
@@ -1081,9 +1082,8 @@ describe('HEAD commit rewritten by its author after a change request', () => {
     databaseId: 6,
     state: 'CHANGES_REQUESTED',
     submittedAt: '2026-02-03T00:00:00Z',
-    commit: { oid: 'reviewed1' },
+    commit: { oid: 'reviewed1', parents: { nodes: [{ oid: 'oldbase' }] } },
   };
-  const changeRequests = { nodes: [{ commit: { oid: 'reviewed1', parents: { nodes: [{ oid: 'oldbase' }] } } }] };
   const rewritten = (parent: string, author: unknown = { email: 'me@example.com', user: { login: 'contributor' } }) => ({
     commit: {
       author,
@@ -1097,15 +1097,14 @@ describe('HEAD commit rewritten by its author after a change request', () => {
     },
   });
   const assemble = (head: ReturnType<typeof rewritten>) =>
-    assembleFromGraphQL(
-      makeNode({ commits: { nodes: [head] }, reviews: { nodes: [review], totalCount: 1 }, changeRequests }),
-    );
+    assembleFromGraphQL(makeNode({ commits: { nodes: [head] }, reviews: { nodes: [review], totalCount: 1 } }));
 
   it('keeps needs_changes after a rebase onto a new base with no other change', async () => {
     const pr = await assemble(rewritten('newbase'));
 
     expect(pr.latestCommitDate).toBe('2026-02-02T00:00:00Z');
-    expect(pr.actionReason).toBe('needs_changes');
+    expect(pr.status).toBe('needs_addressing');
+    expect(pr.actionReasons).toContain('needs_changes');
   });
 
   it('counts an amend on the reviewed parent as addressing the change request', async () => {

@@ -43,10 +43,6 @@ export const BATCH_SIZE = 10;
  *  the REST path (which paginates fully) rather than silently truncated. */
 export const COMMENTS_CAP = 100;
 export const REVIEWS_CAP = 50;
-/** Newest CHANGES_REQUESTED reviews whose commit's parent is requested, to
- *  tell an amend in place from a rebase since the change request (#2042).
- *  Requested separately so the parent lookup is not paid for every review. */
-export const CHANGE_REQUESTS_CAP = 5;
 export const REVIEW_THREADS_CAP = 50;
 export const THREAD_COMMENTS_CAP = 20;
 /** Status-check rollup contexts requested per commit. A PR with more distinct CI
@@ -245,11 +241,8 @@ interface GraphQLPullRequestNode {
       submittedAt: string | null;
       author: GraphQLActor | null;
       authorAssociation?: string | null;
-      commit?: { oid: string } | null;
+      commit?: { oid: string; parents: { nodes: Array<{ oid: string }> } } | null;
     }>;
-  };
-  changeRequests?: {
-    nodes: Array<{ commit: { oid: string; parents: { nodes: Array<{ oid: string }> } } | null }>;
   };
   reviewThreads: {
     totalCount: number;
@@ -293,10 +286,7 @@ const PR_FIELDS = `
   }
   reviews(last: ${REVIEWS_CAP}) {
     totalCount
-    nodes { databaseId state body submittedAt author { login __typename } authorAssociation commit { oid } }
-  }
-  changeRequests: reviews(last: ${CHANGE_REQUESTS_CAP}, states: [CHANGES_REQUESTED]) {
-    nodes { commit { oid parents(first: 1) { nodes { oid } } } }
+    nodes { databaseId state body submittedAt author { login __typename } authorAssociation commit { oid parents(first: 1) { nodes { oid } } } }
   }
   reviewThreads(last: ${REVIEW_THREADS_CAP}) {
     totalCount
@@ -476,7 +466,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   // The commit the latest change request was made against and its parent: a
   // head rebased off that parent has not addressed the review (#2042).
   const reviewedSha = getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
-  const reviewedCommit = node.changeRequests?.nodes.find((r) => r.commit?.oid === reviewedSha)?.commit;
+  const reviewedCommit = node.reviews.nodes.find((r) => r.commit?.oid === reviewedSha)?.commit;
   const commitInfo: CommitInfo = {
     date: commitDateOf({
       authorDate: commit?.authoredDate,

@@ -3683,7 +3683,8 @@ describe('fetchPRDetails head commit rewritten after a change request', () => {
 
     expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledWith(expect.objectContaining({ ref: 'reviewed1' }));
     expect(pr.latestCommitDate).toBe('2026-02-01T00:00:00Z');
-    expect(pr.actionReason).toBe('needs_changes');
+    expect(pr.status).toBe('needs_addressing');
+    expect(pr.actionReasons).toContain('needs_changes');
   });
 
   it('counts an amend on the reviewed parent as addressing the change request', async () => {
