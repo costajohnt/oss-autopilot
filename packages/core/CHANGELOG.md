@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.44.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.43.0...core-v3.44.0) (2026-11-28)
+
+
+### Features
+
+* surface stale worktrees in startup and the /oss summary ([#2067](https://github.com/costajohnt/oss-autopilot/issues/2067)) ([ea3ce7c](https://github.com/costajohnt/oss-autopilot/commit/ea3ce7ca9c0f80f065f635108456732b9f2d530b))
+
+
+### Bug Fixes
+
+* bump the production-dependencies group across 1 directory with 3 updates ([#2017](https://github.com/costajohnt/oss-autopilot/issues/2017)) ([16379d6](https://github.com/costajohnt/oss-autopilot/commit/16379d67a7b77cf0b8c4d8fee12f88970221d7d9))
+* classify config keys by trust tier and refuse paths and the ban list over MCP ([#2059](https://github.com/costajohnt/oss-autopilot/issues/2059)) ([c4c1ef8](https://github.com/costajohnt/oss-autopilot/commit/c4c1ef8f2ec094dc6257a3742afbaedc532540e4))
+* cleanup refuses worktrees whose config runs filters, check-integration validates --base ([#2068](https://github.com/costajohnt/oss-autopilot/issues/2068)) ([a05c47c](https://github.com/costajohnt/oss-autopilot/commit/a05c47ca9ca480fc35299df66c08a369c69b5d4f))
+* keep a PR shelved when the review behind its reason predates the shelve ([#2066](https://github.com/costajohnt/oss-autopilot/issues/2066)) ([6314b36](https://github.com/costajohnt/oss-autopilot/commit/6314b368c1f2516660d1c25428ac248d49194640)), closes [#2043](https://github.com/costajohnt/oss-autopilot/issues/2043)
+* keep CONTRIBUTING text out of vet output and read threads through fenced commands ([#2069](https://github.com/costajohnt/oss-autopilot/issues/2069)) ([46583e2](https://github.com/costajohnt/oss-autopilot/commit/46583e2dcd510eda7c86379d9d6b2bf1c63fa554))
+* keep needs_changes when the contributor only rebased after a change request ([#2063](https://github.com/costajohnt/oss-autopilot/issues/2063)) ([26fe01e](https://github.com/costajohnt/oss-autopilot/commit/26fe01e2c141922a038fd1458a6ac3d4967b8336)), closes [#2042](https://github.com/costajohnt/oss-autopilot/issues/2042)
+* label an approved PR pending_merge when the approval follows a fix commit ([#2064](https://github.com/costajohnt/oss-autopilot/issues/2064)) ([c795e1e](https://github.com/costajohnt/oss-autopilot/commit/c795e1e831477aae8897b628610657a6a06ecc23)), closes [#2044](https://github.com/costajohnt/oss-autopilot/issues/2044)
+* launch /oss-dashboard through the CLI and replace only older servers ([#2060](https://github.com/costajohnt/oss-autopilot/issues/2060)) ([781179c](https://github.com/costajohnt/oss-autopilot/commit/781179ccb7fc3709d2d139327abdee43ee0cbeb8))
+* let pr-preflight clear the disclosure and maintainer-label asks ([#2061](https://github.com/costajohnt/oss-autopilot/issues/2061)) ([6338b9f](https://github.com/costajohnt/oss-autopilot/commit/6338b9f67a0e0bac8dc8ef29a49bc1b82fc56ae8))
+* only re-evaluate a repo when its outcome counts change across the daily run ([#2062](https://github.com/costajohnt/oss-autopilot/issues/2062)) ([40c487e](https://github.com/costajohnt/oss-autopilot/commit/40c487ed13f37ea9bb945ac7911c85f2c17fcf16))
+* report guideline proposals from the CLI and stop re-extraction on a second machine ([#2065](https://github.com/costajohnt/oss-autopilot/issues/2065)) ([1bdb844](https://github.com/costajohnt/oss-autopilot/commit/1bdb8446b48c8708945833200405debc1fc33d10))
+* run the daily ledger phases in the dashboard refresh, evictions included ([#2058](https://github.com/costajohnt/oss-autopilot/issues/2058)) ([ca46d3a](https://github.com/costajohnt/oss-autopilot/commit/ca46d3a480932ea45eb5bd337557f88f9617b7ea))
+* share one closing-keyword grammar and one rejected-copy writer ([#2077](https://github.com/costajohnt/oss-autopilot/issues/2077)) ([88c8ce7](https://github.com/costajohnt/oss-autopilot/commit/88c8ce79251cc6d4a760433d3a0122f7d3dd04f6))
+
 ## [3.43.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.42.5...core-v3.43.0) (2026-11-20)
 
 
