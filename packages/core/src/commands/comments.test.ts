@@ -220,7 +220,9 @@ describe('runComments', () => {
 
     // Without includeOwn, a bodiless review from someone else is still left out.
     mockListReviews.mockResolvedValueOnce({
-      data: [{ user: { login: 'other', type: 'User' }, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' }],
+      data: [
+        { user: { login: 'other', type: 'User' }, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' },
+      ],
     });
     expect((await runComments({ prUrl: TEST_PR_URL })).reviews).toEqual([]);
   });
