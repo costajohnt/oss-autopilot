@@ -130,7 +130,9 @@ describe('executeDailyCheck() — a closed ledger short of the all-time count', 
     h.sm = new StateManager(true);
     h.sm.updateConfig({ githubUsername: 'testuser' });
     // Seeded by the recent list ahead of its history: the watermark is this close.
-    h.sm.addClosedPRs([{ url: 'https://github.com/org/repo/pull/9', title: 'Recent', closedAt: '2026-11-10T00:00:00Z' }]);
+    h.sm.addClosedPRs([
+      { url: 'https://github.com/org/repo/pull/9', title: 'Recent', closedAt: '2026-11-10T00:00:00Z' },
+    ]);
     h.search.mockReset();
     h.search.mockImplementation(answerSearch);
   });
