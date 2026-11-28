@@ -115,6 +115,53 @@ case_packages_dashboard_missing() {
     [ "$rc" = 3 ] && pass || fail "expected exit 3 when packages/dashboard absent, got $rc"
 }
 
+# The marketplace tree (scripts/build-directory-branch.sh): built SPA under
+# packages/core/dist/dashboard, no packages/dashboard, no core package.json.
+make_prebuilt_tree() {
+    prebuilt=$(mktemp -d)
+    mkdir -p "${prebuilt}/packages/core/dist/dashboard"
+    echo "<html></html>" >"${prebuilt}/packages/core/dist/dashboard/index.html"
+    echo "$prebuilt"
+}
+
+case_prebuilt_layout_returns_0() {
+    prebuilt=$(make_prebuilt_tree)
+    # No pnpm on PATH: the prebuilt branch must never try to build.
+    clean_bin=$(clean_path_without_pnpm)
+    out=$(PATH="${clean_bin}" "$SUBJECT" "$prebuilt" 2>&1)
+    rc=$?
+    rm -rf "$prebuilt" "$(dirname "$clean_bin")"
+    if [ "$rc" != 0 ]; then
+        fail "expected exit 0 for the prebuilt layout, got $rc ($out)"
+        return
+    fi
+    [ -z "$out" ] && pass || fail "expected no output for the prebuilt layout, got '$out'"
+}
+
+case_prebuilt_layout_missing_index_returns_2() {
+    prebuilt=$(make_prebuilt_tree)
+    rm "${prebuilt}/packages/core/dist/dashboard/index.html"
+    out=$("$SUBJECT" "$prebuilt" 2>/dev/null)
+    rc=$?
+    rm -rf "$prebuilt"
+    if [ "$rc" != 2 ]; then
+        fail "expected exit 2 for a prebuilt layout with no index.html, got $rc"
+        return
+    fi
+    echo "$out" | grep -q "BUILD_FAILED.*Reinstall" && pass || fail "expected a reinstall hint on stdout, got '$out'"
+}
+
+case_core_source_without_dashboard_returns_3() {
+    # A source-shaped core (package.json present) is not the prebuilt layout,
+    # even when dist/dashboard happens to exist.
+    prebuilt=$(make_prebuilt_tree)
+    echo "{}" >"${prebuilt}/packages/core/package.json"
+    "$SUBJECT" "$prebuilt" >/dev/null 2>&1
+    rc=$?
+    rm -rf "$prebuilt"
+    [ "$rc" = 3 ] && pass || fail "expected exit 3 for core source with no packages/dashboard, got $rc"
+}
+
 case_bundle_current_returns_0() {
     "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
     rc=$?
@@ -213,6 +260,9 @@ case_optional_configs_can_be_missing() {
 echo "Running build-dashboard-if-stale.sh tests..."
 run case_missing_plugin_root                       case_missing_plugin_root
 run case_packages_dashboard_missing                case_packages_dashboard_missing
+run case_prebuilt_layout_returns_0                 case_prebuilt_layout_returns_0
+run case_prebuilt_layout_missing_index_returns_2   case_prebuilt_layout_missing_index_returns_2
+run case_core_source_without_dashboard_returns_3   case_core_source_without_dashboard_returns_3
 run case_bundle_current_returns_0                  case_bundle_current_returns_0
 run case_src_newer_triggers_rebuild                case_src_newer_triggers_rebuild
 run case_missing_index_triggers_rebuild            case_missing_index_triggers_rebuild
