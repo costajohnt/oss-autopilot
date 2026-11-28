@@ -38,7 +38,7 @@ import type { RepoCapStatus } from '../core/repo-cap.js';
 import { runRepoCap } from './repo-cap.js';
 import { effectivePolicy } from '../core/repo-policy.js';
 import { isFirstInRepo } from '../core/pick-snapshot.js';
-import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+import { BRANCH_NAME_PATTERN, ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 export interface PrPreflightOptions {
   /** Local clone or worktree; defaults to the current directory. */
@@ -74,7 +74,6 @@ type DriftFacts = Pick<
 
 type FetchMode = 'fetch' | 'no-fetch';
 
-const BRANCH_NAME = /^[\w.][\w./-]*$/;
 const ISSUE_NUMBER = /^#?(\d+)$/;
 const MAX_OVERLAP_LINES = 20;
 // ponytail: a branch with more commits than this has only its newest 200 checked against the commit rules.
@@ -340,7 +339,7 @@ function policyFacts(
 
 /** Run every preflight check for the branch checked out in `options.dir`. */
 export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPreflightOutput> {
-  if (options.base !== undefined && !BRANCH_NAME.test(options.base)) {
+  if (options.base !== undefined && !BRANCH_NAME_PATTERN.test(options.base)) {
     throw new ValidationError(`Invalid base branch name: ${options.base}`);
   }
   const dir = repoRoot(options.dir ?? process.cwd());

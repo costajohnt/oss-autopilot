@@ -9,7 +9,9 @@
  *
  * 1. it is a direct child of `worktrees/`, a real directory (not a symlink)
  *    with a name the preparer creates, and it resolves inside the data dir;
- * 2. it is the root of a linked Git worktree (`.git` is a file);
+ * 2. it is the root of a linked Git worktree (`.git` is a file), its own
+ *    config names no clean or process filter and it holds no submodule, so
+ *    the checks below run no program the worktree chose (#2047);
  * 3. `git status --porcelain --untracked-files=all` is empty: no modified and
  *    no untracked files, whatever `status.showUntrackedFiles` says;
  * 4. HEAD is contained in a remote-tracking ref, so no commit lives only here;
@@ -122,7 +124,46 @@ function refusal(dataDir: string, dir: string): string | null {
   if (!fs.existsSync(dotGit) || !fs.lstatSync(dotGit).isFile()) return 'not a linked git worktree';
   const toplevel = gitOut(dir, ['rev-parse', '--show-toplevel']);
   if (fs.realpathSync(toplevel) !== fs.realpathSync(dir)) return 'not the root of its git worktree';
-  return null;
+  return programsInRepoConfig(dir) ?? submodules(dir);
+}
+
+/**
+ * A clean or process filter defined in the repository's own config (#2047).
+ * `status`, and the one `worktree remove` runs, re-hash a file whose stat data
+ * changed through its filter, so a tick that wrote `filter.<x>.clean` and a
+ * matching `info/attributes` line would run its program here while the
+ * worktree still reports clean. Only the local and worktree scopes count
+ * (includes they pull in report as local): a driver from the user's own global
+ * or system config, such as Git LFS, is theirs. No other key in those scopes
+ * runs a program in the commands this file runs: no hook fires, no diff or
+ * textconv is produced, nothing touches the network or signs, and the output
+ * is never a terminal, so no pager.
+ */
+function programsInRepoConfig(dir: string): string | null {
+  let entries: string[];
+  try {
+    const args = ['config', '--show-scope', '--name-only', '-z', '--get-regexp', String.raw`^filter\..+\.(clean|process)$`];
+    entries = git(dir, [...SAFE_GIT, ...args]).split('\0');
+  } catch (err) {
+    // Exit 1: no key matched.
+    if ((err as { status?: unknown })?.status === 1) return null;
+    throw err;
+  }
+  const keys: string[] = [];
+  for (let i = 0; i + 1 < entries.length; i += 2) {
+    if (entries[i] === 'local' || entries[i] === 'worktree') keys.push(entries[i + 1]);
+  }
+  return keys.length > 0 ? `repository config names a filter program git would run: ${keys.join(', ')}` : null;
+}
+
+/**
+ * `status` runs inside each submodule, under that submodule's own config,
+ * which the check above does not read. `worktree remove` refuses a worktree
+ * with submodules anyway, so refusing first loses nothing.
+ */
+function submodules(dir: string): string | null {
+  const hasGitlink = /^160000 /m.test(gitOut(dir, ['ls-files', '--stage']));
+  return hasGitlink ? 'contains submodules (git would run status under their config)' : null;
 }
 
 /** Whole days since the directory itself or the worktree's index last changed. */

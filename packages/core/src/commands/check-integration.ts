@@ -7,7 +7,8 @@ import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { CheckIntegrationOutput, NewFileInfo } from '../formatters/json.js';
 import { debug } from '../core/index.js';
-import { errorMessage } from '../core/errors.js';
+import { ValidationError, errorMessage } from '../core/errors.js';
+import { BRANCH_NAME_PATTERN } from './validation.js';
 
 interface CheckIntegrationOptions {
   base: string;
@@ -82,6 +83,7 @@ function suggestEntryPoints(newFile: string, existingFiles: string[]): string[] 
 // eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise-returning contract callers rely on; the body has no await yet
 export async function runCheckIntegration(options: CheckIntegrationOptions): Promise<CheckIntegrationOutput> {
   const base = options.base;
+  if (!BRANCH_NAME_PATTERN.test(base)) throw new ValidationError(`Invalid base branch name: ${base}`);
 
   // Get new files added in this branch vs base
   let newFiles: string[];

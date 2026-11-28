@@ -21,6 +21,12 @@ export const ISSUE_OR_PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(i
  */
 export const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
+/**
+ * A branch name to hand git as an argument: it cannot start with `-`, so git
+ * never reads it as an option (`--output=<file>`, #2047).
+ */
+export const BRANCH_NAME_PATTERN = /^[\w.][\w./-]*$/;
+
 /** Maximum allowed URL length */
 const MAX_URL_LENGTH = 2048;
 /** Maximum allowed PR/issue number */

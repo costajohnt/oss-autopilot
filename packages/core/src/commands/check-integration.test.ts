@@ -87,4 +87,16 @@ describe('check-integration', () => {
 
     await expect(runCheckIntegration({ base: 'main' })).rejects.toThrow('Failed to run git diff');
   });
+
+  it.each(['--output=/tmp/x', '-p', ''])('rejects base %j before running git (#2047)', async (base) => {
+    await expect(runCheckIntegration({ base })).rejects.toThrow(`Invalid base branch name: ${base}`);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('passes a branch name with slashes and dots to git diff', async () => {
+    mockExecFileSync.mockReturnValueOnce('');
+
+    await runCheckIntegration({ base: 'release/v1.2' });
+    expect(mockExecFileSync.mock.calls[0][1]).toEqual(['diff', '--name-only', '--diff-filter=A', 'release/v1.2...HEAD']);
+  });
 });
