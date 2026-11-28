@@ -63,7 +63,7 @@ vi.mock('../core/local-config.js', () => ({
 
 // Stale-data counts (#2049): the real function lists the data directory.
 const { countStaleDataMock } = vi.hoisted(() => ({
-  countStaleDataMock: vi.fn((_dataDir: string) => ({ worktrees: 0, rejected: 0 })),
+  countStaleDataMock: vi.fn((_dataDir: string) => ({ worktrees: 0, oldWorktrees: 0, rejected: 0 })),
 }));
 vi.mock('../core/stale-data.js', async () => ({
   ...(await vi.importActual<typeof import('../core/stale-data.js')>('../core/stale-data.js')),
@@ -543,9 +543,9 @@ describe('runStartup behavior', () => {
 
   it('reports stale-data counts for the data directory (#2049)', async () => {
     executeDailyCheck.mockResolvedValue(makeDailyOutput(0));
-    countStaleDataMock.mockReturnValueOnce({ worktrees: 3, rejected: 2 });
+    countStaleDataMock.mockReturnValueOnce({ worktrees: 3, oldWorktrees: 1, rejected: 2 });
     const result = await runStartup();
-    expect(result.staleData).toEqual({ worktrees: 3, rejected: 2 });
+    expect(result.staleData).toEqual({ worktrees: 3, oldWorktrees: 1, rejected: 2 });
     expect(countStaleDataMock).toHaveBeenCalledWith(nodePath.join(os.homedir(), '.oss-autopilot'));
   });
 
