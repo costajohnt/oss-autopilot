@@ -265,6 +265,7 @@ describe('isDashboardServeCommand (#1882)', () => {
 
   it.each([
     ['node -e with the words as arguments', 'node -e setInterval(()=>{},1000) dashboard serve'],
+    ['node -e whose code looks like an entry', 'node -e /p/cli.bundle.cjs dashboard serve'],
     ['a shell wrapper', 'bash -c sleep 5; echo grep -rn dashboard serve'],
     ['grep for the words', 'grep -rn dashboard serve /p/cli.bundle.cjs'],
     ['a non-node runner of the bundle', 'bun /p/dist/cli.bundle.cjs dashboard serve'],

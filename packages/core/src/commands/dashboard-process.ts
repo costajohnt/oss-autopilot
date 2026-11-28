@@ -193,6 +193,7 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
 const PS_PATHS = ['/bin/ps', '/usr/bin/ps'];
 
 /** The CLI entries a server is started from: the bundle, a source entry, or the npm bin. */
+const EVAL_FLAGS = new Set(['-e', '--eval', '-p', '--print']);
 const CLI_ENTRY = /^(?:cli\.(?:bundle\.cjs|ts|js)|oss-autopilot)$/;
 
 /**
@@ -206,7 +207,11 @@ export function isDashboardServeCommand(command: string): boolean {
   const tokens = command.trim().split(/\s+/);
   if (!/^node(?:js)?$/.test(path.basename(tokens[0]))) return false;
   let i = 1;
-  while (tokens[i]?.startsWith('-')) i++;
+  while (tokens[i]?.startsWith('-')) {
+    // With -e / -p the next token is code, not the script.
+    if (EVAL_FLAGS.has(tokens[i].split('=', 1)[0])) return false;
+    i++;
+  }
   const entry = tokens[i];
   return (
     entry !== undefined &&
