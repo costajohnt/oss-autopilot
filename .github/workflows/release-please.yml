@@ -333,7 +333,14 @@ jobs:
         with:
           node-version: 22
 
+      # simple-git-hooks' postinstall would write this repo's pre-commit,
+      # pre-push and commit-msg hooks into .git/hooks, and the directory
+      # worktree below shares them but has no package.json or scripts, so the
+      # commit would fail. The push step also disables hooks, in case a later
+      # install step brings them back.
       - name: Install dependencies
+        env:
+          SKIP_INSTALL_SIMPLE_GIT_HOOKS: '1'
         run: pnpm install --frozen-lockfile
 
       - name: Read the released core version
@@ -380,5 +387,5 @@ jobs:
             echo "directory branch already matches ${TAG}"
             exit 0
           fi
-          git -C "$WT" commit -q -m "chore: plugin directory build for ${TAG}"
-          git -C "$WT" push origin HEAD:refs/heads/directory
+          git -c core.hooksPath=/dev/null -C "$WT" commit -q -m "chore: plugin directory build for ${TAG}"
+          git -c core.hooksPath=/dev/null -C "$WT" push origin HEAD:refs/heads/directory
