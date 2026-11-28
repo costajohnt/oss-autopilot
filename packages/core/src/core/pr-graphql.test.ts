@@ -1072,6 +1072,57 @@ describe('amended HEAD commit (author date before the review, committer date aft
   });
 });
 
+// #2042: amend and rebase both move only the committer date. The reviewed
+// commit's parent tells them apart: an amend keeps it, a rebase replaces it.
+describe('HEAD commit rewritten by its author after a change request', () => {
+  const review = {
+    author: { login: 'maintainer' },
+    body: '',
+    databaseId: 6,
+    state: 'CHANGES_REQUESTED',
+    submittedAt: '2026-02-03T00:00:00Z',
+    commit: { oid: 'reviewed1' },
+  };
+  const changeRequests = { nodes: [{ commit: { oid: 'reviewed1', parents: { nodes: [{ oid: 'oldbase' }] } } }] };
+  const rewritten = (parent: string, author: unknown = { email: 'me@example.com', user: { login: 'contributor' } }) => ({
+    commit: {
+      author,
+      authoredDate: '2026-02-02T00:00:00Z',
+      committedDate: '2026-02-04T00:00:00Z',
+      committer: { email: 'me@example.com', user: (author as { user: unknown }).user },
+      oid: 'head2',
+      parents: { nodes: [{ oid: parent }] },
+      status: null,
+      statusCheckRollup: null,
+    },
+  });
+  const assemble = (head: ReturnType<typeof rewritten>) =>
+    assembleFromGraphQL(
+      makeNode({ commits: { nodes: [head] }, reviews: { nodes: [review], totalCount: 1 }, changeRequests }),
+    );
+
+  it('keeps needs_changes after a rebase onto a new base with no other change', async () => {
+    const pr = await assemble(rewritten('newbase'));
+
+    expect(pr.latestCommitDate).toBe('2026-02-02T00:00:00Z');
+    expect(pr.actionReason).toBe('needs_changes');
+  });
+
+  it('counts an amend on the reviewed parent as addressing the change request', async () => {
+    const pr = await assemble(rewritten('oldbase'));
+
+    expect(pr.latestCommitDate).toBe('2026-02-04T00:00:00Z');
+    expect(pr.waitReason).toBe('changes_addressed');
+  });
+
+  it('counts an amend by an author whose email is linked to no GitHub account', async () => {
+    const pr = await assemble(rewritten('oldbase', { email: 'me@example.com', user: null }));
+
+    expect(pr.latestCommitDate).toBe('2026-02-04T00:00:00Z');
+    expect(pr.waitReason).toBe('changes_addressed');
+  });
+});
+
 // #1713 follow-up: override auto-clear keys on latestActivityAt, which falls
 // back to updatedAt when latestCommitDate is absent. A PR with no human
 // comments never needed the commit for status, so the GraphQL path used to

@@ -26,7 +26,7 @@
 import type { Octokit } from '@octokit/rest';
 import { CIStatusResult } from './types.js';
 import { computeCIStatus, type RawCheckRun, type RawCombinedStatus } from './ci-analysis.js';
-import type { ActivityEvent, ReviewComment } from './review-analysis.js';
+import { getLatestChangesRequestedReview, type ActivityEvent, type ReviewComment } from './review-analysis.js';
 import { commitDateOf } from './commit-date.js';
 import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
@@ -43,6 +43,10 @@ export const BATCH_SIZE = 10;
  *  the REST path (which paginates fully) rather than silently truncated. */
 export const COMMENTS_CAP = 100;
 export const REVIEWS_CAP = 50;
+/** Newest CHANGES_REQUESTED reviews whose commit's parent is requested, to
+ *  tell an amend in place from a rebase since the change request (#2042).
+ *  Requested separately so the parent lookup is not paid for every review. */
+export const CHANGE_REQUESTS_CAP = 5;
 export const REVIEW_THREADS_CAP = 50;
 export const THREAD_COMMENTS_CAP = 20;
 /** Status-check rollup contexts requested per commit. A PR with more distinct CI
@@ -140,7 +144,7 @@ function restUser(actor: GraphQLActor | null): { login: string; type?: string } 
   return actor ? { login: restLogin(actor), type: actor.__typename } : null;
 }
 
-type GraphQLGitActor = { user: { login: string } | null } | null;
+type GraphQLGitActor = { email?: string | null; user: { login: string } | null } | null;
 
 type GraphQLTimelineNode =
   | {
@@ -202,8 +206,9 @@ interface GraphQLCommitNode {
   oid: string;
   authoredDate: string | null;
   committedDate: string | null;
-  author: { user: GraphQLActor | null } | null;
+  author: { email?: string | null; user: GraphQLActor | null } | null;
   committer: GraphQLGitActor;
+  parents?: { nodes: Array<{ oid: string }> };
   status: {
     state: string;
     contexts: Array<{ context: string; state: string; description: string | null }>;
@@ -240,7 +245,11 @@ interface GraphQLPullRequestNode {
       submittedAt: string | null;
       author: GraphQLActor | null;
       authorAssociation?: string | null;
+      commit?: { oid: string } | null;
     }>;
+  };
+  changeRequests?: {
+    nodes: Array<{ commit: { oid: string; parents: { nodes: Array<{ oid: string }> } } | null }>;
   };
   reviewThreads: {
     totalCount: number;
@@ -284,7 +293,10 @@ const PR_FIELDS = `
   }
   reviews(last: ${REVIEWS_CAP}) {
     totalCount
-    nodes { databaseId state body submittedAt author { login __typename } authorAssociation }
+    nodes { databaseId state body submittedAt author { login __typename } authorAssociation commit { oid } }
+  }
+  changeRequests: reviews(last: ${CHANGE_REQUESTS_CAP}, states: [CHANGES_REQUESTED]) {
+    nodes { commit { oid parents(first: 1) { nodes { oid } } } }
   }
   reviewThreads(last: ${REVIEW_THREADS_CAP}) {
     totalCount
@@ -318,8 +330,9 @@ const PR_FIELDS = `
         oid
         authoredDate
         committedDate
-        author { user { login } }
-        committer { user { login } }
+        author { email user { login } }
+        committer { email user { login } }
+        parents(first: 1) { nodes { oid } }
         status { state contexts { context state description } }
         statusCheckRollup {
           contexts(first: ${CI_CONTEXTS_CAP}) {
@@ -444,6 +457,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
       submitted_at: r.submittedAt,
       state: r.state,
       id: r.databaseId ?? undefined,
+      commit_id: r.commit?.oid ?? null,
     }));
 
   const reviewComments: ReviewComment[] = node.reviewThreads.nodes.flatMap((thread) =>
@@ -459,12 +473,21 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   );
 
   const commit = node.commits.nodes[0]?.commit;
+  // The commit the latest change request was made against and its parent: a
+  // head rebased off that parent has not addressed the review (#2042).
+  const reviewedSha = getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
+  const reviewedCommit = node.changeRequests?.nodes.find((r) => r.commit?.oid === reviewedSha)?.commit;
   const commitInfo: CommitInfo = {
     date: commitDateOf({
       authorDate: commit?.authoredDate,
       committerDate: commit?.committedDate,
       authorLogin: commit?.author?.user?.login,
       committerLogin: commit?.committer?.user?.login,
+      authorEmail: commit?.author?.email,
+      committerEmail: commit?.committer?.email,
+      parentSha: commit?.parents?.nodes[0]?.oid,
+      reviewedSha,
+      reviewedParentSha: reviewedCommit?.parents.nodes[0]?.oid,
     }),
     author: commit?.author?.user?.login ?? undefined,
   };

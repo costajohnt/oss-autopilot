@@ -32,7 +32,7 @@ import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
 import { getCIStatus } from './ci-analysis.js';
-import { type ActivityEvent, type ReviewComment } from './review-analysis.js';
+import { type ActivityEvent, type ReviewComment, getLatestChangesRequestedReview } from './review-analysis.js';
 import type { MergedPRActivity, MergedPRActivityList } from './merged-pr-notes.js';
 import type { ReviewedPRActivity, ReviewedPRActivityList } from './reviewed-prs.js';
 import {
@@ -42,7 +42,7 @@ import {
   fetchReviewedOpenPRs as fetchReviewedOpenPRsImpl,
   fetchReviewedPRActivity as fetchReviewedPRActivityImpl,
 } from './reviewed-prs-fetch.js';
-import { commitDateOf } from './commit-date.js';
+import { commitDateOf, isOwnRewrite, type CommitDates } from './commit-date.js';
 import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
 import {
   batchFetchPRDetails,
@@ -520,9 +520,12 @@ export class PRMonitor {
     // pipeline decides via `needCommitDate` and invokes this thunk lazily.
     // A PR with a status override is the exception: override auto-clear keys
     // on the commit date (#1713), so fetch it up front for those PRs only.
+    // The commit the latest change request was made against: a head rebased
+    // off its parent since then has not addressed it by being rebased (#2042).
+    const reviewedSha = getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
     const commitInfo = findRefKey(config.statusOverrides, prUrl)
-      ? await this.fetchCommitInfo(owner, repo, ghPR.head.sha)
-      : () => this.fetchCommitInfo(owner, repo, ghPR.head.sha);
+      ? await this.fetchCommitInfo(owner, repo, ghPR.head.sha, reviewedSha)
+      : () => this.fetchCommitInfo(owner, repo, ghPR.head.sha, reviewedSha);
     return assembleFetchedPR(
       {
         prUrl,
@@ -590,16 +593,31 @@ export class PRMonitor {
    * status, e.g. needs_changes when changes were addressed) (#469); other
    * failures degrade to `undefined` so the PR is still returned.
    */
-  private async fetchCommitInfo(owner: string, repo: string, sha: string): Promise<CommitInfo | undefined> {
+  private async fetchCommitInfo(
+    owner: string,
+    repo: string,
+    sha: string,
+    reviewedSha?: string,
+  ): Promise<CommitInfo | undefined> {
     try {
       const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
+      const dates: CommitDates = {
+        authorDate: res.data.commit.author?.date,
+        committerDate: res.data.commit.committer?.date,
+        authorLogin: res.data.author?.login,
+        committerLogin: res.data.committer?.login,
+        authorEmail: res.data.commit.author?.email,
+        committerEmail: res.data.commit.committer?.email,
+        parentSha: res.data.parents?.[0]?.sha,
+        reviewedSha,
+      };
+      // The reviewed commit's parent only matters for the author's own rewrite
+      // of a commit other than the reviewed one, so fetch it only then.
+      if (reviewedSha && reviewedSha !== sha && isOwnRewrite(dates)) {
+        dates.reviewedParentSha = await this.fetchFirstParentSha(owner, repo, reviewedSha);
+      }
       return {
-        date: commitDateOf({
-          authorDate: res.data.commit.author?.date,
-          committerDate: res.data.commit.committer?.date,
-          authorLogin: res.data.author?.login,
-          committerLogin: res.data.committer?.login,
-        }),
+        date: commitDateOf(dates),
         // GitHub user login of the commit author (may differ from git author)
         author: res.data.author?.login,
       };
@@ -614,6 +632,22 @@ export class PRMonitor {
         return undefined;
       }
       warn('pr-monitor', `Failed to fetch commit date for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * First parent of a commit, or undefined when it cannot be fetched (a
+   * force-pushed-away commit GitHub no longer serves): the date rule then
+   * treats the rebase as unknown (#2042). Rate-limit and auth errors propagate.
+   */
+  private async fetchFirstParentSha(owner: string, repo: string, sha: string): Promise<string | undefined> {
+    try {
+      const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
+      return res.data.parents?.[0]?.sha;
+    } catch (err) {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch reviewed commit ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
       return undefined;
     }
   }

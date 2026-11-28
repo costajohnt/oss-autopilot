@@ -9,18 +9,54 @@ export interface CommitDates {
   committerDate?: string | null;
   authorLogin?: string | null;
   committerLogin?: string | null;
+  /** Git author and committer emails: who wrote it when the author email is linked to no GitHub account. */
+  authorEmail?: string | null;
+  committerEmail?: string | null;
+  /** First parent of this commit. */
+  parentSha?: string | null;
+  /** The commit the latest change request was made against, and its first parent (#2042). */
+  reviewedSha?: string | null;
+  reviewedParentSha?: string | null;
 }
 
 /**
- * The committer date when the author also committed it (their own amend or
- * rebase moved it while Git kept the old author date), the author date when
- * someone else rewrote it (a maintainer's rebase does not make the author's
- * old work new, and is not the author addressing feedback). Either falls back
- * to the other when missing.
+ * Whether the author also committed it: their own amend or rebase. Matched on
+ * GitHub login, or on the git email when the author email is linked to no
+ * GitHub account (no author login), so an unlinked author's amend still counts.
+ */
+export function isOwnRewrite(c: CommitDates): boolean {
+  const login = c.authorLogin?.toLowerCase();
+  if (login) return c.committerLogin?.toLowerCase() === login;
+  const email = c.authorEmail?.toLowerCase();
+  return !!email && c.committerEmail?.toLowerCase() === email;
+}
+
+/**
+ * Whether the commit sits on a different parent than the reviewed commit did
+ * (and is not a new commit on top of it): the branch was rebased since the
+ * review (#2042). False when any of the three SHAs is unknown.
+ */
+export function isRebasedSinceReview(c: CommitDates): boolean {
+  const { parentSha, reviewedSha, reviewedParentSha } = c;
+  if (!parentSha || !reviewedSha || !reviewedParentSha) return false;
+  return parentSha !== reviewedParentSha && parentSha !== reviewedSha;
+}
+
+/**
+ * The committer date when the author also committed it (their own amend moved
+ * it while Git kept the old author date), the author date when someone else
+ * rewrote it (a maintainer's rebase does not make the author's old work new,
+ * and is not the author addressing feedback). Either falls back to the other
+ * when missing.
+ *
+ * The author's own rewrite also keeps the author date when it moved the
+ * commit onto a new parent since the latest change request: a rebase onto
+ * the base branch moves the committer date without touching the review's
+ * points, so it must not read as addressing them (#2042). An amend in place
+ * keeps the reviewed commit's parent and still counts.
  */
 export function commitDateOf(c: CommitDates): string | undefined {
-  const login = c.authorLogin?.toLowerCase();
-  const isOwnRewrite = login !== undefined && c.committerLogin?.toLowerCase() === login;
-  const date = isOwnRewrite ? (c.committerDate ?? c.authorDate) : (c.authorDate ?? c.committerDate);
+  const useCommitterDate = isOwnRewrite(c) && !isRebasedSinceReview(c);
+  const date = useCommitterDate ? (c.committerDate ?? c.authorDate) : (c.authorDate ?? c.committerDate);
   return date ?? undefined;
 }

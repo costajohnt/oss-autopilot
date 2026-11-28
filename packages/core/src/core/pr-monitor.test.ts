@@ -3615,6 +3615,92 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
   });
 });
 
+// #2042: the author's own rewrite counts as addressing a change request only
+// when it kept the reviewed commit's parent (an amend), not after a rebase.
+describe('fetchPRDetails head commit rewritten after a change request', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+  const review = {
+    id: 9,
+    user: { login: 'maintainer', type: 'User' },
+    author_association: 'MEMBER',
+    body: '',
+    state: 'CHANGES_REQUESTED',
+    submitted_at: '2026-02-02T00:00:00Z',
+    commit_id: 'reviewed1',
+  };
+  // Author date before the review, committer date after it: amend and rebase look the same by date.
+  const rewrittenHead = (parentSha: string, logins = true) => ({
+    commit: {
+      author: { date: '2026-02-01T00:00:00Z', email: 'me@example.com' },
+      committer: { date: '2026-02-03T00:00:00Z', email: 'me@example.com' },
+    },
+    author: logins ? { login: 'testuser' } : null,
+    committer: logins ? { login: 'testuser' } : null,
+    parents: [{ sha: parentSha }],
+  });
+
+  const makeMocks = (head: ReturnType<typeof rewrittenHead>) => ({
+    search: {
+      issuesAndPullRequests: vi.fn().mockResolvedValue({
+        data: { total_count: 1, items: [{ html_url: prUrl, pull_request: { html_url: prUrl } }] },
+      }),
+    },
+    pulls: {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          id: 1,
+          title: 'Test PR',
+          created_at: '2026-02-01T00:00:00Z',
+          updated_at: '2026-02-07T00:00:00Z',
+          head: { sha: 'abc123' },
+          mergeable: true,
+          mergeable_state: 'clean',
+          body: '',
+        },
+      }),
+      listReviews: vi.fn().mockResolvedValue({ data: [review] }),
+      listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
+    },
+    issues: { listComments: vi.fn().mockResolvedValue({ data: [] }) },
+    repos: {
+      getCombinedStatusForRef: vi.fn().mockResolvedValue({ data: { state: 'success', statuses: [] } }),
+      getCommit: vi.fn(({ ref }: { ref: string }) =>
+        Promise.resolve({ data: ref === 'reviewed1' ? { parents: [{ sha: 'oldbase' }] } : head }),
+      ),
+    },
+    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
+  });
+
+  const fetchOne = async (head: ReturnType<typeof rewrittenHead>) => {
+    vi.mocked(getStateManager).mockReturnValue(makeStateManagerMock({ config: { excludeRepos: [], excludeOrgs: [] } }));
+    mockOctokitInstance = makeMocks(head);
+    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    return prs[0];
+  };
+
+  it('keeps needs_changes after a rebase onto a new base with no other change', async () => {
+    const pr = await fetchOne(rewrittenHead('newbase'));
+
+    expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledWith(expect.objectContaining({ ref: 'reviewed1' }));
+    expect(pr.latestCommitDate).toBe('2026-02-01T00:00:00Z');
+    expect(pr.actionReason).toBe('needs_changes');
+  });
+
+  it('counts an amend on the reviewed parent as addressing the change request', async () => {
+    const pr = await fetchOne(rewrittenHead('oldbase'));
+
+    expect(pr.latestCommitDate).toBe('2026-02-03T00:00:00Z');
+    expect(pr.waitReason).toBe('changes_addressed');
+  });
+
+  it('counts an amend by an author whose email is linked to no GitHub account', async () => {
+    const pr = await fetchOne(rewrittenHead('oldbase', false));
+
+    expect(pr.latestCommitDate).toBe('2026-02-03T00:00:00Z');
+    expect(pr.waitReason).toBe('changes_addressed');
+  });
+});
+
 // Most PRMonitor tests in this file use an Octokit without `graphql`, so
 // batchFetchPRDetails routes everything to REST. The batched path that real
 // `daily` runs take is covered in pr-monitor.graphql-path.test.ts; this one
