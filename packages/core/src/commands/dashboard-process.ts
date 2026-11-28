@@ -5,6 +5,7 @@
 
 import * as http from 'node:http';
 import * as fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import * as path from 'node:path';
 import { getDataDir } from '../core/index.js';
 import { warn } from '../core/logger.js';
@@ -142,9 +143,20 @@ export function isDashboardServerRunning(port: number, pid: number): Promise<boo
   });
 }
 
-export async function findRunningDashboardServer(): Promise<{ port: number; url: string } | null> {
+/**
+ * What the PID file points at. `unverified` means the recorded PID is alive
+ * but did not answer `/api/health` as ours: a recycled PID, a server too busy
+ * to answer within the timeout, or a server from before 3.43.0, which has no
+ * health route (#1882). The PID file is left in place for the caller to decide.
+ */
+export type DashboardServerProbe =
+  | { status: 'none' }
+  | { status: 'running'; info: DashboardServerInfo; port: number; url: string }
+  | { status: 'unverified'; info: DashboardServerInfo };
+
+export async function probeDashboardServer(): Promise<DashboardServerProbe> {
   const info = readDashboardServerInfo();
-  if (!info) return null;
+  if (!info) return { status: 'none' };
 
   // Check if process is alive (signal 0 = existence check only)
   try {
@@ -157,17 +169,44 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
     // ESRCH = no process at that PID; EPERM = PID recycled to another user's process
     // Either way, our dashboard server is no longer running — clean up stale PID file
     removeDashboardServerInfo();
-    return null;
+    return { status: 'none' };
   }
 
   // Process exists — verify it's actually our server via HTTP probe
   if (await isDashboardServerRunning(info.port, info.pid)) {
-    return { port: info.port, url: `http://oss.localhost:${info.port}` };
+    return { status: 'running', info, port: info.port, url: `http://oss.localhost:${info.port}` };
   }
+  return { status: 'unverified', info };
+}
+
+export async function findRunningDashboardServer(): Promise<{ port: number; url: string } | null> {
+  const probe = await probeDashboardServer();
+  if (probe.status === 'running') return { port: probe.port, url: probe.url };
 
   // Process exists but is not answering as our server on the expected port:
   // stale. Never signal it. The PID file outlives crashes and reboots, so the
   // PID may have been recycled to an unrelated process (#1927).
-  removeDashboardServerInfo();
+  if (probe.status === 'unverified') removeDashboardServerInfo();
   return null;
+}
+
+/**
+ * True only when the process at `pid` is a `dashboard serve` process, read
+ * from its command line. This is what lets a caller signal a server that does
+ * not answer `/api/health` (#1882) without ever signalling a PID that was
+ * recycled to an unrelated program (#1927). Anything that cannot be checked
+ * (no `ps`, as on Windows, or an exited PID) reads as false.
+ */
+export function isDashboardServeProcess(pid: number): boolean {
+  if (process.platform === 'win32') return false;
+  try {
+    const command = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], {
+      encoding: 'utf8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return /\sdashboard\s+serve(?:\s|$)/.test(command);
+  } catch {
+    return false;
+  }
 }

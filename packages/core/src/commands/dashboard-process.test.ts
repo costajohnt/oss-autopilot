@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import { PassThrough } from 'node:stream';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { spawn } from 'node:child_process';
 
 vi.mock('../core/index.js', () => ({
   getDataDir: () => process.env.__OSS_TEST_DATA_DIR ?? os.tmpdir(),
@@ -25,6 +26,8 @@ const {
   removeOwnDashboardServerInfo,
   isDashboardServerRunning,
   findRunningDashboardServer,
+  probeDashboardServer,
+  isDashboardServeProcess,
 } = await import('./dashboard-process.js');
 
 /** Answer the next probe with this response body, or with a connection error when null. */
@@ -200,5 +203,80 @@ describe('liveness probe (#1927)', () => {
     removeOwnDashboardServerInfo();
 
     expect(readDashboardServerInfo()).toBeNull();
+  });
+});
+
+describe('probeDashboardServer (#1882)', () => {
+  let tmpDir: string;
+  let killSpy: ReturnType<typeof vi.spyOn>;
+  const otherPid = process.pid + 1;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-pidtest-'));
+    process.env.__OSS_TEST_DATA_DIR = tmpDir;
+    mockHttpGet.mockReset();
+    killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+    writeDashboardServerInfo({ pid: otherPid, port: 3000, startedAt: '2026-05-09T12:00:00.000Z', version: '3.42.0' });
+  });
+
+  afterEach(() => {
+    killSpy.mockRestore();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    delete process.env.__OSS_TEST_DATA_DIR;
+  });
+
+  it('reports a live PID that does not answer /api/health as unverified and keeps the PID file', async () => {
+    // A pre-3.43 server: no /api/health route, so the probe gets its SPA fallback.
+    stubProbe('<html>dashboard</html>');
+
+    const probe = await probeDashboardServer();
+
+    expect(probe).toEqual({ status: 'unverified', info: expect.objectContaining({ pid: otherPid }) });
+    expect(readDashboardServerInfo()?.pid).toBe(otherPid);
+    expect(killSpy).not.toHaveBeenCalledWith(otherPid, 'SIGTERM');
+  });
+
+  it('reports a server that names the recorded PID as running', async () => {
+    stubProbe(JSON.stringify({ ok: true, pid: otherPid }));
+
+    expect(await probeDashboardServer()).toMatchObject({ status: 'running', port: 3000 });
+  });
+
+  it('reports none and removes the PID file when the PID is gone', async () => {
+    killSpy.mockImplementation(() => {
+      throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+    });
+
+    expect(await probeDashboardServer()).toEqual({ status: 'none' });
+    expect(readDashboardServerInfo()).toBeNull();
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('isDashboardServeProcess (#1882)', () => {
+  it('identifies a process whose command line is `dashboard serve`', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'dashboard', 'serve', '--port', '3000']);
+    try {
+      await new Promise((resolve) => child.once('spawn', resolve));
+      expect(isDashboardServeProcess(child.pid!)).toBe(true);
+    } finally {
+      child.kill();
+    }
+  });
+
+  it('does not identify an unrelated process', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'dashboard']);
+    try {
+      await new Promise((resolve) => child.once('spawn', resolve));
+      expect(isDashboardServeProcess(child.pid!)).toBe(false);
+    } finally {
+      child.kill();
+    }
+  });
+
+  it('does not identify a PID with no process', async () => {
+    const child = spawn(process.execPath, ['-e', '', 'dashboard', 'serve']);
+    await new Promise((resolve) => child.once('exit', resolve));
+
+    expect(isDashboardServeProcess(child.pid!)).toBe(false);
   });
 });
