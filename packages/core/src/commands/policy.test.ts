@@ -157,7 +157,12 @@ describe('policy set', () => {
   });
 
   it('records, keeps, clears and fences the gate label (#2040)', async () => {
-    const set = await runPolicySet({ repo: REPO, aiPolicy: 'allowed', prGate: 'maintainer-label', gateLabel: ' status: accepted ' });
+    const set = await runPolicySet({
+      repo: REPO,
+      aiPolicy: 'allowed',
+      prGate: 'maintainer-label',
+      gateLabel: ' status: accepted ',
+    });
     expect(extractFromFence(String(set.policy?.gateLabel))).toBe('status: accepted');
     expect((fake.state.repoPolicies[REPO] as RepoPolicy).gateLabel).toBe('status: accepted');
 
