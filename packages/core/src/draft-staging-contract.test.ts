@@ -170,3 +170,39 @@ describe('prompt files do not put text to post or store on a command line (#1930
     expect(findInPrompts(quotedPost)).toEqual([]);
   });
 });
+
+describe('prompt files read GitHub threads through the fenced commands (#2046)', () => {
+  /**
+   * A `gh issue view` / `gh pr view` command (also `gh issue -R o/r view`) up
+   * to the end of its code span or line; a backslash continues the line.
+   */
+  const GH_VIEW = /\bgh\s+(?:issue|pr)\s+(?:(?:-R\s+|--repo[\s=])[\w./-]+\s+)?view\b(?:\\\n|[^\n`])*/g;
+  /** Asks for the comments: `--comments`, `-c`, or a `--json` list naming `comments`. Its output is not fenced. */
+  const WANTS_COMMENTS = /\s(?:--comments\b|-c(?![\w-])|--json[\s=]+["']?[\w,]*\bcomments\b)/;
+  const rawThreadReads = (text: string): string[] =>
+    (text.match(GH_VIEW) ?? []).filter((command) => WANTS_COMMENTS.test(command));
+
+  it('the pattern matches a raw thread read and skips the fenced commands', () => {
+    const sample = [
+      '`gh pr view {prUrl} --comments`',
+      '`gh issue view {issueUrl} --repo o/r --comments`',
+      '`gh pr view 7 -c`',
+      '`gh issue view 7 -R o/r --json state,comments,body`',
+      '`gh pr view 7 --json=comments`',
+      '`gh issue -R o/r view 7 --comments`',
+      'gh pr view 7 \\\n  --repo o/r --comments',
+      '`gh pr view {prUrl} --json commits` and `comments {prUrl} --comments`',
+      '`gh issue view 7 -R o/r --json state,assignees`, `gh pr view 7 --json commits,-c-x`',
+      '`issue-thread {issueUrl} --json`, raw `gh issue view` output is not fenced',
+    ].join('\n');
+    expect(rawThreadReads(sample)).toHaveLength(7);
+  });
+
+  it('no prompt file reads a thread with raw `gh issue view --comments` or `gh pr view --comments`', () => {
+    expect(
+      PROMPT_FILES.flatMap((file) => rawThreadReads(readPrompt(file)).map((command) => `${file}: ${command}`)),
+      'Read an issue thread with `issue-thread <url> --json` and a PR thread with `comments <pr-url> --json` ' +
+        "(add `--include-own` for the user's own comments): both fence every body (workflows/reference.md)",
+    ).toEqual([]);
+  });
+});
