@@ -374,8 +374,11 @@ describe('cleanWorktrees: programs the worktree names (#2047)', () => {
     fs.writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o755 });
     git(ctx.clone, ['config', key, value]);
     git(ctx.clone, ['config', 'remote.origin.uploadpack', program]);
-    // A remote-tracking ref to an object the clone lacks: `--contains` would fetch it.
+    // A remote-tracking ref to an object the clone lacks, which `--contains` fetches on some Git
+    // versions, and a missing HEAD tree, which `status` fetches on all of them.
     fs.writeFileSync(path.join(ctx.clone, '.git', 'refs', 'remotes', 'origin', 'zz'), `${'deadbeef'.repeat(5)}\n`);
+    const tree = git(dir, ['rev-parse', 'HEAD^{tree}']).trim();
+    fs.rmSync(path.join(ctx.clone, '.git', 'objects', tree.slice(0, 2), tree.slice(2)));
 
     expect(only(dir, options)).toMatchObject({
       action: 'kept',
@@ -384,8 +387,8 @@ describe('cleanWorktrees: programs the worktree names (#2047)', () => {
     });
     expect(fs.existsSync(marker)).toBe(false);
     expect(fs.existsSync(dir)).toBe(true);
-    // The trap was armed: the pushed check alone runs the program.
-    git(dir, ['for-each-ref', '--count=1', '--contains', 'HEAD', 'refs/remotes']);
+    // The trap was armed: a plain status runs the program (which then fails the fetch).
+    expect(() => git(dir, ['status', '--porcelain'])).toThrow();
     expect(fs.existsSync(marker)).toBe(true);
   });
 
