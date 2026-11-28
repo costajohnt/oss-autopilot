@@ -122,7 +122,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `vet` | Analyze an issue for contribution suitability; records the vet-time prediction and issue traits (labels, author association, competing PRs, first PR in the repo) for calibration | No |
 | `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting; also returns the issue author, author association and comment count | Yes |
 | `issue-thread` | Read an issue's title, body and comments, each fenced as untrusted content with author and author association | Yes |
-| `vet-list` | Re-vet all available issues in the curated issue list | No |
+| `vet-list` | Re-vet all available issues in the configured curated issue list (no other path) | No |
 | `track` | Inspect a PR: read-only metadata lookup (nothing is tracked or persisted) | Yes |
 | `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
 | `repo-vet` | Compute the repo health rubric (1–10 + verdict) for `owner/repo` (#1271) | Yes |
@@ -131,9 +131,9 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `comments` | Fetch and display PR comments | Yes |
 | `post` | Post a comment on an issue or PR; asks the user to approve first (see below) | No |
 | `claim` | Claim an issue by posting a comment; asks the user to approve first (see below) | No |
-| `config` | Get or set configuration values (not `diffToolCustomCommand` or `diffTool=custom`, see below) | No |
+| `config` | Get or set configuration values (not the terminal-only settings, see below) | No |
 | `init` | Initialize with a GitHub username | No |
-| `setup` | Configure preferences (languages, interests); same two settings refused | No |
+| `setup` | Configure preferences (languages, interests); same settings refused | No |
 | `check-setup` | Check if setup is complete | Yes |
 | `startup` | Run startup checks (auth, state, config) | No |
 | `dismiss` | Dismiss an issue from notifications | No |
@@ -149,7 +149,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `guidelines-list` | List repos that have stored guidelines (always empty in local mode) | Yes |
 | `guidelines-get` | Read per-repo learning guidelines extracted from past PR feedback | Yes |
 | `guidelines-store` | Persist per-repo guidelines the user has reviewed (`reviewed: true` required; asks the user to approve first, see below; refused when unattended; 8 KB cap; requires Gist mode) | No |
-| `guidelines-reset` | Tombstone the guidelines file for a repo | No |
+| `guidelines-reset` | Tombstone the guidelines file for a repo (asks the user) | No |
 | `guidelines-fetch-corpus` | Fetch raw PR comment bundles for the host's `extract-learnings` prompt to consume | No |
 | `policy-get` | Read a repo's contribution policy (AI policy, CLA, commit rules, PR gate); quoted repo text fenced. Setting one is CLI-only (`policy set`) | Yes |
 
@@ -158,8 +158,9 @@ The token persists across restarts. To rotate, delete the file and restart — a
 
 Tool arguments come from a model that also reads text written by strangers, so two rules are enforced in the server rather than in the tool descriptions.
 
-- **`post`, `claim` and `guidelines-store` ask the user.** `post` and `claim` write a public comment under your GitHub account and carry `destructiveHint` and `openWorldHint`; `guidelines-store` overwrites a repo's stored guidelines and carries `destructiveHint`. When the host can show an MCP elicitation form, the server sends it the target and the exact text with its length, and writes only if you tick the box and accept; declining, cancelling, leaving the box empty or not answering within two minutes refuses the call. The answer travels host to server, so the model cannot supply it, and it covers only the exact arguments the form showed: a follow-up call with different arguments, without the signed state the form was sent with, or re-sending an approval already used, is refused. Text containing invisible formatting or control characters (bidi controls, zero-width characters, variation selectors other than one after an emoji, and the like) is refused, because the form could not show it faithfully. A host that cannot show a form (no elicitation, URL-only elicitation, or the stateless HTTP transport, which never knows the client's capabilities) is refused, and the refusal names the CLI command to run instead, unless the server was started with `OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES=1`. With that set, such a host runs the tools on its own permission prompt alone: do not auto-approve them there. All three refuse outright while `OSS_AUTOPILOT_UNATTENDED` is set.
+- **`post`, `claim`, `guidelines-store` and `guidelines-reset` ask the user.** `post` and `claim` write a public comment under your GitHub account and carry `destructiveHint` and `openWorldHint`; `guidelines-store` overwrites a repo's stored guidelines and `guidelines-reset` deletes them, and both carry `destructiveHint`. When the host can show an MCP elicitation form, the server sends it the target and the exact text with its length, and writes only if you tick the box and accept; declining, cancelling, leaving the box empty or not answering within two minutes refuses the call. The answer travels host to server, so the model cannot supply it, and it covers only the exact arguments the form showed: a follow-up call with different arguments, without the signed state the form was sent with, or re-sending an approval already used, is refused. Text containing invisible formatting or control characters (bidi controls, zero-width characters, variation selectors other than one after an emoji, and the like) is refused, because the form could not show it faithfully. A host that cannot show a form (no elicitation, URL-only elicitation, or the stateless HTTP transport, which never knows the client's capabilities) is refused, and the refusal names the CLI command to run instead, unless the server was started with `OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES=1`. With that set, such a host runs the tools on its own permission prompt alone: do not auto-approve them there. All four refuse outright while `OSS_AUTOPILOT_UNATTENDED` is set.
 - **Settings that become commands are terminal-only.** `diffToolCustomCommand` is a command line the pre-commit review runs, and `diffTool=custom` switches it on. `config` and `setup` refuse both; set them yourself with `oss-autopilot setup --set diffTool=custom --set diffToolCustomCommand="<command>"`. The review workflow also shows the stored command and asks before its first run in a session.
+- **Paths and the AI-policy ban list are terminal-only too.** `issueListPath`, `skippedIssuesPath` and `localRepoScanPaths` name files the tool then treats as yours (a list you set yourself skips the check for files in someone else's checkout), and emptying `aiPolicyBlocklist` lifts every ban on it. `config` and `setup` refuse them; set them with `oss-autopilot setup --set <key>=<value>`. `vet-list` only vets and prunes the configured list and refuses any other `issueListPath`. Each key's tier lives in core's config registry (`trust` on the key definition), and the server refuses every key above `preference`.
 
 ## Resources Reference
 

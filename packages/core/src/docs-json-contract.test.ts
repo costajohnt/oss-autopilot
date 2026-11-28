@@ -80,6 +80,7 @@ const SCHEMAS = new Map<string, ZodType>(
     'work finish': json.WorkFinishOutputSchema,
     'work release': json.WorkReleaseOutputSchema,
     'work list': json.WorkListOutputSchema,
+    'dashboard launch': json.DashboardLaunchOutputSchema,
     startup: startupSchema(json.DailyOutputSchema),
     'startup --compact': startupSchema(json.CompactDailyOutputSchema),
   }),
