@@ -69,6 +69,22 @@ describe('shouldAutoUnshelve (#1922)', () => {
     expect(shouldAutoUnshelve(engaged, shelvedWith())).toBe(true);
   });
 
+  it('keeps a PR shelved when the digest behind its record predates the maintainer review (#2043)', () => {
+    // 9:00 digest: waiting, so nothing recorded. 10:00 changes requested. 11:00 shelved.
+    const shelvedAt = { 'owner/repo#1': { at: '2026-01-10T11:00:00.000Z', reasons: [] } };
+    const reviewed = (...reasons: ActionReason[]) => ({
+      ...needing(...reasons),
+      lastMaintainerActivityAt: '2026-01-10T10:00:00Z',
+    });
+    expect(shouldAutoUnshelve(reviewed('needs_changes'), shelvedAt)).toBe(false);
+    expect(shouldAutoUnshelve(reviewed('needs_response', 'needs_changes'), shelvedAt)).toBe(false);
+    // A reason no maintainer creates is still new, whatever the activity time.
+    expect(shouldAutoUnshelve(reviewed('needs_changes', 'failing_ci'), shelvedAt)).toBe(true);
+    // The maintainer acting again after the shelve resurfaces it.
+    const again = { ...reviewed('needs_changes'), lastMaintainerActivityAt: '2026-01-10T12:00:00Z' };
+    expect(shouldAutoUnshelve(again, shelvedAt)).toBe(true);
+  });
+
   it('never unshelves a PR that does not need addressing', () => {
     const pr = { url, status: 'waiting_on_maintainer' as const, lastMaintainerActivityAt: '2026-01-11T00:00:00Z' };
     expect(shouldAutoUnshelve(pr, shelvedWith(['failing_ci']))).toBe(false);
