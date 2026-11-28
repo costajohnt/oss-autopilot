@@ -36,7 +36,12 @@ vi.mock('node:http', async (importOriginal) => {
 import { getStateManager, resetStateManager } from '../core/index.js';
 import { validateDashboardData } from '../core/dashboard-data-schema.js';
 import { makeDailyDigest, makeFetchedPR } from '../core/test-utils.js';
-import { startDashboardServer, getDashboardPidPath, readDashboardServerInfo } from './dashboard-server.js';
+import {
+  startDashboardServer,
+  getDashboardPidPath,
+  readDashboardServerInfo,
+  writeDashboardServerInfo,
+} from './dashboard-server.js';
 
 // ── Loopback helpers ──────────────────────────────────────────────────
 
@@ -145,6 +150,27 @@ async function sendTimes(count: number, port: number, method: string, urlPath: s
 
 function repeated(status: number, count: number): number[] {
   return Array.from({ length: count }, () => status);
+}
+
+/** Stands in for the shutdown handler's force-exit timer, so it never fires. */
+const idleTimer = { unref: () => undefined };
+
+/**
+ * Run the SIGTERM handler a server added since `before` was read, with the
+ * force-exit timer stubbed and process.exit spied; resolves once the server
+ * has closed and the handler asked to exit.
+ */
+async function shutDownServer(before: ReturnType<typeof process.listeners>): Promise<void> {
+  const exit = vi.spyOn(process, 'exit').mockReturnValue(undefined as never);
+  const added = process.listeners('SIGTERM').filter((listener) => !before.includes(listener));
+  expect(added).toHaveLength(1);
+  const timer = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(idleTimer as never);
+  try {
+    added[0]('SIGTERM');
+  } finally {
+    timer.mockRestore();
+  }
+  await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
 }
 
 // ── Suite ─────────────────────────────────────────────────────────────
@@ -333,6 +359,29 @@ describe('dashboard server over a real loopback socket (#1940)', { timeout: 30_0
       expect(startedServers).toHaveLength(1);
       expect(startedServers[0].listening).toBe(false);
       expect(readDashboardServerInfo()).toBeNull();
+    });
+  });
+
+  describe('clean shutdown (#1927)', () => {
+    const sigterm = SIGNALS.indexOf('SIGTERM');
+
+    it('removes the PID file this server recorded', async () => {
+      await startOnFreePort();
+      expect(readDashboardServerInfo()?.pid).toBe(process.pid);
+
+      await shutDownServer(signalListeners[sigterm]);
+
+      expect(readDashboardServerInfo()).toBeNull();
+    });
+
+    it('leaves the PID file of a newer server that replaced this one', async () => {
+      const port = await startOnFreePort();
+      const newer = { pid: process.pid + 1, port, startedAt: '2030-01-01T00:00:00.000Z' };
+      writeDashboardServerInfo(newer);
+
+      await shutDownServer(signalListeners[sigterm]);
+
+      expect(readDashboardServerInfo()).toMatchObject(newer);
     });
   });
 

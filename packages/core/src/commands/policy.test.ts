@@ -260,7 +260,7 @@ describe('recordVetPolicy', () => {
   it('runs unattended: an unreviewed record is not the user approving anything', async () => {
     vi.stubEnv(UNATTENDED_ENV, '1');
     await recordVetPolicy(REPO, vetPolicy());
-    expect(fake.state.repoPolicies[REPO]).toBeDefined();
+    expect(fake.state.repoPolicies[REPO]).toMatchObject({ reviewedByUser: false });
   });
 });
 

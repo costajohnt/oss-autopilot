@@ -427,6 +427,62 @@ describe('runLedgerBackfill closed history (#1925)', () => {
   });
 });
 
+/** More than one daily gap fetch takes (1000), so only a walk with no result limit reads it all. */
+const LARGE_HISTORY = 1200;
+const HISTORY_START = Date.parse('2020-01-01T00:00:00Z');
+
+/** `LARGE_HISTORY` search items of one kind, each created a minute after the last. */
+function largeHistory(kind: 'merged' | 'closed') {
+  return Array.from({ length: LARGE_HISTORY }, (_, i) => {
+    const at = new Date(HISTORY_START + i * 60_000).toISOString().replace('.000Z', 'Z');
+    return {
+      html_url: `https://github.com/o/${kind}/pull/${i + 1}`,
+      title: `${kind} ${i + 1}`,
+      created_at: at,
+      closed_at: at,
+      pull_request: { merged_at: kind === 'merged' ? at : null },
+    };
+  });
+}
+
+const LARGE_MERGED = largeHistory('merged');
+const LARGE_CLOSED = largeHistory('closed');
+
+/**
+ * A Search API stand-in over the large histories: oldest-created first, the
+ * `created:>=` bound the windowed walk sends, and pages of `per_page`.
+ */
+function answerLargeHistory(params: { q: string; page: number; per_page: number }) {
+  const items = params.q.includes('is:unmerged') ? LARGE_CLOSED : LARGE_MERGED;
+  const from = /created:>=(\S+)/.exec(params.q)?.[1] ?? '';
+  const matching = items.filter((item) => item.created_at >= from);
+  const start = (params.page - 1) * params.per_page;
+  return Promise.resolve({
+    data: { total_count: matching.length, items: matching.slice(start, start + params.per_page) },
+  });
+}
+
+describe('runLedgerBackfill over a history larger than one gap fetch (#1924, #1925)', () => {
+  let sm: StateManager;
+
+  beforeEach(() => {
+    sm = freshLedger();
+    sm.updateConfig({ githubUsername: 'me' });
+    mocks.graphql.mockResolvedValue({});
+    mocks.search.mockImplementation(answerLargeHistory);
+  });
+
+  it('adds every merged and closed PR with no result limit', async () => {
+    const result = await runLedgerBackfill();
+
+    expect(result.mergedAdded).toBe(LARGE_HISTORY);
+    expect(result.closedAdded).toBe(LARGE_HISTORY);
+    expect(result.warnings.filter((w) => w.includes('history'))).toEqual([]);
+    expect(sm.getMergedPRs()).toHaveLength(LARGE_HISTORY + 1);
+    expect(sm.getClosedPRs()).toHaveLength(LARGE_HISTORY + 1);
+  });
+});
+
 describe('runLedgerBackfill first-response lookup', () => {
   let sm: StateManager;
 
