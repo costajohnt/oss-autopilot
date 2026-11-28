@@ -19,8 +19,6 @@ Opening dashboard...
 Then run everything in a single bash call:
 
 ```bash
-CLI_BUNDLE="${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
-
 # Marketplace installs ship the CLI and dashboard prebuilt, so both helpers
 # are no-ops there. In a source checkout they rebuild stale output from
 # pnpm-lock.yaml only (frozen install, #1935).
@@ -49,53 +47,24 @@ open_url() {
   fi
 }
 
-# Dashboard logs go here so crashes are debuggable instead of silently lost.
-LOG_DIR="$HOME/.oss-autopilot"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/dashboard.log"
-
-# Check if dashboard server is already running via PID file
-PID_FILE="$HOME/.oss-autopilot/dashboard-server.pid"
-if [ -f "$PID_FILE" ]; then
-  PORT=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$PID_FILE','utf-8')).port)}catch(e){console.log('')}")
-  PID=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$PID_FILE','utf-8')).pid)}catch(e){console.log('')}")
-  if [ -n "$PORT" ] && [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-    # Health check
-    if curl -sf "http://127.0.0.1:$PORT/api/data" -o /dev/null 2>/dev/null; then
-      open_url "http://oss.localhost:$PORT" || true
-      echo '{"status":"already_running","url":"http://oss.localhost:'"$PORT"'","logFile":"'"$LOG_FILE"'"}'
-      exit 0
-    fi
-  fi
-fi
-
-# Launch server in background, routing stderr/stdout to a log file for debugging.
+# One CLI call reuses the running server or starts one, with the same
+# version check and /api/health probe as /oss: a server older than this CLI
+# is replaced, a newer one is left alone (#2039, #1882). Only JSON goes to
+# stdout; server output goes to ~/.oss-autopilot/dashboard.log.
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN
-{ echo "--- dashboard server started $(date -u +%FT%TZ) ---"; } >>"$LOG_FILE" 2>&1
-nohup node "${CLI_BUNDLE}" dashboard serve --port 3000 --no-open >>"$LOG_FILE" 2>&1 &
-
-# Wait for server to start (poll PID file + health check)
-for i in $(seq 1 25); do
-  sleep 0.2
-  if [ -f "$PID_FILE" ]; then
-    PORT=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$PID_FILE','utf-8')).port)}catch(e){console.log('')}")
-    if [ -n "$PORT" ] && curl -sf "http://127.0.0.1:$PORT/api/data" -o /dev/null 2>/dev/null; then
-      open_url "http://oss.localhost:$PORT" || true
-      echo '{"status":"launched","url":"http://oss.localhost:'"$PORT"'","logFile":"'"$LOG_FILE"'"}'
-      exit 0
-    fi
-  fi
-done
-
-echo '{"error":"Dashboard server failed to start within 5 seconds","logFile":"'"$LOG_FILE"'"}'
-exit 1
+RESULT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dashboard launch --port 3000 --json)
+URL=$(printf '%s' "$RESULT" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{try{const j=JSON.parse(s);if(j.success)console.log(j.data.url)}catch{}})')
+if [ -n "$URL" ]; then
+  open_url "$URL" || true
+fi
+echo "$RESULT"
 ```
 
 ## Step 2: Display Result
 
-Parse the JSON output:
+Parse the JSON output (the CLI's `{ success, data, error }` envelope):
 
-- If `status` is `"already_running"`: Show `Dashboard: <url>` (already open in browser). If the system didn't have a usable browser opener, tell the user to open the URL manually.
-- If `status` is `"launched"`: Show `Dashboard opened: <url>`. Same caveat for headless systems.
-- If `error` is present: Show the error message, plus `Logs: <logFile>` when the field is set so the user can inspect the dashboard server output. If the error is a build failure, show the `BUILD_FAILED` line from the details: it carries the fix (reinstall the plugin for a marketplace install; `pnpm install --frozen-lockfile --ignore-scripts` plus a rebuild for a source checkout). Never suggest an install that ignores the lockfile.
+- If `data.status` is `"already_running"`: Show `Dashboard: <data.url>` (already open in browser). If the system didn't have a usable browser opener, tell the user to open the URL manually. If that page never loads, the running server may be from a newer plugin version than this session, which this command never replaces: tell the user to run `/oss-dashboard` from a session on the latest plugin version (restart Claude Code after updating), or to stop the process recorded in `~/.oss-autopilot/dashboard-server.pid` and run `/oss-dashboard` again.
+- If `data.status` is `"launched"`: Show `Dashboard opened: <data.url>`. Same caveat for headless systems. Server logs are in `data.logFile`.
+- If `success` is false or the output is not JSON: Show the `error` message (or the raw output). The message names the log file when the server failed to start, so the user can inspect the dashboard server output. If the error is a build failure, show the `BUILD_FAILED` line from the details: it carries the fix (reinstall the plugin for a marketplace install; `pnpm install --frozen-lockfile --ignore-scripts` plus a rebuild for a source checkout). Never suggest an install that ignores the lockfile.

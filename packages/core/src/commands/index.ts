@@ -42,6 +42,8 @@ export { runVerifyIssue, type VerifyIssueOptions } from './verify-issue.js';
 export { runIssueThread, type IssueThreadOptions } from './issue-thread.js';
 /** Re-vet all available issues in a curated issue list for freshness. */
 export { runVetList } from './vet-list.js';
+/** The curated issue list this machine is configured to use; throws when none is usable (#2035). */
+export { configuredIssueListPath } from './locate-issue-list.js';
 export { runEval, type EvalOutput } from './eval.js';
 
 // ── PR Management ───────────────────────────────────────────────────────────

@@ -197,6 +197,8 @@ export function makeStateManagerMock(
     addIssue: () => {},
     addTrustedProject: () => {},
     cleanupExcludedData: () => {},
+    snapshotRepoOutcomes: () => new Map(),
+    restoreUnchangedEvaluations: () => {},
     getStarredRepos: () => [],
     setStarredRepos: () => {},
     isStarredReposStale: () => false,
