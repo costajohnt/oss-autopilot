@@ -151,7 +151,7 @@ export function isDashboardServerRunning(port: number, pid: number): Promise<boo
  */
 export type DashboardServerProbe =
   | { status: 'none' }
-  | { status: 'running'; info: DashboardServerInfo; port: number; url: string }
+  | { info: DashboardServerInfo; status: 'running'; port: number; url: string }
   | { status: 'unverified'; info: DashboardServerInfo };
 
 export async function probeDashboardServer(): Promise<DashboardServerProbe> {
@@ -174,7 +174,7 @@ export async function probeDashboardServer(): Promise<DashboardServerProbe> {
 
   // Process exists — verify it's actually our server via HTTP probe
   if (await isDashboardServerRunning(info.port, info.pid)) {
-    return { status: 'running', info, port: info.port, url: `http://oss.localhost:${info.port}` };
+    return { info, status: 'running', port: info.port, url: `http://oss.localhost:${info.port}` };
   }
   return { status: 'unverified', info };
 }
@@ -190,6 +190,8 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
   return null;
 }
 
+const PS_PATHS = ['/bin/ps', '/usr/bin/ps'];
+
 /**
  * True only when the process at `pid` is a `dashboard serve` process, read
  * from its command line. This is what lets a caller signal a server that does
@@ -198,9 +200,11 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
  * (no `ps`, as on Windows, or an exited PID) reads as false.
  */
 export function isDashboardServeProcess(pid: number): boolean {
-  if (process.platform === 'win32') return false;
+  // An absolute path, so a `ps` earlier on PATH cannot answer for it.
+  const ps = PS_PATHS.find((candidate) => fs.existsSync(candidate));
+  if (!ps) return false;
   try {
-    const command = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], {
+    const command = execFileSync(ps, ['-o', 'command=', '-p', String(pid)], {
       encoding: 'utf8',
       timeout: 2000,
       stdio: ['ignore', 'pipe', 'ignore'],

@@ -1306,18 +1306,19 @@ export const commands: CLICommandDef[] = [
         .description('Start the dashboard server in the background, or reuse the running one')
         .option('--port <port>', 'Port to try first', '3000')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          const port = parseInt(options.port, 10);
-          if (isNaN(port) || port < 1 || port > 65_535) {
+        .action(async (options: { port: string; json?: boolean }) => {
+          const port = Number(options.port);
+          if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
             handleCommandError(
               new Error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`),
               options.json,
             );
           }
           const { DashboardLaunchOutputSchema } = await import('./formatters/json.js');
+          const { runDashboardLaunch } = await import('./commands/dashboard-lifecycle.js');
           await executeAction(
             options,
-            async () => (await import('./commands/dashboard-lifecycle.js')).runDashboardLaunch({ port }),
+            () => runDashboardLaunch({ port }),
             (data) => {
               const note = data.status === 'already_running' ? ' (already running)' : '';
               console.log(`Dashboard: ${data.url}${note}`);

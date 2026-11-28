@@ -4,7 +4,7 @@
  * and detecting whether a server is already running.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess, type StdioOptions } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -49,9 +49,22 @@ export function resolveCliEntry(argv1: string, assetsDir: string): string {
 
 /** Open `logFile` for appending and mark where this server's output starts. */
 function openLogFile(logFile: string): number {
+  const startedAt = new Date();
   const fd = fs.openSync(logFile, 'a', 0o600);
-  fs.writeSync(fd, `--- dashboard server started ${new Date().toISOString()} ---\n`);
+  fs.writeSync(fd, `--- dashboard server started ${startedAt.toISOString()} ---\n`);
   return fd;
+}
+
+/** Spawn `dashboard serve` detached, with its output discarded or appended to `logFile`. */
+function spawnDashboardServer(cliPath: string, port: number, logFile: string | undefined): ChildProcess {
+  const logFd = logFile ? openLogFile(logFile) : undefined;
+  const stdio: StdioOptions = logFd === undefined ? 'ignore' : ['ignore', logFd, logFd];
+  try {
+    return spawn('node', [cliPath, 'dashboard', 'serve', '--port', String(port), '--no-open'], { detached: true, stdio });
+  } finally {
+    // The child holds its own copy of the descriptor.
+    if (logFd !== undefined) fs.closeSync(logFd);
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -64,43 +77,41 @@ function parseVersion(version: string): [number, number, number] | null {
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
+type VersionAge = 'older' | 'same' | 'newer' | 'unknown';
+
 /**
  * How the version a server recorded compares with the current CLI's. A PID
  * file with no version predates the stamp (#548), so it is older. `unknown`
  * when either side cannot be read (`getCLIVersion` falls back to 0.0.0).
  */
-function compareServerVersion(
-  serverVersion: string | undefined,
-  currentVersion: string,
-): 'older' | 'same' | 'newer' | 'unknown' {
-  const current = currentVersion === '0.0.0' ? null : parseVersion(currentVersion);
-  if (!current) return 'unknown';
+function compareServerVersion(serverVersion: string | undefined, currentVersion: string): VersionAge {
+  const current = parseVersion(currentVersion);
+  if (currentVersion === '0.0.0' || !current) return 'unknown';
   if (serverVersion === undefined) return 'older';
   const server = parseVersion(serverVersion);
   if (!server) return 'unknown';
-  for (let i = 0; i < 3; i++) {
-    if (server[i] < current[i]) return 'older';
-    if (server[i] > current[i]) return 'newer';
-  }
-  return 'same';
+  const diff = server.map((part, i) => part - current[i]).find((d) => d !== 0) ?? 0;
+  if (diff === 0) return 'same';
+  return diff < 0 ? 'older' : 'newer';
 }
 
 /**
- * SIGTERM the server the PID file records and remove the file. False when the
- * signal could not be delivered (e.g. EPERM): the server is still up.
+ * SIGTERM the server the PID file records and remove the file. Returns null
+ * once it is stopped, or `running` when the signal could not be delivered
+ * (e.g. EPERM): the server is still up, so the caller must not spawn another.
  */
-function stopDashboardServer(info: DashboardServerInfo): boolean {
+function stopDashboardServer(info: DashboardServerInfo, running: LaunchResult): LaunchResult | null {
   try {
     process.kill(info.pid, 'SIGTERM');
   } catch (err) {
     // ESRCH = already exited
     if ((err as NodeJS.ErrnoException).code !== 'ESRCH') {
       console.error(`[DASHBOARD] Could not kill outdated dashboard (PID ${info.pid}): ${(err as Error).message}`);
-      return false;
+      return running;
     }
   }
   removeDashboardServerInfo();
-  return true;
+  return null;
 }
 
 /**
@@ -146,7 +157,7 @@ export async function stopStaleDashboardServer(): Promise<LaunchResult | null> {
     console.error(
       `[DASHBOARD] Dashboard server version mismatch (running: ${info.version}, current: ${currentVersion}). Stopping it...`,
     );
-    return stopDashboardServer(info) ? null : running;
+    return stopDashboardServer(info, running);
   }
 
   if (age === 'unknown' || !isDashboardServeProcess(info.pid)) {
@@ -160,7 +171,7 @@ export async function stopStaleDashboardServer(): Promise<LaunchResult | null> {
   console.error(
     `[DASHBOARD] Dashboard server (PID ${info.pid}, version ${info.version ?? 'unknown'}) did not answer the health check. Stopping it...`,
   );
-  return stopDashboardServer(info) ? null : running;
+  return stopDashboardServer(info, running);
 }
 
 /**
@@ -194,17 +205,7 @@ export async function launchDashboardServer(options?: {
   const port = options?.port ?? DEFAULT_PORT;
   const cliPath = resolveCliEntry(process.argv[1], assetsDir);
 
-  const logFd = options?.logFile ? openLogFile(options.logFile) : undefined;
-  let child: ReturnType<typeof spawn>;
-  try {
-    child = spawn('node', [cliPath, 'dashboard', 'serve', '--port', String(port), '--no-open'], {
-      detached: true,
-      stdio: logFd === undefined ? 'ignore' : ['ignore', logFd, logFd],
-    });
-  } finally {
-    // The child holds its own copy of the descriptor.
-    if (logFd !== undefined) fs.closeSync(logFd);
-  }
+  const child = spawnDashboardServer(cliPath, port, options?.logFile);
 
   // Track spawn failures and early exits so the polling loop can bail early
   let spawnFailed = false;

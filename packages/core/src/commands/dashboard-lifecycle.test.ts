@@ -50,8 +50,8 @@ interface ServerInfo {
 /** The PID file names a server that answers /api/health as ours. */
 function runningServer(info: ServerInfo): void {
   mockProbeDashboardServer.mockResolvedValue({
-    status: 'running',
     info,
+    status: 'running',
     port: info.port,
     url: `http://oss.localhost:${info.port}`,
   });
