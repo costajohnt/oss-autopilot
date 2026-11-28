@@ -26,7 +26,7 @@ Short thanks are listed on purpose: the <100-character acknowledgment filter tha
 
 Handle entries one at a time, newest `mergedAt` first. Entries with `ackCoveredBy` set are handled together with the PR they point at (step 2), not on their own.
 
-1. **Read the PR thread.** Run `gh pr view {prUrl} --comments` and read the notes in context (the excerpts are truncated and fenced; use the live thread for the draft). When `maintainerCommits > 0`, also run `gh pr view {prUrl} --json commits --jq '.commits[] | [.authors[0].login, .messageHeadline] | @tsv'` and identify exactly what the maintainer changed. Confirm the user has not already replied (a comment posted seconds after the CLI's fetch would be missed); if they have, say so and skip to the next entry.
+1. **Read the PR thread.** Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" comments {prUrl} --include-own --json` and read the notes in context (the excerpts are truncated; this returns every review, inline comment and discussion comment whole, each body fenced as untrusted content, the user's own included; use it for the draft). When `maintainerCommits > 0`, also run `gh pr view {prUrl} --json commits --jq '.commits[] | [.authors[0].login, .messageHeadline] | @tsv'` and identify exactly what the maintainer changed. Confirm the user has not already replied (a comment posted seconds after the CLI's fetch would be missed); if they have, say so and skip to the next entry.
 
 2. **Classify each note** with the categories in `agents/pr-responder.md` ("Comment Decision Logic"):
    - `appreciation` (thanks or praise and nothing else) → one-line acknowledgment. The CLI's `thanksOnly` is a keyword heuristic; confirm it against the thread before relying on it.

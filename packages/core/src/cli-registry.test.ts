@@ -2544,6 +2544,7 @@ describe('pr-preflight command (#1952)', () => {
       base: undefined,
       fetch: false,
       local: false,
+      bodyFile: undefined,
     });
     expect(mockPrintPrPreflight).toHaveBeenCalledWith(data);
     expect(mockOutputJsonValidated).not.toHaveBeenCalled();
@@ -2573,10 +2574,25 @@ describe('pr-preflight command (#1952)', () => {
       base: 'develop',
       fetch: true,
       local: false,
+      bodyFile: undefined,
     });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, data);
     expect(mockPrintPrPreflight).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--body-file is passed through (#2040)', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync([
+      'node',
+      'cli',
+      'pr-preflight',
+      '--body-file',
+      'oss-o-r-7-pr-body.md',
+    ]);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith(expect.objectContaining({ bodyFile: 'oss-o-r-7-pr-body.md' }));
   });
 
   it('--local is passed through', async () => {
@@ -3499,6 +3515,22 @@ describe('policy subcommands', () => {
     expect(consoleLogSpy).toHaveBeenCalledWith(
       '  Banned by aiPolicyBlocklist; set --ai-policy to another value to take it off the list.',
     );
+  });
+
+  it('set passes --gate-label through and prints the recorded gate label (#2040)', async () => {
+    mockPolicySet.mockResolvedValue({ repo: REPO, policy: { ...POLICY, gateLabel: 'status: accepted' } });
+    await buildProgram('policy').parseAsync([
+      'node',
+      'cli',
+      'policy',
+      'set',
+      '--repo',
+      REPO,
+      '--gate-label',
+      'status: accepted',
+    ]);
+    expect(mockPolicySet).toHaveBeenCalledWith(expect.objectContaining({ repo: REPO, gateLabel: 'status: accepted' }));
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Gate label: status: accepted');
   });
 
   it('set says when it changed aiPolicyBlocklist', async () => {

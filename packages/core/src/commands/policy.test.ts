@@ -135,6 +135,62 @@ describe('policy set', () => {
     expect(out.policy?.prGate).toBe('maintainer-label');
   });
 
+  it('drops a stored disclosure excerpt when the user confirms disclosure-required without --disclosure-text (#2040)', async () => {
+    const excerpt = '…you must disclose AI assistance in the PR…';
+    const source = [{ file: 'CONTRIBUTING.md', quotedLine: excerpt }];
+    fake.state.repoPolicies = {
+      [REPO]: vetPolicy({ aiPolicy: 'disclosure-required', disclosureText: excerpt, source }),
+    };
+    const before = await runPolicyGet({ repo: REPO });
+    expect(before.policy?.disclosureText).toBeUndefined();
+
+    const out = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required' });
+    expect(out.policy?.disclosureText).toBeUndefined();
+    expect(fake.state.repoPolicies[REPO]).not.toHaveProperty('disclosureText');
+
+    const set = await runPolicySet({
+      repo: REPO,
+      aiPolicy: 'disclosure-required',
+      disclosureText: 'Assisted-by: Some Tool',
+    });
+    expect(extractFromFence(String(set.policy?.disclosureText))).toBe('Assisted-by: Some Tool');
+  });
+
+  it('records, keeps, clears and fences the gate label (#2040)', async () => {
+    const set = await runPolicySet({
+      repo: REPO,
+      aiPolicy: 'allowed',
+      prGate: 'maintainer-label',
+      gateLabel: ' status: accepted ',
+    });
+    expect(extractFromFence(String(set.policy?.gateLabel))).toBe('status: accepted');
+    expect((fake.state.repoPolicies[REPO] as RepoPolicy).gateLabel).toBe('status: accepted');
+
+    const kept = await runPolicySet({ repo: REPO, cla: 'none' });
+    expect(extractFromFence(String(kept.policy?.gateLabel))).toBe('status: accepted');
+
+    const cleared = await runPolicySet({ repo: REPO, gateLabel: '' });
+    expect(cleared.policy?.gateLabel).toBeUndefined();
+    expect(fake.state.repoPolicies[REPO]).not.toHaveProperty('gateLabel');
+  });
+
+  it('refuses a gate label GitHub could not have, and an unattended run', async () => {
+    await expect(runPolicySet({ repo: REPO, aiPolicy: 'allowed', gateLabel: 'x'.repeat(51) })).rejects.toThrow(
+      /Invalid --gate-label/,
+    );
+    vi.stubEnv(UNATTENDED_ENV, '1');
+    await expect(runPolicySet({ repo: REPO, aiPolicy: 'allowed', gateLabel: 'accepted' })).rejects.toThrow(
+      /unattended run/,
+    );
+    expect(fake.state.repoPolicies).toEqual({});
+  });
+
+  it('ignores a gate label on a record nobody reviewed (#2040)', async () => {
+    fake.state.repoPolicies = { [REPO]: vetPolicy({ prGate: 'maintainer-label', gateLabel: 'accepted' }) };
+    const out = await runPolicyGet({ repo: REPO });
+    expect(out.policy).not.toHaveProperty('gateLabel');
+  });
+
   it('keeps the commit rules and limit of a record the user already reviewed', async () => {
     await runPolicySet({ repo: REPO, aiPolicy: 'allowed', commitRules: 'dco-signoff', maxOpenAiPRs: 1 });
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required' });
