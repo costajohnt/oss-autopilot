@@ -140,6 +140,23 @@ function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
  * CI status, reviews, merge conflicts, and maintainer comments are enriched
  * for each PR to compute a {@link FetchedPRStatus}.
  */
+/** The date-rule inputs of a REST `repos.getCommit` response (#1919, #2042). */
+function restCommitDates(
+  data: Awaited<ReturnType<Octokit['repos']['getCommit']>>['data'],
+  reviewedSha: string | undefined,
+): CommitDates {
+  return {
+    authorDate: data.commit.author?.date,
+    committerDate: data.commit.committer?.date,
+    authorLogin: data.author?.login,
+    committerLogin: data.committer?.login,
+    authorEmail: data.commit.author?.email,
+    committerEmail: data.commit.committer?.email,
+    parentSha: data.parents?.[0]?.sha,
+    reviewedSha,
+  };
+}
+
 export class PRMonitor {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
@@ -601,16 +618,7 @@ export class PRMonitor {
   ): Promise<CommitInfo | undefined> {
     try {
       const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
-      const dates: CommitDates = {
-        reviewedSha,
-        authorDate: res.data.commit.author?.date,
-        committerDate: res.data.commit.committer?.date,
-        authorLogin: res.data.author?.login,
-        committerLogin: res.data.committer?.login,
-        authorEmail: res.data.commit.author?.email,
-        committerEmail: res.data.commit.committer?.email,
-        parentSha: res.data.parents?.[0]?.sha,
-      };
+      const dates = restCommitDates(res.data, reviewedSha);
       // The reviewed commit's parent only matters for the author's own rewrite
       // of a commit other than the reviewed one, so fetch it only then.
       if (reviewedSha && reviewedSha !== sha && isOwnRewrite(dates)) {
@@ -642,12 +650,15 @@ export class PRMonitor {
    * treats the rebase as unknown (#2042). Rate-limit and auth errors propagate.
    */
   private async fetchFirstParentSha(owner: string, repo: string, sha: string): Promise<string | undefined> {
-    const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha }).catch((err: unknown) => {
+    let res: Awaited<ReturnType<Octokit['repos']['getCommit']>>;
+    try {
+      res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
+    } catch (err) {
       if (isRateLimitOrAuthError(err)) throw err;
       warn(MODULE, `Failed to fetch reviewed commit ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
-      return undefined;
-    });
-    return res?.data.parents?.[0]?.sha;
+      return;
+    }
+    return res.data.parents?.[0]?.sha;
   }
 
   /**
