@@ -127,6 +127,8 @@ function refusal(dataDir: string, dir: string): string | null {
   return programsInRepoConfig(dir) ?? submodules(dir);
 }
 
+const FILTER_PROGRAM = String.raw`^filter\..+\.(clean|process)$`;
+
 /**
  * A clean or process filter defined in the repository's own config (#2047).
  * `status`, and the one `worktree remove` runs, re-hash a file whose stat data
@@ -142,8 +144,7 @@ function refusal(dataDir: string, dir: string): string | null {
 function programsInRepoConfig(dir: string): string | null {
   let entries: string[];
   try {
-    const args = ['config', '--show-scope', '--name-only', '-z', '--get-regexp', String.raw`^filter\..+\.(clean|process)$`];
-    entries = git(dir, [...SAFE_GIT, ...args]).split('\0');
+    entries = gitOut(dir, ['config', '--show-scope', '--name-only', '-z', '--get-regexp', FILTER_PROGRAM]).split('\0');
   } catch (err) {
     // Exit 1: no key matched.
     if ((err as { status?: unknown })?.status === 1) return null;

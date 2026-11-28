@@ -97,6 +97,11 @@ describe('check-integration', () => {
     mockExecFileSync.mockReturnValueOnce('');
 
     await runCheckIntegration({ base: 'release/v1.2' });
-    expect(mockExecFileSync.mock.calls[0][1]).toEqual(['diff', '--name-only', '--diff-filter=A', 'release/v1.2...HEAD']);
+    expect(mockExecFileSync.mock.calls[0][1]).toEqual([
+      'diff',
+      '--name-only',
+      '--diff-filter=A',
+      'release/v1.2...HEAD',
+    ]);
   });
 });
