@@ -296,7 +296,9 @@ describe('unattended write guard (#1945)', () => {
     const allowed = { 'x.ts gists.update': { count: 1 } };
     const findings = (calls: number) => scanSource('x.ts', inFunction(Array(calls).fill(write).join('\n')));
     expect(allowlistViolations(findings(1), allowed)).toEqual([]);
-    expect(allowlistViolations(findings(2), allowed)).toEqual(['x.ts gists.update: 2 unguarded, 1 allowed (lines 2, 3)']);
+    expect(allowlistViolations(findings(2), allowed)).toEqual([
+      'x.ts gists.update: 2 unguarded, 1 allowed (lines 2, 3)',
+    ]);
     expect(allowlistViolations(findings(0), allowed)).toEqual(['x.ts gists.update: 0 unguarded, 1 allowed']);
     expect(allowlistViolations(findings(1), {})).toEqual(['x.ts gists.update: 1 unguarded, 0 allowed (lines 2)']);
   });
@@ -375,7 +377,10 @@ describe('unattended write guard (#1945)', () => {
       ["await octokit.request({ method: 'DELETE', url });", 'x.ts method DELETE'],
       ["await fetch('https://api.github.com/user/starred/a/b', { method: 'PUT' });", 'x.ts fetch PUT'],
       ["const res = await fetch(`${api}/repos/${repo}/issues`, {\n  method: 'post',\n  body,\n});", 'x.ts fetch POST'],
-      ['await client.activity.starRepoForAuthenticatedUser({ owner, repo });', 'x.ts activity.starRepoForAuthenticatedUser'],
+      [
+        'await client.activity.starRepoForAuthenticatedUser({ owner, repo });',
+        'x.ts activity.starRepoForAuthenticatedUser',
+      ],
       ['await client.repos.transfer({ owner, repo, new_owner });', 'x.ts repos.transfer'],
       ['await client.repos.renameBranch({ owner, repo, branch, new_name });', 'x.ts repos.renameBranch'],
       ['await client.actions.reRunWorkflow({ owner, repo, run_id });', 'x.ts actions.reRunWorkflow'],
@@ -423,7 +428,7 @@ describe('unattended write guard (#1945)', () => {
         "octokit.log.warn('slow');",
         "warn('mutation was lost');",
         "await fetch(url, { method: 'GET', signal });",
-        "client.activity.startTimer();",
+        'client.activity.startTimer();',
         '// await octokit.pulls.create({ owner, repo });',
       ].join('\n');
       expect(unguardedCalls(inFunction(body))).toEqual([]);
