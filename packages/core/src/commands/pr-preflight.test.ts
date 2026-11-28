@@ -614,17 +614,13 @@ describe('runPrPreflight: the staged body and the issue labels (#2040)', () => {
     expect(statusOf(without, 'repo-policy')).toBe('warn');
     expect(summaryOf(without, 'repo-policy')).toContain('the PR body does not contain');
 
-    const staged = await runPrPreflight({ ...options, bodyFile: stageBody('Fixes the crash.
-
-Assisted-by: Some Tool
-') });
+    const staged = await runPrPreflight({ ...options, bodyFile: stageBody('Fixes the crash.\n\nAssisted-by: Some Tool\n') });
     expect(statusOf(staged, 'repo-policy')).toBe('pass');
   });
 
   it('reads the body only from the draft directory', async () => {
     const outside = path.join(ctx.tmp, 'body.md');
-    fs.writeFileSync(outside, 'Assisted-by: Some Tool
-');
+    fs.writeFileSync(outside, 'Assisted-by: Some Tool\n');
     await expect(
       runPrPreflight({ dir: ctx.clone, fetch: false, local: true, bodyFile: outside }),
     ).rejects.toThrow(/drafts must be files directly inside/);

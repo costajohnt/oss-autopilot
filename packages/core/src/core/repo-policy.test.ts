@@ -62,7 +62,7 @@ describe('derivePolicy: aiPolicy from fixture CONTRIBUTING files', () => {
     expect(fromFixture(fixture).aiPolicy).toBe(expected);
   });
 
-  it('keeps the repo's disclosure rule in source only, never as a line to paste (#2040)', () => {
+  it("keeps the repo's disclosure rule in source only, never as a line to paste (#2040)", () => {
     const policy = fromFixture('disclosure-required');
     expect(policy.disclosureText).toBeUndefined();
     expect(policy.source[0]).toMatchObject({ file: 'CONTRIBUTING.md' });
