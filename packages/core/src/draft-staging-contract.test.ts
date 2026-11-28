@@ -179,7 +179,7 @@ describe('prompt files read GitHub threads through the fenced commands (#2046)',
    * is not fenced.
    */
   const RAW_THREAD =
-    /\bgh\s+(?:issue|pr)\s+(?:(?:-R|--repo)[\s=]+\S+\s+)?view\b(?:[^\n`]|\\\n)*?\s(?:--comments\b|-c(?![\w-])|--json[\s=]+["']?[\w,]*\bcomments\b)/g;
+    /\bgh\s+(?:issue|pr)\s+(?:(?:-R\s+|--repo[\s=])[\w./-]+\s+)?view\b(?:[^\n`]|\\\n)*?\s(?:--comments\b|-c(?![\w-])|--json[\s=]+["']?[\w,]*\bcomments\b)/g;
 
   it('the pattern matches a raw thread read and skips the fenced commands', () => {
     const sample = [
