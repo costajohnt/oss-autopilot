@@ -14,14 +14,17 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // Used to onboard opinionated plugins (unicorn, sonarjs) without gating CI
 // while we triage. Ratchet to 'error' as warning counts drop.
 //
-// The ratchet is `--max-warnings` in the root `lint` script, set to the exact
-// count on main. The script builds core first (#1944): dashboard and
+// The ratchet is `--max-warnings` in the root `lint` script, set to the
+// count on main plus 10 of slack, so one warning from an unrelated change
+// (a dependency bump, a new rule) does not fail every open PR (#2056).
+// The script builds core first (#1944): dashboard and
 // mcp-server import `@oss-autopilot/core` through its package.json `exports`,
 // which point at `packages/core/dist/**/*.d.ts`. Without that build the
 // imports resolve to error types and the type-aware rules report ~540 extra
 // no-unsafe-* warnings, so always count with `pnpm run lint`, never a bare
 // `eslint packages/` on an unbuilt tree.
-// Lower the cap when the count drops. Raise it only with a reason in the PR.
+// Lower the cap when the count drops (keep the 10 of slack). Raise it only
+// with a reason in the PR.
 function downgradeToWarn(config) {
   return {
     ...config,
