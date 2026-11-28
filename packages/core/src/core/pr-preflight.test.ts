@@ -556,6 +556,149 @@ function policy(overrides: Partial<RepoPolicy>): RepoPolicy {
   };
 }
 
+describe('checkRepoPolicy: disclosure-required against the staged body (#2040)', () => {
+  const recorded = {
+    ...READY,
+    policy: policy({
+      aiPolicy: 'disclosure-required',
+      disclosureText: 'Assisted-by: Some Tool',
+      reviewedByUser: true,
+    }),
+  };
+
+  it('passes when the body contains the recorded line, ignoring case and line wrapping', () => {
+    const prBody = 'Fixes the crash.\n\nassisted-by:\n  some   tool\n';
+    expect(checkRepoPolicy({ ...recorded, prBody }).status).toBe('pass');
+  });
+
+  it('warns when the body lacks the recorded line', () => {
+    const result = checkRepoPolicy({ ...recorded, prBody: 'Fixes the crash.' });
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('the PR body does not contain the line in details.disclosureText');
+  });
+
+  it('does not count the line inside an HTML comment or an unchecked box, but counts a ticked one', () => {
+    const line = { ...recorded, policy: { ...recorded.policy, disclosureText: 'I used AI tools to write this PR' } };
+    const statusOf = (prBody: string) => checkRepoPolicy({ ...line, prBody }).status;
+    expect(statusOf('## Checklist\n- [ ] I used AI tools to write this PR\n')).toBe('warn');
+    expect(statusOf('* [ ] I used AI tools to write this PR')).toBe('warn');
+    expect(statusOf('<!-- If applicable: I used AI tools to write this PR -->')).toBe('warn');
+    expect(statusOf('<!--\nI used AI tools to write this PR\n-->\nFixes #7')).toBe('warn');
+    expect(statusOf('<!-- unclosed\nI used AI tools to write this PR')).toBe('warn');
+    expect(statusOf('- [x] I used AI tools to write this PR')).toBe('pass');
+    expect(statusOf('- [X] I used AI tools to write this PR')).toBe('pass');
+    expect(statusOf('Fixes #7.\n\nI used AI tools to write this PR.')).toBe('pass');
+  });
+
+  it('matches the recorded line on word boundaries', () => {
+    const short = { ...recorded, policy: { ...recorded.policy, disclosureText: 'AI' } };
+    expect(checkRepoPolicy({ ...short, prBody: 'Thanks to the maintainers.' }).status).toBe('warn');
+    expect(checkRepoPolicy({ ...short, prBody: 'Written with AI.' }).status).toBe('pass');
+  });
+
+  it('matches a recorded line cut short by quote() up to the cut', () => {
+    const cut = { ...recorded, policy: { ...recorded.policy, disclosureText: 'Assisted-by: Some T…' } };
+    expect(checkRepoPolicy({ ...cut, prBody: 'Assisted-by: Some Tool' }).status).toBe('pass');
+  });
+
+  it('with no recorded line, asks for one per the quoted rule and never offers a disclosureText', () => {
+    const source = [{ file: 'CONTRIBUTING.md', quotedLine: '…you must disclose AI assistance in the PR…' }];
+    const facts = { ...READY, prBody: 'anything', policy: policy({ aiPolicy: 'disclosure-required', source }) };
+    const result = checkRepoPolicy(facts);
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('meets the rule quoted in details.sources');
+    expect(result.summary).toContain('--disclosure-text <line>');
+    expect(result.summary).not.toContain('details.disclosureText');
+    expect(result.details?.disclosureText).toBeUndefined();
+    expect(extractFromFence(String(result.details?.sources))).toContain('you must disclose AI assistance');
+  });
+});
+
+describe('checkRepoPolicy: maintainer-label against the issue labels (#2040)', () => {
+  const rule = 'Please wait until a maintainer adds the `status: accepted` label before opening a PR.';
+  const source = [{ file: 'CONTRIBUTING.md', quotedLine: rule }];
+  const gated = { ...READY, issueUrl: ISSUE_URL, policy: policy({ prGate: 'maintainer-label', source }) };
+  const statusFor = (...issueLabels: string[]) => checkRepoPolicy({ ...gated, issueLabels }).status;
+
+  it('passes only when the issue carries the label the recorded rule names', () => {
+    for (const label of ['status: accepted', 'Status/Accepted', 'status-accepted']) {
+      expect(statusFor('bug', label), label).toBe('pass');
+    }
+    const ready = policy({
+      prGate: 'maintainer-label',
+      source: [
+        { file: 'CONTRIBUTING.md', quotedLine: 'Issues labeled as ready can be picked up before opening a PR.' },
+      ],
+    });
+    expect(checkRepoPolicy({ ...gated, policy: ready, issueLabels: ['ready'] }).status).toBe('pass');
+  });
+
+  it('warns for a label that only looks like acceptance, and names it', () => {
+    const lookalikes = [
+      'ready for review',
+      'ready for triage',
+      'ready-to-merge',
+      'ready_for_review',
+      'triaged',
+      'auto-triaged',
+      'approved-for-discussion',
+      'confirmed',
+      'bug: confirmed',
+      'rfc-approved',
+      'design approved',
+      'accepted',
+      'help wanted',
+      'good first issue',
+    ];
+    for (const label of lookalikes) {
+      const result = checkRepoPolicy({ ...gated, issueLabels: [label] });
+      expect(result.status, label).toBe('warn');
+      expect(result.summary, label).toContain(`label ${JSON.stringify(label)} looks like acceptance`);
+      expect(result.summary, label).toContain("confirm it is this repo's gate label");
+    }
+  });
+
+  it('warns for a label marked not yet, a rejection next to the gate label, or a type label the rule mentions', () => {
+    expect(statusFor('approved: no')).toBe('warn');
+    expect(statusFor('status: not accepted')).toBe('warn');
+    expect(statusFor('status: accepted', 'wontfix')).toBe('warn');
+    expect(checkRepoPolicy({ ...gated, issueLabels: ['status: accepted', 'wontfix'] }).summary).toContain(
+      'the issue carries "wontfix"',
+    );
+    const bugRule = policy({
+      prGate: 'maintainer-label',
+      source: [{ file: 'CONTRIBUTING.md', quotedLine: 'Label the bug as accepted before opening a PR.' }],
+    });
+    expect(checkRepoPolicy({ ...gated, policy: bugRule, issueLabels: ['bug'] }).status).toBe('warn');
+  });
+
+  it('warns when no label is the gate label, with the labels fenced', () => {
+    const result = checkRepoPolicy({ ...gated, issueLabels: ['bug', 'needs-triage', 'not approved'] });
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain(
+      "none of the issue's labels (details.issueLabels) is the one the recorded rule names",
+    );
+    const fenced = String(result.details?.issueLabels);
+    expect(fenced).toMatch(/^<github-content /);
+    expect(extractFromFence(fenced)).toBe('bug\nneeds-triage\nnot approved');
+  });
+
+  it('warns when the issue has no labels', () => {
+    const result = checkRepoPolicy({ ...gated, issueLabels: [] });
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('the issue has no labels');
+    expect(result.details?.issueLabels).toBeUndefined();
+  });
+
+  it('warns when the labels could not be read, or no issue was given', () => {
+    const failed = checkRepoPolicy({ ...gated, labelsError: 'HTTP 502' });
+    expect(failed.summary).toContain("the issue's labels could not be read (GitHub request failed: HTTP 502)");
+    const noIssue = checkRepoPolicy({ ...gated, issueUrl: null });
+    expect(noIssue.status).toBe('warn');
+    expect(noIssue.summary).toContain('pass the issue so preflight can read its labels');
+  });
+});
+
 describe('checkRepoPolicy (#1953)', () => {
   it('fails for a banned repo', () => {
     const result = checkRepoPolicy({ ...READY, policy: policy({ aiPolicy: 'banned', reviewedByUser: true }) });
@@ -587,63 +730,6 @@ describe('checkRepoPolicy (#1953)', () => {
     expect(extractFromFence(fenced)).toBe(disclosureText);
   });
 
-  describe('disclosure-required against the staged body (#2040)', () => {
-    const recorded = {
-      ...READY,
-      policy: policy({
-        aiPolicy: 'disclosure-required',
-        disclosureText: 'Assisted-by: Some Tool',
-        reviewedByUser: true,
-      }),
-    };
-
-    it('passes when the body contains the recorded line, ignoring case and line wrapping', () => {
-      const prBody = 'Fixes the crash.\n\nassisted-by:\n  some   tool\n';
-      expect(checkRepoPolicy({ ...recorded, prBody }).status).toBe('pass');
-    });
-
-    it('warns when the body lacks the recorded line', () => {
-      const result = checkRepoPolicy({ ...recorded, prBody: 'Fixes the crash.' });
-      expect(result.status).toBe('warn');
-      expect(result.summary).toContain('the PR body does not contain the line in details.disclosureText');
-    });
-
-    it('does not count the line inside an HTML comment or an unchecked box, but counts a ticked one', () => {
-      const line = { ...recorded, policy: { ...recorded.policy, disclosureText: 'I used AI tools to write this PR' } };
-      const statusOf = (prBody: string) => checkRepoPolicy({ ...line, prBody }).status;
-      expect(statusOf('## Checklist\n- [ ] I used AI tools to write this PR\n')).toBe('warn');
-      expect(statusOf('* [ ] I used AI tools to write this PR')).toBe('warn');
-      expect(statusOf('<!-- If applicable: I used AI tools to write this PR -->')).toBe('warn');
-      expect(statusOf('<!--\nI used AI tools to write this PR\n-->\nFixes #7')).toBe('warn');
-      expect(statusOf('<!-- unclosed\nI used AI tools to write this PR')).toBe('warn');
-      expect(statusOf('- [x] I used AI tools to write this PR')).toBe('pass');
-      expect(statusOf('- [X] I used AI tools to write this PR')).toBe('pass');
-      expect(statusOf('Fixes #7.\n\nI used AI tools to write this PR.')).toBe('pass');
-    });
-
-    it('matches the recorded line on word boundaries', () => {
-      const short = { ...recorded, policy: { ...recorded.policy, disclosureText: 'AI' } };
-      expect(checkRepoPolicy({ ...short, prBody: 'Thanks to the maintainers.' }).status).toBe('warn');
-      expect(checkRepoPolicy({ ...short, prBody: 'Written with AI.' }).status).toBe('pass');
-    });
-
-    it('matches a recorded line cut short by quote() up to the cut', () => {
-      const cut = { ...recorded, policy: { ...recorded.policy, disclosureText: 'Assisted-by: Some T…' } };
-      expect(checkRepoPolicy({ ...cut, prBody: 'Assisted-by: Some Tool' }).status).toBe('pass');
-    });
-
-    it('with no recorded line, asks for one per the quoted rule and never offers a disclosureText', () => {
-      const source = [{ file: 'CONTRIBUTING.md', quotedLine: '…you must disclose AI assistance in the PR…' }];
-      const facts = { ...READY, prBody: 'anything', policy: policy({ aiPolicy: 'disclosure-required', source }) };
-      const result = checkRepoPolicy(facts);
-      expect(result.status).toBe('warn');
-      expect(result.summary).toContain('meets the rule quoted in details.sources');
-      expect(result.summary).toContain('--disclosure-text <line>');
-      expect(result.summary).not.toContain('details.disclosureText');
-      expect(result.details?.disclosureText).toBeUndefined();
-      expect(extractFromFence(String(result.details?.sources))).toContain('you must disclose AI assistance');
-    });
-  });
 
   it('warns for claim-first until the user is assigned', () => {
     const claim = { ...READY, issueUrl: ISSUE_URL, policy: policy({ prGate: 'claim-first' }) };
@@ -652,90 +738,6 @@ describe('checkRepoPolicy (#1953)', () => {
     expect(checkRepoPolicy(assigned).status).toBe('pass');
   });
 
-  describe('maintainer-label against the issue labels (#2040)', () => {
-    const rule = 'Please wait until a maintainer adds the `status: accepted` label before opening a PR.';
-    const source = [{ file: 'CONTRIBUTING.md', quotedLine: rule }];
-    const gated = { ...READY, issueUrl: ISSUE_URL, policy: policy({ prGate: 'maintainer-label', source }) };
-    const statusFor = (...issueLabels: string[]) => checkRepoPolicy({ ...gated, issueLabels }).status;
-
-    it('passes only when the issue carries the label the recorded rule names', () => {
-      for (const label of ['status: accepted', 'Status/Accepted', 'status-accepted']) {
-        expect(statusFor('bug', label), label).toBe('pass');
-      }
-      const ready = policy({
-        prGate: 'maintainer-label',
-        source: [
-          { file: 'CONTRIBUTING.md', quotedLine: 'Issues labeled as ready can be picked up before opening a PR.' },
-        ],
-      });
-      expect(checkRepoPolicy({ ...gated, policy: ready, issueLabels: ['ready'] }).status).toBe('pass');
-    });
-
-    it('warns for a label that only looks like acceptance, and names it', () => {
-      const lookalikes = [
-        'ready for review',
-        'ready for triage',
-        'ready-to-merge',
-        'ready_for_review',
-        'triaged',
-        'auto-triaged',
-        'approved-for-discussion',
-        'confirmed',
-        'bug: confirmed',
-        'rfc-approved',
-        'design approved',
-        'accepted',
-        'help wanted',
-        'good first issue',
-      ];
-      for (const label of lookalikes) {
-        const result = checkRepoPolicy({ ...gated, issueLabels: [label] });
-        expect(result.status, label).toBe('warn');
-        expect(result.summary, label).toContain(`label ${JSON.stringify(label)} looks like acceptance`);
-        expect(result.summary, label).toContain("confirm it is this repo's gate label");
-      }
-    });
-
-    it('warns for a label marked not yet, a rejection next to the gate label, or a type label the rule mentions', () => {
-      expect(statusFor('approved: no')).toBe('warn');
-      expect(statusFor('status: not accepted')).toBe('warn');
-      expect(statusFor('status: accepted', 'wontfix')).toBe('warn');
-      expect(checkRepoPolicy({ ...gated, issueLabels: ['status: accepted', 'wontfix'] }).summary).toContain(
-        'the issue carries "wontfix"',
-      );
-      const bugRule = policy({
-        prGate: 'maintainer-label',
-        source: [{ file: 'CONTRIBUTING.md', quotedLine: 'Label the bug as accepted before opening a PR.' }],
-      });
-      expect(checkRepoPolicy({ ...gated, policy: bugRule, issueLabels: ['bug'] }).status).toBe('warn');
-    });
-
-    it('warns when no label is the gate label, with the labels fenced', () => {
-      const result = checkRepoPolicy({ ...gated, issueLabels: ['bug', 'needs-triage', 'not approved'] });
-      expect(result.status).toBe('warn');
-      expect(result.summary).toContain(
-        "none of the issue's labels (details.issueLabels) is the one the recorded rule names",
-      );
-      const fenced = String(result.details?.issueLabels);
-      expect(fenced).toMatch(/^<github-content /);
-      expect(extractFromFence(fenced)).toBe('bug\nneeds-triage\nnot approved');
-    });
-
-    it('warns when the issue has no labels', () => {
-      const result = checkRepoPolicy({ ...gated, issueLabels: [] });
-      expect(result.status).toBe('warn');
-      expect(result.summary).toContain('the issue has no labels');
-      expect(result.details?.issueLabels).toBeUndefined();
-    });
-
-    it('warns when the labels could not be read, or no issue was given', () => {
-      const failed = checkRepoPolicy({ ...gated, labelsError: 'HTTP 502' });
-      expect(failed.summary).toContain("the issue's labels could not be read (GitHub request failed: HTTP 502)");
-      const noIssue = checkRepoPolicy({ ...gated, issueUrl: null });
-      expect(noIssue.status).toBe('warn');
-      expect(noIssue.summary).toContain('pass the issue so preflight can read its labels');
-    });
-  });
 
   it('only warns for an unreviewed collaborators-only reading: the heuristic may have misread the docs', () => {
     const facts = { ...READY, policy: policy({ prGate: 'collaborators-only' }) };
