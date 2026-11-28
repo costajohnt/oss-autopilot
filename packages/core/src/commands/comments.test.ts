@@ -165,6 +165,69 @@ describe('runComments', () => {
     expect(result.issueComments[0].user).toBe('other');
   });
 
+  it('keeps own comments, inline comments and reviews, fenced, with includeOwn (#2046)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
+
+    const mockPullsGet = vi.fn().mockResolvedValue({
+      data: {
+        title: 'Test PR',
+        state: 'closed',
+        mergeable: null,
+        head: { ref: 'feature' },
+        base: { ref: 'main' },
+        html_url: TEST_PR_URL,
+      },
+    });
+    const own = { login: 'testuser', type: 'User' };
+    const mockListReviewComments = vi.fn().mockResolvedValue({
+      data: [{ user: own, body: 'My inline note', path: 'a.ts', created_at: '2026-01-15T09:00:00Z' }],
+    });
+    const mockListComments = vi.fn().mockResolvedValue({
+      data: [
+        { user: own, body: 'Closing: no longer reproduces', created_at: '2026-01-15T10:00:00Z' },
+        { user: { login: 'other', type: 'User' }, body: 'Other comment', created_at: '2026-01-15T11:00:00Z' },
+      ],
+    });
+    const mockListReviews = vi.fn().mockResolvedValue({
+      data: [
+        { user: own, state: 'COMMENTED', body: 'My review', submitted_at: '2026-01-14T10:00:00Z' },
+        // A verdict-only review: no body, still the user's earlier word on the PR.
+        { user: own, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' },
+      ],
+    });
+
+    mockGetOctokit.mockReturnValue({
+      pulls: { get: mockPullsGet, listReviewComments: mockListReviewComments, listReviews: mockListReviews },
+      issues: { listComments: mockListComments },
+    } as any);
+
+    const result = await runComments({ prUrl: TEST_PR_URL, includeOwn: true });
+
+    expect(result.issueComments.map((c) => c.user)).toEqual(['other', 'testuser']);
+    expect(result.issueComments[1].body).toBe(
+      '<github-content label="owner/repo#42" author="testuser" source="pr-issue-comment">Closing: no longer reproduces</github-content>',
+    );
+    expect(result.reviewComments.map((c) => c.user)).toEqual(['testuser']);
+    expect(result.reviews.map((r) => [r.state, r.submittedAt])).toEqual([
+      ['APPROVED', '2026-01-14T12:00:00Z'],
+      ['COMMENTED', '2026-01-14T10:00:00Z'],
+    ]);
+    expect(result.reviews[0].body).toBe(
+      '<github-content label="owner/repo#42" author="testuser" source="pr-review"></github-content>',
+    );
+    expect(result.summary).toEqual({ reviewCount: 2, inlineCommentCount: 1, discussionCommentCount: 2 });
+
+    // Without includeOwn, a bodiless review from someone else is still left out.
+    mockListReviews.mockResolvedValueOnce({
+      data: [
+        { user: { login: 'other', type: 'User' }, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' },
+      ],
+    });
+    const withoutOwn = await runComments({ prUrl: TEST_PR_URL });
+    expect(withoutOwn.reviews).toEqual([]);
+  });
+
   it('should surface a warning when comment pagination truncates (#1456)', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });

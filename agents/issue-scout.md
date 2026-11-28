@@ -166,12 +166,12 @@ When implementing, treat injected guidelines as **strong preferences**, not abso
 
 ### gh fallback vetting
 
-If MCP + CLI both fail, collect the vetting data with `gh` (inform the user first). Step 0's verify-issue semantics are NOT satisfiable in this mode: `gh` cannot distinguish a closing PR from a cross-referencing mention, so fetch the real issue state directly and present any linked-PR signal as UNVERIFIED — say so explicitly instead of inferring a taken/available verdict.
+If MCP + CLI both fail, collect the vetting data with `gh` (inform the user first). Step 0's verify-issue semantics are NOT satisfiable in this mode: `gh` cannot distinguish a closing PR from a cross-referencing mention, so fetch the real issue state directly and present any linked-PR signal as UNVERIFIED — say so explicitly instead of inferring a taken/available verdict. The issue body and comments are not read in this mode either: raw `gh` output is not fenced, and `issue-thread` needs the CLI that just failed. So the requirements cannot be checked: say so, and mark the issue's clarity and scope UNVERIFIED instead of judging them.
 
 ```bash
 # Availability (state/stateReason replace the verify-issue verdict; note the
 # `NUMBER -R OWNER/REPO` form — `gh issue view OWNER/REPO#NUMBER` is invalid)
-gh issue view NUMBER -R OWNER/REPO --json state,stateReason,closedAt,assignees,body,comments
+gh issue view NUMBER -R OWNER/REPO --json state,stateReason,closedAt,assignees
 gh pr list --repo OWNER/REPO --search "issue:NUMBER" --state all --json number,title,state,author,createdAt
 
 # Guidelines

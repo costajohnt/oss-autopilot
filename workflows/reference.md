@@ -162,7 +162,7 @@ Step 3 runs only on this answer. After showing the draft text (step 2), ask with
 
 Post only when the answer contains one of "Post this comment", "post it", "option 1" or "yes, post" (case-insensitive) and no negation word ("don't", "no", "not", "wait", "cancel", "stop", "actually", "never mind", "changed my mind") in the same sentence, as in `workflows/pre-commit-review.md` step 7b. A change request, a generic "yes" / "ok" / "looks good", an empty answer (see "AskUserQuestion Validation Protocol") or anything ambiguous is not approval: do not post; treat a change request as "Edit before posting" and anything else as "Don't post", and say so. Edit rounds re-ask with the same rules. In an unattended run nothing is posted: `post` refuses there.
 
-`--body-file` and `--from-file` require `--expect-sha256`, cannot be combined with another source of the text (`--stdin`, positional words, `--content`), and refuse an empty file. They only read regular files directly inside the draft directory that you own, that are not world-writable and have no other hard link, in valid UTF-8 without a byte order mark; symlinks are refused.
+On a command that posts or stores the text, `--body-file` and `--from-file` require `--expect-sha256`, cannot be combined with another source of the text (`--stdin`, positional words, `--content`), and refuse an empty file. They only read regular files directly inside the draft directory that you own, that are not world-writable and have no other hard link, in valid UTF-8 without a byte order mark; symlinks are refused.
 
 ### PR Management
 
@@ -174,7 +174,7 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 <prefix> compliance-score <pr-url> --json
 
 # View comments on a PR
-<prefix> comments <pr-url> --json [--bots]
+<prefix> comments <pr-url> --json [--bots] [--include-own]   # --include-own also keeps reviews with no body (verdict only)
 
 # Post a comment to an issue or PR, from an approved draft file (see "Draft Files" above).
 # Never pass the message as a shell argument: backticks and $(...) in it would run as commands (#1930).
@@ -216,7 +216,8 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 # (exit 1 on fail); each checks[] entry has id, status (pass | warn | fail | skipped), summary, details.
 # Reads only; --fetch refreshes <remote>/<base> first. No token, or --local: network checks come back
 # skipped. Exit 1 with success: true is a fail verdict; success: false means the gate did not run.
-<prefix> pr-preflight [issue-url-or-number] [--dir <path>] [--base <branch>] [--fetch] [--local] --json
+# --body-file: the staged PR body, checked for the disclosure line a disclosure-required repo needs.
+<prefix> pr-preflight [issue-url-or-number] [--dir <path>] [--base <branch>] [--fetch] [--local] [--body-file "<draft-path>"] --json
 
 # Compute the fresh repo health rubric (1–10 rubricScore + verdict) for owner/repo;
 # includes the cached historyScore when one exists (#1271, #1465 — docs/repo-scores.md)
@@ -228,8 +229,11 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 # set records what the user confirmed (refused unattended; vet never overwrites it). A repo in
 # aiPolicyBlocklist reads as banned whatever is stored; set --ai-policy banned adds the repo to that list and
 # any other --ai-policy takes it off (reset leaves it). disclosureText and sources come back fenced.
+# disclosureText is only a line the user set (--disclosure-text); the repo's own rule is in sources.
+# gateLabel is the issue label a maintainer-label gate waits for, only ever set by the user (--gate-label,
+# "" clears); pr-preflight passes that gate only when the issue carries exactly that label.
 <prefix> policy get --repo <owner/repo> --json
-<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
+<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--gate-label <name>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
 <prefix> policy reset --repo <owner/repo> --json
 ```
 
@@ -308,6 +312,7 @@ rejected with a did-you-mean suggestion.
 | `--fetch` | `pr-preflight` | Fetch the upstream target branch before measuring drift; without it a stale ref is reported, not refreshed. |
 | `--dir <path>` | `pr-preflight` | Clone or worktree to check (default: the current directory). |
 | `--local` | `pr-preflight` | Make no GitHub call: local checks and numbers (`ahead`, `behind`, `mergeBase`) only. |
+| `--body-file <path>` | `pr-preflight` | Staged PR body in the draft directory; `repo-policy` passes a disclosure rule when the body has the recorded line. Only read, never posted, so no `--expect-sha256`. |
 | `--reset` | `setup` | Re-run the setup wizard even if already complete. |
 | `--set key=value` | `setup` | Apply settings non-interactively. Repeatable. Unknown keys are rejected with a did-you-mean suggestion. |
 | `--list-keys` | `config` | Dump every known config key with descriptions (alternative to `--json`). |
@@ -425,7 +430,9 @@ attributes:
 their body fields, so the fence arrives in the payload itself:
 
 - `comments` (MCP tool + CLI `--json`): review, inline-comment, and
-  discussion `body` fields.
+  discussion `body` fields. Use it (with `--include-own` when the user's own
+  comments matter) instead of raw `gh pr view` with `--comments`, which is NOT
+  fenced.
 - `daily` / `startup` (MCP tool + CLI `--json`): `commentedIssues[]`
   comment excerpts (`lastResponseBody`, `userLastCommentBody`), and
   `digest.openPRs[].lastMaintainerComment.body` (#1420).
@@ -436,8 +443,12 @@ their body fields, so the fence arrives in the payload itself:
   `title`, `body`, and every `comments[].body` (#1932). Raw `gh issue view`
   output is NOT fenced; read a thread through this command instead.
 - Every MCP tool result (#1931): `title`, `prTitle`, `headRefName`, and
-  `baseRefName` string values. MCP only; the CLI `--json` output keeps
-  these raw.
+  `baseRefName` string values, and each entry of an issue or PR row's
+  `labels` (#2046). MCP only; the CLI `--json` output keeps these raw.
+- `vet` / `vet-list` never print the repo's CONTRIBUTING text
+  (`vettingResult.contributionGuidelines.rawContent` is dropped, #2046);
+  what vet read from it is in `policy`, and `policy get` returns the quoted
+  source lines fenced.
 
 **NOT pre-fenced** — titles in CLI `--json` output, repo names and
 descriptions everywhere, the other `search` / `vet` / `vet-list` /
