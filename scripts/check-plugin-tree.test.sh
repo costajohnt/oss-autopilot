@@ -34,7 +34,7 @@ setup() {
     cat >"${TREE}/packages/core/dist/cli.bundle.cjs" <<'EOF'
 const args = process.argv.slice(2);
 if (args[0] === '--version') { console.log('1.2.3'); process.exit(0); }
-if (['daily', 'status'].includes(args[0])) { console.log(`Usage: oss-autopilot ${args[0]} [options]`); process.exit(0); }
+if (['daily', 'status', 'checkSetup'].includes(args[0])) { console.log(`Usage: oss-autopilot ${args[0]} [options]`); process.exit(0); }
 console.log('Usage: oss-autopilot [options] [command]');
 EOF
     echo "#!/usr/bin/env bash" >"${TREE}/scripts/build-cli-if-stale.sh"
@@ -52,7 +52,7 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" \
   status --json
 ```
 EOF
-    echo "See <prefix> daily." >"${TREE}/skills/demo/SKILL.md"
+    echo "See <prefix> daily and \`cli.bundle.cjs checkSetup --json\`." >"${TREE}/skills/demo/SKILL.md"
 }
 
 teardown() {
@@ -86,8 +86,8 @@ case_good_tree_passes() {
         fail "expected exit 0, got $rc ($out)"
         return
     fi
-    echo "$out" | grep -q "3 \${CLAUDE_PLUGIN_ROOT} paths present, 2 CLI commands" && pass ||
-        fail "expected 3 paths and 2 commands, got '$out'"
+    echo "$out" | grep -q "3 \${CLAUDE_PLUGIN_ROOT} paths present, 3 CLI commands" && pass ||
+        fail "expected 3 paths and 3 commands, got '$out'"
 }
 
 case_missing_referenced_file_fails() {

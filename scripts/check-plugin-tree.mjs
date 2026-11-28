@@ -37,8 +37,9 @@ const PROMPT_DIRS = ['agents', 'commands', 'workflows', 'skills'];
 // trimmed below.
 const PLUGIN_PATH = /\$\{?CLAUDE_PLUGIN_ROOT\}?\/([^\s"'`)\]<>\\]+)/g;
 // A command name right after the bundle (or `<prefix>`), on the same line or
-// after a `\` continuation. Flags and placeholders do not match `[a-z]`.
-const INVOCATION = /(?:cli\.bundle\.cjs["']?|<prefix>)(?:[ \t]+|[ \t]*\\\n[ \t]*)+([a-z][a-z0-9-]*)/g;
+// after a `\` continuation. Flags and placeholders do not start with `[a-z]`;
+// some names are camelCase (`checkSetup`).
+const INVOCATION = /(?:cli\.bundle\.cjs["']?|<prefix>)(?:[ \t]+|[ \t]*\\\n[ \t]*)+([a-z][a-zA-Z0-9-]*)/g;
 
 function markdownFiles(dir) {
   if (!fs.existsSync(dir)) return [];
