@@ -74,6 +74,7 @@ vi.mock('./formatters/json.js', () => ({
   WorkReleaseOutputSchema: { name: 'WorkReleaseOutputSchema' },
   WorkListOutputSchema: { name: 'WorkListOutputSchema' },
   PolicyGetOutputSchema: { name: 'PolicyGetOutputSchema' },
+  DashboardLaunchOutputSchema: { name: 'DashboardLaunchOutputSchema' },
 }));
 
 const mockRunWorkClaim = vi.fn();
@@ -146,7 +147,11 @@ vi.mock('./commands/daily.js', () => ({
 }));
 
 const mockStopStaleDashboardServer = vi.fn();
-vi.mock('./commands/dashboard-lifecycle.js', () => ({ stopStaleDashboardServer: mockStopStaleDashboardServer }));
+const mockRunDashboardLaunch = vi.fn();
+vi.mock('./commands/dashboard-lifecycle.js', () => ({
+  stopStaleDashboardServer: mockStopStaleDashboardServer,
+  runDashboardLaunch: mockRunDashboardLaunch,
+}));
 
 const mockRunTrack = vi.fn();
 vi.mock('./commands/track.js', () => ({ runTrack: mockRunTrack }));
@@ -733,6 +738,66 @@ describe('dashboard port validation', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith('Error: EADDRINUSE');
     expect(mockOutputJsonError).not.toHaveBeenCalled();
     expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('dashboard launch (#2039)', () => {
+  const LAUNCHED = {
+    status: 'launched',
+    url: 'http://oss.localhost:3000',
+    port: 3000,
+    logFile: '/home/u/.oss-autopilot/dashboard.log',
+  };
+
+  it('--json validates against DashboardLaunchOutputSchema (tier-1)', async () => {
+    mockRunDashboardLaunch.mockResolvedValue(LAUNCHED);
+
+    await buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch', '--json']);
+
+    expect(mockRunDashboardLaunch).toHaveBeenCalledWith({ port: 3000 });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith({ name: 'DashboardLaunchOutputSchema' }, LAUNCHED);
+  });
+
+  it('passes --port through and prints the URL in text mode', async () => {
+    mockRunDashboardLaunch.mockResolvedValue({ ...LAUNCHED, status: 'already_running', port: 8080 });
+
+    await buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch', '--port', '8080']);
+
+    expect(mockRunDashboardLaunch).toHaveBeenCalledWith({ port: 8080 });
+    expect(consoleLogSpy).toHaveBeenCalledWith('Dashboard: http://oss.localhost:3000 (already running)');
+  });
+
+  it('prints a launched server without the already-running note', async () => {
+    mockRunDashboardLaunch.mockResolvedValue(LAUNCHED);
+
+    await buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch']);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('Dashboard: http://oss.localhost:3000');
+  });
+
+  it('rejects an invalid port with a JSON error envelope', async () => {
+    await expect(
+      buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch', '--port', 'abc', '--json']),
+    ).rejects.toThrow('process.exit called');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(
+      'Invalid port number: "abc". Must be an integer between 1 and 65535.',
+      'UNKNOWN',
+    );
+    expect(mockRunDashboardLaunch).not.toHaveBeenCalled();
+  });
+
+  it('reports a launch failure through the JSON error envelope', async () => {
+    mockRunDashboardLaunch.mockRejectedValue(new Error('Dashboard server did not start. Logs: /x/dashboard.log'));
+
+    await expect(buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch', '--json'])).rejects.toThrow(
+      'process.exit called',
+    );
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(
+      'Dashboard server did not start. Logs: /x/dashboard.log',
+      'UNKNOWN',
+    );
   });
 });
 

@@ -826,6 +826,14 @@ export const PolicyGetOutputSchema = z.object({
   gistSyncWarning: z.string().optional(),
 });
 
+/** `dashboard launch --json` (#2039). Mirrors `DashboardLaunchOutput` in commands/dashboard-lifecycle.ts. */
+export const DashboardLaunchOutputSchema = z.object({
+  status: z.enum(['launched', 'already_running']),
+  url: z.string(),
+  port: z.number(),
+  logFile: z.string(),
+});
+
 const SearchCandidateSchema = z.object({
   issue: z.object({
     repo: z.string(),

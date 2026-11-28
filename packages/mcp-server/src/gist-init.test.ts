@@ -129,6 +129,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   unknownPersistenceModeWarning: mockUnknownPersistenceModeWarning,
   getSetupKeys: () => ['username'],
   getConfigKeys: () => ['username'],
+  getKeyTrust: () => 'preference',
+  CONFIG_KEY_REGISTRY: [],
   ConfigurationError: MockConfigurationError,
   GistFileSizeError: MockGistFileSizeError,
   GistDiscoveryError: MockGistDiscoveryError,

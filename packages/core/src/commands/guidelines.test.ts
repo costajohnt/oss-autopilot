@@ -346,6 +346,20 @@ describe('runGuidelinesReset', () => {
     mockIsGuidelinesAvailable.mockReturnValue(false);
     await expect(runGuidelinesReset({ repo: 'owner/repo' })).rejects.toThrow(/Per-repo guidelines require/);
   });
+
+  it.each(['1', '', '0'])('refuses during an unattended run and deletes nothing (env=%j, #2036)', async (value) => {
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', value);
+    mockGetGuidelines.mockReturnValue('existing content');
+    try {
+      await expect(runGuidelinesReset({ repo: 'owner/repo' })).rejects.toThrow(
+        /Refusing to reset guidelines during an unattended run/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(mockDeleteGuidelines).not.toHaveBeenCalled();
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
 });
 
 describe('runMarkExtracted (#1696)', () => {

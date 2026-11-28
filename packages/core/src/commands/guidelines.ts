@@ -394,9 +394,14 @@ export async function runMarkProposed(options: RepoOption): Promise<MarkProposed
   return { repo: options.repo, path: proposalPath, marked, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
-/** Tombstone the guidelines file for `repo`. */
+/**
+ * Tombstone the guidelines file for `repo`. Refused during an unattended run,
+ * like {@link runGuidelinesStore}: the stored text is guidelines the user
+ * reviewed, and nobody is there to agree to losing them (#2036).
+ */
 export async function runGuidelinesReset(options: RepoOption): Promise<GuidelinesResetOutput> {
   validateRepo(options.repo);
+  assertAttended('reset guidelines');
   const sm = getStateManager();
   if (!sm.isGuidelinesAvailable()) {
     throw new GuidelinesNotAvailableError();
