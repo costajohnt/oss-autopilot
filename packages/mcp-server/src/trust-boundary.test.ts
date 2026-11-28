@@ -12,10 +12,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 
-const { mockRunPost, mockRunClaim, mockRunGuidelinesStore, mockRunVetList } = vi.hoisted(() => ({
+const { mockRunPost, mockRunClaim, mockRunGuidelinesStore, mockRunGuidelinesReset, mockRunVetList } = vi.hoisted(() => ({
   mockRunPost: vi.fn(),
   mockRunClaim: vi.fn(),
   mockRunGuidelinesStore: vi.fn(),
+  mockRunGuidelinesReset: vi.fn(),
   mockRunVetList: vi.fn(),
 }));
 
@@ -24,6 +25,7 @@ vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
   runPost: mockRunPost,
   runClaim: mockRunClaim,
   runGuidelinesStore: mockRunGuidelinesStore,
+  runGuidelinesReset: mockRunGuidelinesReset,
   runVetList: mockRunVetList,
 }));
 
@@ -86,6 +88,7 @@ beforeEach(() => {
   mockRunPost.mockReset().mockResolvedValue({ commentUrl: 'https://github.com/owner/repo/issues/1#c1', url: ISSUE });
   mockRunClaim.mockReset().mockResolvedValue({ commentUrl: 'https://github.com/owner/repo/issues/1#c2' });
   mockRunGuidelinesStore.mockReset().mockResolvedValue({ repo: 'owner/repo', byteSize: 7, stored: true });
+  mockRunGuidelinesReset.mockReset().mockResolvedValue({ repo: 'owner/repo', deleted: true });
   mockRunVetList.mockReset().mockResolvedValue({ results: [], summary: {} });
 });
 
@@ -348,6 +351,12 @@ describe('user approval before a GitHub write (#1936)', () => {
       run: mockRunGuidelinesStore,
       shows: ['owner/repo', 'be nice'],
       cli: 'oss-autopilot guidelines store ',
+    },
+    'guidelines-reset': {
+      args: { repo: 'owner/repo' },
+      run: mockRunGuidelinesReset,
+      shows: ['Delete the stored guidelines for owner/repo'],
+      cli: 'oss-autopilot guidelines reset ',
     },
   };
   const writers = Object.entries(WRITERS);

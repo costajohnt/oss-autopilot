@@ -1159,13 +1159,20 @@ export function registerTools(server: McpServer): void {
     'guidelines-reset',
     {
       description:
-        'Tombstone the per-repo guidelines file so subsequent reads return null. No-op when no guidelines exist. Requires Gist persistence.',
+        'Tombstone the per-repo guidelines file so subsequent reads return null, after the user approves (the server asks them; refused when the host cannot show that form, and in unattended runs). No-op when no guidelines exist. Requires Gist persistence.',
       inputSchema: z.object({
         repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    wrapTool((args: { repo: string }) => runGuidelinesReset({ repo: args.repo })),
+    // The stored text is guidelines the user reviewed; deleting them is theirs to agree to (#2036).
+    requireApproval(
+      hostCapabilities,
+      'reset guidelines',
+      'oss-autopilot guidelines reset --repo <owner/repo>',
+      (args: { repo: string }) => `Delete the stored guidelines for ${args.repo}? This cannot be undone.`,
+      wrapTool((args: { repo: string }) => runGuidelinesReset({ repo: args.repo })),
+    ),
   );
 
   // 26. guidelines-fetch-corpus
