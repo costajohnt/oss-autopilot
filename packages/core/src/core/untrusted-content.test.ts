@@ -228,4 +228,17 @@ describe('fenceTitlesDeep (#1931)', () => {
     expect(JSON.stringify(out)).toContain('"when":"2026-01-02T00:00:00.000Z"');
     expect((out.bare as { title: string }).title).toContain('source="title"');
   });
+
+  it('fences the labels of an issue or PR row, but not configured labels (#2046)', () => {
+    const issue = { repo: 'o/r', number: 9, url: 'https://github.com/o/r/issues/9', labels: [hostile, ''] };
+    const input = { results: [{ issue }], config: { labels: ['good first issue'] } };
+    const out = fenceTitlesDeep(input);
+    const [fenced, empty] = out.results[0].issue.labels;
+    expect(fenced).toContain('label="o/r#9" source="issue-label"');
+    expect(fenceBody(fenced)).not.toMatch(TAG_LOOKALIKE);
+    expect(extractFromFence(fenced)).toBe(hostile);
+    expect(empty).toBe('');
+    expect(out.config.labels).toEqual(['good first issue']);
+    expect(input.results[0].issue.labels[0]).toBe(hostile);
+  });
 });

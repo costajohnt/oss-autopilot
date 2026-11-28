@@ -23,7 +23,7 @@ import { computeSuccessGrade, gradeFromCandidate, reconcileRecommendation } from
 import { repoCapField } from '../core/repo-cap.js';
 import { ValidationError } from '../core/errors.js';
 import { storedPolicy, type RepoPolicy } from '../core/repo-policy.js';
-import { policyFields, vetPolicy } from './vet.js';
+import { policyFields, publicVettingResult, vetPolicy } from './vet.js';
 import { recordVetPolicies } from './policy.js';
 import {
   getStateManager,
@@ -329,7 +329,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       reasonsToSkip: candidate.reasonsToSkip,
       ...(candidate.complexityUnlocked && { complexityUnlocked: true as const }),
       projectHealth: candidate.projectHealth,
-      vettingResult: candidate.vettingResult,
+      vettingResult: publicVettingResult(candidate.vettingResult),
       antiLLMPolicy: candidate.antiLLMPolicy,
       linkedPRClassification,
       ...(linkedPR && { linkedPR }),

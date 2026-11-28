@@ -471,7 +471,23 @@ jobs:
           pnpm --filter @oss-autopilot/mcp run prepublishOnly
           pnpm --filter @oss-autopilot/mcp pack --pack-destination "$RUNNER_TEMP/pack-check"
           tar -tzf "$RUNNER_TEMP"/pack-check/oss-autopilot-core-*.tgz | grep -x 'package/dist/dashboard/index.html'
-          bash scripts/verify-packed-tarballs.sh "$RUNNER_TEMP"/pack-check/*.tgz
+          bash scripts/verify-packed-tarballs.sh --full "$RUNNER_TEMP"/pack-check/*.tgz
+
+      # The tree the marketplace serves, assembled the way the release does it
+      # but from the tarball packed above (#2050). build-directory-branch.sh only
+      # writes the output directory: no fetch, no git, no credentials. The push
+      # lives in release-please.yml, not in the script.
+      - name: Assemble and check the prebuilt plugin tree
+        if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          bash scripts/check-plugin-tree.test.sh
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          bash scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/plugin-tree" "$RUNNER_TEMP"/pack-check/oss-autopilot-core-*.tgz
+          node scripts/check-plugin-tree.mjs "$RUNNER_TEMP/plugin-tree"
+          bash "$RUNNER_TEMP/plugin-tree/scripts/build-cli-if-stale.sh" "$RUNNER_TEMP/plugin-tree"
+          bash "$RUNNER_TEMP/plugin-tree/scripts/build-dashboard-if-stale.sh" "$RUNNER_TEMP/plugin-tree"
 
   # Maintains badges and baselines on the 'badges' branch after CI passes on main.
   # Uses a separate branch because main has branch protection rules.
