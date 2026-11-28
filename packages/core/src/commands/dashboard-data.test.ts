@@ -1056,6 +1056,46 @@ describe('fetchDashboardData', () => {
       expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBe(WATERMARK);
     });
 
+    it.each([
+      ['merged', mockFetchUserMergedPRCounts, mockFetchMergedPRsSince, mockGetMergedPRs, mockGetMergedPRWatermark],
+      ['closed', mockFetchUserClosedPRCounts, mockFetchClosedPRsSince, mockGetClosedPRs, mockGetClosedPRWatermark],
+    ])(
+      'keeps the %s watermark and stores gap and recent rows when the history is larger than one fetch: 50 of 1500',
+      async (kind, countsFetch, gapFetch, getRows, getWatermark) => {
+        const dateKey = kind === 'merged' ? 'mergedAt' : 'closedAt';
+        getRows.mockReturnValue(
+          Array.from({ length: 50 }, (_, i) => ({
+            url: `https://github.com/o/r/pull/${i}`,
+            title: `pr ${i}`,
+            [dateKey]: WATERMARK,
+          })),
+        );
+        getWatermark.mockReturnValue(WATERMARK);
+        countsFetch.mockResolvedValue({ ...makePRCountsResult(), totalCount: 1500 });
+        gapFetch.mockResolvedValue({
+          truncated: false,
+          prs: [{ url: 'https://github.com/o/r/pull/900', title: 'gap', [dateKey]: '2026-06-16T00:00:00Z' }],
+        });
+        const recent = { url: 'https://github.com/o/r/pull/901', repo: 'o/r', number: 901, title: 'recent' };
+        if (kind === 'merged') {
+          mockFetchRecentlyMergedPRs.mockResolvedValue([{ ...recent, mergedAt: '2026-06-20T00:00:00Z' }]);
+        } else {
+          mockFetchRecentlyClosedPRs.mockResolvedValue([{ ...recent, closedAt: '2026-06-20T00:00:00Z' }]);
+        }
+
+        const result = await fetchDashboardData('test-token');
+
+        // A full refetch would match more than 1000 and come back truncated with no rows.
+        expect(gapFetch.mock.calls[0][2]).toBe(WATERMARK);
+        const add = kind === 'merged' ? mockAddMergedPRs : mockAddClosedPRs;
+        expect(add).toHaveBeenCalledWith([
+          expect.objectContaining({ url: 'https://github.com/o/r/pull/901' }),
+          expect.objectContaining({ url: 'https://github.com/o/r/pull/900' }),
+        ]);
+        expect(result.partialFailures).toEqual([]);
+      },
+    );
+
     it('keeps the watermark when the merged count fetch fails', async () => {
       mockGetMergedPRs.mockReturnValue(mergedRows(3));
       mockFetchUserMergedPRCounts.mockRejectedValue(new Error('search API error'));
@@ -1286,7 +1326,21 @@ describe('fetchDashboardData', () => {
       const result = await fetchDashboardData('test-token');
 
       expect(result.partialFailures).toEqual(['clean up PR ledgers']);
+      // The untracked-org eviction still runs.
+      expect(mockEvictExcludedRepos).toHaveBeenCalledWith([]);
       expect(mockAddMergedPRs).toHaveBeenCalled();
+      expect(mockSetLastDigest).toHaveBeenCalled();
+    });
+
+    it('still re-keys and evicts closed rows when the untracked-org eviction throws', async () => {
+      mockEvictExcludedRepos.mockImplementation(() => {
+        throw new Error('corrupt ledger');
+      });
+
+      const result = await fetchDashboardData('test-token');
+
+      expect(result.partialFailures).toEqual(['remove untracked PRs']);
+      expect(mockEvictClosedPRs).toHaveBeenCalled();
       expect(mockSetLastDigest).toHaveBeenCalled();
     });
   });

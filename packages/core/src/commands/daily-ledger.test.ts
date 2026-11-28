@@ -267,6 +267,21 @@ describe('a merged ledger left short of the all-time count (#1504, #2038)', () =
     ]);
   });
 
+  it('keeps the watermark, stores the gap and the recent list, and warns when the history is larger than one fetch: 50 of 1500', async () => {
+    seed(50);
+    const search = makeSearch([...olderMerges, searchItem(3, daysAgo(1))]);
+    const recent: MergedPR = { url: prUrl(4), repo: 'org/repo', number: 4, title: 'PR 4', mergedAt: daysAgo(0.5) };
+
+    const warnings = await runLedgerStep(sm, search.octokit, { allTimeCount: 1500, recent: [recent] });
+
+    // From the start, the search would match more than 1000 and store nothing.
+    expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+    expect(storedUrls(sm)).toEqual(expect.arrayContaining([prUrl(3), prUrl(4)]));
+    expect(storedUrls(sm)).toHaveLength(52);
+    expect(warnings).toEqual([expect.objectContaining({ operation: 'check merged-PR ledger' })]);
+    expect(warnings[0].message).toContain('Run `ledger-backfill`');
+  });
+
   it.each([
     ['caught up: 6 of 6', 6],
     ['with an unknown count', undefined],
@@ -446,6 +461,18 @@ describe('closed-ledger gap filling (#1925)', () => {
             'Run `ledger-backfill` to fetch them.',
         },
       ]);
+    });
+
+    it('keeps the watermark, and stores the gap, when the history is larger than one fetch: 50 of 1500', async () => {
+      seed(50);
+      const search = makeSearch([...olderCloses, recentClose]);
+
+      const warnings = await runClosedLedgerStep(sm, search.octokit, { allTimeCount: 1500, recent: [recentRow] });
+
+      expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+      expect(closedUrls(sm)).toEqual(expect.arrayContaining([prUrl(4)]));
+      expect(closedUrls(sm)).toHaveLength(51);
+      expect(warnings).toEqual([expect.objectContaining({ operation: 'check closed-PR ledger' })]);
     });
 
     it('keeps the watermark when the count is unknown', async () => {

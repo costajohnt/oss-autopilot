@@ -495,12 +495,18 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       // or merged (#1923) and rows in untracked organisations (#1924), as the
       // daily run does before it stores. Private repositories are evicted by
       // the daily run only: it is the one that reads repository visibility.
+      // Separate guards, so one failing does not skip the other.
       try {
         syncLedgersWithGitHub(stateManager, [...mergedResult.searchedPRs, ...closedResult.searchedPRs], prs);
-        evictNeverTrackedRepos(stateManager, []);
       } catch (error) {
         partialFailures.push('clean up PR ledgers');
         warn(MODULE, `Failed to clean up PR ledgers: ${errorMessage(error)}`);
+      }
+      try {
+        evictNeverTrackedRepos(stateManager, []);
+      } catch (error) {
+        partialFailures.push('remove untracked PRs');
+        warn(MODULE, `Failed to remove untracked PRs: ${errorMessage(error)}`);
       }
 
       // Previous run's digest — read BEFORE setLastDigest below replaces it.
