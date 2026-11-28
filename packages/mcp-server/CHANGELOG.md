@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.12.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.12.0...mcp-v5.12.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* classify config keys by trust tier and refuse paths and the ban list over MCP ([#2059](https://github.com/costajohnt/oss-autopilot/issues/2059)) ([c4c1ef8](https://github.com/costajohnt/oss-autopilot/commit/c4c1ef8f2ec094dc6257a3742afbaedc532540e4))
+* let pr-preflight clear the disclosure and maintainer-label asks ([#2061](https://github.com/costajohnt/oss-autopilot/issues/2061)) ([6338b9f](https://github.com/costajohnt/oss-autopilot/commit/6338b9f67a0e0bac8dc8ef29a49bc1b82fc56ae8))
+
 ## [5.12.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.11.3...mcp-v5.12.0) (2026-11-20)
 
 
