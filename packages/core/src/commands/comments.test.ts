@@ -224,7 +224,8 @@ describe('runComments', () => {
         { user: { login: 'other', type: 'User' }, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' },
       ],
     });
-    expect((await runComments({ prUrl: TEST_PR_URL })).reviews).toEqual([]);
+    const withoutOwn = await runComments({ prUrl: TEST_PR_URL });
+    expect(withoutOwn.reviews).toEqual([]);
   });
 
   it('should surface a warning when comment pagination truncates (#1456)', async () => {
