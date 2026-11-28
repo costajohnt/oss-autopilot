@@ -3617,6 +3617,17 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
 
 // #2042: the author's own rewrite counts as addressing a change request only
 // when it kept the reviewed commit's parent (an amend), not after a rebase.
+// Author date before the review, committer date after it: amend and rebase look the same by date.
+const rewrittenHead = (parentSha: string, login: { login: string } | null) => ({
+  commit: {
+    author: { date: '2026-02-01T00:00:00Z', email: 'me@example.com' },
+    committer: { date: '2026-02-03T00:00:00Z', email: 'me@example.com' },
+  },
+  author: login,
+  committer: login,
+  parents: [{ sha: parentSha }],
+});
+
 describe('fetchPRDetails head commit rewritten after a change request', () => {
   const prUrl = 'https://github.com/owner/repo/pull/1';
   const review = {
@@ -3628,17 +3639,6 @@ describe('fetchPRDetails head commit rewritten after a change request', () => {
     submitted_at: '2026-02-02T00:00:00Z',
     commit_id: 'reviewed1',
   };
-  // Author date before the review, committer date after it: amend and rebase look the same by date.
-  const rewrittenHead = (parentSha: string, logins = true) => ({
-    commit: {
-      author: { date: '2026-02-01T00:00:00Z', email: 'me@example.com' },
-      committer: { date: '2026-02-03T00:00:00Z', email: 'me@example.com' },
-    },
-    author: logins ? { login: 'testuser' } : null,
-    committer: logins ? { login: 'testuser' } : null,
-    parents: [{ sha: parentSha }],
-  });
-
   const makeMocks = (head: ReturnType<typeof rewrittenHead>) => ({
     search: {
       issuesAndPullRequests: vi.fn().mockResolvedValue({
@@ -3671,31 +3671,33 @@ describe('fetchPRDetails head commit rewritten after a change request', () => {
     checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
   });
 
-  const fetchOne = async (head: ReturnType<typeof rewrittenHead>) => {
+  const fetchOne = async (mocks: ReturnType<typeof makeMocks>) => {
     vi.mocked(getStateManager).mockReturnValue(makeStateManagerMock({ config: { excludeRepos: [], excludeOrgs: [] } }));
-    mockOctokitInstance = makeMocks(head);
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    vi.mocked(getOctokit).mockReturnValueOnce(mocks as never);
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
     return prs[0];
   };
 
   it('keeps needs_changes after a rebase onto a new base with no other change', async () => {
-    const pr = await fetchOne(rewrittenHead('newbase'));
+    const mocks = makeMocks(rewrittenHead('newbase', { login: 'testuser' }));
+    const pr = await fetchOne(mocks);
 
-    expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledWith(expect.objectContaining({ ref: 'reviewed1' }));
+    expect(mocks.repos.getCommit).toHaveBeenCalledWith(expect.objectContaining({ ref: 'reviewed1' }));
     expect(pr.latestCommitDate).toBe('2026-02-01T00:00:00Z');
     expect(pr.status).toBe('needs_addressing');
     expect(pr.actionReasons).toContain('needs_changes');
   });
 
   it('counts an amend on the reviewed parent as addressing the change request', async () => {
-    const pr = await fetchOne(rewrittenHead('oldbase'));
+    const pr = await fetchOne(makeMocks(rewrittenHead('oldbase', { login: 'testuser' })));
 
     expect(pr.latestCommitDate).toBe('2026-02-03T00:00:00Z');
     expect(pr.waitReason).toBe('changes_addressed');
   });
 
   it('counts an amend by an author whose email is linked to no GitHub account', async () => {
-    const pr = await fetchOne(rewrittenHead('oldbase', false));
+    const pr = await fetchOne(makeMocks(rewrittenHead('oldbase', null)));
 
     expect(pr.latestCommitDate).toBe('2026-02-03T00:00:00Z');
     expect(pr.waitReason).toBe('changes_addressed');

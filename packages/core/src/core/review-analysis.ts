@@ -103,10 +103,12 @@ export function getLatestChangesRequestedReview<
   },
 >(reviews: T[]): T | undefined {
   let latest: T | undefined;
+  let latestAt: string | undefined;
   for (const review of reviews) {
     if (review.state !== 'CHANGES_REQUESTED' || isBotReview(review)) continue;
-    if (review.submitted_at && (!latest?.submitted_at || review.submitted_at > latest.submitted_at)) {
+    if (review.submitted_at && (!latestAt || review.submitted_at > latestAt)) {
       latest = review;
+      latestAt = review.submitted_at;
     }
   }
   return latest;

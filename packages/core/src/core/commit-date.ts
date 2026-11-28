@@ -9,7 +9,7 @@ export interface CommitDates {
   committerDate?: string | null;
   authorLogin?: string | null;
   committerLogin?: string | null;
-  /** Git author and committer emails: who wrote it when the author email is linked to no GitHub account. */
+  /** Author and committer emails from the Git commit: who wrote it when the author email is linked to no GitHub account. */
   authorEmail?: string | null;
   committerEmail?: string | null;
   /** First parent of this commit. */
@@ -21,7 +21,7 @@ export interface CommitDates {
 
 /**
  * Whether the author also committed it: their own amend or rebase. Matched on
- * GitHub login, or on the git email when the author email is linked to no
+ * GitHub login, or on the Git email when the author email is linked to no
  * GitHub account (no author login), so an unlinked author's amend still counts.
  */
 export function isOwnRewrite(c: CommitDates): boolean {
@@ -56,7 +56,7 @@ export function isRebasedSinceReview(c: CommitDates): boolean {
  * keeps the reviewed commit's parent and still counts.
  */
 export function commitDateOf(c: CommitDates): string | undefined {
-  const useCommitterDate = isOwnRewrite(c) && !isRebasedSinceReview(c);
-  const date = useCommitterDate ? (c.committerDate ?? c.authorDate) : (c.authorDate ?? c.committerDate);
+  const isAddressingRewrite = isOwnRewrite(c) && !isRebasedSinceReview(c);
+  const date = isAddressingRewrite ? (c.committerDate ?? c.authorDate) : (c.authorDate ?? c.committerDate);
   return date ?? undefined;
 }

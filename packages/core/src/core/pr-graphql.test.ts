@@ -1075,6 +1075,20 @@ describe('amended HEAD commit (author date before the review, committer date aft
 
 // #2042: amend and rebase both move only the committer date. The reviewed
 // commit's parent tells them apart: an amend keeps it, a rebase replaces it.
+const linkedAuthor = { email: 'me@example.com', user: { login: 'contributor' } };
+const rewrittenHead = (parent: string, author: { email: string; user: { login: string } | null }) => ({
+  commit: {
+    author,
+    authoredDate: '2026-02-02T00:00:00Z',
+    committedDate: '2026-02-04T00:00:00Z',
+    committer: author,
+    oid: 'head2',
+    parents: { nodes: [{ oid: parent }] },
+    status: null,
+    statusCheckRollup: null,
+  },
+});
+
 describe('HEAD commit rewritten by its author after a change request', () => {
   const review = {
     author: { login: 'maintainer' },
@@ -1084,23 +1098,11 @@ describe('HEAD commit rewritten by its author after a change request', () => {
     submittedAt: '2026-02-03T00:00:00Z',
     commit: { oid: 'reviewed1', parents: { nodes: [{ oid: 'oldbase' }] } },
   };
-  const rewritten = (parent: string, author: unknown = { email: 'me@example.com', user: { login: 'contributor' } }) => ({
-    commit: {
-      author,
-      authoredDate: '2026-02-02T00:00:00Z',
-      committedDate: '2026-02-04T00:00:00Z',
-      committer: { email: 'me@example.com', user: (author as { user: unknown }).user },
-      oid: 'head2',
-      parents: { nodes: [{ oid: parent }] },
-      status: null,
-      statusCheckRollup: null,
-    },
-  });
-  const assemble = (head: ReturnType<typeof rewritten>) =>
+  const assemble = (head: ReturnType<typeof rewrittenHead>) =>
     assembleFromGraphQL(makeNode({ commits: { nodes: [head] }, reviews: { nodes: [review], totalCount: 1 } }));
 
   it('keeps needs_changes after a rebase onto a new base with no other change', async () => {
-    const pr = await assemble(rewritten('newbase'));
+    const pr = await assemble(rewrittenHead('newbase', linkedAuthor));
 
     expect(pr.latestCommitDate).toBe('2026-02-02T00:00:00Z');
     expect(pr.status).toBe('needs_addressing');
@@ -1108,14 +1110,14 @@ describe('HEAD commit rewritten by its author after a change request', () => {
   });
 
   it('counts an amend on the reviewed parent as addressing the change request', async () => {
-    const pr = await assemble(rewritten('oldbase'));
+    const pr = await assemble(rewrittenHead('oldbase', linkedAuthor));
 
     expect(pr.latestCommitDate).toBe('2026-02-04T00:00:00Z');
     expect(pr.waitReason).toBe('changes_addressed');
   });
 
   it('counts an amend by an author whose email is linked to no GitHub account', async () => {
-    const pr = await assemble(rewritten('oldbase', { email: 'me@example.com', user: null }));
+    const pr = await assemble(rewrittenHead('oldbase', { email: 'me@example.com', user: null }));
 
     expect(pr.latestCommitDate).toBe('2026-02-04T00:00:00Z');
     expect(pr.waitReason).toBe('changes_addressed');

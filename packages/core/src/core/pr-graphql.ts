@@ -476,8 +476,8 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
       authorEmail: commit?.author?.email,
       committerEmail: commit?.committer?.email,
       parentSha: commit?.parents?.nodes[0]?.oid,
-      reviewedSha,
       reviewedParentSha: reviewedCommit?.parents.nodes[0]?.oid,
+      reviewedSha,
     }),
     author: commit?.author?.user?.login ?? undefined,
   };
