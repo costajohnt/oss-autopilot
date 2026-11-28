@@ -397,12 +397,8 @@ function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: str
   }
   const found =
     labels.length === 0 ? 'the issue has no labels' : "none of the issue's labels (details.issueLabels) reads as one";
-  return [
-    [
-      !labels.some((label) => isApprovalLabel(label)),
-      `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`,
-    ],
-  ];
+  const isAccepted = labels.some((label) => isApprovalLabel(label));
+  return [[!isAccepted, `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`]];
 }
 
 /** The open AI-PR limit when it cannot fail: the count is unknown, or the limit was read from the docs and not reviewed. */
