@@ -176,7 +176,7 @@ describe('prompt files read GitHub threads through the fenced commands (#2046)',
    * A `gh issue view` / `gh pr view` command (also `gh issue -R o/r view`) up
    * to the end of its code span or line; a backslash continues the line.
    */
-  const GH_VIEW = /\bgh\s+(?:issue|pr)\s+(?:(?:-R\s+|--repo[\s=])[\w./-]+\s+)?view\b(?:[^\n`]|\\\n)*/g;
+  const GH_VIEW = /\bgh\s+(?:issue|pr)\s+(?:(?:-R\s+|--repo[\s=])[\w./-]+\s+)?view\b(?:\\\n|[^\n`])*/g;
   /** Asks for the comments: `--comments`, `-c`, or a `--json` list naming `comments`. Its output is not fenced. */
   const WANTS_COMMENTS = /\s(?:--comments\b|-c(?![\w-])|--json[\s=]+["']?[\w,]*\bcomments\b)/;
   const rawThreadReads = (text: string): string[] =>
