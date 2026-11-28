@@ -344,19 +344,49 @@ describe('cleanWorktrees: programs the worktree names (#2047)', () => {
     expect(fs.existsSync(marker)).toBe(true);
   });
 
-  it('refuses a process filter from an included file and a clean filter in worktree config', () => {
+  it('refuses filter programs from include.path, includeIf, worktree config and an lfs extension', () => {
     const dir = addWorktree('octo-repo-41');
     const included = path.join(ctx.tmp, 'included.cfg');
     fs.writeFileSync(included, `[filter "inc"]\n\tprocess = ${filterProgram('process').program}\n`);
     git(dir, ['config', 'include.path', included]);
+    const conditional = path.join(ctx.tmp, 'conditional.cfg');
+    fs.writeFileSync(conditional, `[lfs "extension.ext"]\n\tclean = ${filterProgram('ext').program}\n`);
+    git(dir, ['config', `includeIf.gitdir:${ctx.clone}/**.path`, conditional]);
     git(dir, ['config', 'extensions.worktreeConfig', 'true']);
     git(dir, ['config', '--worktree', 'filter.wt.clean', filterProgram('wt').program]);
 
     expect(only(dir, APPLY)).toMatchObject({
       action: 'kept',
-      reason: 'repository config names a filter program git would run: filter.inc.process, filter.wt.clean',
+      reason:
+        'repository config names a filter program git would run: filter.inc.process, lfs.extension.ext.clean, filter.wt.clean',
     });
     expect(fs.existsSync(dir)).toBe(true);
+  });
+
+  it.each([
+    ['remote.origin.promisor', 'true', 'dry run', DRY_RUN],
+    ['remote.origin.promisor', 'true', 'apply', APPLY],
+    ['extensions.partialClone', 'origin', 'apply', APPLY],
+  ])('refuses a worktree whose config sets %s=%s, without fetching (%s)', (key, value, _mode, options) => {
+    const dir = addWorktree('octo-repo-44');
+    const marker = path.join(ctx.tmp, 'uploadpack.ran');
+    const program = path.join(ctx.tmp, 'uploadpack.sh');
+    fs.writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o755 });
+    git(ctx.clone, ['config', key, value]);
+    git(ctx.clone, ['config', 'remote.origin.uploadpack', program]);
+    // A remote-tracking ref to an object the clone lacks: `--contains` would fetch it.
+    fs.writeFileSync(path.join(ctx.clone, '.git', 'refs', 'remotes', 'origin', 'zz'), `${'deadbeef'.repeat(5)}\n`);
+
+    expect(only(dir, options)).toMatchObject({
+      action: 'kept',
+      clean: null,
+      reason: `config names a promisor remote git would fetch from: ${key.toLowerCase()}`,
+    });
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.existsSync(dir)).toBe(true);
+    // The trap was armed: the pushed check alone runs the program.
+    git(dir, ['for-each-ref', '--count=1', '--contains', 'HEAD', 'refs/remotes']);
+    expect(fs.existsSync(marker)).toBe(true);
   });
 
   it("still removes a worktree when the filter driver is in the user's own global config", () => {
