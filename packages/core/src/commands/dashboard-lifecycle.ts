@@ -60,7 +60,10 @@ function spawnDashboardServer(cliPath: string, port: number, logFile: string | u
   const logFd = logFile ? openLogFile(logFile) : undefined;
   const stdio: StdioOptions = logFd === undefined ? 'ignore' : ['ignore', logFd, logFd];
   try {
-    return spawn('node', [cliPath, 'dashboard', 'serve', '--port', String(port), '--no-open'], { detached: true, stdio });
+    return spawn('node', [cliPath, 'dashboard', 'serve', '--port', String(port), '--no-open'], {
+      detached: true,
+      stdio,
+    });
   } finally {
     // The child holds its own copy of the descriptor.
     if (logFd !== undefined) fs.closeSync(logFd);
