@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { closingIssueUrl } from './github-stats.js';
-import { findClosingRefs } from './urls.js';
+import { findClosingRefs, stripNonProse } from './urls.js';
 import { computeComplianceScore } from './compliance-score.js';
 import { checkCommitRules, type PreflightFacts } from './pr-preflight.js';
 
@@ -86,5 +86,30 @@ describe('findClosingRefs (#2048)', () => {
     const text = `${'x'.repeat(65_536)} Fixes #1`;
     expect(findClosingRefs(text)).toHaveLength(1);
     expect(findClosingRefs(text, { markdown: true })).toEqual([]);
+  });
+});
+
+describe('stripNonProse (#2048)', () => {
+  // The regex it replaces, kept here as the oracle.
+  const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|(`+)[^`]*\1/g;
+  const PIECES = ['<!--', '-->', '`', '``', '```', '-', '<', '!', 'a', ' ', '\n'];
+
+  it('blanks out exactly what the regex matched', () => {
+    let seed = 2048;
+    const next = () => (seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648);
+    for (let n = 0; n < 3000; n++) {
+      const text = Array.from({ length: next() % 24 }, () => PIECES[next() % PIECES.length]).join('');
+      expect(stripNonProse(text), JSON.stringify(text)).toBe(text.replaceAll(NON_PROSE_RE, ' '));
+    }
+  });
+
+  it.each([
+    ['unclosed comment openers', '<!-- x '.repeat(9000)],
+    ['unclosed fences', '``` x '.repeat(10_000)],
+    ['backtick runs with no closer', '`` x ` '.repeat(9000)],
+  ])('stays linear on %s', (_name, text) => {
+    const start = performance.now();
+    stripNonProse(text);
+    expect(performance.now() - start).toBeLessThan(200);
   });
 });

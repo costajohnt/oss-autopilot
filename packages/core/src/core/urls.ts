@@ -163,15 +163,63 @@ export function isUntrackedOrg(owner: string, untrackedOrgs: readonly string[] =
   return untrackedOrgs.some((org) => org.toLowerCase() === ownerLower);
 }
 
-/** HTML comments and code: where PR templates keep example `Fixes #123` lines. */
-const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|(`+)[^`]*\1/g;
-
-/** GitHub's PR body limit; also bounds NON_PROSE_RE's scan on an unclosed `<!--`. */
+/** GitHub's PR body limit. */
 export const MAX_BODY_CHARS = 65_536;
 
-/** Markdown with its HTML comments and code (fenced and inline) blanked out: the text GitHub links refs in. */
+/** Whether a closer can still follow: false once a search for one came back empty. */
+interface Closers {
+  comment: boolean;
+  fence: boolean;
+}
+
+function commentEnd(text: string, i: number, closers: Closers): number {
+  if (!closers.comment || !text.startsWith('<!--', i)) return -1;
+  const close = text.indexOf('-->', i + 4);
+  if (close === -1) closers.comment = false;
+  return close === -1 ? -1 : close + 3;
+}
+
+function fenceEnd(text: string, i: number, closers: Closers): number {
+  if (!closers.fence || !text.startsWith('```', i)) return -1;
+  const close = text.indexOf('```', i + 3);
+  if (close === -1) closers.fence = false;
+  return close === -1 ? -1 : close + 3;
+}
+
+/** A run of N backticks closed by the next N; failing that, half the run closes the other half. */
+function codeSpanEnd(text: string, i: number): number {
+  let run = 0;
+  while (text[i + run] === '`') run++;
+  if (run === 0) return -1;
+  const close = text.indexOf('`', i + run);
+  if (close !== -1 && text.startsWith('`'.repeat(run), close)) return close + run;
+  return run >= 2 ? i + 2 * Math.floor(run / 2) : -1;
+}
+
+/**
+ * Markdown with its HTML comments and code (fenced and inline) blanked out:
+ * the text GitHub links refs in, and where PR templates keep example
+ * `Fixes #123` lines. Each match of
+ * `/<!--[\s\S]*?-->|```[\s\S]*?```|(`+)[^`]*\1/g` becomes one space, but in
+ * linear time: that regex rescans to the end from every unclosed opener.
+ */
 export function stripNonProse(markdown: string): string {
-  return markdown.replaceAll(NON_PROSE_RE, ' ');
+  const closers = { comment: true, fence: true };
+  let out = '';
+  let prose = 0;
+  let i = 0;
+  while (i < markdown.length) {
+    const end = Math.max(commentEnd(markdown, i, closers), fenceEnd(markdown, i, closers));
+    const span = end === -1 ? codeSpanEnd(markdown, i) : end;
+    if (span === -1) {
+      i++;
+    } else {
+      out += `${markdown.slice(prose, i)} `;
+      prose = span;
+      i = span;
+    }
+  }
+  return out + markdown.slice(prose);
 }
 
 /**
