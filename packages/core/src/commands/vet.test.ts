@@ -125,7 +125,10 @@ describe('runVet: PR template and README-linked docs (#2013)', () => {
 
   it('reads the CONTRIBUTING text but leaves it out of the output (#2046)', async () => {
     const rawContent = 'Comment on the issue and get assigned before opening a PR.';
-    const scouted = { ...policyCandidate(), vettingResult: { contributionGuidelines: { rawContent, claRequired: true } } };
+    const scouted = {
+      ...policyCandidate(),
+      vettingResult: { contributionGuidelines: { rawContent, claRequired: true } },
+    };
     mockVetIssue.mockResolvedValue(scouted);
 
     const result = await runVet({ issueUrl: TEST_ISSUE_URL });
