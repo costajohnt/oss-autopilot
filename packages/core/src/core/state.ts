@@ -1682,6 +1682,20 @@ export class StateManager {
     this.autoSave();
   }
 
+  /** Record each repo's outcome evidence; see repoScoring.restoreUnchangedEvaluations. */
+  snapshotRepoOutcomes(): repoScoring.OutcomeSnapshot {
+    return repoScoring.snapshotOutcomes(this.state);
+  }
+
+  /**
+   * Put back `lastEvaluatedAt` for repos whose outcome evidence ends where
+   * `snapshot` found it, so a count written in several steps that nets to no
+   * change does not count as a re-evaluation (#2045).
+   */
+  restoreUnchangedEvaluations(snapshot: repoScoring.OutcomeSnapshot): void {
+    if (repoScoring.restoreUnchangedEvaluations(this.state, snapshot) > 0) this.autoSave();
+  }
+
   /** Returns repository names that have at least one merged PR. */
   getReposWithMergedPRs(): string[] {
     return repoScoring.getReposWithMergedPRs(this.state);

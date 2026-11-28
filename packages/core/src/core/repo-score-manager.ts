@@ -183,6 +183,40 @@ export function updateRepoScore(state: AgentState, repo: string, updates: RepoSc
   debug(MODULE, `Updated repo score for ${repo}: ${repoScore.score}/10`);
 }
 
+/** Each repo's outcome evidence and lastEvaluatedAt, as {@link snapshotOutcomes} found them. */
+export type OutcomeSnapshot = ReadonlyMap<string, { fingerprint: string; lastEvaluatedAt: string }>;
+
+/** Record every repo's outcome evidence before a run rewrites it in several steps. */
+export function snapshotOutcomes(state: Readonly<AgentState>): OutcomeSnapshot {
+  const snapshot = new Map<string, { fingerprint: string; lastEvaluatedAt: string }>();
+  for (const [repo, rs] of Object.entries(state.repoScores)) {
+    snapshot.set(repo, { fingerprint: outcomeFingerprint(rs), lastEvaluatedAt: rs.lastEvaluatedAt });
+  }
+  return snapshot;
+}
+
+/**
+ * Put back `lastEvaluatedAt` for every repo whose outcome evidence ends where
+ * `snapshot` found it (#2045). Daily writes a repo's counts in steps (a stale
+ * reset or a capped search count, then the ledger reconciliation raises it
+ * back), and updateRepoScore sees each step as a change. Without this a repo
+ * below minStars, or one whose PRs fall outside the count search, was
+ * re-evaluated on every run and its low score never expired.
+ *
+ * @returns how many repos had their time put back
+ */
+export function restoreUnchangedEvaluations(state: AgentState, snapshot: OutcomeSnapshot): number {
+  let restored = 0;
+  for (const [repo, before] of snapshot) {
+    const rs = state.repoScores[repo];
+    if (!rs || rs.lastEvaluatedAt === before.lastEvaluatedAt) continue;
+    if (outcomeFingerprint(rs) !== before.fingerprint) continue;
+    rs.lastEvaluatedAt = before.lastEvaluatedAt;
+    restored++;
+  }
+  return restored;
+}
+
 /**
  * Get repositories where the user has at least one merged PR, sorted by merged count descending.
  */
