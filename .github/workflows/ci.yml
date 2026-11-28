@@ -492,7 +492,7 @@ jobs:
           bash scripts/verify-packed-tarballs.sh --full "$RUNNER_TEMP"/pack-check/*.tgz
 
       # The tree the marketplace serves, assembled the way the release does it
-      # but from the tarball packed above (#2050). build-directory-branch.sh only
+      # but from the tarballs packed above (#2050, #2037). build-directory-branch.sh only
       # writes the output directory: no fetch, no git, no credentials. The push
       # lives in release-please.yml, not in the script.
       - name: Assemble and check the prebuilt plugin tree
@@ -501,7 +501,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./packages/core/package.json').version")
-          bash scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/plugin-tree" "$RUNNER_TEMP"/pack-check/oss-autopilot-core-*.tgz
+          bash scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/plugin-tree" \
+            "$RUNNER_TEMP"/pack-check/oss-autopilot-mcp-*.tgz "$RUNNER_TEMP"/pack-check/oss-autopilot-core-*.tgz
           node scripts/check-plugin-tree.mjs "$RUNNER_TEMP/plugin-tree"
           bash "$RUNNER_TEMP/plugin-tree/scripts/build-cli-if-stale.sh" "$RUNNER_TEMP/plugin-tree"
           bash "$RUNNER_TEMP/plugin-tree/scripts/build-dashboard-if-stale.sh" "$RUNNER_TEMP/plugin-tree"

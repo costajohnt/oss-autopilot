@@ -3,7 +3,8 @@
 #
 # Builds a small fake plugin tree whose cli.bundle.cjs is a stub that knows
 # two commands and, like Commander, prints the program usage for anything
-# else, then checks the checker passes it and fails each kind of break.
+# else, plus a stub MCP server launched from the tree's .mcp.json (#2037),
+# then checks the checker passes it and fails each kind of break.
 #
 # Run with:
 #   bash scripts/check-plugin-tree.test.sh
@@ -36,6 +37,19 @@ const args = process.argv.slice(2);
 if (args[0] === '--version') { console.log('1.2.3'); process.exit(0); }
 if (['daily', 'status', 'checkSetup'].includes(args[0])) { console.log(`Usage: oss-autopilot ${args[0]} [options]`); process.exit(0); }
 console.log('Usage: oss-autopilot [options] [command]');
+EOF
+    # A stub MCP server built on core 1.2.3 that answers initialize.
+    mkdir -p "${TREE}/packages/mcp-server/dist"
+    cat >"${TREE}/packages/mcp-server/dist/mcp-server.bundle.cjs" <<'EOF'
+const CORE = "1.2.3";
+let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  if (input.includes('"initialize"')) console.log(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { serverInfo: { name: 'stub', version: CORE } } }));
+});
+EOF
+    cat >"${TREE}/.mcp.json" <<'EOF'
+{ "mcpServers": { "oss-autopilot": { "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/mcp-server.bundle.cjs"] } } }
 EOF
     echo "#!/usr/bin/env bash" >"${TREE}/scripts/build-cli-if-stale.sh"
     cat >"${TREE}/commands/oss.md" <<'EOF'
@@ -111,6 +125,31 @@ case_crashing_bundle_fails() {
     expect_fail_with 'cli.bundle.cjs --version failed'
 }
 
+case_npx_mcp_server_fails() {
+    echo '{ "mcpServers": { "oss-autopilot": { "command": "npx", "args": ["@oss-autopilot/mcp@1.0.0"] } } }' >"${TREE}/.mcp.json"
+    expect_fail_with 'server "oss-autopilot" runs "npx @oss-autopilot/mcp@1.0.0", not node ${CLAUDE_PLUGIN_ROOT}/<bundle>'
+}
+
+case_missing_mcp_bundle_fails() {
+    rm "${TREE}/packages/mcp-server/dist/mcp-server.bundle.cjs"
+    expect_fail_with 'server "oss-autopilot": packages/mcp-server/dist/mcp-server.bundle.cjs is not in the tree'
+}
+
+case_mcp_bundle_on_other_core_fails() {
+    sed -i.bak 's/"1.2.3"/"1.2.2"/' "${TREE}/packages/mcp-server/dist/mcp-server.bundle.cjs"
+    expect_fail_with 'mcp-server.bundle.cjs was not built against core 1.2.3, the CLI'"'"'s version'
+}
+
+case_mcp_server_not_answering_fails() {
+    printf 'const CORE = "1.2.3";\nconsole.error("boom"); process.exit(1);\n' >"${TREE}/packages/mcp-server/dist/mcp-server.bundle.cjs"
+    expect_fail_with 'server "oss-autopilot" did not answer initialize: boom'
+}
+
+case_missing_mcp_config_fails() {
+    rm "${TREE}/.mcp.json"
+    expect_fail_with '.mcp.json is missing or unreadable'
+}
+
 case_no_tree_is_usage_error() {
     node "$SUBJECT" "${TREE}/nope" >/dev/null 2>&1
     rc=$?
@@ -125,6 +164,11 @@ run case_missing_referenced_file_fails  case_missing_referenced_file_fails
 run case_unknown_command_fails          case_unknown_command_fails
 run case_missing_bundle_fails           case_missing_bundle_fails
 run case_crashing_bundle_fails          case_crashing_bundle_fails
+run case_npx_mcp_server_fails           case_npx_mcp_server_fails
+run case_missing_mcp_bundle_fails       case_missing_mcp_bundle_fails
+run case_mcp_bundle_on_other_core_fails case_mcp_bundle_on_other_core_fails
+run case_mcp_server_not_answering_fails case_mcp_server_not_answering_fails
+run case_missing_mcp_config_fails       case_missing_mcp_config_fails
 run case_no_tree_is_usage_error         case_no_tree_is_usage_error
 
 echo
