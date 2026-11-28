@@ -367,6 +367,7 @@ describe('cleanWorktrees: programs the worktree names (#2047)', () => {
     ['remote.origin.promisor', 'true', 'dry run', DRY_RUN],
     ['remote.origin.promisor', 'true', 'apply', APPLY],
     ['extensions.partialClone', 'origin', 'apply', APPLY],
+    ['remote.origin.partialCloneFilter', 'blob:none', 'dry run', DRY_RUN],
   ])('refuses a worktree whose config sets %s=%s, without fetching (%s)', (key, value, _mode, options) => {
     const dir = addWorktree('octo-repo-44');
     const marker = path.join(ctx.tmp, 'uploadpack.ran');

@@ -165,10 +165,12 @@ function programsInRepoConfig(dir: string): string | null {
   return keys.length > 0 ? `repository config names a filter program git would run: ${keys.join(', ')}` : null;
 }
 
-const LAZY_FETCH = String.raw`^(extensions\.partialclone|remote\..+\.promisor)$`;
+const LAZY_FETCH = String.raw`^(extensions\.partialclone|remote\..+\.(promisor|partialclonefilter))$`;
 
 /**
- * A promisor remote (#2047). Any command that finds an object missing (a
+ * A promisor remote (#2047): `extensions.partialClone`,
+ * `remote.<name>.promisor` or `remote.<name>.partialCloneFilter`, each of
+ * which makes one on its own. Any command that finds an object missing (a
  * dangling remote-tracking ref for `for-each-ref --contains`, a reflog entry,
  * the HEAD tree for `status`) fetches it from that remote, which runs the
  * remote's `uploadpack`, `core.sshCommand` or credential helper: programs the
