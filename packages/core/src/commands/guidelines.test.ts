@@ -389,6 +389,11 @@ describe('runMarkExtracted (#1696)', () => {
   });
 });
 
+function isoAgo(now: number, ms: number): string {
+  const at = new Date(now - ms);
+  return at.toISOString();
+}
+
 describe('guideline proposals (#2041)', () => {
   const REPO = 'owner/repo';
   const DAY = 24 * 60 * 60 * 1000;
@@ -396,11 +401,6 @@ describe('guideline proposals (#2041)', () => {
   afterEach(() => {
     fs.rmSync(guidelineProposalPath(REPO), { force: true });
   });
-
-  function isoAgo(now: number, ms: number): string {
-    const at = new Date(now - ms);
-    return at.toISOString();
-  }
 
   function writeProposal(ageMs = 0): string {
     const file = guidelineProposalPath(REPO);

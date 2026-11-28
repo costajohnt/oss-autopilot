@@ -1325,8 +1325,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
           if (parsed) repoSet.add(`${parsed.owner}/${parsed.repo}`);
         }
         const repos = [...repoSet].sort();
-        // Which of them already have a proposal waiting, here or on another
-        // machine (#2041), so the host neither builds paths nor re-extracts.
+        // Proposal state per repo (#2041): the host neither builds paths nor re-extracts.
         const prsOf = (repo: string) => unextracted.filter((pr) => pr.url.startsWith(`https://github.com/${repo}/`));
         const proposals = repos
           .filter((repo) => isProposalRepo(repo))
