@@ -26,18 +26,14 @@ const MAX_VITEST_DISABLES = 50;
 const DIRECTIVE_RE = /(?:\/\/|\/\*)\s*eslint-disable(?:-next-line|-line)?\s[^\n]*?vitest\//g;
 
 function sourceFiles(dir: string): string[] {
-  const files: string[] = [];
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...sourceFiles(full));
-      continue;
-    }
-    if (SOURCE_RE.test(entry.name)) files.push(full);
-  }
-  return files;
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith('.') && !SKIP_DIRS.has(entry.name))
+    .flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return sourceFiles(full);
+      return SOURCE_RE.test(entry.name) ? [full] : [];
+    });
 }
 
 /** Directive count per file (repo-relative path), files with none omitted. */
