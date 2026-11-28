@@ -93,8 +93,8 @@ export function shouldAutoUnshelve(
   const info = shelvedPRInfo?.[issueRefKey(pr.url) ?? pr.url];
   if (!info || !pr.lastMaintainerActivityAt) return true;
   const known = info.reasons;
-  const isNewReason = (reason: string): boolean => !MAINTAINER_ACTION_REASONS.has(reason) && !known?.includes(reason);
-  if (known && shelveReasonsOf(pr).some(isNewReason)) return true;
+  const isNew = (reason: string): boolean => !MAINTAINER_ACTION_REASONS.has(reason) && !known?.includes(reason);
+  if (known && shelveReasonsOf(pr).some((reason) => isNew(reason))) return true;
   const activityMs = Date.parse(pr.lastMaintainerActivityAt);
   const shelvedMs = Date.parse(info.at);
   // An unparseable date resurfaces the PR instead of hiding it.

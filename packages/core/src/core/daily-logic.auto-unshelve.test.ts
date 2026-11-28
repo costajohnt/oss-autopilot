@@ -21,6 +21,11 @@ const needing = (...reasons: ActionReason[]) => ({
   lastMaintainerActivityAt: before,
 });
 const shelvedWith = (reasons?: string[]) => ({ 'owner/repo#1': { at, reasons } });
+/** {@link needing}, with the maintainer's review an hour before an 11:00 shelve (#2043). */
+const reviewed = (...reasons: ActionReason[]) => ({
+  ...needing(...reasons),
+  lastMaintainerActivityAt: '2026-01-10T10:00:00Z',
+});
 
 describe('shelveReasonsOf (#1922)', () => {
   it('is every action reason while the PR needs addressing, none otherwise', () => {
@@ -72,10 +77,6 @@ describe('shouldAutoUnshelve (#1922)', () => {
   it('keeps a PR shelved when the digest behind its record predates the maintainer review (#2043)', () => {
     // 9:00 digest: waiting, so nothing recorded. 10:00 changes requested. 11:00 shelved.
     const shelvedAt = { 'owner/repo#1': { at: '2026-01-10T11:00:00.000Z', reasons: [] } };
-    const reviewed = (...reasons: ActionReason[]) => ({
-      ...needing(...reasons),
-      lastMaintainerActivityAt: '2026-01-10T10:00:00Z',
-    });
     expect(shouldAutoUnshelve(reviewed('needs_changes'), shelvedAt)).toBe(false);
     expect(shouldAutoUnshelve(reviewed('needs_response', 'needs_changes'), shelvedAt)).toBe(false);
     // A reason no maintainer creates is still new, whatever the activity time.
