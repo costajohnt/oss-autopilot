@@ -277,6 +277,17 @@ describe('isDashboardServeCommand (#1882)', () => {
   });
 });
 
+/** Run `check` against the PID of a live child process, then kill it. */
+async function withChild(command: string, args: string[], check: (pid: number) => void): Promise<void> {
+  const child = spawn(command, args);
+  try {
+    await new Promise((resolve) => child.once('spawn', resolve));
+    check(child.pid!);
+  } finally {
+    child.kill();
+  }
+}
+
 describe.skipIf(process.platform === 'win32')('isDashboardServeProcess (#1882)', () => {
   let tmpDir: string;
   let entry: string;
@@ -290,16 +301,6 @@ describe.skipIf(process.platform === 'win32')('isDashboardServeProcess (#1882)',
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  async function withChild(command: string, args: string[], check: (pid: number) => void): Promise<void> {
-    const child = spawn(command, args);
-    try {
-      await new Promise((resolve) => child.once('spawn', resolve));
-      check(child.pid!);
-    } finally {
-      child.kill();
-    }
-  }
 
   it('identifies `node <tmp>/cli.bundle.cjs dashboard serve`', async () => {
     await withChild(process.execPath, [entry, 'dashboard', 'serve', '--port', '3000'], (pid) => {

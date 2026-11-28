@@ -212,10 +212,9 @@ export function isDashboardServeCommand(command: string): boolean {
     if (EVAL_FLAGS.has(tokens[i].split('=', 1)[0])) return false;
     i++;
   }
-  const entry = tokens[i];
   return (
-    entry !== undefined &&
-    CLI_ENTRY.test(path.basename(entry)) &&
+    i + 2 < tokens.length &&
+    CLI_ENTRY.test(path.basename(tokens[i])) &&
     tokens[i + 1] === 'dashboard' &&
     tokens[i + 2] === 'serve'
   );
