@@ -139,17 +139,19 @@ describe('README.md ↔ MCP tool registry parity (#1379)', () => {
   it('every "N tools" count in the docs/diagrams/*.json sources and rendered *.svg matches tools.ts (#2008, #2052)', () => {
     const registered = parseRegisteredTools();
     const files = fs.readdirSync(DIAGRAMS_DIR).filter((name) => name.endsWith('.json') || name.endsWith('.svg'));
-    // The SVG is regenerated from the JSON manually (export-svg.mjs needs a local
-    // archify and Chrome), so the rendered file can lag its source.
-    expect(files.some((name) => name.endsWith('.svg'))).toBe(true);
-    const claims = files
-      .flatMap((name) =>
-        Array.from(fs.readFileSync(path.join(DIAGRAMS_DIR, name), 'utf8').matchAll(/\b(\d+) tools\b/g), (m) => ({
-          name,
-          count: Number(m[1]),
-        })),
-      );
+    const claims = files.flatMap((name) =>
+      Array.from(fs.readFileSync(path.join(DIAGRAMS_DIR, name), 'utf8').matchAll(/\b(\d+) tools\b/g), (m) => ({
+        name,
+        count: Number(m[1]),
+      })),
+    );
     expect(claims.length, 'no diagram source claims an MCP tool count — update this test').toBeGreaterThan(0);
+    // The SVG is regenerated from the JSON by hand (export-svg.mjs needs a local
+    // archify and Chrome), so the rendered file can lag its source.
+    expect(
+      claims.some(({ name }) => name.endsWith('.svg')),
+      'no rendered diagram SVG claims an MCP tool count — update this test',
+    ).toBe(true);
     for (const { name, count } of claims) {
       expect(count, `${name} claims ${count} MCP tools but tools.ts registers ${registered.length}`).toBe(
         registered.length,
