@@ -30,6 +30,7 @@ interface PrPreflightCliOptions {
   base?: string;
   fetch?: boolean;
   local?: boolean;
+  bodyFile?: string;
 }
 
 /** Options commander parses for `policy set`. */
@@ -1836,6 +1837,7 @@ export const commands: CLICommandDef[] = [
         .option('--base <branch>', 'Branch the PR will target (default: the upstream default branch)')
         .option('--fetch', 'Fetch the upstream target branch first instead of reporting a stale ref')
         .option('--local', 'Skip every GitHub read: local checks and numbers only')
+        .option('--body-file <path>', 'Staged PR body (a file in the draft directory) to check the disclosure rule against')
         .option('--json', 'Output as JSON')
         .action(async (issue: string | undefined, options: PrPreflightCliOptions) => {
           const { PrPreflightOutputSchema } = await import('./formatters/json.js');
@@ -1847,6 +1849,7 @@ export const commands: CLICommandDef[] = [
               base: options.base,
               fetch: options.fetch === true,
               local: options.local === true,
+              bodyFile: options.bodyFile,
             });
             // A caller that only sees the exit code still stops on a failed gate; the output prints in full.
             if (data.verdict === 'fail') process.exitCode = 1;
@@ -2405,7 +2408,7 @@ Load it with:
         .description('Record the policy you confirmed for a repo (merged over what is stored; refused when unattended)')
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
         .option('--ai-policy <value>', 'allowed | disclosure-required | banned | unknown')
-        .option('--disclosure-text <text>', 'The disclosure line the repo asks for')
+        .option('--disclosure-text <text>', 'The disclosure line to put in the PR body; pr-preflight checks the body for it')
         .option('--cla <value>', 'none | required | unknown')
         .option('--pr-gate <value>', 'none | claim-first | maintainer-label | collaborators-only | unknown')
         .option(

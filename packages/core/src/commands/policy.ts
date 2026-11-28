@@ -42,7 +42,7 @@ export interface PolicyGetOutput {
         updatedAt: string;
         /** True when the repo is in `config.aiPolicyBlocklist`; `policy set` cannot lift that ban. */
         blocklisted: boolean;
-        /** The disclosure line the repo asks for, inside a `<github-content>` fence. */
+        /** The disclosure line the user recorded, inside a `<github-content>` fence; the repo's rule is in `sources`. */
         disclosureText?: string;
         /** `file: quoted line` per rule, inside a `<github-content>` fence. */
         sources?: string;

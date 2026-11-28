@@ -201,7 +201,6 @@ interface Hit {
 
 interface Found {
   ai: (Hit & { policy: AiPolicy }) | null;
-  disclosure: string | null;
   cla: Hit | null;
   commitRules: Array<Hit & { rule: string }>;
   gates: Map<PrGate, Hit>;
@@ -220,8 +219,8 @@ function scanAi(doc: PolicyDoc, found: Found): void {
   const disclosure = scanAIDisclosureRequirement(doc.content).matches;
   const asked = disclosure.find((m) => m.category !== 'invited');
   if (asked) {
+    // The excerpt goes to `source` only: it is a window around the repo's rule, not a line to paste (#2040).
     found.ai = { policy: 'disclosure-required', file: doc.file, line: asked.excerpt };
-    found.disclosure = asked.excerpt;
     return;
   }
   const invited = disclosure.at(0);
@@ -271,7 +270,7 @@ function scanAiPrLimit(doc: PolicyDoc, found: Found): void {
  * as `none`. Silence on AI stays `unknown`: it is not permission.
  */
 export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date()): RepoPolicy {
-  const found: Found = { ai: null, disclosure: null, cla: null, commitRules: [], gates: new Map(), aiPrLimit: null };
+  const found: Found = { ai: null, cla: null, commitRules: [], gates: new Map(), aiPrLimit: null };
   const readable = docs.filter((d) => d.content.trim() !== '');
   for (const doc of readable) {
     scanAi(doc, found);
@@ -286,7 +285,6 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
     .slice(0, 10);
   return {
     aiPolicy: found.ai?.policy ?? 'unknown',
-    ...(found.disclosure !== null && { disclosureText: quote(found.disclosure) }),
     cla: found.cla ? 'required' : silent,
     commitRules: found.commitRules.map((r) => r.rule),
     prGate: gate ?? silent,
@@ -364,14 +362,29 @@ export function isUnreadable(state: PolicyState, repo: string): boolean {
 }
 
 /**
+ * `policy` without a `disclosureText` that is an excerpt of the repo's own rule
+ * rather than a line the user set (#2040). Releases before that stored the
+ * excerpt vet read; `policy set --ai-policy disclosure-required` without
+ * `--disclosure-text` then kept it and marked the record reviewed. Either way
+ * the text equals the quoted line `vet` put in `source`, which still carries it.
+ */
+function withoutDerivedDisclosure(policy: RepoPolicy): RepoPolicy {
+  const { disclosureText, ...rest } = policy;
+  if (disclosureText === undefined) return policy;
+  const isExcerpt = policy.source.some((s) => s.file !== 'user' && s.quotedLine === disclosureText);
+  return policy.reviewedByUser && !isExcerpt ? policy : rest;
+}
+
+/**
  * The stored record for `repo`, or null when there is none. An entry that does
  * not parse but says `aiPolicy: 'banned'` still reads as a ban (every other
- * field unknown): a newer release's record must not lift a ban here.
+ * field unknown): a newer release's record must not lift a ban here. A
+ * disclosure excerpt an older release stored is dropped on read.
  */
 export function storedPolicy(state: PolicyState, repo: string): RepoPolicy | null {
   const raw = rawEntry(state, repo);
   const parsed = RepoPolicySchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return withoutDerivedDisclosure(parsed.data);
   if (raw?.aiPolicy !== 'banned') return null;
   return { ...UNKNOWN_POLICY, aiPolicy: 'banned', reviewedByUser: raw.reviewedByUser === true, updatedAt: EPOCH };
 }
@@ -464,7 +477,10 @@ export function policyField(policy: RepoPolicy | null): { policy?: RepoPolicySum
   return policy ? { policy: summarizePolicy(policy) } : {};
 }
 
-/** Quoted lines and disclosure text inside `<github-content>` fences, for agent-facing output. */
+/**
+ * Quoted lines and disclosure text inside `<github-content>` fences, for
+ * agent-facing output. `disclosureText` is only ever a line the user set.
+ */
 export function fencePolicyText(repo: string, policy: RepoPolicy): { disclosureText?: string; sources?: string } {
   const lines = policy.source.map((s) => `${s.file}: ${s.quotedLine}`);
   return {

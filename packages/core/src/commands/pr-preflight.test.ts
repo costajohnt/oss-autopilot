@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getBranch: vi.fn(),
   graphql: vi.fn(),
   search: vi.fn(),
+  issuesGet: vi.fn(),
 }));
 
 vi.mock('../core/index.js', async () => {
@@ -29,6 +30,7 @@ vi.mock('../core/index.js', async () => {
       repos: { get: mocks.reposGet, getBranch: mocks.getBranch },
       graphql: mocks.graphql,
       search: { issuesAndPullRequests: mocks.search },
+      issues: { get: mocks.issuesGet },
     }),
   };
 });
@@ -37,6 +39,7 @@ import { UNATTENDED_ENV } from '../core/errors.js';
 import { PrPreflightOutputSchema } from '../formatters/json.js';
 import { git } from './overnight-push-prep.js';
 import { printPrPreflight, runPrPreflight, type PrPreflightOutput } from './pr-preflight.js';
+import { runDraftPath } from './draft.js';
 
 const IDENTITY = ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false'];
 const ISSUE_URL = 'https://github.com/up/proj/issues/7';
@@ -568,6 +571,92 @@ describe('runPrPreflight: repo contribution policy (#1953)', () => {
 
     expect(statusOf(data, 'repo-policy')).toBe('warn');
     expect(summaryOf(data, 'repo-policy')).toContain('policy set --repo up/proj');
+  });
+});
+
+/** State with a stored, reviewed policy for up/proj, not a first contribution. */
+function withPolicy(overrides: Record<string, unknown>): void {
+  mocks.getState.mockReturnValue({
+    config: { githubUsername: 'me', excludeRepos: [] },
+    repoScores: {},
+    mergedPRs: [{ url: 'https://github.com/up/proj/pull/1' }],
+    repoPolicies: {
+      'up/proj': {
+        aiPolicy: 'allowed',
+        cla: 'none',
+        commitRules: [],
+        prGate: 'none',
+        source: [],
+        reviewedByUser: true,
+        updatedAt: '2026-11-01T00:00:00.000Z',
+        ...overrides,
+      },
+    },
+  });
+}
+
+describe('runPrPreflight: the staged body and the issue labels (#2040)', () => {
+  function stageBody(text: string): string {
+    const file = runDraftPath({ name: 'oss-up-proj-7-pr-body.md' }).path;
+    fs.writeFileSync(file, text, { mode: 0o600 });
+    return file;
+  }
+
+  afterEach(() => {
+    fs.rmSync(path.join(os.homedir(), '.oss-autopilot'), { recursive: true, force: true });
+  });
+
+  it('passes a disclosure-required repo once the staged body has the recorded line', async () => {
+    withPolicy({ aiPolicy: 'disclosure-required', disclosureText: 'Assisted-by: Some Tool' });
+    const options = { dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: true };
+
+    const without = await runPrPreflight({ ...options, bodyFile: stageBody('Fixes the crash.') });
+    expect(statusOf(without, 'repo-policy')).toBe('warn');
+    expect(summaryOf(without, 'repo-policy')).toContain('the PR body does not contain');
+
+    const staged = await runPrPreflight({ ...options, bodyFile: stageBody('Fixes the crash.
+
+Assisted-by: Some Tool
+') });
+    expect(statusOf(staged, 'repo-policy')).toBe('pass');
+  });
+
+  it('reads the body only from the draft directory', async () => {
+    const outside = path.join(ctx.tmp, 'body.md');
+    fs.writeFileSync(outside, 'Assisted-by: Some Tool
+');
+    await expect(
+      runPrPreflight({ dir: ctx.clone, fetch: false, local: true, bodyFile: outside }),
+    ).rejects.toThrow(/drafts must be files directly inside/);
+  });
+
+  it('passes a maintainer-label repo when the issue carries an approval label', async () => {
+    withPolicy({ prGate: 'maintainer-label' });
+    mocks.issuesGet.mockResolvedValue({ data: { labels: ['bug', { name: 'accepted' }] } });
+
+    const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: false });
+
+    expect(mocks.issuesGet).toHaveBeenCalledWith({ owner: 'up', repo: 'proj', issue_number: 7 });
+    expect(statusOf(data, 'repo-policy')).toBe('pass');
+  });
+
+  it('warns, and keeps the other checks, when the label read fails', async () => {
+    withPolicy({ prGate: 'maintainer-label' });
+    mocks.issuesGet.mockRejectedValue(new Error('HTTP 502'));
+
+    const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: false });
+
+    expect(statusOf(data, 'repo-policy')).toBe('warn');
+    expect(summaryOf(data, 'repo-policy')).toContain('GitHub request failed: HTTP 502');
+    expect(statusOf(data, 'competing-work')).toBe('pass');
+  });
+
+  it('reads no labels unless the policy waits for a maintainer label', async () => {
+    withPolicy({ prGate: 'claim-first' });
+
+    await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: false });
+
+    expect(mocks.issuesGet).not.toHaveBeenCalled();
   });
 });
 

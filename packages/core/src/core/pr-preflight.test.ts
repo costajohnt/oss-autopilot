@@ -65,6 +65,9 @@ const READY: PreflightFacts = {
   cap: CAP,
   policy: null,
   isFirstContribution: false,
+  prBody: null,
+  issueLabels: null,
+  labelsError: null,
 };
 
 const NO_TOKEN = 'no GitHub token (run gh auth login or set GITHUB_TOKEN)';
@@ -569,27 +572,92 @@ describe('checkRepoPolicy (#1953)', () => {
     );
   });
 
-  it('warns with the disclosure text, fenced, for disclosure-required', () => {
-    const disclosureText = 'Add "Assisted-by: <tool>" to the PR description';
+  it('warns with the disclosure text, fenced, for disclosure-required when no body is given', () => {
+    const disclosureText = 'Assisted-by: <tool>';
     const result = checkRepoPolicy({
       ...READY,
-      policy: policy({ aiPolicy: 'disclosure-required', disclosureText }),
+      policy: policy({ aiPolicy: 'disclosure-required', disclosureText, reviewedByUser: true }),
     });
     expect(result.status).toBe('warn');
     expect(result.summary).toContain(
-      'requires an AI-use disclosure: add the line in details.disclosureText to the PR body',
+      'requires an AI-use disclosure: add the line in details.disclosureText to the PR body and pass it with --body-file',
     );
     const fenced = String(result.details?.disclosureText);
     expect(fenced).toMatch(/^<github-content /);
     expect(extractFromFence(fenced)).toBe(disclosureText);
   });
 
-  it('warns for claim-first until the user is assigned, and for maintainer-label', () => {
+  describe('disclosure-required against the staged body (#2040)', () => {
+    const recorded = { ...READY, policy: policy({ aiPolicy: 'disclosure-required', disclosureText: 'Assisted-by: Some Tool', reviewedByUser: true }) };
+
+    it('passes when the body contains the recorded line, ignoring case and line wrapping', () => {
+      const prBody = 'Fixes the crash.\n\nassisted-by:\n  some   tool\n';
+      expect(checkRepoPolicy({ ...recorded, prBody }).status).toBe('pass');
+    });
+
+    it('warns when the body lacks the recorded line', () => {
+      const result = checkRepoPolicy({ ...recorded, prBody: 'Fixes the crash.' });
+      expect(result.status).toBe('warn');
+      expect(result.summary).toContain('the PR body does not contain the line in details.disclosureText');
+    });
+
+    it('matches a recorded line cut short by quote() up to the cut', () => {
+      const cut = { ...recorded, policy: { ...recorded.policy, disclosureText: 'Assisted-by: Some T…' } };
+      expect(checkRepoPolicy({ ...cut, prBody: 'Assisted-by: Some Tool' }).status).toBe('pass');
+    });
+
+    it('with no recorded line, asks for one per the quoted rule and never offers a disclosureText', () => {
+      const source = [{ file: 'CONTRIBUTING.md', quotedLine: '…you must disclose AI assistance in the PR…' }];
+      const facts = { ...READY, prBody: 'anything', policy: policy({ aiPolicy: 'disclosure-required', source }) };
+      const result = checkRepoPolicy(facts);
+      expect(result.status).toBe('warn');
+      expect(result.summary).toContain('meets the rule quoted in details.sources');
+      expect(result.summary).toContain('--disclosure-text <line>');
+      expect(result.summary).not.toContain('details.disclosureText');
+      expect(result.details?.disclosureText).toBeUndefined();
+      expect(extractFromFence(String(result.details?.sources))).toContain('you must disclose AI assistance');
+    });
+  });
+
+  it('warns for claim-first until the user is assigned', () => {
     const claim = { ...READY, issueUrl: ISSUE_URL, policy: policy({ prGate: 'claim-first' }) };
     expect(checkRepoPolicy(claim).summary).toContain('get assigned before opening the PR');
     const assigned = { ...claim, issue: { ...withIssue({}).issue!, assignees: ['ME'] } };
     expect(checkRepoPolicy(assigned).status).toBe('pass');
-    expect(checkRepoPolicy({ ...READY, policy: policy({ prGate: 'maintainer-label' }) }).status).toBe('warn');
+  });
+
+  describe('maintainer-label against the issue labels (#2040)', () => {
+    const gated = { ...READY, issueUrl: ISSUE_URL, policy: policy({ prGate: 'maintainer-label' }) };
+
+    it('passes when the issue carries a label that reads as acceptance', () => {
+      for (const label of ['accepted', 'status: approved', 'help wanted', 'good first issue', 'Ready']) {
+        expect(checkRepoPolicy({ ...gated, issueLabels: ['bug', label] }).status, label).toBe('pass');
+      }
+    });
+
+    it('warns when no label reads as acceptance, with the labels fenced', () => {
+      const result = checkRepoPolicy({ ...gated, issueLabels: ['bug', 'needs-triage', 'not approved'] });
+      expect(result.status).toBe('warn');
+      expect(result.summary).toContain("none of the issue's labels (details.issueLabels) reads as one");
+      const fenced = String(result.details?.issueLabels);
+      expect(fenced).toMatch(/^<github-content /);
+      expect(extractFromFence(fenced)).toBe('bug\nneeds-triage\nnot approved');
+    });
+
+    it('warns when the issue has no labels', () => {
+      const result = checkRepoPolicy({ ...gated, issueLabels: [] });
+      expect(result.status).toBe('warn');
+      expect(result.summary).toContain('the issue has no labels');
+      expect(result.details?.issueLabels).toBeUndefined();
+    });
+
+    it('warns when the labels could not be read, or no issue was given', () => {
+      const failed = checkRepoPolicy({ ...gated, labelsError: 'HTTP 502' });
+      expect(failed.summary).toContain("the issue's labels could not be read (GitHub request failed: HTTP 502)");
+      const noIssue = checkRepoPolicy({ ...gated, issueUrl: null });
+      expect(noIssue.status).toBe('warn');
+      expect(noIssue.summary).toContain('pass the issue so preflight can read its labels');
+    });
   });
 
   it('only warns for an unreviewed collaborators-only reading: the heuristic may have misread the docs', () => {
