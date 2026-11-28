@@ -133,13 +133,6 @@ function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
   return result.value;
 }
 
-/**
- * Fetches and enriches open PRs from GitHub for the configured user.
- *
- * In v2, all PR data is fetched fresh on each run — no local PR tracking.
- * CI status, reviews, merge conflicts, and maintainer comments are enriched
- * for each PR to compute a {@link FetchedPRStatus}.
- */
 type RestCommit = Awaited<ReturnType<Octokit['repos']['getCommit']>>['data'];
 
 function firstParentSha(data: RestCommit): string | undefined {
@@ -160,6 +153,13 @@ function restCommitDates(data: RestCommit, reviewedSha: string | undefined): Com
   };
 }
 
+/**
+ * Fetches and enriches open PRs from GitHub for the configured user.
+ *
+ * In v2, all PR data is fetched fresh on each run — no local PR tracking.
+ * CI status, reviews, merge conflicts, and maintainer comments are enriched
+ * for each PR to compute a {@link FetchedPRStatus}.
+ */
 export class PRMonitor {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
