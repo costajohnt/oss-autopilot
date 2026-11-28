@@ -73,7 +73,8 @@ describe('prompt files do not write under /tmp (#1930, #2051)', () => {
 describe('the draft and approval protocol is written once, in workflows/draft-files.md (#2051)', () => {
   const PROTOCOL_FILE = 'workflows/draft-files.md';
   /** A citation of a protocol section that sends the reader to reference.md instead. */
-  const STALE_CITATION = /"(?:Draft Files|Before drafting a comment|Approval to post)"[^"\n]{0,20}`workflows\/reference\.md`/g;
+  const STALE_CITATION =
+    /"(?:Draft Files|Before drafting a comment|Approval to post)"[^"\n]{0,20}`workflows\/reference\.md`/g;
   /** The approval phrase list; only the protocol file may state it. */
   const PHRASE_LIST = /"yes, post"/g;
 
