@@ -246,17 +246,18 @@ export function fenceTitlesDeep<T>(value: T): T {
   const label = titleLabel(obj);
   const out: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(obj)) {
-    if (key === 'labels' && Array.isArray(field)) {
-      out[key] = fenceRowLabels(obj, field, label);
-      continue;
-    }
-    const source = TITLE_KEY_SOURCES.get(key);
-    out[key] =
-      source !== undefined && typeof field === 'string' && field !== ''
-        ? wrapUntrustedContent(field, label, { source })
-        : fenceTitlesDeep(field);
+    out[key] = fenceEntry(obj, key, field, label);
   }
   return out as T;
+}
+
+/** One entry of a result object `obj`, fenced by {@link fenceTitlesDeep}'s rules. */
+function fenceEntry(obj: Record<string, unknown>, key: string, field: unknown, label: string): unknown {
+  if (key === 'labels' && Array.isArray(field)) return fenceRowLabels(obj, field, label);
+  const source = TITLE_KEY_SOURCES.get(key);
+  return source !== undefined && typeof field === 'string' && field !== ''
+    ? wrapUntrustedContent(field, label, { source })
+    : fenceTitlesDeep(field);
 }
 
 /**

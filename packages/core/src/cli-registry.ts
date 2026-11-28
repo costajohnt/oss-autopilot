@@ -992,7 +992,7 @@ export const commands: CLICommandDef[] = [
         .option('--bots', 'Include bot comments')
         .option('--include-own', 'Include your own comments and reviews')
         .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
+        .action((prUrl: string, options: { bots?: boolean; includeOwn?: boolean; json?: boolean }) =>
           executeAction(
             options,
             async () =>
