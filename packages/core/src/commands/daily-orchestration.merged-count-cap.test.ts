@@ -4,14 +4,15 @@
  * ledger is complete, and the all-time merged count must follow it (#1897).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { DailyDigest, FetchedPR, StoredMergedPR } from '../core/types.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { DailyDigest, FetchedPR, StoredClosedPR, StoredMergedPR } from '../core/types.js';
 import type { StateManager as StateManagerType } from '../core/state.js';
 
 const h = vi.hoisted(() => ({
   sm: undefined as unknown as StateManagerType,
   fetchUserMergedPRCounts: undefined as unknown as ReturnType<typeof vi.fn>,
   fetchRecentlyMergedPRs: undefined as unknown as ReturnType<typeof vi.fn>,
+  fetchUserClosedPRCounts: undefined as unknown as ReturnType<typeof vi.fn>,
 }));
 
 vi.mock('../core/state.js', async (importOriginal) => {
@@ -30,11 +31,12 @@ vi.mock('../core/index.js', async (importOriginal) => {
     dailyActivityCounts: {},
     searchedPRs: [],
   };
+  h.fetchUserClosedPRCounts = vi.fn().mockResolvedValue({ ...empty, truncated: false });
 
   class MockPRMonitor {
     fetchUserOpenPRs = vi.fn().mockResolvedValue({ prs: [], failures: [] });
     fetchUserMergedPRCounts = h.fetchUserMergedPRCounts;
-    fetchUserClosedPRCounts = vi.fn().mockResolvedValue({ ...empty, truncated: false });
+    fetchUserClosedPRCounts = h.fetchUserClosedPRCounts;
     fetchRepoMetadata = vi.fn(
       async (repos: string[]) =>
         new Map(repos.map((r) => [r, { stars: r === 'tiny/repo' ? 10 : 1000, language: null }])),
@@ -99,6 +101,46 @@ function ledger(repo: string, count: number): StoredMergedPR[] {
   }));
 }
 
+/** `count` closed-without-merge ledger rows in `repo`. */
+function closedLedger(repo: string, count: number): StoredClosedPR[] {
+  return Array.from({ length: count }, (_, i) => ({
+    url: `https://github.com/${repo}/pull/${100 + i}`,
+    title: `Closed ${i}`,
+    closedAt: '2026-01-02T00:00:00Z',
+  }));
+}
+
+/** The count searches for the #2045 runs: big/repo has `closedForBig` closed PRs. */
+function searchCounts(closedForBig: number) {
+  const base = {
+    monthlyCounts: {},
+    monthlyOpenedCounts: {},
+    dailyActivityCounts: {},
+    searchedPRs: [],
+    truncated: false,
+  };
+  return {
+    // tiny/repo is below minStars, so the star-filtered search leaves it out.
+    merged: { ...base, repos: new Map([['big/repo', { count: 3, lastMergedAt: '2026-01-01T00:00:00Z' }]]) },
+    // old/repo's closed PRs fall outside the search; its ledger holds 2.
+    closed: { ...base, repos: new Map([['big/repo', closedForBig]]) },
+  };
+}
+
+/** Each scored repo's lastEvaluatedAt. */
+function evaluatedAt(): Record<string, string> {
+  return Object.fromEntries(Object.values(h.sm.getState().repoScores).map((rs) => [rs.repo, rs.lastEvaluatedAt]));
+}
+
+/** One daily run at `at` against searchCounts(closedForBig). */
+async function runDaily(at: string, closedForBig = 1) {
+  vi.setSystemTime(at);
+  const { merged, closed } = searchCounts(closedForBig);
+  h.fetchUserMergedPRCounts.mockResolvedValue(merged);
+  h.fetchUserClosedPRCounts.mockResolvedValue(closed);
+  await executeDailyCheck('test-token');
+}
+
 describe('executeDailyCheck() — merged count past the search pagination cap (#1897)', () => {
   beforeEach(() => {
     h.sm = new StateManager(true);
@@ -143,5 +185,54 @@ describe('executeDailyCheck() — merged count past the search pagination cap (#
     expect(h.sm.getStats().mergedPRs).toBe(367);
     expect(result.digest.summary.totalMergedAllTime).toBe(367);
     expect(h.sm.getState().repoScores['small/repo'].mergedPRCount).toBe(25);
+  });
+});
+
+describe('executeDailyCheck() — a repo whose counts net to no change is not re-evaluated (#2045)', () => {
+  const T0 = '2026-11-01T00:00:00.000Z';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    h.sm = new StateManager(true);
+    h.sm.updateConfig({ githubUsername: 'testuser', minStars: 100 });
+    h.sm.addMergedPRs([...ledger('big/repo', 3), ...ledger('tiny/repo', 5)]);
+    h.sm.addClosedPRs([...closedLedger('big/repo', 1), ...closedLedger('old/repo', 2)]);
+    h.sm.updateRepoScore('big/repo', {
+      mergedPRCount: 3,
+      closedWithoutMergeCount: 1,
+      lastMergedAt: '2026-01-01T00:00:00Z',
+      stargazersCount: 1000,
+    });
+    h.sm.updateRepoScore('tiny/repo', { mergedPRCount: 5, stargazersCount: 10 });
+    h.sm.updateRepoScore('old/repo', { closedWithoutMergeCount: 2, stargazersCount: 1000 });
+    h.fetchRecentlyMergedPRs.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('leaves lastEvaluatedAt where it was across two identical runs', async () => {
+    const before = evaluatedAt();
+    expect(Object.values(before)).toEqual([T0, T0, T0]);
+
+    await runDaily('2026-11-10T00:00:00.000Z');
+    await runDaily('2026-11-20T00:00:00.000Z');
+
+    expect(evaluatedAt()).toEqual(before);
+    // The counts were zeroed and raised back each run, and end where they started.
+    expect(h.sm.getState().repoScores['tiny/repo'].mergedPRCount).toBe(5);
+    expect(h.sm.getState().repoScores['old/repo'].closedWithoutMergeCount).toBe(2);
+  });
+
+  it('still moves lastEvaluatedAt for a repo whose outcome did change', async () => {
+    await runDaily('2026-11-10T00:00:00.000Z', 4);
+
+    expect(evaluatedAt()).toEqual({
+      'big/repo': '2026-11-10T00:00:00.000Z',
+      'tiny/repo': T0,
+      'old/repo': T0,
+    });
   });
 });

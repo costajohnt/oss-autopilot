@@ -453,6 +453,10 @@ async function updateRepoScores(
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
   try {
     batchOnFreshBaseline(stateManager, () => {
+      // Counts below are written in steps (reset or search count, then the
+      // ledger raise); only the net change re-evaluates a repo (#2045).
+      const outcomesBefore = stateManager.snapshotRepoOutcomes();
+
       // Re-key transferred repos and evict reopened/merged PRs from the closed
       // ledger before anything below reads or writes repoScores (#1923).
       syncLedgersWithGitHub(stateManager, searchedPRs, prs);
@@ -574,6 +578,8 @@ async function updateRepoScores(
           `[SIGNAL_UPDATES_FAILED] ${signalUpdateFailures} of ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
         );
       }
+
+      stateManager.restoreUnchangedEvaluations(outcomesBefore);
     });
   } catch (error) {
     recordWarning(warnings, 'repo-scores', 'persist repo score updates', error);
