@@ -64,7 +64,10 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "not a process argument: 'push' is an entry in a word list",
   },
-  'core/src/core/auth.ts gh auth token': { count: 1, why: 'read-only: reads the local gh token' },
+  'core/src/core/auth.ts gh auth token': {
+    count: 2,
+    why: 'read-only: reads the local gh token (sync and async readers)',
+  },
   'core/src/core/auth.ts gh api user --jq .login': { count: 1, why: 'read-only: GET /user' },
   'core/src/commands/doctor.ts gh --version': { count: 1, why: 'read-only: local version check' },
   'core/src/commands/doctor.ts gh auth status': { count: 1, why: 'read-only: local auth check' },
