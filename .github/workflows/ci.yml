@@ -141,14 +141,32 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-      - name: Test build-cli-if-stale helper (#1292)
-        run: bash scripts/build-cli-if-stale.test.sh
-
-      - name: Test build-dashboard-if-stale helper (#1292)
-        run: bash scripts/build-dashboard-if-stale.test.sh
-
-      - name: Test sync-mcp-pin helper
-        run: bash scripts/sync-mcp-pin.test.sh
+      # Every shell test by glob, so a new *.test.sh runs without a workflow
+      # edit (#2057). Each pattern must match at least one file, so a moved
+      # or renamed directory fails here instead of passing with zero tests.
+      # Runs on every leg, macOS included: tests must work under bash 3.2
+      # and BSD userland.
+      - name: Run shell tests
+        run: |
+          failed=""
+          for pattern in 'scripts/*.test.sh' '.claude/hooks/*.test.sh'; do
+            found=0
+            for t in $pattern; do
+              [ -f "$t" ] || continue
+              found=1
+              echo "::group::$t"
+              bash "$t" || failed="$failed $t"
+              echo "::endgroup::"
+            done
+            if [ "$found" = 0 ]; then
+              echo "::error::No shell tests match $pattern"
+              exit 1
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Failed shell tests:$failed"
+            exit 1
+          fi
 
       - name: Verify generated reference.md is up to date (#1289)
         # Regenerates the auto-managed sections of workflows/reference.md from
@@ -482,7 +500,6 @@ jobs:
         timeout-minutes: 5
         run: |
           set -euo pipefail
-          bash scripts/check-plugin-tree.test.sh
           VERSION=$(node -p "require('./packages/core/package.json').version")
           bash scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/plugin-tree" "$RUNNER_TEMP"/pack-check/oss-autopilot-core-*.tgz
           node scripts/check-plugin-tree.mjs "$RUNNER_TEMP/plugin-tree"

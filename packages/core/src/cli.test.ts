@@ -650,6 +650,11 @@ describe('CLI argument parsing', () => {
     expect(opt, 'comments should have --bots').toBeDefined();
   });
 
+  it('comments has --include-own option (#2046)', () => {
+    const cmd = findCmd('comments');
+    expect(cmd!.options.find((o) => o.long === '--include-own')).toBeDefined();
+  });
+
   it('setup has --reset and --set options', () => {
     const cmd = findCmd('setup');
     expect(cmd).toBeDefined();

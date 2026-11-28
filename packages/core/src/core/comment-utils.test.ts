@@ -156,6 +156,26 @@ describe('isAcknowledgmentComment', () => {
     expect(isAcknowledgmentComment('Looks good, but change the default')).toBe(false);
   });
 
+  // One case per request word; without the word the same comment is an acknowledgment.
+  it.each([
+    ['please', 'Thanks, please fix the tests'],
+    ['pls', 'Thanks, pls fix the tests'],
+    ['but', 'Thanks, but the tests fail'],
+    ['however', 'Thanks, however the tests fail'],
+    ['just', 'LGTM, just fix the lint failure'],
+    ['need', 'Thanks, we need a test for this'],
+    ['needs', 'Thanks, this needs a test'],
+    ['should', 'Thanks, this should have a test'],
+    ['must', 'Thanks, this must have a test'],
+    ['rebase', 'Thanks, rebase onto main'],
+    ['squash', 'Thanks, squash the commits'],
+    ['add', 'Thanks, add a test for this'],
+    ['remove', 'Thanks, remove the debug log'],
+  ])('should reject an acknowledgment that carries the request word "%s" (#1916)', (word, comment) => {
+    expect(isAcknowledgmentComment(comment)).toBe(false);
+    expect(isAcknowledgmentComment(comment.replace(word, ''))).toBe(true);
+  });
+
   it('should match request words on word boundaries only (#1916)', () => {
     // "address" contains "add", "butter" contains "but"
     expect(isAcknowledgmentComment('Thanks, I will look at the address parsing')).toBe(true);
