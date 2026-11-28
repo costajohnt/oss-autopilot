@@ -26,7 +26,7 @@
 import type { Octokit } from '@octokit/rest';
 import { CIStatusResult } from './types.js';
 import { computeCIStatus, type RawCheckRun, type RawCombinedStatus } from './ci-analysis.js';
-import type { ActivityEvent, ReviewComment } from './review-analysis.js';
+import { getChangesRequestedCommitSha, type ActivityEvent, type ReviewComment } from './review-analysis.js';
 import { commitDateOf } from './commit-date.js';
 import type { AssemblyComment, AssemblyReview, CommitInfo } from './pr-assembly.js';
 import { isRateLimitOrAuthError, errorMessage } from './errors.js';
@@ -140,7 +140,7 @@ function restUser(actor: GraphQLActor | null): { login: string; type?: string } 
   return actor ? { login: restLogin(actor), type: actor.__typename } : null;
 }
 
-type GraphQLGitActor = { user: { login: string } | null } | null;
+type GraphQLGitActor = { email?: string | null; user: { login: string } | null } | null;
 
 type GraphQLTimelineNode =
   | {
@@ -202,8 +202,9 @@ interface GraphQLCommitNode {
   oid: string;
   authoredDate: string | null;
   committedDate: string | null;
-  author: { user: GraphQLActor | null } | null;
+  author: { email?: string | null; user: GraphQLActor | null } | null;
   committer: GraphQLGitActor;
+  parents?: { nodes: Array<{ oid: string }> };
   status: {
     state: string;
     contexts: Array<{ context: string; state: string; description: string | null }>;
@@ -240,6 +241,7 @@ interface GraphQLPullRequestNode {
       submittedAt: string | null;
       author: GraphQLActor | null;
       authorAssociation?: string | null;
+      commit?: { oid: string; parents: { nodes: Array<{ oid: string }> } } | null;
     }>;
   };
   reviewThreads: {
@@ -284,7 +286,7 @@ const PR_FIELDS = `
   }
   reviews(last: ${REVIEWS_CAP}) {
     totalCount
-    nodes { databaseId state body submittedAt author { login __typename } authorAssociation }
+    nodes { databaseId state body submittedAt author { login __typename } authorAssociation commit { oid parents(first: 1) { nodes { oid } } } }
   }
   reviewThreads(last: ${REVIEW_THREADS_CAP}) {
     totalCount
@@ -318,8 +320,9 @@ const PR_FIELDS = `
         oid
         authoredDate
         committedDate
-        author { user { login } }
-        committer { user { login } }
+        author { email user { login } }
+        committer { email user { login } }
+        parents(first: 1) { nodes { oid } }
         status { state contexts { context state description } }
         statusCheckRollup {
           contexts(first: ${CI_CONTEXTS_CAP}) {
@@ -444,6 +447,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
       submitted_at: r.submittedAt,
       state: r.state,
       id: r.databaseId ?? undefined,
+      commit_id: r.commit?.oid ?? null,
     }));
 
   const reviewComments: ReviewComment[] = node.reviewThreads.nodes.flatMap((thread) =>
@@ -459,12 +463,21 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   );
 
   const commit = node.commits.nodes[0]?.commit;
+  // The commit the latest change request was made against and its parent: a
+  // head rebased off that parent has not addressed the review (#2042).
+  const reviewedSha = getChangesRequestedCommitSha(reviews);
+  const reviewedCommit = node.reviews.nodes.find((r) => r.commit?.oid === reviewedSha)?.commit;
   const commitInfo: CommitInfo = {
     date: commitDateOf({
       authorDate: commit?.authoredDate,
       committerDate: commit?.committedDate,
       authorLogin: commit?.author?.user?.login,
       committerLogin: commit?.committer?.user?.login,
+      authorEmail: commit?.author?.email,
+      committerEmail: commit?.committer?.email,
+      parentSha: commit?.parents?.nodes[0]?.oid,
+      reviewedParentSha: reviewedCommit?.parents.nodes[0]?.oid,
+      reviewedSha,
     }),
     author: commit?.author?.user?.login ?? undefined,
   };
