@@ -1947,6 +1947,7 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(guidelineProposalPath('foo/bar'), { force: true });
     mockIsGistMode.mockReturnValue(false);
   });
 
@@ -2025,21 +2026,20 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
     mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
     const file = guidelineProposalPath('foo/bar');
     fs.writeFileSync(file, '## Testing\n');
-    try {
-      const result = await executeDailyCheck('test-token');
-      expect(result.pendingLearnings?.proposals).toEqual([
-        { repo: 'foo/bar', proposalPath: file, proposalAgeDays: 0, proposalOnThisMachine: true },
-      ]);
-    } finally {
-      fs.rmSync(file, { force: true });
-    }
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.pendingLearnings?.proposals).toEqual([
+      { repo: 'foo/bar', proposalPath: file, proposalAgeDays: 0, proposalOnThisMachine: true },
+    ]);
   });
 
   it('in auto mode, reports a proposal another machine stamped through the Gist (#2041)', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 - 60_000);
     const state = stateWithListAndLedger();
     (state.config as Record<string, unknown>).autoExtractLearnings = true;
     Object.assign((state.mergedPRs as Array<Record<string, unknown>>)[0], {
-      learningsProposedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 - 60_000).toISOString(),
+      learningsProposedAt: twoDaysAgo.toISOString(),
       learningsProposedOn: 'another-machine',
     });
     mockGetState.mockReturnValue(state);

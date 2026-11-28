@@ -2338,10 +2338,13 @@ Load it with:
         )
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
+        .action(async (options: { repo: string; json?: boolean }) => {
           await executeAction(
             options,
-            async () => (await import('./commands/guidelines.js')).runMarkProposed({ repo: options.repo }),
+            async () => {
+              const { runMarkProposed } = await import('./commands/guidelines.js');
+              return runMarkProposed({ repo: options.repo });
+            },
             (data) => {
               console.log(`Marked ${data.marked} PR(s) in ${data.repo} as proposed (${data.path}).`);
             },

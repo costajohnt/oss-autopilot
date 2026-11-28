@@ -397,6 +397,11 @@ describe('guideline proposals (#2041)', () => {
     fs.rmSync(guidelineProposalPath(REPO), { force: true });
   });
 
+  function isoAgo(now: number, ms: number): string {
+    const at = new Date(now - ms);
+    return at.toISOString();
+  }
+
   function writeProposal(ageMs = 0): string {
     const file = guidelineProposalPath(REPO);
     fs.writeFileSync(file, '## Testing\n- add a test\n');
@@ -437,11 +442,8 @@ describe('guideline proposals (#2041)', () => {
 
   it('reports a proposal held by another machine from the newest fresh stamp', () => {
     const now = Date.now();
-    const stamp = (ms: number, on: string | undefined) => ({
-      learningsProposedAt: new Date(now - ms).toISOString(),
-      learningsProposedOn: on,
-    });
-    const status = guidelineProposalStatus(REPO, [stamp(5 * DAY, 'other'), stamp(2 * DAY, 'other')], now);
+    const stamp = (ms: number) => ({ learningsProposedAt: isoAgo(now, ms), learningsProposedOn: 'other' });
+    const status = guidelineProposalStatus(REPO, [stamp(5 * DAY), stamp(2 * DAY)], now);
     expect(status).toMatchObject({ proposalAgeDays: 2, proposalOnThisMachine: false });
   });
 
@@ -452,8 +454,8 @@ describe('guideline proposals (#2041)', () => {
     const status = guidelineProposalStatus(
       REPO,
       [
-        { learningsProposedAt: new Date(now - DAY).toISOString(), learningsProposedOn: self },
-        { learningsProposedAt: new Date(now - MAX_DRAFT_AGE_MS - DAY).toISOString(), learningsProposedOn: 'other' },
+        { learningsProposedAt: isoAgo(now, DAY), learningsProposedOn: self },
+        { learningsProposedAt: isoAgo(now, MAX_DRAFT_AGE_MS + DAY), learningsProposedOn: 'other' },
       ],
       now,
     );

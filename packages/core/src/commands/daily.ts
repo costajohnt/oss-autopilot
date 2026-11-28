@@ -53,7 +53,6 @@ import {
   type FetchCommentedIssuesResult,
   type PRCheckFailure,
   type RepoGroup,
-  type StoredMergedPR,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { DEFAULT_CONCURRENCY, runWorkerPool } from '../core/concurrency.js';
@@ -76,7 +75,7 @@ import {
   type PendingLearnings,
 } from '../formatters/json.js';
 import { reconcileMergedPRsWithList } from './merge-loop.js';
-import { guidelineProposalStatus } from './guidelines.js';
+import { guidelineProposalStatus, isProposalRepo } from './guidelines.js';
 import {
   describeError,
   httpStatusLabel,
@@ -1320,18 +1319,19 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     if (unextractedMergeCount > 0 && sm.getState().config.autoExtractLearnings) {
       unextractedMergeCount = 0;
       if (sm.isGistMode()) {
-        const byRepo = new Map<string, StoredMergedPR[]>();
+        const repoSet = new Set<string>();
         for (const pr of unextracted) {
           const parsed = parseGitHubUrl(pr.url);
-          if (!parsed) continue;
-          const repo = `${parsed.owner}/${parsed.repo}`;
-          byRepo.set(repo, [...(byRepo.get(repo) ?? []), pr]);
+          if (parsed) repoSet.add(`${parsed.owner}/${parsed.repo}`);
         }
-        const repos = [...byRepo.keys()].sort();
+        const repos = [...repoSet].sort();
         // Which of them already have a proposal waiting, here or on another
-        // machine (#2041), so the host neither computes paths nor re-extracts.
-        const proposals = repos.map((repo) => guidelineProposalStatus(repo, byRepo.get(repo) ?? []));
-        pendingLearnings = { repos, prCount: unextracted.length, proposals };
+        // machine (#2041), so the host neither builds paths nor re-extracts.
+        const prsOf = (repo: string) => unextracted.filter((pr) => pr.url.startsWith(`https://github.com/${repo}/`));
+        const proposals = repos
+          .filter((repo) => isProposalRepo(repo))
+          .map((repo) => guidelineProposalStatus(repo, prsOf(repo)));
+        pendingLearnings = { repos, proposals, prCount: unextracted.length };
       } else {
         warnings.push({
           phase: 'merge-loop',

@@ -168,7 +168,7 @@ export const StoredMergedPRSchema = z
      * (#2041). The proposal file is machine-local, so `learningsProposedOn`
      * names the machine holding it; another machine does not re-extract.
      */
-    learningsProposedAt: z.string().datetime().optional(),
+    learningsProposedAt: z.iso.datetime().optional(),
     /** Machine id (`~/.oss-autopilot/machine-id`) of the machine holding the proposal (#2041). */
     learningsProposedOn: z.string().optional(),
     ...LedgerPredictionFields,
@@ -198,7 +198,7 @@ export const StoredClosedPRSchema = z
      * (#2041). The proposal file is machine-local, so `learningsProposedOn`
      * names the machine holding it; another machine does not re-extract.
      */
-    learningsProposedAt: z.string().datetime().optional(),
+    learningsProposedAt: z.iso.datetime().optional(),
     /** Machine id (`~/.oss-autopilot/machine-id`) of the machine holding the proposal (#2041). */
     learningsProposedOn: z.string().optional(),
     ...LedgerPredictionFields,

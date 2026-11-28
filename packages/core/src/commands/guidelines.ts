@@ -38,7 +38,7 @@ const MODULE = 'guidelines';
 
 const REPO_ID_PATTERN = /^[^/]+\/[^/]+$/;
 /** Repo names a proposal file may be named after (#2041); the prompts filter `daily`'s repos the same way. */
-const PROPOSAL_REPO_PATTERN = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+const PROPOSAL_REPO_PATTERN = /^[a-z\d-]+\/[\w.-]+$/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_FETCH_LIMIT = 5;
@@ -193,16 +193,21 @@ function validateRepo(repo: string): void {
   }
 }
 
+/** Whether `repo` is a name a proposal file can be named after (#2041); others get no proposal. */
+export function isProposalRepo(repo: string): boolean {
+  return PROPOSAL_REPO_PATTERN.test(repo);
+}
+
 /**
  * Where this machine keeps the guideline proposal for `repo` (#1929, #2041):
  * `guidelines-<owner>--<repo>.md` in the draft directory. The only place the
  * name is computed; the prompts take it from `daily` or `draft path`.
  */
 export function guidelineProposalPath(repo: string): string {
-  if (!PROPOSAL_REPO_PATTERN.test(repo)) {
+  if (!isProposalRepo(repo)) {
     throw new ValidationError(`Invalid repo identifier "${repo}" for a guideline proposal`);
   }
-  const [owner, name] = repo.split('/');
+  const [owner, name] = repo.split('/', 2);
   return path.join(getDraftsDir(), `guidelines-${owner}--${name}.md`);
 }
 
@@ -332,6 +337,14 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   };
 }
 
+/** Merged and closed PRs of `repo` whose comment bundle was fetched but not yet marked extracted. */
+function fetchedUnextractedPRUrls(sm: ReturnType<typeof getStateManager>, repo: string): string[] {
+  const repoUrlPrefix = `https://github.com/${repo}/`;
+  return [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]
+    .filter((pr) => pr.url.startsWith(repoUrlPrefix) && pr.commentsFetchedAt && !pr.learningsExtractedAt)
+    .map((pr) => pr.url);
+}
+
 /**
  * Stamp `learningsExtractedAt` on every merged/closed PR of `repo` whose
  * comment bundle was fetched (`commentsFetchedAt` set) but not yet marked
@@ -342,16 +355,11 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
 export async function runMarkExtracted(options: RepoOption): Promise<MarkExtractedOutput> {
   validateRepo(options.repo);
   const sm = getStateManager();
-  const repoUrlPrefix = `https://github.com/${options.repo}/`;
   const now = new Date().toISOString();
   const mark = (): number => {
-    let n = 0;
-    for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
-      if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
-      sm.markPRLearningsExtracted(pr.url, now);
-      n++;
-    }
-    return n;
+    const urls = fetchedUnextractedPRUrls(sm, options.repo);
+    for (const url of urls) sm.markPRLearningsExtracted(url, now);
+    return urls.length;
   };
   const marked = mark();
   const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, mark) : null;
@@ -373,17 +381,13 @@ export async function runMarkProposed(options: RepoOption): Promise<MarkProposed
     throw new ValidationError(`No guideline proposal at ${proposalPath}: write it there first`);
   }
   const sm = getStateManager();
-  const repoUrlPrefix = `https://github.com/${options.repo}/`;
-  const now = new Date().toISOString();
+  const proposedAt = new Date();
+  const now = proposedAt.toISOString();
   const machineId = getMachineId();
   const mark = (): number => {
-    let n = 0;
-    for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
-      if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
-      sm.markPRLearningsProposed(pr.url, now, machineId);
-      n++;
-    }
-    return n;
+    const urls = fetchedUnextractedPRUrls(sm, options.repo);
+    for (const url of urls) sm.markPRLearningsProposed(url, now, machineId);
+    return urls.length;
   };
   const marked = mark();
   const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, mark) : null;
