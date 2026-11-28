@@ -286,6 +286,24 @@ export interface PendingLearnings {
   repos: string[];
   /** Total unextracted recently merged PRs across those repos. */
   prCount: number;
+  /**
+   * One entry per repo in `repos` (same order) whose name matches
+   * `^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$` (#2041): where its proposal
+   * file goes and whether one already waits for review, on this machine or
+   * another. Extract only repos whose `proposalAgeDays` is null.
+   */
+  proposals: GuidelineProposalStatus[];
+}
+
+/** Whether a guideline proposal for a repo is waiting for review, and where (#2041). */
+export interface GuidelineProposalStatus {
+  repo: string;
+  /** Where this machine keeps the repo's proposal. Write it here; the file need not exist yet. */
+  proposalPath: string;
+  /** Whole days since the waiting proposal was written, or null when none is waiting anywhere. */
+  proposalAgeDays: number | null;
+  /** True when the waiting proposal is the file at `proposalPath`; false with an age means another machine holds it. */
+  proposalOnThisMachine: boolean;
 }
 
 /**
@@ -637,10 +655,19 @@ export const AttentionSummarySchema = z.object({
   waiting: z.number().int().nonnegative(),
 });
 
+/** Mirrors {@link GuidelineProposalStatus} (#2041). */
+const GuidelineProposalStatusSchema = z.object({
+  repo: z.string(),
+  proposalPath: z.string(),
+  proposalAgeDays: z.number().int().nonnegative().nullable(),
+  proposalOnThisMachine: z.boolean(),
+});
+
 /** Mirrors {@link MergedPRListUpdate} (#1463). */
 const PendingLearningsSchema = z.object({
   repos: z.array(z.string()),
   prCount: z.number().int().nonnegative(),
+  proposals: z.array(GuidelineProposalStatusSchema),
 });
 
 const MergedPRListUpdateSchema = z.object({
