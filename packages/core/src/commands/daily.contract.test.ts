@@ -17,6 +17,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import path from 'node:path';
 import { toDailyOutput, type DailyCheckResult } from './daily.js';
 import { summarizeAttentionBuckets } from '../core/pr-attention.js';
 import {
@@ -27,6 +29,7 @@ import {
 } from '../formatters/json.js';
 import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment, schemaIssues } from '../core/test-utils.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
+import { guidelineProposalPath } from './guidelines.js';
 
 /**
  * Goldens pin the serialized shape; this pins the goldens to the exported
@@ -224,7 +227,18 @@ describe('daily --json contract', () => {
   });
 
   it('pendingLearnings passes through full and compact output and validates (#1696)', () => {
-    const pending = { repos: ['octocat/spoon-knife'], prCount: 2 };
+    const pending = {
+      repos: ['octocat/spoon-knife'],
+      prCount: 2,
+      proposals: [
+        {
+          repo: 'octocat/spoon-knife',
+          proposalPath: '/home/u/.oss-autopilot/tmp/guidelines-octocat--spoon-knife.md',
+          proposalAgeDays: 1,
+          proposalOnThisMachine: true,
+        },
+      ],
+    };
     const result = toDailyOutput(makeFixture({ pendingLearnings: pending }));
     expectSchemaValid(result);
     expect(result.pendingLearnings).toEqual(pending);
@@ -232,6 +246,22 @@ describe('daily --json contract', () => {
     expect(compact.pendingLearnings).toEqual(pending);
     expect(CompactDailyOutputSchema.parse(compact).pendingLearnings).toEqual(pending);
     expect('pendingLearnings' in toDailyOutput(makeFixture())).toBe(false);
+  });
+
+  it('the prompts take proposal paths and ages from the CLI, not from find or a path they build (#2041)', () => {
+    const read = (file: string) => fs.readFileSync(path.resolve(__dirname, '../../../..', file), 'utf8');
+    const oss = read('commands/oss.md');
+    const workflow = read('workflows/extract-learnings.md');
+    for (const text of [oss, workflow]) {
+      expect(text).not.toMatch(/-mtime|~\/\.oss-autopilot\/tmp\/guidelines-/);
+      expect(text).toContain('guidelines mark-proposed --repo');
+    }
+    for (const field of ['proposalPath', 'proposalAgeDays', 'proposalOnThisMachine']) {
+      expect(oss).toContain(`\`${field}\``);
+    }
+    // A hand-run gets the path from `draft path`, under the name the CLI uses.
+    expect(workflow).toContain('draft path guidelines-{owner}--{repo}.md --json');
+    expect(path.basename(guidelineProposalPath('owner/repo'))).toBe('guidelines-owner--repo.md');
   });
 
   it('auto-marked list entries pass through and validate against the schema (#1463)', () => {

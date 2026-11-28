@@ -7,12 +7,16 @@
  * `guidelines reset`       — tombstone the file so subsequent reads return null.
  * `guidelines fetch-corpus` — pull raw PR comment bundles for the host's
  *                              extract-learnings prompt to consume.
+ * `guidelines mark-proposed` — record that a proposal file waits for review
+ *                              on this machine (#2041).
  *
  * The CLI layer is pure data plumbing — extraction is the host's job.
  * Standalone-mode users see "not available" on store/reset/fetch-corpus
  * because per-repo guidelines require Gist persistence to be useful.
  */
 import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import path from 'node:path';
 import {
   getStateManager,
   requireGitHubToken,
@@ -21,15 +25,21 @@ import {
   GUIDELINES_PROVENANCE_NOTE,
   wrapUntrustedContent,
   maybeCheckpoint,
+  getMachineId,
+  type StoredMergedPR,
 } from '../core/index.js';
 import { ValidationError, assertAttended } from '../core/errors.js';
 import { fetchPRCommentBundlesBatch, type PRCommentBundle } from '../core/pr-comments-fetcher.js';
 import { warn } from '../core/logger.js';
-import { assertSha256 } from './draft.js';
+import { assertSha256, getDraftsDir, MAX_DRAFT_AGE_MS } from './draft.js';
+import type { GuidelineProposalStatus } from '../formatters/json.js';
 
 const MODULE = 'guidelines';
 
 const REPO_ID_PATTERN = /^[^/]+\/[^/]+$/;
+/** Repo names a proposal file may be named after (#2041); the prompts filter `daily`'s repos the same way. */
+const PROPOSAL_REPO_PATTERN = /^[a-z\d-]+\/[\w.-]+$/i;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_FETCH_LIMIT = 5;
 const MAX_FETCH_LIMIT = 10;
@@ -123,6 +133,16 @@ export interface FetchCorpusOutput {
   warnings?: string[];
 }
 
+export interface MarkProposedOutput {
+  repo: string;
+  /** The proposal file that was found, from {@link guidelineProposalPath}. */
+  path: string;
+  /** PRs stamped `learningsProposedAt` this call. */
+  marked: number;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
+}
+
 interface RepoOption {
   repo: string;
 }
@@ -171,6 +191,69 @@ function validateRepo(repo: string): void {
   if (!REPO_ID_PATTERN.test(repo)) {
     throw new Error(`Invalid repo identifier "${repo}". Expected "owner/repo" format.`);
   }
+}
+
+/** Whether `repo` is a name a proposal file can be named after (#2041); others get no proposal. */
+export function isProposalRepo(repo: string): boolean {
+  return PROPOSAL_REPO_PATTERN.test(repo);
+}
+
+/**
+ * Where this machine keeps the guideline proposal for `repo` (#1929, #2041):
+ * `guidelines-<owner>--<repo>.md` in the draft directory. The only place the
+ * name is computed; the prompts take it from `daily` or `draft path`.
+ */
+export function guidelineProposalPath(repo: string): string {
+  if (!isProposalRepo(repo)) {
+    throw new ValidationError(`Invalid repo identifier "${repo}" for a guideline proposal`);
+  }
+  const [owner, name] = repo.split('/', 2);
+  return path.join(getDraftsDir(), `guidelines-${owner}--${name}.md`);
+}
+
+/** Modification time of the regular file at `file` (symlinks not followed), or null when there is none. */
+function proposalMtimeMs(file: string): number | null {
+  const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+  return stat?.isFile() ? stat.mtimeMs : null;
+}
+
+/**
+ * Whether a guideline proposal for `repo` is waiting for review (#2041).
+ * `prs` are the repo's PRs that still lack `learningsExtractedAt`.
+ *
+ * A file at {@link guidelineProposalPath} is a proposal on this machine.
+ * Without one, a `learningsProposedAt` stamp written by another machine
+ * (`guidelines mark-proposed`, synced through the Gist) means a proposal for
+ * these PRs waits there, so this machine must not extract them again. Both
+ * expire with the draft retention, {@link MAX_DRAFT_AGE_MS}: `getDraftsDir`
+ * deletes an older file, and an older stamp is ignored. A stamp this machine
+ * wrote whose file is gone is ignored too, so the repo is extracted again.
+ */
+export function guidelineProposalStatus(
+  repo: string,
+  prs: ReadonlyArray<Pick<StoredMergedPR, 'learningsProposedAt' | 'learningsProposedOn'>>,
+  nowMs = Date.now(),
+): GuidelineProposalStatus {
+  const proposalPath = guidelineProposalPath(repo);
+  const ageDays = (ms: number): number => Math.max(0, Math.floor((nowMs - ms) / DAY_MS));
+  const localMs = proposalMtimeMs(proposalPath);
+  if (localMs !== null) {
+    return { repo, proposalPath, proposalAgeDays: ageDays(localMs), proposalOnThisMachine: true };
+  }
+  const self = getMachineId();
+  const cutoff = nowMs - MAX_DRAFT_AGE_MS;
+  let newest: number | null = null;
+  for (const pr of prs) {
+    if (!pr.learningsProposedAt || (self !== undefined && pr.learningsProposedOn === self)) continue;
+    const at = Date.parse(pr.learningsProposedAt);
+    if (at > cutoff && (newest === null || at > newest)) newest = at;
+  }
+  return {
+    repo,
+    proposalPath,
+    proposalAgeDays: newest === null ? null : ageDays(newest),
+    proposalOnThisMachine: false,
+  };
 }
 
 /** Read the per-repo guidelines for `repo`. Returns a `local-unavailable` envelope in non-Gist mode. */
@@ -254,6 +337,14 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   };
 }
 
+/** Merged and closed PRs of `repo` whose comment bundle was fetched but not yet marked extracted. */
+function fetchedUnextractedPRUrls(sm: ReturnType<typeof getStateManager>, repo: string): string[] {
+  const repoUrlPrefix = `https://github.com/${repo}/`;
+  return [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]
+    .filter((pr) => pr.url.startsWith(repoUrlPrefix) && pr.commentsFetchedAt && !pr.learningsExtractedAt)
+    .map((pr) => pr.url);
+}
+
 /**
  * Stamp `learningsExtractedAt` on every merged/closed PR of `repo` whose
  * comment bundle was fetched (`commentsFetchedAt` set) but not yet marked
@@ -264,20 +355,43 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
 export async function runMarkExtracted(options: RepoOption): Promise<MarkExtractedOutput> {
   validateRepo(options.repo);
   const sm = getStateManager();
-  const repoUrlPrefix = `https://github.com/${options.repo}/`;
   const now = new Date().toISOString();
   const mark = (): number => {
-    let n = 0;
-    for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
-      if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
-      sm.markPRLearningsExtracted(pr.url, now);
-      n++;
-    }
-    return n;
+    const urls = fetchedUnextractedPRUrls(sm, options.repo);
+    for (const url of urls) sm.markPRLearningsExtracted(url, now);
+    return urls.length;
   };
   const marked = mark();
   const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, mark) : null;
   return { repo: options.repo, marked, ...(gistSyncWarning && { gistSyncWarning }) };
+}
+
+/**
+ * Record that the proposal file for `repo` is written and waits for review on
+ * this machine (#2041): stamp `learningsProposedAt` and this machine's id on
+ * the PRs it was built from (fetched, not yet extracted). The stamp is synced
+ * through the Gist, so another machine's `daily` reports the proposal as held
+ * elsewhere instead of extracting the same PRs again. Refuses when no file
+ * is at {@link guidelineProposalPath}.
+ */
+export async function runMarkProposed(options: RepoOption): Promise<MarkProposedOutput> {
+  validateRepo(options.repo);
+  const proposalPath = guidelineProposalPath(options.repo);
+  if (proposalMtimeMs(proposalPath) === null) {
+    throw new ValidationError(`No guideline proposal at ${proposalPath}: write it there first`);
+  }
+  const sm = getStateManager();
+  const proposedAt = new Date();
+  const now = proposedAt.toISOString();
+  const machineId = getMachineId();
+  const mark = (): number => {
+    const urls = fetchedUnextractedPRUrls(sm, options.repo);
+    for (const url of urls) sm.markPRLearningsProposed(url, now, machineId);
+    return urls.length;
+  };
+  const marked = mark();
+  const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE, mark) : null;
+  return { repo: options.repo, path: proposalPath, marked, ...(gistSyncWarning && { gistSyncWarning }) };
 }
 
 /**

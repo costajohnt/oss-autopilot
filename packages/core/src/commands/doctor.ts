@@ -20,7 +20,7 @@ import { getGitHubTokenAsync, getOctokit, getStatePath } from '../core/index.js'
 import { AgentStateSchema } from '../core/state-schema.js';
 import { errorMessage } from '../core/errors.js';
 import { resolveDataDir } from '../core/paths.js';
-import { WORKTREE_NAME, staleRejectedCopies } from '../core/stale-data.js';
+import { countStaleData, type StaleDataCounts } from '../core/stale-data.js';
 import { LAUNCHD_LABEL, isScheduleCurrent } from './overnight.js';
 
 const execFileAsync = promisify(execFile);
@@ -348,14 +348,6 @@ export async function checkGitHubRateLimit(preloadedToken?: string | null): Prom
   }
 }
 
-function countStaleData(dataDir: string): { worktrees: number; rejected: number } {
-  const root = path.join(dataDir, 'worktrees');
-  const hasRoot = fs.existsSync(root) && fs.lstatSync(root).isDirectory();
-  const entries = hasRoot ? fs.readdirSync(root, { withFileTypes: true }) : [];
-  const worktrees = entries.filter((entry) => entry.isDirectory() && WORKTREE_NAME.test(entry.name));
-  return { worktrees: worktrees.length, rejected: staleRejectedCopies(dataDir).length };
-}
-
 /**
  * Stale data under the data directory (#1956): counts only, from the file
  * system; no Git runs here. Which worktrees are safe to remove, and why the
@@ -363,7 +355,7 @@ function countStaleData(dataDir: string): { worktrees: number; rejected: number 
  */
 export function checkStaleData(dataDir: string = resolveDataDir()): DoctorCheck {
   const name = 'Stale data';
-  let counts: ReturnType<typeof countStaleData>;
+  let counts: StaleDataCounts;
   try {
     counts = countStaleData(dataDir);
   } catch (err) {

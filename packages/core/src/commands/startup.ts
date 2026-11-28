@@ -21,6 +21,8 @@ import { parseIssueList } from './parse-list.js';
 import { detectIssueListPath, persistConfigPath, suggestIssueListPath } from './locate-issue-list.js';
 import { getMachinePath, setMachinePath } from '../core/local-config.js';
 import { overnightFreshness } from './overnight.js';
+import { resolveDataDir } from '../core/paths.js';
+import { countStaleData, type StaleDataCounts } from '../core/stale-data.js';
 
 /**
  * Count available and completed items in an issue list file.
@@ -261,6 +263,20 @@ async function triggerDashboardRefresh(port: number): Promise<'refreshed' | 'ref
 }
 
 /**
+ * Stale-data counts for the `/oss` summary (#2049), from directory listings
+ * only (no Git in the worktrees). Any error leaves the field out: this must
+ * never fail startup.
+ */
+export function staleDataForStartup(): StaleDataCounts | undefined {
+  try {
+    return countStaleData(resolveDataDir());
+  } catch (err) {
+    warn('startup', `Could not count stale data: ${errorMessage(err)}`);
+    return undefined;
+  }
+}
+
+/**
  * Run startup checks and return structured output.
  * Returns StartupOutput with one of three shapes:
  * 1. Setup incomplete: `{ version, setupComplete: false }`
@@ -399,5 +415,6 @@ export async function runStartup(): Promise<StartupOutput> {
     // State is already loaded and schema-parsed by this point (getStateManager
     // above), so this is an in-memory read that cannot fail (#1574).
     overnight: overnightFreshness(),
+    staleData: staleDataForStartup(),
   };
 }

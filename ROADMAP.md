@@ -8,18 +8,32 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Now (next 1-2 weeks)
 
-- [ ] Work through the issues filed by the 2026-11-19 audit ([open list](https://github.com/costajohnt/oss-autopilot/issues?q=is%3Aissue+is%3Aopen+%222026-11-19+audit%22+in%3Abody))
+- [ ] Work through the issues filed by the 2026-11-27 audit ([open list](https://github.com/costajohnt/oss-autopilot/issues?q=is%3Aissue+is%3Aopen+%222026-11-27+audit%22+in%3Abody))
 
 ## Next (next 1-2 months)
 
+- [ ] Gist sync: stop syncing re-derivable caches, one sync state machine, merge by data class ([#1957](https://github.com/costajohnt/oss-autopilot/issues/1957))
+- [ ] Fix `config` and the MCP `config` tool for setup-only keys: some report success without applying, others are advertised but rejected ([#1887](https://github.com/costajohnt/oss-autopilot/issues/1887), [#1913](https://github.com/costajohnt/oss-autopilot/issues/1913))
+- [ ] Get the nightly live-API E2E run passing again ([#1998](https://github.com/costajohnt/oss-autopilot/issues/1998))
+
 ## Later (no fixed timeline)
 
+- [ ] Remove deprecated commands, exports and retired config keys in the next major ([#2014](https://github.com/costajohnt/oss-autopilot/issues/2014))
+- [ ] Fork prune command for forks that no longer back an open PR or unmerged work ([#1912](https://github.com/costajohnt/oss-autopilot/issues/1912))
+- [ ] Block opening a PR whose description is the empty upstream template or whose title has a WIP prefix ([#1910](https://github.com/costajohnt/oss-autopilot/issues/1910))
+- [ ] Block posting text written in a different language than the target repo ([#1909](https://github.com/costajohnt/oss-autopilot/issues/1909))
+- [ ] Optional pacing limits on new external PRs and forks per rolling 24 hours ([#1911](https://github.com/costajohnt/oss-autopilot/issues/1911))
+- [ ] Watch target-repo CI in the background after opening or pushing a PR instead of blocking ([#1907](https://github.com/costajohnt/oss-autopilot/issues/1907))
 - [ ] Co-maintainer recruitment — the project is currently solo-maintained (bus factor of 1)
 
 Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/discussions) or file an issue.
 
 ## Shipped
 
+- [x] Work through the issues filed by the 2026-11-19 audit: [#1915](https://github.com/costajohnt/oss-autopilot/issues/1915)–[#1954](https://github.com/costajohnt/oss-autopilot/issues/1954) closed; the Gist sync redesign ([#1957](https://github.com/costajohnt/oss-autopilot/issues/1957)) moved to Next
+- [x] `pr-preflight`: one tested gate for upstream drift, base and head branch, competing work and repo cap before a PR opens ([#1952](https://github.com/costajohnt/oss-autopilot/issues/1952))
+- [x] Per-repo contribution policy records (AI policy, disclosure, CLA, commit rules, PR gate), checked before a PR opens ([#1953](https://github.com/costajohnt/oss-autopilot/issues/1953), [#2013](https://github.com/costajohnt/oss-autopilot/issues/2013))
+- [x] Marketplace install ships a prebuilt plugin tree; nothing is installed or built on first run ([#1935](https://github.com/costajohnt/oss-autopilot/issues/1935))
 - [x] Move canonical issue-scout and repo-evaluator agents into oss-scout — closed as not planned; both agent files remain in this repo ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
 - [x] Strategy-biased search with a 20% diversity counterweight and surfaced boost/diversity annotations ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
 - [x] Fix `list-mark-done` silently no-opping on missing entries — mirrors the list-move-tier contract ([#1406](https://github.com/costajohnt/oss-autopilot/issues/1406))

@@ -75,6 +75,7 @@ import {
   type PendingLearnings,
 } from '../formatters/json.js';
 import { reconcileMergedPRsWithList } from './merge-loop.js';
+import { guidelineProposalStatus, isProposalRepo } from './guidelines.js';
 import {
   describeError,
   httpStatusLabel,
@@ -1318,12 +1319,18 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     if (unextractedMergeCount > 0 && sm.getState().config.autoExtractLearnings) {
       unextractedMergeCount = 0;
       if (sm.isGistMode()) {
-        const repos = new Set<string>();
+        const repoSet = new Set<string>();
         for (const pr of unextracted) {
           const parsed = parseGitHubUrl(pr.url);
-          if (parsed) repos.add(`${parsed.owner}/${parsed.repo}`);
+          if (parsed) repoSet.add(`${parsed.owner}/${parsed.repo}`);
         }
-        pendingLearnings = { repos: [...repos].sort(), prCount: unextracted.length };
+        const repos = [...repoSet].sort();
+        // Proposal state per repo (#2041): the host neither builds paths nor re-extracts.
+        const prsOf = (repo: string) => unextracted.filter((pr) => pr.url.startsWith(`https://github.com/${repo}/`));
+        const proposals = repos
+          .filter((repo) => isProposalRepo(repo))
+          .map((repo) => guidelineProposalStatus(repo, prsOf(repo)));
+        pendingLearnings = { repos, proposals, prCount: unextracted.length };
       } else {
         warnings.push({
           phase: 'merge-loop',

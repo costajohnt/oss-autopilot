@@ -26,6 +26,8 @@ const MODULE = 'stale-data';
 export const REJECTED_KEEP = 5;
 export const REJECTED_MIN_AGE_DAYS = 7;
 export const DAY_MS = 24 * 60 * 60 * 1000;
+/** `cleanup` keeps a worktree touched within this many days (commands/cleanup.ts). */
+export const WORKTREE_MIN_AGE_DAYS = 14;
 
 /** Directory names the overnight preparer gives its worktrees: `<owner>-<repo>-<n>`, `...-issue-<n>`. */
 export const WORKTREE_NAME = /^[\w.-]+-\d+$/;
@@ -88,6 +90,38 @@ export function staleRejectedCopies(dataDir: string, now: number = Date.now()): 
     copies.filter((other) => isNewer(other, copy)).length < REJECTED_KEEP ||
     copies.every((other) => !isNewer(copy, other));
   return copies.filter((copy) => !isCovered(copy)).map((copy) => copy.file);
+}
+
+export interface StaleDataCounts {
+  /** Directories under `worktrees/` named like the overnight preparer's; not judged, so not all removable. */
+  worktrees: number;
+  /**
+   * Those whose own mtime is at least {@link WORKTREE_MIN_AGE_DAYS} days old:
+   * an upper bound by age only. `cleanup` also checks the index's mtime and
+   * that the worktree is clean and pushed, so it may remove fewer.
+   */
+  oldWorktrees: number;
+  /** Rejected state copies past retention. */
+  rejected: number;
+}
+
+/**
+ * Counts for `doctor` and `startup` from directory listings only: no Git runs,
+ * so nothing a worktree's config names is executed. Which worktrees `cleanup`
+ * would remove is its own (slower) dry run. Throws on an unreadable directory.
+ */
+export function countStaleData(dataDir: string, now: number = Date.now()): StaleDataCounts {
+  const root = path.join(dataDir, 'worktrees');
+  const hasRoot = fs.existsSync(root) && fs.lstatSync(root).isDirectory();
+  const entries = hasRoot ? fs.readdirSync(root, { withFileTypes: true }) : [];
+  const worktrees = entries.filter((entry) => entry.isDirectory() && WORKTREE_NAME.test(entry.name));
+  const cutoff = now - WORKTREE_MIN_AGE_DAYS * DAY_MS;
+  const old = worktrees.filter((entry) => fs.lstatSync(path.join(root, entry.name)).mtimeMs <= cutoff);
+  return {
+    worktrees: worktrees.length,
+    oldWorktrees: old.length,
+    rejected: staleRejectedCopies(dataDir, now).length,
+  };
 }
 
 export interface PruneResult {
