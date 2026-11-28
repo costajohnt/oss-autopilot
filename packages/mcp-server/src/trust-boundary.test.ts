@@ -12,13 +12,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 
-const { mockRunPost, mockRunClaim, mockRunGuidelinesStore, mockRunGuidelinesReset, mockRunVetList } = vi.hoisted(() => ({
-  mockRunPost: vi.fn(),
-  mockRunClaim: vi.fn(),
-  mockRunGuidelinesStore: vi.fn(),
-  mockRunGuidelinesReset: vi.fn(),
-  mockRunVetList: vi.fn(),
-}));
+const { mockRunPost, mockRunClaim, mockRunGuidelinesStore, mockRunGuidelinesReset, mockRunVetList } = vi.hoisted(
+  () => ({
+    mockRunPost: vi.fn(),
+    mockRunClaim: vi.fn(),
+    mockRunGuidelinesStore: vi.fn(),
+    mockRunGuidelinesReset: vi.fn(),
+    mockRunVetList: vi.fn(),
+  }),
+);
 
 vi.mock('@oss-autopilot/core/commands', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@oss-autopilot/core/commands')>()),
