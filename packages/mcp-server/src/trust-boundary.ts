@@ -85,9 +85,12 @@ export function assertMcpSettablePairs(pairs: readonly string[] = []): void {
 const APPROVAL_KEY = 'approval';
 /** Opt-in for hosts that cannot show a form: their own permission prompt becomes the only approval. */
 export const ALLOW_UNCONFIRMED_ENV = 'OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES';
-const approvalSchema = z.object({
-  approve: z.boolean().describe('Send this under my GitHub account'),
-});
+/** The checkbox label for a GitHub write; actions that write elsewhere pass their own. */
+export const SEND_LABEL = 'Send this under my GitHub account';
+/** The approval form: one checkbox, labelled with what ticking it allows. */
+function approvalSchema(label: string) {
+  return z.object({ approve: z.boolean().describe(label) });
+}
 
 /**
  * Characters a form cannot show faithfully: every format character (\p{Cf}:
@@ -232,6 +235,7 @@ function canShowForm(capabilities: ClientCapabilities | undefined): boolean {
  * An unattended run is refused before anything is asked.
  *
  * `hostCapabilities` returns what the connected host declared, read per call.
+ * `approveLabel` is the checkbox text: say what ticking it allows.
  */
 export function requireApproval<A, R>(
   hostCapabilities: () => ClientCapabilities | undefined,
@@ -239,6 +243,7 @@ export function requireApproval<A, R>(
   cli: string,
   preview: (args: A) => string,
   handler: (args: A) => Promise<R>,
+  approveLabel = SEND_LABEL,
 ): (args: A, ctx: ServerContext) => Promise<R | InputRequiredResult | ReturnType<typeof refusal>> {
   return async (args, ctx) => {
     try {
@@ -268,7 +273,7 @@ export function requireApproval<A, R>(
     if (answer.kind === 'missing') {
       return inputRequired({
         inputRequests: {
-          [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema }),
+          [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema(approveLabel) }),
         },
         requestState: await approvalState.mint({ args: approvedArgs(action, args), id: randomUUID() }),
       });

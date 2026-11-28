@@ -13,6 +13,7 @@ import {
   suggestKey,
   formatUnknownKeyError,
 } from './config-registry.js';
+import { MACHINE_PATH_KEYS } from './local-config.js';
 
 describe('CONFIG_KEY_REGISTRY', () => {
   it('has no duplicate keys', () => {
@@ -94,6 +95,17 @@ describe('getKeyTrust (#2035, #2036)', () => {
       localRepoScanPaths: 'path',
       diffToolCustomCommand: 'command',
     });
+  });
+
+  it('puts every per-machine path key in the path tier', () => {
+    for (const key of [...MACHINE_PATH_KEYS, 'localRepoScanPaths']) {
+      expect(getKeyTrust(key), key).toBe('path');
+    }
+  });
+
+  it('states a tier on every entry', () => {
+    const tiers = new Set(['preference', 'path', 'command', 'safeguard']);
+    expect(CONFIG_KEY_REGISTRY.filter((def) => !tiers.has(def.trust)).map((def) => def.key)).toEqual([]);
   });
 
   it('reads a command value of an otherwise preference key as command', () => {

@@ -207,6 +207,52 @@ describe('runSetup', () => {
       expect(mockUpdateConfig).toHaveBeenCalledWith({ aiPolicyBlocklist: ['Matplotlib/Matplotlib', 'other/repo'] });
     });
 
+    it('refuses a repeated key that shrinks the list in two steps, before applying either', async () => {
+      vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+      await expect(
+        runSetup({ set: ['aiPolicyBlocklist=matplotlib/matplotlib,other/repo', 'aiPolicyBlocklist=other/repo'] }),
+      ).rejects.toThrow(/Refusing to remove repos from aiPolicyBlocklist/);
+      expect(mockUpdateConfig).not.toHaveBeenCalled();
+    });
+
+    it('compares against what is stored: an entry dropped as invalid counts as removed', async () => {
+      vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+      mockGetStateManager.mockReturnValue({
+        getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, aiPolicyBlocklist: ['a/b/c', 'ok/repo'] } }),
+        updateConfig: mockUpdateConfig,
+        batch: (fn: () => void) => fn(),
+      } as any);
+      await expect(runSetup({ set: ['aiPolicyBlocklist=a/b/c,ok/repo'] })).rejects.toThrow(
+        /Refusing to remove repos from aiPolicyBlocklist/,
+      );
+      expect(mockUpdateConfig).not.toHaveBeenCalled();
+    });
+
+    it('allows an all-invalid value, which leaves the list as is', async () => {
+      vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+      await runSetup({ set: ['aiPolicyBlocklist=not-a-repo'] });
+      expect(mockUpdateConfig).not.toHaveBeenCalled();
+    });
+
+    it('re-checks on the Gist conflict re-apply, against the refreshed list', async () => {
+      vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+      const state = { config: { ...DEFAULT_CONFIG } };
+      mockGetStateManager.mockReturnValue({
+        getState: () => state,
+        updateConfig: mockUpdateConfig,
+        batch: (fn: () => void) => fn(),
+      } as any);
+      // Another machine added a repo; the conflict path re-applies this set on that list.
+      mockMaybeCheckpoint.mockImplementationOnce((_sm, _module, reapply) => {
+        state.config = { ...state.config, aiPolicyBlocklist: ['matplotlib/matplotlib', 'added/elsewhere'] };
+        reapply?.();
+        return Promise.resolve(null);
+      });
+      await expect(
+        runSetup({ set: ['aiPolicyBlocklist=matplotlib/matplotlib,new/repo'] }),
+      ).rejects.toThrow(/Refusing to remove repos from aiPolicyBlocklist/);
+    });
+
     it('lets an attended run shrink the list', async () => {
       await runSetup({ set: ['aiPolicyBlocklist='] });
       expect(mockUpdateConfig).toHaveBeenCalledWith({ aiPolicyBlocklist: [] });

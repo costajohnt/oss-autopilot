@@ -1151,6 +1151,7 @@ export function registerTools(server: McpServer): void {
       wrapTool((args: { repo: string; content: string; reviewed: boolean }) =>
         runGuidelinesStore({ repo: args.repo, content: args.content, reviewed: args.reviewed }),
       ),
+      'Store these guidelines for this repo',
     ),
   );
 
@@ -1172,6 +1173,7 @@ export function registerTools(server: McpServer): void {
       'oss-autopilot guidelines reset --repo <owner/repo>',
       (args: { repo: string }) => `Delete the stored guidelines for ${args.repo}? This cannot be undone.`,
       wrapTool((args: { repo: string }) => runGuidelinesReset({ repo: args.repo })),
+      'Delete the stored guidelines for this repo',
     ),
   );
 

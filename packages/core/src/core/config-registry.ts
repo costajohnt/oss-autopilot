@@ -11,7 +11,7 @@
  *
  * When adding a new user-configurable state.json field:
  *   1. Add the field to `AgentConfigSchema` (state-schema.ts).
- *   2. Add an entry here.
+ *   2. Add an entry here, with its `trust` tier (see {@link ConfigTrust}).
  *   3. Wire the handler in `commands/setup.ts` and/or `commands/config.ts`.
  *   4. The registry test (`config-registry.test.ts`) asserts both commands
  *      handle every non-`auto` key.
@@ -43,8 +43,8 @@ export interface ConfigKeyDef {
   settableVia: SettableVia;
   /** Short hint for the expected value shape (e.g. `"number"`, `"owner/repo"`, `"comma-separated list"`). */
   valueHint: string;
-  /** See {@link ConfigTrust}. Absent means `preference`. */
-  trust?: ConfigTrust;
+  /** See {@link ConfigTrust}. Required, so a new key's tier is a choice made where it is added. */
+  trust: ConfigTrust;
   /** Values that make a write of this otherwise `preference` key a `command` write (e.g. `diffTool=custom`). */
   commandValues?: readonly string[];
 }
@@ -56,6 +56,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Your GitHub username.',
     settableVia: 'both',
     valueHint: 'string',
+    trust: 'preference',
   },
 
   // ── Capacity / dormancy ──────────────────────────────────────────────
@@ -64,6 +65,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Soft cap on how many active PRs you want to juggle at once. 0 disables the cap.',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 = no limit)',
+    trust: 'preference',
   },
   {
     key: 'maxOpenPRsPerRepo',
@@ -71,6 +73,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Discovery leaves out a repo once you have this many open PRs there, and the pre-push check warns. Default 0 (off).',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 = no limit)',
+    trust: 'preference',
   },
   {
     key: 'maxOpenPRsColdRepo',
@@ -78,6 +81,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Per-repo open-PR cap while none of your PRs in that repo have merged (default 1). Discovery leaves the repo out and the pre-push check warns. 0 disables.',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 = no limit)',
+    trust: 'preference',
   },
   {
     key: 'maxConcurrentImplementations',
@@ -85,18 +89,21 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'How many implementations may run at once across sessions and machines (work claim --kind implementation refuses past it). Default 2; 0 disables the cap.',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 = no limit)',
+    trust: 'preference',
   },
   {
     key: 'dormantDays',
     description: 'Alias for dormantThresholdDays: days of inactivity before a PR is considered dormant.',
     settableVia: 'setup',
     valueHint: 'positive integer',
+    trust: 'preference',
   },
   {
     key: 'approachingDays',
     description: 'Alias for approachingDormantDays: days before dormancy threshold at which to warn.',
     settableVia: 'setup',
     valueHint: 'positive integer',
+    trust: 'preference',
   },
 
   // ── Issue discovery ──────────────────────────────────────────────────
@@ -105,36 +112,42 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Programming languages to filter issue discovery by (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list',
+    trust: 'preference',
   },
   {
     key: 'labels',
     description: 'Issue labels to search for (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list',
+    trust: 'preference',
   },
   {
     key: 'scope',
     description: 'Issue complexity scope(s) — beginner, intermediate, advanced.',
     settableVia: 'setup',
     valueHint: 'comma-separated list of: beginner,intermediate,advanced',
+    trust: 'preference',
   },
   {
     key: 'minStars',
     description: 'Minimum stargazers required for a repo to surface during discovery.',
     settableVia: 'setup',
     valueHint: 'non-negative integer',
+    trust: 'preference',
   },
   {
     key: 'includeDocIssues',
     description: 'Whether documentation-only issues should appear in discovery.',
     settableVia: 'setup',
     valueHint: 'true|false',
+    trust: 'preference',
   },
   {
     key: 'maxIssueAgeDays',
     description: 'Maximum age (in days) for an issue to be considered in discovery.',
     settableVia: 'setup',
     valueHint: 'positive integer',
+    trust: 'preference',
   },
   {
     key: 'skipBroadWhenSufficientResults',
@@ -142,6 +155,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Skip the broad discovery phase once this many candidates from new repos are found (0 = always run the broad phase). Affinity/starred-repo candidates do not count toward it.',
     settableVia: 'setup',
     valueHint: 'non-negative integer (0 disables)',
+    trust: 'preference',
   },
   {
     key: 'complexIssues',
@@ -149,24 +163,28 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Surface larger issues in repos where you already have a merged PR: only a PR that closes the issue counts as an existing PR, and maintainer-filed issues pass without code in the body.',
     settableVia: 'setup',
     valueHint: 'off|warm',
+    trust: 'preference',
   },
   {
     key: 'minRepoScoreThreshold',
     description: 'Minimum repo maintainer-health score required for discovery (0–10).',
     settableVia: 'setup',
     valueHint: 'non-negative integer',
+    trust: 'preference',
   },
   {
     key: 'projectCategories',
     description: 'Project categories to prioritize (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list of: nonprofit,devtools,infrastructure,web-frameworks,data-ml,education',
+    trust: 'preference',
   },
   {
     key: 'preferredOrgs',
     description: 'GitHub orgs to prioritize during discovery (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list',
+    trust: 'preference',
   },
   {
     key: 'untrackedOrgs',
@@ -174,6 +192,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'GitHub orgs whose PRs are not tracked (e.g. work repos). Discovery is unaffected (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list',
+    trust: 'preference',
   },
   {
     key: 'aiPolicyBlocklist',
@@ -188,12 +207,14 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Repos (owner/repo) to softly downrank in discovery results — milder than excludeRepos (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list of owner/repo',
+    trust: 'preference',
   },
   {
     key: 'boostIssueTypes',
     description: 'Issue label types to softly boost in discovery ranking (whole-list replace).',
     settableVia: 'setup',
     valueHint: 'comma-separated list (e.g. bug,good first issue)',
+    trust: 'preference',
   },
 
   // ── Exclusion list mutators (config-only) ────────────────────────────
@@ -202,66 +223,77 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Append a language to the discovery languages list.',
     settableVia: 'config',
     valueHint: 'string',
+    trust: 'preference',
   },
   {
     key: 'add-label',
     description: 'Append a label to the discovery labels list.',
     settableVia: 'config',
     valueHint: 'string',
+    trust: 'preference',
   },
   {
     key: 'remove-label',
     description: 'Remove a label from the discovery labels list.',
     settableVia: 'config',
     valueHint: 'string (must already be present)',
+    trust: 'preference',
   },
   {
     key: 'add-scope',
     description: 'Append a scope to the discovery scope list.',
     settableVia: 'config',
     valueHint: 'one of: beginner,intermediate,advanced',
+    trust: 'preference',
   },
   {
     key: 'remove-scope',
     description: 'Remove a scope from the discovery scope list.',
     settableVia: 'config',
     valueHint: 'one of: beginner,intermediate,advanced',
+    trust: 'preference',
   },
   {
     key: 'exclude-repo',
     description: 'Exclude a specific repo (owner/repo) from discovery.',
     settableVia: 'config',
     valueHint: 'owner/repo',
+    trust: 'preference',
   },
   {
     key: 'exclude-org',
     description: 'Exclude an entire org from discovery.',
     settableVia: 'config',
     valueHint: 'org name (no slash)',
+    trust: 'preference',
   },
   {
     key: 'add-avoid-repo',
     description: 'Append a repo (owner/repo) to the soft-downrank avoid list.',
     settableVia: 'config',
     valueHint: 'owner/repo',
+    trust: 'preference',
   },
   {
     key: 'remove-avoid-repo',
     description: 'Remove a repo from the soft-downrank avoid list.',
     settableVia: 'config',
     valueHint: 'owner/repo (must already be present)',
+    trust: 'preference',
   },
   {
     key: 'add-boost-issue-type',
     description: 'Append an issue label type to the discovery ranking boost list.',
     settableVia: 'config',
     valueHint: 'issue label (e.g. bug)',
+    trust: 'preference',
   },
   {
     key: 'remove-boost-issue-type',
     description: 'Remove an issue label type from the discovery ranking boost list.',
     settableVia: 'config',
     valueHint: 'issue label (must already be present)',
+    trust: 'preference',
   },
 
   // ── Tooling ──────────────────────────────────────────────────────────
@@ -292,6 +324,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Default diff renderer for reviews.',
     settableVia: 'both',
     valueHint: 'one of: inline,sourcetree,vscode,custom',
+    trust: 'preference',
     commandValues: ['custom'],
   },
   {
@@ -308,12 +341,14 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Default merge strategy — squash-merge, prompt, or standard merge.',
     settableVia: 'setup',
     valueHint: 'true|false|ask',
+    trust: 'preference',
   },
   {
     key: 'persistence',
     description: 'Where to store state.json — local file or GitHub Gist.',
     settableVia: 'setup',
     valueHint: 'one of: local,gist',
+    trust: 'preference',
   },
   {
     key: 'autoExtractLearnings',
@@ -321,6 +356,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Extract per-repo learnings from freshly merged PRs automatically at /oss startup and overnight (#1696). false restores the extract_learnings action-menu item.',
     settableVia: 'setup',
     valueHint: 'true|false',
+    trust: 'preference',
   },
   {
     key: 'autoFormatBeforePush',
@@ -328,6 +364,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'true|false',
+    trust: 'preference',
   },
   {
     key: 'trustOwnRepoWrites',
@@ -335,6 +372,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'true|false',
+    trust: 'preference',
   },
   {
     key: 'healthCheckFreshnessMinutes',
@@ -342,6 +380,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Retired: not read by oss-autopilot since #1642. Accepted and stored for compatibility; will be removed in the next major version.',
     settableVia: 'setup',
     valueHint: 'positive integer',
+    trust: 'preference',
   },
   {
     key: 'reviewMaxPasses',
@@ -349,6 +388,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Convergence cap for the multi-agent review loop in workflows/dispatch-review.md. Optional; falls back to per-mode defaults (5 for diff, 3 for plan) when unset (#1275).',
     settableVia: 'setup',
     valueHint: 'positive integer',
+    trust: 'preference',
   },
 
   // ── Setup-only completion flag ──────────────────────────────────────
@@ -358,6 +398,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
       'Internal marker that initial setup has finished. Normally set by the wizard — `setup --set complete=true` is a manual override.',
     settableVia: 'setup',
     valueHint: 'true',
+    trust: 'preference',
   },
 
   // ── Auto-managed (listed for auditability; not user-settable) ────────
@@ -366,12 +407,14 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Cache of the user’s starred repos. Refreshed automatically during discovery.',
     settableVia: 'auto',
     valueHint: '(managed internally)',
+    trust: 'preference',
   },
   {
     key: 'starredReposLastFetched',
     description: 'Timestamp of the last starredRepos refresh.',
     settableVia: 'auto',
     valueHint: '(managed internally)',
+    trust: 'preference',
   },
 ];
 

@@ -52,7 +52,7 @@ type ToolCallResult = Awaited<ReturnType<Client['callTool']>>;
 interface Session {
   client: Client;
   /** Every form the server sent to the user. */
-  asked: Array<{ message: string }>;
+  asked: Array<{ message: string; requestedSchema?: unknown }>;
 }
 
 const open: Client[] = [];
@@ -66,7 +66,10 @@ async function connect(capabilities: Record<string, unknown> = {}, answer: unkno
   const asked: Session['asked'] = [];
   if (capabilities.elicitation) {
     client.setRequestHandler('elicitation/create', async (request) => {
-      asked.push({ message: request.params.message });
+      asked.push({
+        message: request.params.message,
+        requestedSchema: 'requestedSchema' in request.params ? request.params.requestedSchema : undefined,
+      });
       return answer as never;
     });
   }
@@ -389,6 +392,17 @@ describe('user approval before a GitHub write (#1936)', () => {
     for (const shown of writer.shows) expect(asked[0].message).toContain(shown);
     expect(writer.run).toHaveBeenCalledTimes(1);
     expect(writer.run).toHaveBeenCalledWith(writer.args);
+  });
+
+  it.each([
+    ['post', 'Send this under my GitHub account'],
+    ['claim', 'Send this under my GitHub account'],
+    ['guidelines-store', 'Store these guidelines for this repo'],
+    ['guidelines-reset', 'Delete the stored guidelines for this repo'],
+  ])('%s labels the checkbox with what it allows', async (name, label) => {
+    const { client, asked } = await connect(FORM_HOST, { action: 'decline' });
+    await client.callTool({ name, arguments: WRITERS[name].args });
+    expect(asked[0].requestedSchema).toMatchObject({ properties: { approve: { description: label } } });
   });
 
   it('claim shows a custom message verbatim', async () => {
