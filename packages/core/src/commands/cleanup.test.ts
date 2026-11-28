@@ -56,6 +56,27 @@ function backdate(dir: string): void {
   fs.utimesSync(dir, then, then);
 }
 
+/** A filter program that leaves `<name>.ran` behind when Git runs it. */
+function filterProgram(name: string): { program: string; marker: string } {
+  const marker = path.join(ctx.tmp, `${name}.ran`);
+  const program = path.join(ctx.tmp, `${name}.sh`);
+  fs.writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\ncat\n`, { mode: 0o755 });
+  return { program, marker };
+}
+
+/** `* filter=<driver>` in the attributes file outside the tree, as a tick could write it. */
+function attributeAll(dir: string, driver: string): void {
+  const commonDir = path.resolve(dir, git(dir, ['rev-parse', '--git-common-dir']).trim());
+  fs.mkdirSync(path.join(commonDir, 'info'), { recursive: true });
+  fs.writeFileSync(path.join(commonDir, 'info', 'attributes'), `* filter=${driver}\n`);
+}
+
+/** Same content, newer stat data than the index: the next status re-hashes it through the filter. */
+function touchTracked(dir: string): void {
+  const later = NOW / 1000 + 60;
+  fs.utimesSync(path.join(dir, 'a.txt'), later, later);
+}
+
 /** Seven rejected copies a month old in the (temp HOME) data dir. */
 function writeOldCopies(): void {
   fs.mkdirSync(resolveDataDir(), { recursive: true });
@@ -301,27 +322,6 @@ describe('cleanWorktrees: commits and operations in progress', () => {
 });
 
 describe('cleanWorktrees: programs the worktree names (#2047)', () => {
-  /** A filter program that leaves `<name>.ran` behind when git runs it. */
-  function filterProgram(name: string): { program: string; marker: string } {
-    const marker = path.join(ctx.tmp, `${name}.ran`);
-    const program = path.join(ctx.tmp, `${name}.sh`);
-    fs.writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\ncat\n`, { mode: 0o755 });
-    return { program, marker };
-  }
-
-  /** `* filter=<driver>` in the attributes file outside the tree, as a tick could write it. */
-  function attributeAll(dir: string, driver: string): void {
-    const commonDir = path.resolve(dir, git(dir, ['rev-parse', '--git-common-dir']).trim());
-    fs.mkdirSync(path.join(commonDir, 'info'), { recursive: true });
-    fs.writeFileSync(path.join(commonDir, 'info', 'attributes'), `* filter=${driver}\n`);
-  }
-
-  /** Same content, newer stat data than the index: the next status re-hashes it through the filter. */
-  function touchTracked(dir: string): void {
-    const later = NOW / 1000 + 60;
-    fs.utimesSync(path.join(dir, 'a.txt'), later, later);
-  }
-
   it.each([
     ['dry run', DRY_RUN],
     ['apply', APPLY],
