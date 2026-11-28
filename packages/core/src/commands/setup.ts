@@ -10,7 +10,7 @@ import {
   getSetupKeys,
   maybeCheckpoint,
 } from '../core/index.js';
-import { ValidationError } from '../core/errors.js';
+import { ValidationError, assertAttended } from '../core/errors.js';
 import { MACHINE_PATH_KEYS, assertSafeMachinePath, setMachinePath, setMachineScanPaths } from '../core/local-config.js';
 import { validateGitHubUsername } from './validation.js';
 import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope, DIFF_TOOLS } from '../core/types.js';
@@ -96,11 +96,15 @@ function parseComplexIssues(value: string): 'off' | 'warm' {
 const MACHINE_LOCAL_KEYS: ReadonlySet<string> = new Set([...MACHINE_PATH_KEYS, 'localRepoScanPaths']);
 
 /**
- * Refuse unknown keys, and path values with a shell metacharacter (#1934),
- * before any pair is applied.
+ * Refuse unknown keys, path values with a shell metacharacter (#1934), and
+ * an unattended run shrinking aiPolicyBlocklist (#2036), before any pair is
+ * applied.
  */
-function prevalidateSettings(settings: string[]): void {
+function prevalidateSettings(settings: string[], currentBlocklist: readonly string[]): void {
   const knownKeys = new Set(getSetupKeys());
+  // Each aiPolicyBlocklist pair is checked against the list the pairs before
+  // it leave, so a repeated key cannot shrink the list in two steps.
+  let blocklist = currentBlocklist;
   for (const setting of settings) {
     const [key] = setting.split('=', 1);
     if (!knownKeys.has(key)) {
@@ -109,6 +113,55 @@ function prevalidateSettings(settings: string[]): void {
     if (MACHINE_LOCAL_KEYS.has(key)) {
       assertSafeMachinePath(key, setting.slice(key.length + 1));
     }
+    if (key === 'aiPolicyBlocklist') {
+      const parsed = parseBlocklist(setting.slice(key.length + 1));
+      assertBlocklistKept(blocklist, parsed);
+      blocklist = parsed.stored ?? blocklist;
+    }
+  }
+}
+
+interface ParsedBlocklist {
+  /** Entries in `owner/repo` form, whitespace removed. */
+  valid: string[];
+  /** Entries that are not, as typed. */
+  invalid: string[];
+  /** What the setting stores: `valid`, or undefined when every entry was invalid and the list is left as is. */
+  stored: string[] | undefined;
+}
+
+/** Split an `aiPolicyBlocklist` value the way the setting stores it. */
+function parseBlocklist(value: string): ParsedBlocklist {
+  const entries = value
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  for (const entry of entries) {
+    const normalized = entry.replaceAll(/\s+/g, '');
+    if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
+      valid.push(normalized);
+    } else {
+      invalid.push(entry);
+    }
+  }
+  return { valid, invalid, stored: valid.length === 0 && entries.length > 0 ? undefined : valid };
+}
+
+/**
+ * Refuse, during an unattended run, an `aiPolicyBlocklist` value whose stored
+ * list leaves out a repo now on the list (#2036). Each repo on it is a ban,
+ * and the list is replaced whole, so `aiPolicyBlocklist=` lifts them all.
+ * `policy set` and `policy reset` refuse unattended runs for the same reason.
+ * Adding repos is still allowed. Entries compare the way bans are matched:
+ * case-insensitive.
+ */
+function assertBlocklistKept(current: readonly string[], parsed: ParsedBlocklist): void {
+  if (parsed.stored === undefined) return;
+  const next = new Set(parsed.stored.map((repo) => repo.toLowerCase()));
+  if (current.some((repo) => !next.has(repo.toLowerCase()))) {
+    assertAttended('remove repos from aiPolicyBlocklist');
   }
 }
 
@@ -149,7 +202,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // mid-loop would leave earlier successful updates applied in memory (a real
     // issue for long-running consumers like the MCP server and dashboard that
     // share the StateManager singleton across requests).
-    prevalidateSettings(options.set);
+    prevalidateSettings(options.set, config.aiPolicyBlocklist ?? []);
 
     // Named so the Gist conflict path can re-apply the same settings on a
     // refreshed baseline (maybeCheckpoint below).
@@ -272,25 +325,16 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'aiPolicyBlocklist': {
-            const entries = value
-              .split(',')
-              .map((r) => r.trim())
-              .filter(Boolean);
-            const valid: string[] = [];
-            const invalid: string[] = [];
-            for (const entry of entries) {
-              const normalized = entry.replaceAll(/\s+/g, '');
-              if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
-                valid.push(normalized);
-              } else {
-                invalid.push(entry);
-              }
-            }
+            const parsed = parseBlocklist(value);
+            // Again here: a Gist conflict re-applies on a refreshed list that
+            // may hold repos another machine added (#2036).
+            assertBlocklistKept(stateManager.getState().config.aiPolicyBlocklist ?? [], parsed);
+            const { valid, invalid } = parsed;
             if (invalid.length > 0) {
               warnings.push(`Warning: Skipping invalid entries (expected "owner/repo" format): ${invalid.join(', ')}`);
               results['aiPolicyBlocklist_invalidEntries'] = invalid.join(', ');
             }
-            if (valid.length === 0 && entries.length > 0) {
+            if (parsed.stored === undefined) {
               warnings.push('Warning: All entries were invalid. Blocklist not updated.');
               results[key] = '(all entries invalid)';
               break;

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // vi.mock factories are hoisted; closures over module-level vars don't work.
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getClosedPRs: vi.fn(),
   markPRCommentsFetched: vi.fn(),
   markPRLearningsExtracted: vi.fn(),
+  markPRLearningsProposed: vi.fn(),
   markGuidelinesReviewed: vi.fn(),
   getGuidelinesReview: vi.fn(),
   maybeCheckpoint: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock('../core/index.js', async () => {
       getClosedPRs: mocks.getClosedPRs,
       markPRCommentsFetched: mocks.markPRCommentsFetched,
       markPRLearningsExtracted: mocks.markPRLearningsExtracted,
+      markPRLearningsProposed: mocks.markPRLearningsProposed,
       markGuidelinesReviewed: mocks.markGuidelinesReviewed,
       getGuidelinesReview: mocks.getGuidelinesReview,
       getState: () => ({ config: { githubUsername: mocks.username() } }),
@@ -66,8 +69,12 @@ import {
   runGuidelinesReset,
   runFetchCorpus,
   runMarkExtracted,
+  runMarkProposed,
+  guidelineProposalPath,
+  guidelineProposalStatus,
 } from './guidelines.js';
-import { GuidelinesNotAvailableError, extractFromFence, wrapUntrustedContent } from '../core/index.js';
+import { GuidelinesNotAvailableError, extractFromFence, getMachineId, wrapUntrustedContent } from '../core/index.js';
+import { MAX_DRAFT_AGE_MS } from './draft.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -339,6 +346,20 @@ describe('runGuidelinesReset', () => {
     mockIsGuidelinesAvailable.mockReturnValue(false);
     await expect(runGuidelinesReset({ repo: 'owner/repo' })).rejects.toThrow(/Per-repo guidelines require/);
   });
+
+  it.each(['1', '', '0'])('refuses during an unattended run and deletes nothing (env=%j, #2036)', async (value) => {
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', value);
+    mockGetGuidelines.mockReturnValue('existing content');
+    try {
+      await expect(runGuidelinesReset({ repo: 'owner/repo' })).rejects.toThrow(
+        /Refusing to reset guidelines during an unattended run/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(mockDeleteGuidelines).not.toHaveBeenCalled();
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
 });
 
 describe('runMarkExtracted (#1696)', () => {
@@ -379,6 +400,110 @@ describe('runMarkExtracted (#1696)', () => {
 
   it('rejects a malformed repo identifier', async () => {
     await expect(runMarkExtracted({ repo: 'not-a-repo' })).rejects.toThrow(/Invalid repo identifier/);
+  });
+});
+
+function isoAgo(now: number, ms: number): string {
+  const at = new Date(now - ms);
+  return at.toISOString();
+}
+
+describe('guideline proposals (#2041)', () => {
+  const REPO = 'owner/repo';
+  const DAY = 24 * 60 * 60 * 1000;
+
+  afterEach(() => {
+    fs.rmSync(guidelineProposalPath(REPO), { force: true });
+  });
+
+  function writeProposal(ageMs = 0): string {
+    const file = guidelineProposalPath(REPO);
+    fs.writeFileSync(file, '## Testing\n- add a test\n');
+    const at = new Date(Date.now() - ageMs);
+    fs.utimesSync(file, at, at);
+    return file;
+  }
+
+  it('names the proposal in the draft directory and refuses an unsafe repo name', () => {
+    expect(guidelineProposalPath(REPO)).toMatch(/[/\\]\.oss-autopilot[/\\]tmp[/\\]guidelines-owner--repo\.md$/);
+    expect(() => guidelineProposalPath('owner/../x')).toThrow(/Invalid repo identifier/);
+  });
+
+  it('reports no proposal when there is no file and no stamp', () => {
+    expect(guidelineProposalStatus(REPO, [{}])).toEqual({
+      repo: REPO,
+      proposalPath: guidelineProposalPath(REPO),
+      proposalAgeDays: null,
+      proposalOnThisMachine: false,
+    });
+  });
+
+  it('reports a file on this machine with its age in whole days', () => {
+    const file = writeProposal(3 * DAY + 60_000);
+    expect(guidelineProposalStatus(REPO, [])).toEqual({
+      repo: REPO,
+      proposalPath: file,
+      proposalAgeDays: 3,
+      proposalOnThisMachine: true,
+    });
+  });
+
+  it('deletes a file older than the draft retention and reports none', () => {
+    const file = writeProposal(MAX_DRAFT_AGE_MS + DAY);
+    expect(guidelineProposalStatus(REPO, []).proposalAgeDays).toBeNull();
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it('reports a proposal held by another machine from the newest fresh stamp', () => {
+    const now = Date.now();
+    const stamp = (ms: number) => ({ learningsProposedAt: isoAgo(now, ms), learningsProposedOn: 'other' });
+    const status = guidelineProposalStatus(REPO, [stamp(5 * DAY), stamp(2 * DAY)], now);
+    expect(status).toMatchObject({ proposalAgeDays: 2, proposalOnThisMachine: false });
+  });
+
+  it("ignores this machine's own stamp once its file is gone, and stamps past the retention", () => {
+    const now = Date.now();
+    const self = getMachineId();
+    expect(self).toBeDefined();
+    const status = guidelineProposalStatus(
+      REPO,
+      [
+        { learningsProposedAt: isoAgo(now, DAY), learningsProposedOn: self },
+        { learningsProposedAt: isoAgo(now, MAX_DRAFT_AGE_MS + DAY), learningsProposedOn: 'other' },
+      ],
+      now,
+    );
+    expect(status.proposalAgeDays).toBeNull();
+  });
+
+  it('mark-proposed stamps the fetched, unextracted PRs of the repo with this machine and checkpoints', async () => {
+    const file = writeProposal();
+    mocks.getMergedPRs.mockReturnValue([
+      { url: 'https://github.com/owner/repo/pull/1', commentsFetchedAt: '2026-06-01T00:00:00.000Z' },
+      { url: 'https://github.com/owner/repo/pull/2' }, // never fetched
+      {
+        url: 'https://github.com/owner/repo/pull/3',
+        commentsFetchedAt: '2026-06-01T00:00:00.000Z',
+        learningsExtractedAt: '2026-06-02T00:00:00.000Z',
+      },
+      { url: 'https://github.com/other/repo/pull/4', commentsFetchedAt: '2026-06-01T00:00:00.000Z' },
+    ]);
+    mocks.maybeCheckpoint.mockResolvedValue(null);
+
+    const out = await runMarkProposed({ repo: REPO });
+
+    expect(out).toEqual({ repo: REPO, path: file, marked: 1 });
+    expect(mocks.markPRLearningsProposed).toHaveBeenCalledWith(
+      'https://github.com/owner/repo/pull/1',
+      expect.any(String),
+      getMachineId(),
+    );
+    expect(mocks.maybeCheckpoint).toHaveBeenCalledOnce();
+  });
+
+  it('mark-proposed refuses when the proposal file is missing', async () => {
+    await expect(runMarkProposed({ repo: REPO })).rejects.toThrow(/No guideline proposal at/);
+    expect(mocks.markPRLearningsProposed).not.toHaveBeenCalled();
   });
 });
 

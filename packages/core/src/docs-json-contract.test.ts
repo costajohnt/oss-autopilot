@@ -39,6 +39,7 @@ const startupSchema = (daily: ZodType) =>
     dashboardBuildErrorTail: z.unknown(),
     issueList: z.unknown(),
     overnight: z.unknown(),
+    staleData: z.object({ worktrees: z.number(), oldWorktrees: z.number(), rejected: z.number() }).optional(),
   });
 
 /** `<command>[ <subcommand>]` → the schema `executeAction` validates its `--json` output against. */
@@ -80,6 +81,7 @@ const SCHEMAS = new Map<string, ZodType>(
     'work finish': json.WorkFinishOutputSchema,
     'work release': json.WorkReleaseOutputSchema,
     'work list': json.WorkListOutputSchema,
+    'dashboard launch': json.DashboardLaunchOutputSchema,
     startup: startupSchema(json.DailyOutputSchema),
     'startup --compact': startupSchema(json.CompactDailyOutputSchema),
   }),

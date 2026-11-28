@@ -60,6 +60,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
   getSetupKeys: () => ['username', 'languages', 'minStars'],
   getConfigKeys: () => ['username', 'add-label', 'remove-label'],
+  getKeyTrust: () => 'preference',
+  CONFIG_KEY_REGISTRY: [],
   getStateManager: vi.fn().mockReturnValue({
     listGuidelinesRepos: vi.fn().mockReturnValue([]),
     getGuidelines: vi.fn().mockReturnValue(null),

@@ -113,6 +113,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `cleanup`, `config`,
 
 # Stamp fetched PRs as extracted so daily stops reporting them (#1696)
 <prefix> guidelines mark-extracted --repo <owner/repo> --json
+
+# Record that the proposal file waits for review on this machine, so other machines do not re-extract it (#2041)
+<prefix> guidelines mark-proposed --repo <owner/repo> --json
 ```
 
 The full extraction workflow lives at [`workflows/extract-learnings.md`](extract-learnings.md). Guidelines require Gist persistence; standalone-mode users see `'local-unavailable'` storage mode.
@@ -159,7 +162,7 @@ Step 3 runs only on this answer. After showing the draft text (step 2), ask with
 
 Post only when the answer contains one of "Post this comment", "post it", "option 1" or "yes, post" (case-insensitive) and no negation word ("don't", "no", "not", "wait", "cancel", "stop", "actually", "never mind", "changed my mind") in the same sentence, as in `workflows/pre-commit-review.md` step 7b. A change request, a generic "yes" / "ok" / "looks good", an empty answer (see "AskUserQuestion Validation Protocol") or anything ambiguous is not approval: do not post; treat a change request as "Edit before posting" and anything else as "Don't post", and say so. Edit rounds re-ask with the same rules. In an unattended run nothing is posted: `post` refuses there.
 
-`--body-file` and `--from-file` require `--expect-sha256`, cannot be combined with another source of the text (`--stdin`, positional words, `--content`), and refuse an empty file. They only read regular files directly inside the draft directory that you own, that are not world-writable and have no other hard link, in valid UTF-8 without a byte order mark; symlinks are refused.
+On a command that posts or stores the text, `--body-file` and `--from-file` require `--expect-sha256`, cannot be combined with another source of the text (`--stdin`, positional words, `--content`), and refuse an empty file. They only read regular files directly inside the draft directory that you own, that are not world-writable and have no other hard link, in valid UTF-8 without a byte order mark; symlinks are refused.
 
 ### PR Management
 
@@ -213,7 +216,8 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 # (exit 1 on fail); each checks[] entry has id, status (pass | warn | fail | skipped), summary, details.
 # Reads only; --fetch refreshes <remote>/<base> first. No token, or --local: network checks come back
 # skipped. Exit 1 with success: true is a fail verdict; success: false means the gate did not run.
-<prefix> pr-preflight [issue-url-or-number] [--dir <path>] [--base <branch>] [--fetch] [--local] --json
+# --body-file: the staged PR body, checked for the disclosure line a disclosure-required repo needs.
+<prefix> pr-preflight [issue-url-or-number] [--dir <path>] [--base <branch>] [--fetch] [--local] [--body-file "<draft-path>"] --json
 
 # Compute the fresh repo health rubric (1–10 rubricScore + verdict) for owner/repo;
 # includes the cached historyScore when one exists (#1271, #1465 — docs/repo-scores.md)
@@ -225,8 +229,11 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 # set records what the user confirmed (refused unattended; vet never overwrites it). A repo in
 # aiPolicyBlocklist reads as banned whatever is stored; set --ai-policy banned adds the repo to that list and
 # any other --ai-policy takes it off (reset leaves it). disclosureText and sources come back fenced.
+# disclosureText is only a line the user set (--disclosure-text); the repo's own rule is in sources.
+# gateLabel is the issue label a maintainer-label gate waits for, only ever set by the user (--gate-label,
+# "" clears); pr-preflight passes that gate only when the issue carries exactly that label.
 <prefix> policy get --repo <owner/repo> --json
-<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
+<prefix> policy set --repo <owner/repo> [--ai-policy <v>] [--disclosure-text <line>] [--cla <v>] [--pr-gate <v>] [--gate-label <name>] [--commit-rules <ids>] [--max-open-ai-prs <n>] [--source <quote>] --json
 <prefix> policy reset --repo <owner/repo> --json
 ```
 
@@ -235,6 +242,8 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 ```bash
 # Serve interactive dashboard SPA
 <prefix> dashboard serve --port 3000 [--no-open]
+# Start it in the background, or reuse the running one (replaces an older-version server)
+<prefix> dashboard launch [--port 3000] --json
 ```
 
 ### Configuration
@@ -296,13 +305,14 @@ rejected with a did-you-mean suggestion.
 |---|---|---|
 | `--json` | all | Emit a structured `{success, data?, error?, timestamp}` envelope. Preferred for agent / programmatic consumption. |
 | `--compact` | `daily`, `startup` | Reduce payload size by omitting `summary`, `repoGroups`, and full `failures` details. Retains `failureCount` + `warnings`. |
-| `--port <n>` | `dashboard serve` | TCP port for the interactive SPA (default 3000). |
+| `--port <n>` | `dashboard serve`, `dashboard launch` | TCP port for the interactive SPA (default 3000). |
 | `--no-open` | `dashboard serve` | Skip auto-opening the dashboard in the default browser (auto-open is the default). |
 | `--bots` | `comments` | Include bot authors in the comment listing (default filters them out). |
 | `--base <branch>` | `pr-preflight` | Branch the PR will target (default: the upstream default branch). |
 | `--fetch` | `pr-preflight` | Fetch the upstream target branch before measuring drift; without it a stale ref is reported, not refreshed. |
 | `--dir <path>` | `pr-preflight` | Clone or worktree to check (default: the current directory). |
 | `--local` | `pr-preflight` | Make no GitHub call: local checks and numbers (`ahead`, `behind`, `mergeBase`) only. |
+| `--body-file <path>` | `pr-preflight` | Staged PR body in the draft directory; `repo-policy` passes a disclosure rule when the body has the recorded line. Only read, never posted, so no `--expect-sha256`. |
 | `--reset` | `setup` | Re-run the setup wizard even if already complete. |
 | `--set key=value` | `setup` | Apply settings non-interactively. Repeatable. Unknown keys are rejected with a did-you-mean suggestion. |
 | `--list-keys` | `config` | Dump every known config key with descriptions (alternative to `--json`). |

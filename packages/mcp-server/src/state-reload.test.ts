@@ -126,6 +126,8 @@ vi.mock('@oss-autopilot/core', () => ({
   unknownPersistenceModeWarning: () => null,
   getSetupKeys: () => ['username'],
   getConfigKeys: () => ['username'],
+  getKeyTrust: () => 'preference',
+  CONFIG_KEY_REGISTRY: [],
   ConcurrencyError: MockConcurrencyError,
   StateLockTimeoutError: MockStateLockTimeoutError,
   NewerStateVersionError: MockNewerStateVersionError,

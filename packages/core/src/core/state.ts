@@ -1102,6 +1102,21 @@ export class StateManager {
     }
   }
 
+  /**
+   * Stamp a written guideline proposal on the merged or closed PR matching
+   * `url` (#2041). `machineId` is omitted when this machine has none.
+   * No-op when no PR with that URL is stored.
+   */
+  markPRLearningsProposed(url: string, proposedAt: string, machineId: string | undefined): void {
+    const entry =
+      this.state.mergedPRs?.find((pr) => pr.url === url) ?? this.state.closedPRs?.find((pr) => pr.url === url);
+    if (!entry) return;
+    entry.learningsProposedAt = proposedAt;
+    if (machineId === undefined) delete entry.learningsProposedOn;
+    else entry.learningsProposedOn = machineId;
+    this.autoSave();
+  }
+
   // === Configuration ===
 
   /**

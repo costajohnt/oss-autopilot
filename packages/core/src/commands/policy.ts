@@ -30,6 +30,7 @@ import {
   type RepoPolicy,
   type RepoPolicySummary,
 } from '../core/repo-policy.js';
+import { GATE_LABEL_MAX } from '../core/state-schema.js';
 import { validateRepoIdentifier } from './validation.js';
 
 const MODULE = 'policy';
@@ -42,8 +43,10 @@ export interface PolicyGetOutput {
         updatedAt: string;
         /** True when the repo is in `config.aiPolicyBlocklist`; `policy set` cannot lift that ban. */
         blocklisted: boolean;
-        /** The disclosure line the repo asks for, inside a `<github-content>` fence. */
+        /** The disclosure line the user recorded, inside a `<github-content>` fence; the repo's rule is in `sources`. */
         disclosureText?: string;
+        /** The issue label the user recorded as the maintainer-label gate, inside a `<github-content>` fence. */
+        gateLabel?: string;
         /** `file: quoted line` per rule, inside a `<github-content>` fence. */
         sources?: string;
       })
@@ -54,6 +57,8 @@ export interface PolicySetOptions {
   repo: string;
   aiPolicy?: string;
   disclosureText?: string;
+  /** The issue label a maintainer-label gate waits for; an empty string clears it. */
+  gateLabel?: string;
   cla?: string;
   prGate?: string;
   /** Replaces the list; an empty string clears it. */
@@ -129,6 +134,18 @@ function parseMax(value: number | undefined): number | undefined {
   return value;
 }
 
+/** The label name, trimmed; '' clears it. Refuses a name GitHub could not have. */
+function parseGateLabel(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const name = value.trim();
+  if (name.length > GATE_LABEL_MAX || /\p{Cc}/u.test(name)) {
+    throw new ValidationError(
+      `Invalid --gate-label "${quote(value)}". Expected an issue label name of at most ${GATE_LABEL_MAX} characters ("" clears it).`,
+    );
+  }
+  return name;
+}
+
 /** The fields `options` sets; an absent flag leaves the stored value. */
 function changes(options: PolicySetOptions): Partial<RepoPolicy> {
   const fields: Partial<RepoPolicy> = {
@@ -138,6 +155,7 @@ function changes(options: PolicySetOptions): Partial<RepoPolicy> {
     commitRules: parseCommitRules(options.commitRules),
     maxOpenAiPRs: parseMax(options.maxOpenAiPRs),
     disclosureText: options.disclosureText === undefined ? undefined : quote(options.disclosureText),
+    gateLabel: parseGateLabel(options.gateLabel),
   };
   const entries = Object.entries(fields as Record<string, unknown>);
   return Object.fromEntries(entries.filter(([, v]) => v !== undefined));
@@ -146,12 +164,13 @@ function changes(options: PolicySetOptions): Partial<RepoPolicy> {
 function applySet(current: RepoPolicy, options: PolicySetOptions, now: string): RepoPolicy {
   const merged: RepoPolicy = { ...current, ...changes(options) };
   const source = options.source === undefined ? [] : [{ file: 'user', quotedLine: quote(options.source) }];
-  const { maxOpenAiPRs, disclosureText, ...rest } = merged;
+  const { maxOpenAiPRs, disclosureText, gateLabel, ...rest } = merged;
   return {
     ...rest,
     // 0 and '' clear these.
     ...(maxOpenAiPRs !== undefined && maxOpenAiPRs > 0 && { maxOpenAiPRs }),
     ...(disclosureText && { disclosureText }),
+    ...(gateLabel && { gateLabel }),
     source: [...source, ...current.source].slice(0, 10),
     reviewedByUser: true,
     updatedAt: now,

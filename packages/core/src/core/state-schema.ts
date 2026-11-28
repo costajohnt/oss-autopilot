@@ -163,6 +163,14 @@ export const StoredMergedPRSchema = z
     commentsFetchedAt: z.string().datetime().optional(),
     /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
     learningsExtractedAt: z.string().datetime().optional(),
+    /**
+     * When a guideline proposal built from this PR was written for review
+     * (#2041). The proposal file is machine-local, so `learningsProposedOn`
+     * names the machine holding it; another machine does not re-extract.
+     */
+    learningsProposedAt: z.iso.datetime().optional(),
+    /** Machine id (`~/.oss-autopilot/machine-id`) of the machine holding the proposal (#2041). */
+    learningsProposedOn: z.string().optional(),
     ...LedgerPredictionFields,
   })
   .passthrough();
@@ -185,6 +193,14 @@ export const StoredClosedPRSchema = z
     commentsFetchedAt: z.string().datetime().optional(),
     /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
     learningsExtractedAt: z.string().datetime().optional(),
+    /**
+     * When a guideline proposal built from this PR was written for review
+     * (#2041). The proposal file is machine-local, so `learningsProposedOn`
+     * names the machine holding it; another machine does not re-extract.
+     */
+    learningsProposedAt: z.iso.datetime().optional(),
+    /** Machine id (`~/.oss-autopilot/machine-id`) of the machine holding the proposal (#2041). */
+    learningsProposedOn: z.string().optional(),
     ...LedgerPredictionFields,
     /** Why it closed unmerged (#1824), set by ledger-backfill. */
     closeReason: openEnum(CLOSE_REASONS).optional(),
@@ -834,6 +850,9 @@ export const GuidelinesReviewSchema = z.object({
 /** Longest quoted source line or disclosure text a repo policy keeps (#1953): the text is from other people's repos. */
 export const POLICY_QUOTE_MAX = 200;
 
+/** Longest gate label a repo policy keeps; GitHub caps a label name at 50 characters. */
+export const GATE_LABEL_MAX = 50;
+
 /**
  * Per-repo contribution policy (#1953). Only enumerated values plus short
  * quoted source lines: policy text comes from files in other people's repos.
@@ -844,12 +863,20 @@ const CommitRuleIdSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
 
 export const RepoPolicySchema = z.object({
   aiPolicy: z.enum(['allowed', 'disclosure-required', 'banned', 'unknown']),
-  /** The line the repo asks for, quoted from its docs. Untrusted: fence it before handing it to an agent. */
+  /**
+   * The disclosure line the user recorded with `policy set --disclosure-text` (#2040); the repo's own rule
+   * stays in `source`. Older releases stored a doc excerpt here, which `storedPolicy` drops on read. Fence it.
+   */
   disclosureText: PolicyQuoteSchema.optional(),
   cla: z.enum(['none', 'required', 'unknown']),
   /** Short ids such as `conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`. */
   commitRules: z.array(CommitRuleIdSchema).max(10),
   prGate: z.enum(['none', 'claim-first', 'maintainer-label', 'collaborators-only', 'unknown']),
+  /**
+   * The issue label a `maintainer-label` gate waits for, recorded by the user with `policy set --gate-label`
+   * (#2040). vet never sets it: which label is the gate is not read from repo text. Fence it.
+   */
+  gateLabel: z.string().max(GATE_LABEL_MAX).optional(),
   maxOpenAiPRs: z.number().int().positive().optional(),
   /** Where each rule came from. `quotedLine` is untrusted. */
   source: z.array(PolicySourceSchema).max(10),

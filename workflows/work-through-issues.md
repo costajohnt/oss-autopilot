@@ -528,7 +528,7 @@ After implementation, the flow proceeds through the **draft-first workflow** (`$
 5. Step 5 offers manual testing prompt (build/run locally)
 6. Step 6 presents final diff for human review
 7. Step 7 squashes commits and rewords message
-8. Step 8 runs the `pr-preflight` gate (upstream drift, base branch, competing work, repo cap), then pushes and creates PR (ready or draft, user's choice)
+8. Step 8 runs the `pr-preflight` gate (upstream drift, base and head branch, working tree, competing work, repo cap, repo policy, commit rules), then pushes and creates PR (ready or draft, user's choice)
 9. Step 9 runs compliance check
 10. Step 10 offers list updates (if issue came from curated list)
 

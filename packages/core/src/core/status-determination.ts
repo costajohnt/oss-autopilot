@@ -232,20 +232,22 @@ function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusRes
   // Priority order: needs_addressing (response/changes/ci/conflict/checklist) > waiting_on_maintainer (review/merge/addressed/ci_blocked)
 
   if (hasUnrespondedComment) {
+    // An unresponded comment its own author's approval settles is an
+    // approval/LGTM note (e.g. a re-approval dated after the contributor's last
+    // commit), not a request for changes. It needs no contributor response, so
+    // the PR is waiting to be merged: don't trap it in needs_response (#1507).
+    // Any other comment on an approved PR still needs one (#1920). Checked
+    // before the addressed-by-commit branch: once the commenter has approved
+    // the commit that answered them, the PR awaits merge, not re-review (#2044).
+    if (isCommentSettledByApproval(input)) {
+      return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
+    }
     if (isCommentAddressedByCommit(commitDate, lastMaintainerCommentDate, latestChangesRequestedDate)) {
       if (ciStatus === 'failing' && hasActionableCIFailure)
         return { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier };
       // Non-actionable CI failures (infrastructure, fork, auth) don't block changes_addressed —
       // the contributor can't fix them, so the relevant status is "waiting for re-review" (#502)
       return { status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier };
-    }
-    // An unresponded comment its own author's approval settles is an
-    // approval/LGTM note (e.g. a re-approval dated after the contributor's last
-    // commit), not a request for changes. It needs no contributor response, so
-    // the PR is waiting to be merged: don't trap it in needs_response (#1507).
-    // Any other comment on an approved PR still needs one (#1920).
-    if (isCommentSettledByApproval(input)) {
-      return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
     }
     return { status: 'needs_addressing', actionReason: 'needs_response', stalenessTier };
   }
