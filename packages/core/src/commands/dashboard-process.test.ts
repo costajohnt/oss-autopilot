@@ -254,7 +254,14 @@ describe('probeDashboardServer (#1882)', () => {
 
 describe.skipIf(process.platform === 'win32')('isDashboardServeProcess (#1882)', () => {
   it('identifies a process whose command line is `dashboard serve`', async () => {
-    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'dashboard', 'serve', '--port', '3000']);
+    const child = spawn(process.execPath, [
+      '-e',
+      'setInterval(() => {}, 1000)',
+      'dashboard',
+      'serve',
+      '--port',
+      '3000',
+    ]);
     try {
       await new Promise((resolve) => child.once('spawn', resolve));
       expect(isDashboardServeProcess(child.pid!)).toBe(true);

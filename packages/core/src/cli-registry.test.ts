@@ -788,9 +788,9 @@ describe('dashboard launch (#2039)', () => {
   it('reports a launch failure through the JSON error envelope', async () => {
     mockRunDashboardLaunch.mockRejectedValue(new Error('Dashboard server did not start. Logs: /x/dashboard.log'));
 
-    await expect(
-      buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch', '--json']),
-    ).rejects.toThrow('process.exit called');
+    await expect(buildProgram('serve').parseAsync(['node', 'cli', 'dashboard', 'launch', '--json'])).rejects.toThrow(
+      'process.exit called',
+    );
 
     expect(mockOutputJsonError).toHaveBeenCalledWith(
       'Dashboard server did not start. Logs: /x/dashboard.log',

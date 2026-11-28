@@ -69,7 +69,10 @@ function parseVersion(version: string): [number, number, number] | null {
  * file with no version predates the stamp (#548), so it is older. `unknown`
  * when either side cannot be read (`getCLIVersion` falls back to 0.0.0).
  */
-function compareServerVersion(serverVersion: string | undefined, currentVersion: string): 'older' | 'same' | 'newer' | 'unknown' {
+function compareServerVersion(
+  serverVersion: string | undefined,
+  currentVersion: string,
+): 'older' | 'same' | 'newer' | 'unknown' {
   const current = currentVersion === '0.0.0' ? null : parseVersion(currentVersion);
   if (!current) return 'unknown';
   if (serverVersion === undefined) return 'older';
