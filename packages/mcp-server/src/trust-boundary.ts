@@ -50,7 +50,8 @@ export function assertMcpSettable(key: string, value: string | undefined): void 
   if (trust === 'preference') return;
   const isValueOnly = getKeyTrust(key) === 'preference';
   const setting = isValueOnly ? `${key}=${value}` : key;
-  const example = isValueOnly ? setting : `${key}=${trust === 'command' ? '"<command>"' : '<value>'}`;
+  const placeholder = trust === 'command' ? '"<command>"' : '<value>';
+  const example = isValueOnly ? setting : `${key}=${placeholder}`;
   throw new Error(
     `${setting} cannot be set through the MCP server: ${REFUSAL_REASON[trust]}. ` +
       `The user sets it in a terminal: oss-autopilot setup --set ${example}`,
@@ -59,11 +60,16 @@ export function assertMcpSettable(key: string, value: string | undefined): void 
 
 /** The settings {@link assertMcpSettable} refuses, as `key` or `key=value`, for tool descriptions. */
 export function mcpRefusedSettings(): string[] {
-  return CONFIG_KEY_REGISTRY.flatMap((def) => {
-    if (def.settableVia === 'auto') return [];
-    if (getKeyTrust(def.key) !== 'preference') return [def.key];
-    return (def.commandValues ?? []).map((value) => `${def.key}=${value}`);
-  });
+  const refused: string[] = [];
+  for (const def of CONFIG_KEY_REGISTRY) {
+    if (def.settableVia === 'auto') continue;
+    if (getKeyTrust(def.key) === 'preference') {
+      refused.push(...(def.commandValues ?? []).map((value) => `${def.key}=${value}`));
+    } else {
+      refused.push(def.key);
+    }
+  }
+  return refused;
 }
 
 /** {@link assertMcpSettable} for the `key=value` pairs of the `setup` tool, split the way `runSetup` splits them. */

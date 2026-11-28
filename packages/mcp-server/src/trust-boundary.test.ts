@@ -236,7 +236,6 @@ describe('paths and the AI-policy ban list are terminal-only (#2035, #2036)', ()
     'diffTool=custom',
     'diffToolCustomCommand',
   ];
-  const blocklist = () => config().aiPolicyBlocklist;
 
   beforeEach(async () => {
     await runSetup({ set: ['aiPolicyBlocklist=banned/repo', 'languages=typescript'] });
@@ -276,13 +275,13 @@ describe('paths and the AI-policy ban list are terminal-only (#2035, #2036)', ()
     expect(text(result)).toMatch(/cannot be set through the MCP server/);
     expect(text(result)).toContain('oss-autopilot setup --set ');
     expect(await paths()).toEqual(before);
-    expect(blocklist()).toEqual(['banned/repo']);
+    expect(config().aiPolicyBlocklist).toEqual(['banned/repo']);
     expect(config().languages).toEqual(['typescript']);
   });
 
   it('the CLI still sets them', async () => {
     await runSetup({ set: ['aiPolicyBlocklist=other/repo'] });
-    expect(blocklist()).toEqual(['other/repo']);
+    expect(config().aiPolicyBlocklist).toEqual(['other/repo']);
   });
 
   describe('vet-list', () => {
