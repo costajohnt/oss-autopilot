@@ -24,6 +24,16 @@ Print this reference card for the user. Do NOT run any commands — just display
 | `/plan-ready` | **Plan gate** — run the same review-and-critique convergence loop on an implementation plan before code is written |
 | `/oss-help` | **This card** — quick reference for all plugin capabilities |
 
+## CLI Maintenance
+
+Run these in a terminal (`npx @oss-autopilot/core@latest <command>`, or `oss-autopilot <command>` if installed):
+
+| Command | Purpose |
+|---------|---------|
+| `doctor` | **Health check**: token, CLI bundle, state file, rate limit, stale data counts |
+| `cleanup` | **Stale data**: lists overnight worktrees and old rejected state copies; `--apply` removes only clean, pushed, idle worktrees |
+| `policy get --repo <owner/repo>` | **Repo policy**: the AI policy, disclosure, CLA, commit rules and PR gate recorded for a repo; `policy set` records one you confirmed |
+
 ## Agents
 
 These agents activate automatically when relevant, or you can ask for them directly:

@@ -90,6 +90,26 @@ export function staleRejectedCopies(dataDir: string, now: number = Date.now()): 
   return copies.filter((copy) => !isCovered(copy)).map((copy) => copy.file);
 }
 
+export interface StaleDataCounts {
+  /** Directories under `worktrees/` named like the overnight preparer's; not judged, so not all removable. */
+  worktrees: number;
+  /** Rejected state copies past retention. */
+  rejected: number;
+}
+
+/**
+ * Counts for `doctor` and `startup` from directory listings only: no Git runs,
+ * so nothing a worktree's config names is executed. Which worktrees `cleanup`
+ * would remove is its own (slower) dry run. Throws on an unreadable directory.
+ */
+export function countStaleData(dataDir: string): StaleDataCounts {
+  const root = path.join(dataDir, 'worktrees');
+  const hasRoot = fs.existsSync(root) && fs.lstatSync(root).isDirectory();
+  const entries = hasRoot ? fs.readdirSync(root, { withFileTypes: true }) : [];
+  const worktrees = entries.filter((entry) => entry.isDirectory() && WORKTREE_NAME.test(entry.name));
+  return { worktrees: worktrees.length, rejected: staleRejectedCopies(dataDir).length };
+}
+
 export interface PruneResult {
   /** Paths deleted (or, from a dry run, the paths that would be). */
   removed: string[];

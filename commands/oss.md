@@ -157,6 +157,8 @@ If `data.dashboardUrl` is present, show it on a separate line so the user can re
 Dashboard: data.dashboardUrl
 ```
 
+If `data.staleData.worktrees` or `data.staleData.rejected` is non-zero (#2049), add one line: `Stale data: {worktrees} overnight worktree(s), {rejected} old rejected state copy(ies). Run oss-autopilot cleanup in a terminal to see what is safe to remove (a dry run; --apply removes it).` Skip it when `data.staleData` is absent.
+
 Then run **Auto-extract learnings** (below), check for auto-detected welcome, first-run, or proceed to **Action Menu**.
 
 ---
