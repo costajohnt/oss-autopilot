@@ -33,9 +33,9 @@ function sourceFiles(dir: string): string[] {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...sourceFiles(full));
-    } else if (SOURCE_RE.test(entry.name)) {
-      files.push(full);
+      continue;
     }
+    if (SOURCE_RE.test(entry.name)) files.push(full);
   }
   return files;
 }
