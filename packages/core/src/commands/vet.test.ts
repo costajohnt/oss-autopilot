@@ -123,6 +123,19 @@ describe('runVet: PR template and README-linked docs (#2013)', () => {
     expect(result.policy).toMatchObject({ prGate: 'claim-first' });
   });
 
+  it('reads the CONTRIBUTING text but leaves it out of the output (#2046)', async () => {
+    const rawContent = 'Comment on the issue and get assigned before opening a PR.';
+    const scouted = { ...policyCandidate(), vettingResult: { contributionGuidelines: { rawContent, claRequired: true } } };
+    mockVetIssue.mockResolvedValue(scouted);
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.policy).toMatchObject({ prGate: 'claim-first', cla: 'required' });
+    expect(result.vettingResult).toEqual({ contributionGuidelines: { claRequired: true } });
+    // The scout candidate is not mutated.
+    expect(scouted.vettingResult.contributionGuidelines.rawContent).toBe(rawContent);
+  });
+
   const STORED_READING = {
     aiPolicy: 'unknown',
     cla: 'none',

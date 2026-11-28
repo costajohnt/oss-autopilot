@@ -27,6 +27,8 @@ export { type CommentsOutput, type PostOutput, type ClaimOutput } from '../forma
 interface CommentsOptions {
   prUrl: string;
   showBots?: boolean;
+  /** Keep the user's own comments and reviews, for flows that read the whole thread (#2046). */
+  includeOwn?: boolean;
 }
 
 interface PostOptions {
@@ -45,11 +47,12 @@ interface ClaimOptions {
 
 /**
  * Fetch all comments, reviews, and inline review comments for a PR.
- * Filters out the user's own comments and optionally bot comments.
+ * Filters out the user's own comments (unless `includeOwn`) and optionally bot comments.
  *
  * @param options - Comment fetch options
  * @param options.prUrl - Full GitHub PR URL
  * @param options.showBots - Include bot comments (default: false)
+ * @param options.includeOwn - Include the user's own comments and reviews (default: false)
  * @returns Categorized comments with review, inline, and discussion sections
  * @throws {ValidationError} If the URL is not a valid GitHub PR URL
  */
@@ -126,7 +129,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
     // non-canonical-case configured username must not leak the user's own
     // comments into "needs response" (#1456). Mirrors review-analysis.ts
     // and issue-conversation.ts.
-    if (c.user.login?.toLowerCase() === username?.toLowerCase()) return false;
+    if (!options.includeOwn && c.user.login?.toLowerCase() === username?.toLowerCase()) return false;
     if (c.user.type === 'Bot' && !options.showBots) return false;
     return true;
   };

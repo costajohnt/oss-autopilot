@@ -170,3 +170,26 @@ describe('prompt files do not put text to post or store on a command line (#1930
     expect(findInPrompts(quotedPost)).toEqual([]);
   });
 });
+
+describe('prompt files read GitHub threads through the fenced commands (#2046)', () => {
+  /** `gh issue view` / `gh pr view` with `--comments` in the same code span or line: its output is not fenced. */
+  const RAW_THREAD = /\bgh\s+(?:issue|pr)\s+view\b[^\n`]*?\s--comments\b/g;
+
+  it('the pattern matches a raw thread read and skips the fenced commands', () => {
+    const sample = [
+      '`gh pr view {prUrl} --comments`',
+      '`gh issue view {issueUrl} --repo o/r --comments`',
+      '`gh pr view {prUrl} --json commits` and `comments {prUrl} --comments`',
+      '`issue-thread {issueUrl} --json`, raw `gh issue view` output is not fenced',
+    ].join('\n');
+    expect(sample.match(RAW_THREAD)).toHaveLength(2);
+  });
+
+  it('no prompt file reads a thread with raw `gh issue view --comments` or `gh pr view --comments`', () => {
+    expect(
+      findInPrompts(RAW_THREAD),
+      'Read an issue thread with `issue-thread <url> --json` and a PR thread with `comments <pr-url> --json` ' +
+        "(add `--include-own` for the user's own comments): both fence every body (workflows/reference.md)",
+    ).toEqual([]);
+  });
+});

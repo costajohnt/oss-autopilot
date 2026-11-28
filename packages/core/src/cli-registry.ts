@@ -990,11 +990,17 @@ export const commands: CLICommandDef[] = [
         .command('comments <pr-url>')
         .description('Show all comments on a PR')
         .option('--bots', 'Include bot comments')
+        .option('--include-own', 'Include your own comments and reviews')
         .option('--json', 'Output as JSON')
         .action((prUrl, options) =>
           executeAction(
             options,
-            async () => (await import('./commands/comments.js')).runComments({ prUrl, showBots: options.bots }),
+            async () =>
+              (await import('./commands/comments.js')).runComments({
+                prUrl,
+                showBots: options.bots,
+                includeOwn: options.includeOwn,
+              }),
             async (data) => {
               const { formatRelativeTime } = await import('./core/dates.js');
               // Bodies arrive `<github-content>`-fenced for agent consumers

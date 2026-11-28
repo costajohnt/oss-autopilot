@@ -210,8 +210,23 @@ function titleLabel(obj: Record<string, unknown>): string {
 }
 
 /**
+ * The `labels` of an issue or PR row (an object with a numeric `number` and a
+ * string `url`): set by the repo's maintainers, so fenced like titles (#2046).
+ * Rows without both keys are left alone, so the user's own configured
+ * `labels` (config, setup) stay raw.
+ */
+function fenceRowLabels(obj: Record<string, unknown>, labels: unknown[], label: string): unknown[] {
+  if (typeof obj.number !== 'number' || typeof obj.url !== 'string') return labels.map((l) => fenceTitlesDeep(l));
+  return labels.map((name) =>
+    typeof name === 'string' && name !== ''
+      ? wrapUntrustedContent(name, label, { source: 'issue-label' })
+      : fenceTitlesDeep(name),
+  );
+}
+
+/**
  * Fence every non-empty PR/issue title and branch-ref string anywhere in an
- * MCP tool result (#1931). Tool results reach an arbitrary MCP host LLM
+ * MCP tool result (#1931), and each label of an issue or PR row (#2046). Tool results reach an arbitrary MCP host LLM
  * that never sees the "Prompt Injection Awareness" block, the same reason
  * {@link fenceFetchedPRTitles} exists for resources and prompts, but tool
  * payloads have no single shape, so this walks the whole value and matches
@@ -231,6 +246,10 @@ export function fenceTitlesDeep<T>(value: T): T {
   const label = titleLabel(obj);
   const out: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(obj)) {
+    if (key === 'labels' && Array.isArray(field)) {
+      out[key] = fenceRowLabels(obj, field, label);
+      continue;
+    }
     const source = TITLE_KEY_SOURCES.get(key);
     out[key] =
       source !== undefined && typeof field === 'string' && field !== ''

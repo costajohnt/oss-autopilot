@@ -88,7 +88,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     reasonsToSkip: candidate.reasonsToSkip,
     ...(candidate.complexityUnlocked && { complexityUnlocked: true as const }),
     projectHealth: candidate.projectHealth,
-    vettingResult: candidate.vettingResult,
+    vettingResult: publicVettingResult(candidate.vettingResult),
     antiLLMPolicy: candidate.antiLLMPolicy,
     linkedPRClassification,
     ...(linkedPR && { linkedPR }),
@@ -114,6 +114,20 @@ const BANNED_REASON = 'repo policy: the project does not accept AI-assisted cont
 const LINKED_DOC_MAX_CHARS = 100_000;
 
 export type ScoutCandidate = Awaited<ReturnType<Awaited<ReturnType<typeof createAutopilotScout>>['vetIssue']>>;
+
+/**
+ * Scout's vetting result as vet and vet-list print it: without
+ * `contributionGuidelines.rawContent` (#2046). That field is the target repo's
+ * whole CONTRIBUTING file, written by the repo and unfenced; vet only reads it
+ * here, through {@link vetPolicy}, and reports the parsed fields and the fenced
+ * policy `source` quotes instead. Returns a copy; never mutates.
+ */
+export function publicVettingResult(result: ScoutCandidate['vettingResult']): ScoutCandidate['vettingResult'] {
+  if (result.contributionGuidelines?.rawContent === undefined) return result;
+  const guidelines = { ...result.contributionGuidelines };
+  delete guidelines.rawContent;
+  return { ...result, contributionGuidelines: guidelines };
+}
 
 /**
  * The repo's contribution policy as far as vet read it (#1953): scout's
