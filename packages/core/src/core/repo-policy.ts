@@ -201,7 +201,6 @@ interface Hit {
 
 interface Found {
   ai: (Hit & { policy: AiPolicy }) | null;
-  disclosure: string | null;
   cla: Hit | null;
   commitRules: Array<Hit & { rule: string }>;
   gates: Map<PrGate, Hit>;
@@ -220,8 +219,8 @@ function scanAi(doc: PolicyDoc, found: Found): void {
   const disclosure = scanAIDisclosureRequirement(doc.content).matches;
   const asked = disclosure.find((m) => m.category !== 'invited');
   if (asked) {
+    // The excerpt goes to `source` only: it is a window around the repo's rule, not a line to paste (#2040).
     found.ai = { policy: 'disclosure-required', file: doc.file, line: asked.excerpt };
-    found.disclosure = asked.excerpt;
     return;
   }
   const invited = disclosure.at(0);
@@ -271,7 +270,7 @@ function scanAiPrLimit(doc: PolicyDoc, found: Found): void {
  * as `none`. Silence on AI stays `unknown`: it is not permission.
  */
 export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date()): RepoPolicy {
-  const found: Found = { ai: null, disclosure: null, cla: null, commitRules: [], gates: new Map(), aiPrLimit: null };
+  const found: Found = { ai: null, cla: null, commitRules: [], gates: new Map(), aiPrLimit: null };
   const readable = docs.filter((d) => d.content.trim() !== '');
   for (const doc of readable) {
     scanAi(doc, found);
@@ -286,7 +285,6 @@ export function derivePolicy(docs: readonly PolicyDoc[], now: Date = new Date())
     .slice(0, 10);
   return {
     aiPolicy: found.ai?.policy ?? 'unknown',
-    ...(found.disclosure !== null && { disclosureText: quote(found.disclosure) }),
     cla: found.cla ? 'required' : silent,
     commitRules: found.commitRules.map((r) => r.rule),
     prGate: gate ?? silent,
@@ -364,14 +362,35 @@ export function isUnreadable(state: PolicyState, repo: string): boolean {
 }
 
 /**
+ * `policy` with `disclosureText` and `gateLabel` only where the user set them
+ * (#2040). Neither is ever read from repo text, so an unreviewed record keeps
+ * neither. Releases before that stored the excerpt vet read as
+ * `disclosureText`; `policy set --ai-policy disclosure-required` without
+ * `--disclosure-text` then kept it and marked the record reviewed. Either way
+ * the text equals the quoted line `vet` put in `source`, which still carries it.
+ */
+function withUserTextOnly(policy: RepoPolicy): RepoPolicy {
+  const { disclosureText, gateLabel, ...rest } = policy;
+  if (disclosureText === undefined && gateLabel === undefined) return policy;
+  if (!policy.reviewedByUser) return rest;
+  const isExcerpt = policy.source.some((s) => s.file !== 'user' && s.quotedLine === disclosureText);
+  return {
+    ...rest,
+    ...(disclosureText !== undefined && !isExcerpt && { disclosureText }),
+    ...(gateLabel !== undefined && { gateLabel }),
+  };
+}
+
+/**
  * The stored record for `repo`, or null when there is none. An entry that does
  * not parse but says `aiPolicy: 'banned'` still reads as a ban (every other
- * field unknown): a newer release's record must not lift a ban here.
+ * field unknown): a newer release's record must not lift a ban here. A
+ * disclosure excerpt an older release stored is dropped on read.
  */
 export function storedPolicy(state: PolicyState, repo: string): RepoPolicy | null {
   const raw = rawEntry(state, repo);
   const parsed = RepoPolicySchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return withUserTextOnly(parsed.data);
   if (raw?.aiPolicy !== 'banned') return null;
   return { ...UNKNOWN_POLICY, aiPolicy: 'banned', reviewedByUser: raw.reviewedByUser === true, updatedAt: EPOCH };
 }
@@ -464,12 +483,22 @@ export function policyField(policy: RepoPolicy | null): { policy?: RepoPolicySum
   return policy ? { policy: summarizePolicy(policy) } : {};
 }
 
-/** Quoted lines and disclosure text inside `<github-content>` fences, for agent-facing output. */
-export function fencePolicyText(repo: string, policy: RepoPolicy): { disclosureText?: string; sources?: string } {
+/**
+ * Quoted lines, disclosure text and the gate label inside `<github-content>`
+ * fences, for agent-facing output. `disclosureText` and `gateLabel` are only
+ * ever what the user set.
+ */
+export function fencePolicyText(
+  repo: string,
+  policy: RepoPolicy,
+): { disclosureText?: string; gateLabel?: string; sources?: string } {
   const lines = policy.source.map((s) => `${s.file}: ${s.quotedLine}`);
   return {
     ...(policy.disclosureText !== undefined && {
       disclosureText: wrapUntrustedContent(policy.disclosureText, repo, { source: 'repo-policy' }),
+    }),
+    ...(policy.gateLabel !== undefined && {
+      gateLabel: wrapUntrustedContent(policy.gateLabel, repo, { source: 'repo-policy' }),
     }),
     ...(lines.length > 0 && { sources: wrapUntrustedContent(lines.join('\n'), repo, { source: 'repo-policy' }) }),
   };

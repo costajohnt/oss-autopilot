@@ -820,6 +820,7 @@ export const PolicyGetOutputSchema = z.object({
     updatedAt: z.string(),
     blocklisted: z.boolean(),
     disclosureText: z.string().optional(),
+    gateLabel: z.string().optional(),
     sources: z.string().optional(),
   }).nullable(),
   blocklistChange: z.enum(['added', 'removed']).optional(),
@@ -1667,6 +1668,12 @@ export interface StartupOutput {
    * first `overnight` run.
    */
   overnight?: import('../commands/overnight.js').OvernightFreshness;
+  /**
+   * Overnight worktrees and rejected state copies past retention under the
+   * data directory (#2049), counted from directory listings. Absent when the
+   * count failed. `oss-autopilot cleanup` says which worktrees are removable.
+   */
+  staleData?: import('../core/stale-data.js').StaleDataCounts;
 }
 
 /**

@@ -41,11 +41,18 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import { assertAttended, errorMessage } from '../core/errors.js';
 import { resolveDataDir } from '../core/paths.js';
-import { DAY_MS, WORKTREE_NAME, isInside, pruneRejectedCopies, staleRejectedCopies } from '../core/stale-data.js';
+import {
+  DAY_MS,
+  WORKTREE_MIN_AGE_DAYS,
+  WORKTREE_NAME,
+  isInside,
+  pruneRejectedCopies,
+  staleRejectedCopies,
+} from '../core/stale-data.js';
 import type { PruneResult } from '../core/stale-data.js';
 import { git } from './overnight-push-prep.js';
 
-export const WORKTREE_MIN_AGE_DAYS = 14;
+export { WORKTREE_MIN_AGE_DAYS };
 
 /** Ignored paths under a directory with one of these names are rebuildable, not work. */
 export const BUILD_OUTPUT = new Set(['node_modules', 'dist', 'build', 'target', 'coverage', '.venv']);

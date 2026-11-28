@@ -2,7 +2,7 @@
 # Install packed npm tarballs into a clean prefix outside the workspace and
 # run each package's bin, the way `npx` does on a user's machine (#1943).
 #
-#   scripts/verify-packed-tarballs.sh <tarball.tgz>...
+#   scripts/verify-packed-tarballs.sh [--full] <tarball.tgz>...
 #
 # Catches what a workspace build cannot: a `files` or `bin` mistake, a
 # `workspace:` dependency that `pnpm pack` did not rewrite to something npm
@@ -14,10 +14,21 @@
 # by semver range, not from the lockfile, so none of their install scripts may
 # run there. The bins are self-contained esbuild bundles and load nothing from
 # node_modules, so no registry code executes at all.
+#
+# `--full` (PR CI only, #2050) adds two checks for the core tarball: import
+# every `exports` entry from the install prefix, which resolves core's runtime
+# dependencies and so RUNS registry code, and smoke `dashboard serve` with a
+# GET /. Never pass it in a job that can mint a publish credential.
 set -euo pipefail
 
+FULL=false
+if [ "${1:-}" = "--full" ]; then
+  FULL=true
+  shift
+fi
+
 if [ "$#" -eq 0 ]; then
-  echo "usage: $0 <tarball.tgz>..." >&2
+  echo "usage: $0 [--full] <tarball.tgz>..." >&2
   exit 2
 fi
 
@@ -97,3 +108,77 @@ for name in $(node -p 'Object.keys(require("./package.json").dependencies).join(
   fi
   echo "Tarball verified: $name@$expected ($bin --version, --help$([ "$name" = "@oss-autopilot/mcp" ] && echo ', stdio initialize'))"
 done
+
+if [ "$FULL" = false ] || [ ! -d "$PREFIX/node_modules/@oss-autopilot/core" ]; then
+  exit 0
+fi
+
+# Each `exports` entry, resolved the way a consumer's `import` resolves it.
+# A missing runtime dependency or a mistyped path fails here.
+env -u GITHUB_TOKEN -u GH_TOKEN HOME="$PREFIX/home" node --input-type=module -e '
+  import { readFileSync, existsSync } from "node:fs";
+  import { join } from "node:path";
+  const dir = join(process.cwd(), "node_modules/@oss-autopilot/core");
+  const { name, exports } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+  for (const [key, target] of Object.entries(exports)) {
+    const spec = key === "." ? name : name + key.slice(1);
+    const mod = await import(spec);
+    if (Object.keys(mod).length === 0) throw new Error(`${spec} exports nothing`);
+    if (target.types && !existsSync(join(dir, target.types))) throw new Error(`${spec}: ${target.types} is not in the tarball`);
+    console.log(`Export verified: ${spec} (${Object.keys(mod).length} names)`);
+  }
+'
+
+# `dashboard serve` from the installed bundle on a free port, with the
+# smallest state that has a digest to render. GET / must serve the SPA. The
+# server is stopped by its own PID (child.kill), nothing else.
+mkdir -p "$PREFIX/home/.oss-autopilot"
+cat > "$PREFIX/home/.oss-autopilot/state.json" <<'STATE'
+{"version":4,"lastDigest":{"generatedAt":"2026-01-01T00:00:00.000Z","openPRs":[],"needsAddressingPRs":[],"waitingOnMaintainerPRs":[],"recentlyClosedPRs":[],"recentlyMergedPRs":[],"shelvedPRs":[],"autoUnshelvedPRs":[],"summary":{"totalActivePRs":0,"totalNeedingAttention":0,"totalMergedAllTime":0,"mergeRate":0}}}
+STATE
+env -u GITHUB_TOKEN -u GH_TOKEN HOME="$PREFIX/home" node -e '
+  const { spawn } = require("node:child_process");
+  const http = require("node:http");
+  const net = require("node:net");
+  const bundle = process.argv[1];
+  const probe = net.createServer().listen(0, "127.0.0.1", () => {
+    const { port } = probe.address();
+    probe.close(() => {
+      const child = spawn(process.execPath, [bundle, "dashboard", "serve", "--port", String(port), "--no-open"], {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let log = "";
+      let done = false;
+      let requested = false;
+      const timer = setTimeout(() => finish("no server after 30s"), 30_000);
+      function finish(problem) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        child.kill();
+        if (problem) {
+          console.error(`::error::dashboard serve: ${problem}\n${log}`);
+          process.exitCode = 1;
+        } else {
+          console.log(`Dashboard verified: dashboard serve answered GET / on port ${port}`);
+        }
+      }
+      child.on("exit", (code, signal) => finish(`exited early (code ${code}, signal ${signal})`));
+      child.stderr.on("data", (chunk) => {
+        log += chunk;
+        const url = log.match(/\(also: (http:\/\/localhost:\d+)\)/)?.[1];
+        if (!url || requested) return;
+        requested = true;
+        http
+          .get(`${url}/`, (res) => {
+            let body = "";
+            res.on("data", (data) => (body += data));
+            res.on("end", () =>
+              finish(res.statusCode === 200 && /id="app"/.test(body) ? null : `GET / returned ${res.statusCode}`),
+            );
+          })
+          .on("error", (err) => finish(err.message));
+      });
+    });
+  });
+' "$PREFIX/node_modules/@oss-autopilot/core/dist/cli.bundle.cjs"

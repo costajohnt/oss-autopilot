@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as nodePath from 'node:path';
+import * as os from 'node:os';
 import { countIssueListItems } from './startup.js';
 
 // --- Mocks for runStartup dashboard tests ---
@@ -58,6 +59,15 @@ vi.mock('../core/local-config.js', () => ({
     return localPaths[key]?.source ?? (value ? 'synced' : undefined);
   },
   setMachinePath: setMachinePathSpy,
+}));
+
+// Stale-data counts (#2049): the real function lists the data directory.
+const { countStaleDataMock } = vi.hoisted(() => ({
+  countStaleDataMock: vi.fn((_dataDir: string) => ({ worktrees: 0, oldWorktrees: 0, rejected: 0 })),
+}));
+vi.mock('../core/stale-data.js', async () => ({
+  ...(await vi.importActual<typeof import('../core/stale-data.js')>('../core/stale-data.js')),
+  countStaleData: countStaleDataMock,
 }));
 
 // Mock fs so detectIssueList doesn't hit the real filesystem
@@ -529,6 +539,25 @@ describe('runStartup behavior', () => {
     const result = await runStartup();
     expect(result.overnight).toBeUndefined();
     expect(result).not.toHaveProperty('overnightError');
+  });
+
+  it('reports stale-data counts for the data directory (#2049)', async () => {
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(0));
+    countStaleDataMock.mockReturnValueOnce({ worktrees: 3, oldWorktrees: 1, rejected: 2 });
+    const result = await runStartup();
+    expect(result.staleData).toEqual({ worktrees: 3, oldWorktrees: 1, rejected: 2 });
+    expect(countStaleDataMock).toHaveBeenCalledWith(nodePath.join(os.homedir(), '.oss-autopilot'));
+  });
+
+  it('omits staleData instead of failing startup when the count throws (#2049)', async () => {
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(0));
+    countStaleDataMock.mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+    const result = await runStartup();
+    expect(result.setupComplete).toBe(true);
+    expect(result.daily).toBeDefined();
+    expect(result.staleData).toBeUndefined();
   });
 
   it('should still launch SPA when totalActivePRs is 0 (dashboard empty-state is fine)', async () => {

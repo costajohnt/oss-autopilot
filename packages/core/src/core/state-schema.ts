@@ -850,6 +850,9 @@ export const GuidelinesReviewSchema = z.object({
 /** Longest quoted source line or disclosure text a repo policy keeps (#1953): the text is from other people's repos. */
 export const POLICY_QUOTE_MAX = 200;
 
+/** Longest gate label a repo policy keeps; GitHub caps a label name at 50 characters. */
+export const GATE_LABEL_MAX = 50;
+
 /**
  * Per-repo contribution policy (#1953). Only enumerated values plus short
  * quoted source lines: policy text comes from files in other people's repos.
@@ -860,12 +863,20 @@ const CommitRuleIdSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
 
 export const RepoPolicySchema = z.object({
   aiPolicy: z.enum(['allowed', 'disclosure-required', 'banned', 'unknown']),
-  /** The line the repo asks for, quoted from its docs. Untrusted: fence it before handing it to an agent. */
+  /**
+   * The disclosure line the user recorded with `policy set --disclosure-text` (#2040); the repo's own rule
+   * stays in `source`. Older releases stored a doc excerpt here, which `storedPolicy` drops on read. Fence it.
+   */
   disclosureText: PolicyQuoteSchema.optional(),
   cla: z.enum(['none', 'required', 'unknown']),
   /** Short ids such as `conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`. */
   commitRules: z.array(CommitRuleIdSchema).max(10),
   prGate: z.enum(['none', 'claim-first', 'maintainer-label', 'collaborators-only', 'unknown']),
+  /**
+   * The issue label a `maintainer-label` gate waits for, recorded by the user with `policy set --gate-label`
+   * (#2040). vet never sets it: which label is the gate is not read from repo text. Fence it.
+   */
+  gateLabel: z.string().max(GATE_LABEL_MAX).optional(),
   maxOpenAiPRs: z.number().int().positive().optional(),
   /** Where each rule came from. `quotedLine` is untrusted. */
   source: z.array(PolicySourceSchema).max(10),
