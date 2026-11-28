@@ -64,6 +64,8 @@ vi.mock('../core/index.js', async (importOriginal) => {
       releaseIssue: vi.fn(() => 'not_tracked'),
       renameRepo: vi.fn(),
       tryReconcilePRCounts: vi.fn(),
+      snapshotRepoOutcomes: vi.fn(() => new Map()),
+      restoreUnchangedEvaluations: vi.fn(),
       evictClosedPRs: vi.fn(),
       evictExcludedRepos: vi.fn(() => ({ untrackedOrgRows: 0, privateRows: 0, repos: 0 })),
       getMergedPRWatermark: vi.fn(),

@@ -96,6 +96,20 @@ export function applyRepoMetadata(
     warn(MODULE, `[METADATA_UPDATES_FAILED] ${failures} of ${repoMetadata.size} metadata update(s) failed.`);
   }
 
+  evictNeverTrackedRepos(stateManager, privateRepos);
+}
+
+/**
+ * Drop what is stored about repositories whose PRs are never tracked (#1924):
+ * those in `config.untrackedOrgs`, and `privateRepos`. The daily run learns
+ * which repositories are private from its metadata read (applyRepoMetadata);
+ * the dashboard refresh has no such read and passes none, so it removes only
+ * the untracked organisations' rows.
+ */
+export function evictNeverTrackedRepos(
+  stateManager: Pick<StateManagerLike, 'evictExcludedRepos'>,
+  privateRepos: readonly string[],
+): void {
   const evicted = stateManager.evictExcludedRepos(privateRepos);
   if (evicted.untrackedOrgRows + evicted.privateRows + evicted.repos > 0) {
     warn(
@@ -147,18 +161,30 @@ export type MergedLedgerGap = PRsSinceResult<StoredMergedPR> | undefined;
 /** This run's closed-ledger gap fetch; undefined when the fetch failed. */
 export type ClosedLedgerGap = PRsSinceResult<StoredClosedPR> | undefined;
 
+/** How a gap fetch treats a failure. */
+export interface LedgerGapOptions {
+  /**
+   * Errors to rethrow instead of recording. The dashboard refresh passes
+   * isRateLimitOrAuthError, since those abort the whole refresh there; the
+   * daily run records every failure and carries on.
+   */
+  rethrowIf?: (error: unknown) => boolean;
+}
+
 /** Run one gap fetch, recording a failure or truncation in `warnings`. */
 async function fetchLedgerGap<T>(
   kind: 'merged' | 'closed',
   fetch: () => Promise<PRsSinceResult<T>>,
   truncatedMessage: string,
   warnings: DailyWarning[],
+  options: LedgerGapOptions,
 ): Promise<PRsSinceResult<T> | undefined> {
   const operation = `fetch ${kind} PRs for the ledger`;
   let gap: PRsSinceResult<T> | undefined;
   try {
     gap = await fetch();
   } catch (error) {
+    if (options.rethrowIf?.(error)) throw error;
     recordWarning(warnings, 'fetch', operation, error);
   }
   if (gap?.truncated) warnings.push({ phase: 'fetch', message: truncatedMessage, operation });
@@ -199,7 +225,14 @@ function checkLedgerCount(
  * Fetch every merged PR since the ledger's newest entry (#1924). The recent
  * list daily shows covers seven days, so after a longer pause it alone left
  * the merges in between out of the ledger for good. Must run before anything
- * in this run adds to the merged ledger: the watermark is read here.
+ * in this run adds to the merged ledger: the watermark is read here. Shared
+ * by the daily run and the dashboard refresh, so both follow one rule.
+ *
+ * A ledger left short of `allTimeCount` (seeded ahead of its history, #1504)
+ * is fetched from the start while it is under the backfill ceiling (see
+ * gapFetchWatermark), the same rule as the closed ledger. Past the ceiling,
+ * or with an unknown count, the gap fetch starts at the watermark and
+ * storeMergedLedger points at `ledger-backfill`.
  *
  * A failed or truncated fetch is recorded in `warnings`, and
  * {@link storeMergedLedger} then stores nothing, so the next run asks for the
@@ -209,16 +242,23 @@ function checkLedgerCount(
  */
 export function fetchMergedLedgerGap(
   octokit: Octokit,
-  stateManager: Pick<StateManagerLike, 'getState' | 'getMergedPRWatermark'>,
+  stateManager: Pick<StateManagerLike, 'getState' | 'getMergedPRWatermark' | 'getMergedPRs'>,
   warnings: DailyWarning[],
+  allTimeCount: number | undefined,
+  options: LedgerGapOptions = {},
 ): Promise<MergedLedgerGap> {
   const { config } = stateManager.getState();
-  const watermark = stateManager.getMergedPRWatermark();
+  const watermark = gapFetchWatermark(
+    stateManager.getMergedPRWatermark(),
+    stateManager.getMergedPRs().length,
+    allTimeCount,
+  );
   return fetchLedgerGap(
     'merged',
     () => fetchMergedPRsSince(octokit, config, watermark),
     MERGED_LEDGER_TRUNCATED_MESSAGE,
     warnings,
+    options,
   );
 }
 
@@ -238,6 +278,7 @@ export function fetchClosedLedgerGap(
   stateManager: Pick<StateManagerLike, 'getState' | 'getClosedPRWatermark' | 'getClosedPRs'>,
   warnings: DailyWarning[],
   allTimeCount: number | undefined,
+  options: LedgerGapOptions = {},
 ): Promise<ClosedLedgerGap> {
   const { config } = stateManager.getState();
   const watermark = gapFetchWatermark(
@@ -250,6 +291,7 @@ export function fetchClosedLedgerGap(
     () => fetchClosedPRsSince(octokit, config, watermark),
     CLOSED_LEDGER_TRUNCATED_MESSAGE,
     warnings,
+    options,
   );
 }
 
@@ -287,6 +329,8 @@ function ledgerFields(
  *
  * Then compares the ledger with GitHub's all-time merged count (see
  * checkLedgerCount).
+ *
+ * @returns how many rows addMergedPRs dropped for an invalid URL (0 when nothing was stored)
  */
 export function storeMergedLedger(
   stateManager: Pick<StateManagerLike, 'addMergedPRs' | 'getMergedPRs'>,
@@ -294,21 +338,24 @@ export function storeMergedLedger(
     gap: MergedLedgerGap;
     recentlyMergedPRs: ReadonlyArray<MergedPR>;
   },
-): void {
+): number {
   const { gap, previousDigest } = input;
-  if (!gap || gap.truncated) return;
+  if (!gap || gap.truncated) return 0;
   const rows = [...input.recentlyMergedPRs, ...gap.prs].map((pr) => ({
     ...ledgerFields(pr, previousDigest),
     mergedAt: pr.mergedAt,
   }));
-  if (rows.length > 0) stateManager.addMergedPRs(rows);
+  const dropped = rows.length > 0 ? stateManager.addMergedPRs(rows).dropped : 0;
   checkLedgerCount('merged', stateManager.getMergedPRs().length, input.allTimeCount, input.warnings);
+  return dropped;
 }
 
 /**
  * The closed-ledger mirror of {@link storeMergedLedger} (#1925): the gap
  * plus the recent closed list, stored only when the gap was fetched whole,
  * then checked against GitHub's all-time closed-without-merge count.
+ *
+ * @returns how many rows addClosedPRs dropped for an invalid URL (0 when nothing was stored)
  */
 export function storeClosedLedger(
   stateManager: Pick<StateManagerLike, 'addClosedPRs' | 'getClosedPRs'>,
@@ -316,13 +363,14 @@ export function storeClosedLedger(
     gap: ClosedLedgerGap;
     recentlyClosedPRs: ReadonlyArray<ClosedPR>;
   },
-): void {
+): number {
   const { gap, previousDigest } = input;
-  if (!gap || gap.truncated) return;
+  if (!gap || gap.truncated) return 0;
   const rows = [...input.recentlyClosedPRs, ...gap.prs].map((pr) => ({
     ...ledgerFields(pr, previousDigest),
     closedAt: pr.closedAt,
   }));
-  if (rows.length > 0) stateManager.addClosedPRs(rows);
+  const dropped = rows.length > 0 ? stateManager.addClosedPRs(rows).dropped : 0;
   checkLedgerCount('closed', stateManager.getClosedPRs().length, input.allTimeCount, input.warnings);
+  return dropped;
 }

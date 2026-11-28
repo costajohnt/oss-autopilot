@@ -94,6 +94,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    compliance-score, post, claim, config, init, setup, checkSetup,
  *    parse-issue-list, orphan-files, doctor, local-repos, move,
  *    pr-template, repo-cap, pr-preflight, repo-vet, detect-formatters, work (claim/finish/release/list),
+ *    dashboard launch,
  *    policy (get/set).
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
@@ -1300,6 +1301,31 @@ export const commands: CLICommandDef[] = [
           } catch (err) {
             handleCommandError(err);
           }
+        });
+      dashboardCmd
+        .command('launch')
+        .description('Start the dashboard server in the background, or reuse the running one')
+        .option('--port <port>', 'Port to try first', '3000')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { port: string; json?: boolean }) => {
+          const port = Number(options.port);
+          if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+            handleCommandError(
+              new Error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`),
+              options.json,
+            );
+          }
+          const { DashboardLaunchOutputSchema } = await import('./formatters/json.js');
+          const { runDashboardLaunch } = await import('./commands/dashboard-lifecycle.js');
+          await executeAction(
+            options,
+            () => runDashboardLaunch({ port }),
+            (data) => {
+              const note = data.status === 'already_running' ? ' (already running)' : '';
+              console.log(`Dashboard: ${data.url}${note}`);
+            },
+            DashboardLaunchOutputSchema,
+          );
         });
     },
   },

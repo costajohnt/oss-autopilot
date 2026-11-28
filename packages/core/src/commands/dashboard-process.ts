@@ -5,6 +5,7 @@
 
 import * as http from 'node:http';
 import * as fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import * as path from 'node:path';
 import { getDataDir } from '../core/index.js';
 import { warn } from '../core/logger.js';
@@ -142,9 +143,20 @@ export function isDashboardServerRunning(port: number, pid: number): Promise<boo
   });
 }
 
-export async function findRunningDashboardServer(): Promise<{ port: number; url: string } | null> {
+/**
+ * What the PID file points at. `unverified` means the recorded PID is alive
+ * but did not answer `/api/health` as ours: a recycled PID, a server too busy
+ * to answer within the timeout, or a server from before 3.43.0, which has no
+ * health route (#1882). The PID file is left in place for the caller to decide.
+ */
+export type DashboardServerProbe =
+  | { status: 'none' }
+  | { info: DashboardServerInfo; status: 'running'; port: number; url: string }
+  | { status: 'unverified'; info: DashboardServerInfo };
+
+export async function probeDashboardServer(): Promise<DashboardServerProbe> {
   const info = readDashboardServerInfo();
-  if (!info) return null;
+  if (!info) return { status: 'none' };
 
   // Check if process is alive (signal 0 = existence check only)
   try {
@@ -157,17 +169,77 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
     // ESRCH = no process at that PID; EPERM = PID recycled to another user's process
     // Either way, our dashboard server is no longer running — clean up stale PID file
     removeDashboardServerInfo();
-    return null;
+    return { status: 'none' };
   }
 
   // Process exists — verify it's actually our server via HTTP probe
   if (await isDashboardServerRunning(info.port, info.pid)) {
-    return { port: info.port, url: `http://oss.localhost:${info.port}` };
+    return { info, status: 'running', port: info.port, url: `http://oss.localhost:${info.port}` };
   }
+  return { status: 'unverified', info };
+}
+
+export async function findRunningDashboardServer(): Promise<{ port: number; url: string } | null> {
+  const probe = await probeDashboardServer();
+  if (probe.status === 'running') return { port: probe.port, url: probe.url };
 
   // Process exists but is not answering as our server on the expected port:
   // stale. Never signal it. The PID file outlives crashes and reboots, so the
   // PID may have been recycled to an unrelated process (#1927).
-  removeDashboardServerInfo();
+  if (probe.status === 'unverified') removeDashboardServerInfo();
   return null;
+}
+
+const PS_PATHS = ['/bin/ps', '/usr/bin/ps'];
+
+/** The CLI entries a server is started from: the bundle, a source entry, or the npm bin. */
+const EVAL_FLAGS = new Set(['-e', '--eval', '-p', '--print']);
+const CLI_ENTRY = /^(?:cli\.(?:bundle\.cjs|ts|js)|oss-autopilot)$/;
+
+/**
+ * True only for the command line the launchers spawn: `node [--flags] <cli
+ * entry> dashboard serve ...`. Matching "dashboard serve" anywhere in argv
+ * would accept a recycled PID now running e.g. `grep -rn "dashboard serve"`
+ * or a shell wrapper. Anything else, including paths with spaces and a tsx
+ * dev server, reads as false, which only ever means "never signal".
+ */
+export function isDashboardServeCommand(command: string): boolean {
+  const tokens = command.trim().split(/\s+/);
+  if (!/^node(?:js)?$/.test(path.basename(tokens[0]))) return false;
+  let i = 1;
+  while (tokens[i]?.startsWith('-')) {
+    // With -e / -p the next token is code, not the script.
+    if (EVAL_FLAGS.has(tokens[i].split('=', 1)[0])) return false;
+    i++;
+  }
+  return (
+    i + 2 < tokens.length &&
+    CLI_ENTRY.test(path.basename(tokens[i])) &&
+    tokens[i + 1] === 'dashboard' &&
+    tokens[i + 2] === 'serve'
+  );
+}
+
+/**
+ * True only when the process at `pid` is a `dashboard serve` process, read
+ * from its command line (see isDashboardServeCommand). This is what lets a
+ * caller signal a server that does not answer `/api/health` (#1882) without
+ * ever signalling a PID that was recycled to an unrelated program (#1927).
+ * Anything that cannot be checked (no `ps`, as on Windows, or an exited PID)
+ * reads as false.
+ */
+export function isDashboardServeProcess(pid: number): boolean {
+  // An absolute path, so a `ps` earlier on PATH cannot answer for it.
+  const ps = PS_PATHS.find((candidate) => fs.existsSync(candidate));
+  if (!ps) return false;
+  try {
+    const command = execFileSync(ps, ['-o', 'command=', '-p', String(pid)], {
+      encoding: 'utf8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return isDashboardServeCommand(command);
+  } catch {
+    return false;
+  }
 }
