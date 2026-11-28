@@ -26,7 +26,7 @@ Print this reference card for the user. Do NOT run any commands — just display
 
 ## CLI Maintenance
 
-Run these in a terminal (`npx @oss-autopilot/core@latest <command>`, or `oss-autopilot <command>` if installed):
+Run these in a terminal with the `oss-autopilot` CLI (the README lists the ways to run it):
 
 | Command | Purpose |
 |---------|---------|
