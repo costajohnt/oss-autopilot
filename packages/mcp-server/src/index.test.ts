@@ -557,58 +557,33 @@ describe('approval gate over the HTTP transport (#2054)', { timeout: 30_000 }, (
     expect(fetched()).toContain('POST https://api.github.com/repos/owner/repo/issues/1/comments');
   });
 
-  it('PROBE a 2026-era host with a form gets the form and nothing is sent', async () => {
+  it('PROBE sdk clients', async () => {
     const handle = await startServer();
-    const client = new Client(
-      { name: 'test-client', version: '1.0.0' },
-      {
-        capabilities: { elicitation: {} },
-        versionNegotiation: { mode: { pin: '2026-07-28' } },
-        inputRequired: { autoFulfill: false },
-      },
-    );
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
-        requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
-      }),
-    );
-    try {
-      const first = await client.callTool(
-        { name: 'post', arguments: WRITERS[0][1] },
-        { allowInputRequired: true },
-      );
-      console.log('PROBE2026', JSON.stringify(first));
-      const noForm = new Client(
-        { name: 'test-client', version: '1.0.0' },
-        { versionNegotiation: { mode: { pin: '2026-07-28' } }, inputRequired: { autoFulfill: false } },
-      );
-      await noForm.connect(
-        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
-          requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
-        }),
-      );
-      const second = await noForm.callTool(
-        { name: 'post', arguments: WRITERS[0][1] },
-        { allowInputRequired: true },
-      );
-      console.log('PROBE2026-noform', JSON.stringify(second));
-      await noForm.close();
-      // A legacy SDK client that declares a form
-      const legacy = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: { elicitation: {} } });
-      legacy.setRequestHandler('elicitation/create', async () => {
-        console.log('PROBE-legacy elicitation asked');
-        return { action: 'decline' } as never;
-      });
-      await legacy.connect(
-        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
-          requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
-        }),
-      );
-      const third = await legacy.callTool({ name: 'post', arguments: WRITERS[0][1] });
-      console.log('PROBE-legacy', JSON.stringify(third));
-      await legacy.close();
-    } finally {
-      await client.close();
+    const url = new URL(`http://127.0.0.1:${handle.port}/mcp`);
+    const opts = { requestInit: { headers: { Authorization: `Bearer ${handle.token}` } } };
+    for (const [label, options] of [
+      ['default+form', { capabilities: { elicitation: {} } }],
+      ['default+form+manual', { capabilities: { elicitation: {} }, inputRequired: { autoFulfill: false } }],
+      ['default-noform', {}],
+    ] as const) {
+      const client = new Client({ name: 'test-client', version: '1.0.0' }, options as never);
+      let asked = 0;
+      if ('capabilities' in options) {
+        client.setRequestHandler('elicitation/create', async () => {
+          asked += 1;
+          return { action: 'accept', content: { approve: true } } as never;
+        });
+      }
+      try {
+        await client.connect(new StreamableHTTPClientTransport(url, opts));
+        console.log('PROBE', label, 'version', client.getNegotiatedProtocolVersion?.());
+        const r = await client.callTool({ name: 'post', arguments: WRITERS[0][1] }, { allowInputRequired: true } as never);
+        console.log('PROBE', label, 'asked', asked, JSON.stringify(r));
+      } catch (e) {
+        console.log('PROBE', label, 'threw', String(e));
+      } finally {
+        await client.close();
+      }
     }
     console.log('PROBE fetched', JSON.stringify(fetched()));
   });
