@@ -331,10 +331,24 @@ function normalized(text: string): string {
   return text.replaceAll(/\s+/g, ' ').trim().toLowerCase();
 }
 
-/** The body contains the recorded line. A line {@link quote} cut short is matched up to the cut. */
+/** HTML comments (a closed one, or an unclosed one to the end) and unchecked task-list lines: template text, not a statement. */
+const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
+const UNCHECKED_TASK = /^\s*[-*+]\s+\[ \].*$/gm;
+const NOT_WORD_BEFORE = String.raw`(?<![\p{L}\p{N}_])`;
+const NOT_WORD_AFTER = String.raw`(?![\p{L}\p{N}_])`;
+
+/**
+ * The body states the recorded line: outside HTML comments and unchecked
+ * boxes (a PR template keeps both), on word boundaries. A line {@link quote}
+ * cut short is matched up to the cut.
+ */
 function hasDisclosure(body: string, line: string): boolean {
-  const wanted = normalized(line.endsWith('…') ? line.slice(0, -1) : line);
-  return wanted !== '' && normalized(body).includes(wanted);
+  const isCut = line.endsWith('…');
+  const wanted = normalized(isCut ? line.slice(0, -1) : line);
+  if (wanted === '') return false;
+  const stated = normalized(body.replaceAll(HTML_COMMENT, ' ').replaceAll(UNCHECKED_TASK, ' '));
+  const escaped = wanted.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  return new RegExp(NOT_WORD_BEFORE + escaped + (isCut ? '' : NOT_WORD_AFTER), 'u').test(stated);
 }
 
 /**
@@ -367,19 +381,76 @@ function disclosureAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string):
   ];
 }
 
-/** Labels that read as a maintainer's acceptance, and words that say a label is not one yet. */
-const APPROVAL_LABELS: readonly RegExp[] = [
-  /\b(?:accepted|approved|ready|triaged|confirmed)\b/i,
-  /\b(?:help[\s_-]?wanted|good[\s_-]first[\s_-]issue|up[\s_-]for[\s_-]grabs)\b/i,
-  /\b(?:contributions?|prs?)[\s_-]welcome\b/i,
-];
-const NOT_YET = /\b(?:not|needs?|awaiting|pending|waiting|un\w+)\b/i;
-
-function isApprovalLabel(label: string): boolean {
-  return APPROVAL_LABELS.some((re) => re.test(label)) && !NOT_YET.test(label);
+/** Lowercase words only, so `status: accepted`, `status/accepted` and `Status-Accepted` compare equal. */
+function words(text: string): string {
+  return ` ${text.toLowerCase().replaceAll(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 }
 
-/** The `maintainer-label` gate, met when the issue carries a label that reads as acceptance (#2040). */
+/**
+ * Labels that look like acceptance, that say it is not one yet, and that close
+ * the question. Tested against {@link words}: lowercase words between spaces.
+ */
+const LOOKS_ACCEPTED = / (?:accepted|approved|ready|triaged|confirmed|help ?wanted|good first issue) /;
+const NOT_YET = / (?:not|no|needs?|awaiting|pending|waiting|un\w+) /;
+const REJECTED = / (?:wont ?fix|won t fix|invalid|duplicate|not planned|rejected|declined|stale) /;
+
+/** Issue type labels: a rule line mentions "bug" or "feature" without making it the gate label. */
+const TYPE_LABEL = /^\s*(?:bug|enhancement|feature|documentation|docs|question|issue|pr)\s*$/;
+
+/**
+ * The rule names `name` as the label: the label word, then up to two words,
+ * then the name ("labeled as approved"), or the name right before it ("the
+ * accepted label").
+ */
+function namesLabel(rule: string, name: string): boolean {
+  const phrase = name.trim();
+  const after = new RegExp(String.raw` label\w* (?:\S+ ){0,2}?${phrase} `);
+  const before = new RegExp(String.raw` ${phrase} label`);
+  return after.test(rule) || before.test(rule);
+}
+
+/** A quoted span in a rule line: `status: accepted`, "approved". Single quotes are left out: they are also apostrophes. */
+const QUOTED_SPAN = /[`"\u201C\u201D]([^`"\u201C\u201D]{1,60})[`"\u201C\u201D]/g;
+
+/**
+ * The rule line names the label. A line that quotes names is matched against
+ * those exactly, so `accepted` is not `status: accepted`; an unquoted line by
+ * the words next to "label".
+ */
+function ruleNames(quotedLine: string, name: string): boolean {
+  const spans = [...quotedLine.matchAll(QUOTED_SPAN)].map((m) => words(m[1]));
+  if (spans.length > 0) return spans.includes(name);
+  return namesLabel(words(quotedLine), name);
+}
+
+/** Labels the repo's own rule names in a quoted `source` line, not marked "not yet". */
+function gateLabels(labels: readonly string[], policy: RepoPolicy): string[] {
+  return labels.filter((label) => {
+    const name = words(label);
+    if (name.trim() === '' || TYPE_LABEL.test(name) || NOT_YET.test(name)) return false;
+    return policy.source.some((s) => ruleNames(s.quotedLine, name));
+  });
+}
+
+/** Why the label gate is not met, or null when it is. */
+function labelProblem(labels: readonly string[], policy: RepoPolicy): string | null {
+  if (labels.length === 0) return 'the issue has no labels';
+  const closing = labels.find((label) => REJECTED.test(words(label)));
+  if (closing) return `the issue carries ${JSON.stringify(quote(closing))}`;
+  if (gateLabels(labels, policy).length > 0) return null;
+  const lookalike = labels.find((label) => LOOKS_ACCEPTED.test(words(label)) && !NOT_YET.test(words(label)));
+  if (lookalike) {
+    return `label ${JSON.stringify(quote(lookalike))} looks like acceptance but the recorded rule does not name it (confirm it is this repo's gate label)`;
+  }
+  return "none of the issue's labels (details.issueLabels) is the one the recorded rule names";
+}
+
+/**
+ * The `maintainer-label` gate (#2040): met only when an issue label is one the
+ * repo's own rule names in the quoted `source` lines. A label that merely looks
+ * like acceptance still asks: a false pass skips the question and gets the PR
+ * closed, a false warn costs one question.
+ */
 function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string): Array<[boolean, string]> {
   if (policy.prGate !== 'maintainer-label') return [];
   const wants = `${repo} wants a maintainer to accept the issue first`;
@@ -395,10 +466,8 @@ function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: str
       [true, `${wants} and the issue's labels could not be read (${why}): confirm it carries their approval label`],
     ];
   }
-  const found =
-    labels.length === 0 ? 'the issue has no labels' : "none of the issue's labels (details.issueLabels) reads as one";
-  const isAccepted = labels.some((label) => isApprovalLabel(label));
-  return [[!isAccepted, `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`]];
+  const problem = labelProblem(labels, policy);
+  return [[problem !== null, `${wants} and ${problem}: confirm a maintainer accepted it before opening the PR`]];
 }
 
 /** The open AI-PR limit when it cannot fail: the count is unknown, or the limit was read from the docs and not reviewed. */

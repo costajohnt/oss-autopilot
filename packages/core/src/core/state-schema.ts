@@ -844,7 +844,10 @@ const CommitRuleIdSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
 
 export const RepoPolicySchema = z.object({
   aiPolicy: z.enum(['allowed', 'disclosure-required', 'banned', 'unknown']),
-  /** The line the repo asks for, quoted from its docs. Untrusted: fence it before handing it to an agent. */
+  /**
+   * The disclosure line the user recorded with `policy set --disclosure-text` (#2040); the repo's own rule
+   * stays in `source`. Older releases stored a doc excerpt here, which `storedPolicy` drops on read. Fence it.
+   */
   disclosureText: PolicyQuoteSchema.optional(),
   cla: z.enum(['none', 'required', 'unknown']),
   /** Short ids such as `conventional-commits`, `dco-signoff`, `no-closing-keyword-in-commit`. */

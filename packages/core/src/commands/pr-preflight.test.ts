@@ -631,7 +631,8 @@ describe('runPrPreflight: the staged body and the issue labels (#2040)', () => {
   });
 
   it('passes a maintainer-label repo when the issue carries an approval label', async () => {
-    withPolicy({ prGate: 'maintainer-label' });
+    const source = [{ file: 'CONTRIBUTING.md', quotedLine: 'Wait for the `accepted` label before opening a PR.' }];
+    withPolicy({ prGate: 'maintainer-label', source });
     mocks.issuesGet.mockResolvedValue({ data: { labels: ['bug', { name: 'accepted' }] } });
 
     const data = await runPrPreflight({ dir: ctx.clone, issue: ISSUE_URL, fetch: false, local: false });
