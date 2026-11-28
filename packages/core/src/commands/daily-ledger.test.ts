@@ -73,7 +73,7 @@ async function runLedgerStep(
   options: { recent?: MergedPR[]; allTimeCount?: number } = {},
 ): Promise<DailyWarning[]> {
   const warnings: DailyWarning[] = [];
-  const gap = await fetchMergedLedgerGap(octokit, sm, warnings);
+  const gap = await fetchMergedLedgerGap(octokit, sm, warnings, options.allTimeCount);
   storeMergedLedger(sm, {
     gap,
     warnings,
@@ -212,6 +212,92 @@ describe('merged-ledger gap filling (#1924)', () => {
 
       expect(warnings).toEqual([]);
     });
+  });
+});
+
+describe('a merged ledger left short of the all-time count (#1504, #2038)', () => {
+  const BASE = 'is:pr is:merged is:public author:me -user:me';
+  const olderMerges = [searchItem(1, daysAgo(400)), searchItem(2, daysAgo(90))];
+  let sm: StateManager;
+  /** `count` stored merged rows, the newest merged 2 days ago. */
+  const seed = (count: number) =>
+    sm.addMergedPRs(
+      Array.from({ length: count }, (_, i) => ({
+        url: prUrl(100 + i),
+        title: `PR ${100 + i}`,
+        mergedAt: daysAgo(2 + i / 1000),
+      })),
+    );
+
+  beforeEach(() => {
+    sm = new StateManager(true);
+    sm.updateConfig({ githubUsername: 'me' });
+  });
+
+  it.each([
+    ['6 rows of 40', 6, 40],
+    ['299 rows of 400, one under the ceiling', 299, 400],
+  ])('refetches the whole history while under the ceiling: %s', async (_label, stored, allTimeCount) => {
+    seed(stored);
+    const search = makeSearch(olderMerges);
+
+    await runLedgerStep(sm, search.octokit, { allTimeCount });
+
+    expect(queriesOf(search)).toEqual([BASE]);
+    expect(storedUrls(sm)).toEqual(expect.arrayContaining([prUrl(1), prUrl(2)]));
+    expect(storedUrls(sm)).toHaveLength(stored + 2);
+  });
+
+  it('keeps the watermark and warns at the ceiling: 300 rows of 400', async () => {
+    seed(300);
+    const search = makeSearch(olderMerges);
+
+    const warnings = await runLedgerStep(sm, search.octokit, { allTimeCount: 400 });
+
+    expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+    expect(storedUrls(sm)).toHaveLength(300);
+    expect(warnings).toEqual([
+      {
+        phase: 'analytics',
+        operation: 'check merged-PR ledger',
+        message:
+          'The merged-PR ledger holds 300 of the 400 merged PRs GitHub reports (100 missing). ' +
+          'Run `ledger-backfill` to fetch them.',
+      },
+    ]);
+  });
+
+  it.each([
+    ['caught up: 6 of 6', 6],
+    ['with an unknown count', undefined],
+  ])('keeps the watermark %s', async (_label, allTimeCount) => {
+    seed(6);
+    const search = makeSearch(olderMerges);
+
+    await runLedgerStep(sm, search.octokit, { allTimeCount });
+
+    expect(queriesOf(search)).toEqual([`${BASE} updated:>${daysAgo(3)}`]);
+  });
+});
+
+describe('gap fetch failures the caller rethrows (#2038)', () => {
+  it.each([
+    ['merged', fetchMergedLedgerGap],
+    ['closed', fetchClosedLedgerGap],
+  ] as const)('a %s gap fetch rethrows what rethrowIf picks and records the rest', async (_kind, fetchGap) => {
+    const sm = new StateManager(true);
+    sm.updateConfig({ githubUsername: 'me' });
+    const search = makeSearch([]);
+    const rateLimited = new Error('API rate limit exceeded');
+    search.issuesAndPullRequests.mockRejectedValueOnce(rateLimited).mockRejectedValueOnce(new Error('search down'));
+    const warnings: DailyWarning[] = [];
+    const options = { rethrowIf: (error: unknown) => error === rateLimited };
+
+    await expect(fetchGap(search.octokit, sm, warnings, undefined, options)).rejects.toBe(rateLimited);
+    expect(warnings).toEqual([]);
+
+    await expect(fetchGap(search.octokit, sm, warnings, undefined, options)).resolves.toBeUndefined();
+    expect(warnings).toEqual([expect.objectContaining({ phase: 'fetch', message: 'search down' })]);
   });
 });
 

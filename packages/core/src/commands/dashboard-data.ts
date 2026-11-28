@@ -15,18 +15,12 @@ import {
   collectEngagedIssues,
   toShelvedPRRef,
   buildStarFilter,
-  firstMaintainerResponseFromDigest,
-  lastReviewStateFromDigest,
   type FetchCommentedIssuesResult,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import {
   emptyPRCountsResult,
-  fetchMergedPRsSince,
-  fetchClosedPRsSince,
-  gapFetchWatermark,
-  LEDGER_BACKFILL_CEILING,
   type RecentListTruncation,
   CLOSED_LEDGER_TRUNCATED_MESSAGE,
   MERGED_LEDGER_TRUNCATED_MESSAGE,
@@ -47,7 +41,15 @@ import {
   type ShelvedPRRef,
   type RepoMetadataEntry,
 } from '../core/types.js';
-import type { ParseIssueListOutput } from '../formatters/json.js';
+import type { DailyWarning, ParseIssueListOutput } from '../formatters/json.js';
+import {
+  evictNeverTrackedRepos,
+  fetchClosedLedgerGap,
+  fetchMergedLedgerGap,
+  storeClosedLedger,
+  storeMergedLedger,
+  syncLedgersWithGitHub,
+} from './daily-ledger.js';
 
 const MODULE = 'dashboard-data';
 
@@ -332,15 +334,22 @@ function engagedScanLabels(
 }
 
 /**
- * The rows of a ledger gap fetch (#1924). A truncated fetch has none and
- * puts `truncatedMessage` on the partial-data banner.
+ * Name a ledger gap fetch that stored nothing on the partial-data banner
+ * (#1924): `failedLabel` when it failed, `truncatedMessage` when it matched
+ * more than one refresh fetches.
  */
-function gapRows<T>(gap: PRsSinceResult<T>, truncatedMessage: string, partialFailures: string[]): T[] {
-  if (gap.truncated) {
+function reportLedgerGap(
+  gap: PRsSinceResult<unknown> | undefined,
+  failedLabel: string,
+  truncatedMessage: string,
+  partialFailures: string[],
+): void {
+  if (!gap) {
+    partialFailures.push(failedLabel);
+  } else if (gap.truncated) {
     partialFailures.push(truncatedMessage);
     warn(MODULE, truncatedMessage);
   }
-  return gap.prs;
 }
 
 /**
@@ -353,40 +362,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const prMonitor = new PRMonitor(token);
   const issueMonitor = new IssueConversationMonitor(token);
   const octokit = getOctokit(token);
-  const config = stateManager.getState().config;
 
   // Build star filter from cached repoScores (#576)
   const starFilter = buildStarFilter(stateManager.getState());
-
-  // Get watermarks for incremental PR fetch
-  const watermark = stateManager.getMergedPRWatermark();
-  const closedWatermark = stateManager.getClosedPRWatermark();
-
-  // Self-heal a ledger stranded behind a recent watermark (#1504). The
-  // incremental fetch only asks for merges newer than the newest stored one,
-  // so once the recent-merge feed (daily's recentlyMergedPRs) seeds the ledger
-  // before any full historical fetch ran, the older history can never be
-  // recovered. When the stored detail count is materially below the known
-  // all-time merged count, drop the watermark for a one-shot full backfill
-  // (bounded by the existing pagination cap); once the ledger catches up the
-  // watermark resumes incremental fetching. The closed ledger gets the same
-  // guard below (#1925): the daily run no longer seeds it ahead of its gap
-  // fetch, but ledgers an older version seeded that way still need to heal.
-  const storedMergedCount = stateManager.getMergedPRs().length;
-  const knownMergedAllTime = stateManager.getState().lastDigest?.summary?.totalMergedAllTime ?? 0;
-  // Stop forcing one once the ledger has 300 entries, so a contributor whose
-  // star-filtered all-time count legitimately exceeds the ledger doesn't
-  // trigger a full refetch on every poll. Past that, the daily run reports a
-  // short ledger and `ledger-backfill` fills it (#1924).
-  const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < LEDGER_BACKFILL_CEILING;
-  const mergedFetchSince = mergedNeedsBackfill ? undefined : watermark;
-  if (mergedNeedsBackfill) {
-    warn(
-      MODULE,
-      `Merged-PR ledger has ${storedMergedCount} of ~${knownMergedAllTime} known merges; ` +
-        'running a full backfill (watermark dropped) to recover history (#1504).',
-    );
-  }
 
   // Track which non-critical sub-fetches degraded to fallbacks so the SPA
   // can surface a "partial data" banner instead of silently showing zeros.
@@ -402,11 +380,20 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     };
   };
 
+  // The ledger phases daily runs (daily-ledger.ts), so gaps, backfill and
+  // eviction follow one rule (#2038). Their warnings stay out of the banner:
+  // the gaps are reported from their results below, and the "ledger is
+  // short, run ledger-backfill" check is the daily run's to report.
+  const ledgerWarnings: DailyWarning[] = [];
+  const gapOptions = { rethrowIf: isRateLimitOrAuthError };
+
   const recentListTruncations: RecentListTruncation[] = [];
+  const mergedCounts = prMonitor
+    .fetchUserMergedPRCounts(starFilter)
+    .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>()));
   const closedCounts = prMonitor
     .fetchUserClosedPRCounts(starFilter)
     .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>()));
-  const storedClosedCount = stateManager.getClosedPRs().length;
   const [
     { prs, failures, warnings: fetchWarnings },
     recentlyClosedPRs,
@@ -423,26 +410,22 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     prMonitor
       .fetchRecentlyMergedPRs(7, recentListTruncations)
       .catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
-    prMonitor
-      .fetchUserMergedPRCounts(starFilter)
-      .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>())),
+    mergedCounts,
     closedCounts,
-    // The same gap fetches the daily run uses (#1924, #1925). Nothing else here
-    // adds ledger rows, so a failed or truncated fetch leaves the watermark alone.
-    fetchMergedPRsSince(octokit, config, mergedFetchSince).catch(
-      trackingCatch('fetch merged PRs for storage', { prs: [] as StoredMergedPR[], truncated: false }),
+    // The gap fetches wait for the counts: a ledger short of its all-time
+    // count under the ceiling is fetched from the start (gapFetchWatermark,
+    // #1504, #1925). Nothing else adds ledger rows before they are stored, so
+    // a failed or truncated fetch leaves the watermark alone.
+    mergedCounts.then((counts) =>
+      fetchMergedLedgerGap(octokit, stateManager, ledgerWarnings, counts.totalCount, gapOptions),
     ),
-    // Waits for the closed count: a ledger short of it under the ceiling is
-    // fetched from the start (gapFetchWatermark, #1925).
-    closedCounts
-      .then((counts) =>
-        fetchClosedPRsSince(octokit, config, gapFetchWatermark(closedWatermark, storedClosedCount, counts.totalCount)),
-      )
-      .catch(trackingCatch('fetch closed PRs for storage', { prs: [] as StoredClosedPR[], truncated: false })),
+    closedCounts.then((counts) =>
+      fetchClosedLedgerGap(octokit, stateManager, ledgerWarnings, counts.totalCount, gapOptions),
+    ),
   ]);
 
-  const newMergedPRs = gapRows(mergedGap, MERGED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
-  const newClosedPRs = gapRows(closedGap, CLOSED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
+  reportLedgerGap(mergedGap, 'fetch merged PRs for storage', MERGED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
+  reportLedgerGap(closedGap, 'fetch closed PRs for storage', CLOSED_LEDGER_TRUNCATED_MESSAGE, partialFailures);
 
   // Issue conversations run after the PR lists: the engaged set (#1862)
   // needs the open, recently closed and recently merged PRs. The fetch has
@@ -508,23 +491,35 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       // banner flags PRs silently showing their un-overridden status.
       const overriddenPRs = applyStatusOverrides(prs, stateManager.getState(), partialFailures);
 
+      // Re-key transferred repos, drop closed-ledger rows that were reopened
+      // or merged (#1923) and rows in untracked organisations (#1924), as the
+      // daily run does before it stores. Private repositories are evicted by
+      // the daily run only: it is the one that reads repository visibility.
+      try {
+        syncLedgersWithGitHub(stateManager, [...mergedResult.searchedPRs, ...closedResult.searchedPRs], prs);
+        evictNeverTrackedRepos(stateManager, []);
+      } catch (error) {
+        partialFailures.push('clean up PR ledgers');
+        warn(MODULE, `Failed to clean up PR ledgers: ${errorMessage(error)}`);
+      }
+
       // Previous run's digest — read BEFORE setLastDigest below replaces it.
       // Supplies best-effort firstMaintainerResponseAt for PRs that were
       // enriched while open, mirroring daily's Phase 3 (#1461). openedAt is
       // already on the entries (created_at from the search result).
       const previousDigest = stateManager.getState().lastDigest;
 
-      // Store new merged PRs incrementally (dedupes by URL; re-seen entries
-      // upgrade missing ledger fields in place)
+      // Store the gap plus the recent list, only when the gap was fetched
+      // whole, as the daily run does (dedupes by URL; re-seen entries upgrade
+      // missing ledger fields in place).
       try {
-        const { dropped } = stateManager.addMergedPRs(
-          newMergedPRs.map((pr) => ({
-            ...pr,
-            firstMaintainerResponseAt:
-              pr.firstMaintainerResponseAt ?? firstMaintainerResponseFromDigest(previousDigest, pr.url),
-            ...lastReviewStateFromDigest(previousDigest, pr.url),
-          })),
-        );
+        const dropped = storeMergedLedger(stateManager, {
+          gap: mergedGap,
+          allTimeCount: mergedResult.totalCount,
+          recentlyMergedPRs,
+          previousDigest,
+          warnings: ledgerWarnings,
+        });
         if (dropped > 0) {
           partialFailures.push(`Dropped ${dropped} merged PR(s) with invalid URLs before persistence`);
         }
@@ -533,17 +528,14 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
       }
 
-      // Store new closed PRs incrementally (dedupes by URL; re-seen entries
-      // upgrade missing ledger fields in place)
       try {
-        const { dropped } = stateManager.addClosedPRs(
-          newClosedPRs.map((pr) => ({
-            ...pr,
-            firstMaintainerResponseAt:
-              pr.firstMaintainerResponseAt ?? firstMaintainerResponseFromDigest(previousDigest, pr.url),
-            ...lastReviewStateFromDigest(previousDigest, pr.url),
-          })),
-        );
+        const dropped = storeClosedLedger(stateManager, {
+          gap: closedGap,
+          allTimeCount: closedResult.totalCount,
+          recentlyClosedPRs,
+          previousDigest,
+          warnings: ledgerWarnings,
+        });
         if (dropped > 0) {
           partialFailures.push(`Dropped ${dropped} closed PR(s) with invalid URLs before persistence`);
         }
@@ -589,6 +581,10 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   } catch (error) {
     partialFailures.push('persist dashboard state');
     warn(MODULE, `Failed to persist dashboard state: ${errorMessage(error)}`);
+  }
+  // Gap failures were logged where they happened; the short-ledger check was not.
+  for (const warning of ledgerWarnings) {
+    if (warning.phase === 'analytics') warn(MODULE, warning.message);
   }
   warn(MODULE, `Refreshed: ${prs.length} PRs fetched`);
 
