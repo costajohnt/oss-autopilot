@@ -804,7 +804,10 @@ describe('dashboard-server', () => {
       });
       const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
       const state = makeState({
-        config: { shelvedPRUrls: [pr.url], shelvedPRInfo: { 'o/r#14': { at: '2026-01-20T11:00:00.000Z', reasons: [] } } },
+        config: {
+          shelvedPRUrls: [pr.url],
+          shelvedPRInfo: { 'o/r#14': { at: '2026-01-20T11:00:00.000Z', reasons: [] } },
+        },
         lastDigest: digest,
       });
       expect(buildDashboardJson(digest, state, []).shelvedPRUrls).toContain(pr.url);
