@@ -56,6 +56,27 @@ function backdate(dir: string): void {
   fs.utimesSync(dir, then, then);
 }
 
+/** A filter program that leaves `<name>.ran` behind when Git runs it. */
+function filterProgram(name: string): { program: string; marker: string } {
+  const marker = path.join(ctx.tmp, `${name}.ran`);
+  const program = path.join(ctx.tmp, `${name}.sh`);
+  fs.writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\ncat\n`, { mode: 0o755 });
+  return { program, marker };
+}
+
+/** `* filter=<driver>` in the attributes file outside the tree, as a tick could write it. */
+function attributeAll(dir: string, driver: string): void {
+  const commonDir = path.resolve(dir, git(dir, ['rev-parse', '--git-common-dir']).trim());
+  fs.mkdirSync(path.join(commonDir, 'info'), { recursive: true });
+  fs.writeFileSync(path.join(commonDir, 'info', 'attributes'), `* filter=${driver}\n`);
+}
+
+/** Same content, newer stat data than the index: the next status re-hashes it through the filter. */
+function touchTracked(dir: string): void {
+  const later = NOW / 1000 + 60;
+  fs.utimesSync(path.join(dir, 'a.txt'), later, later);
+}
+
 /** Seven rejected copies a month old in the (temp HOME) data dir. */
 function writeOldCopies(): void {
   fs.mkdirSync(resolveDataDir(), { recursive: true });
@@ -297,6 +318,115 @@ describe('cleanWorktrees: commits and operations in progress', () => {
 
     expect(only(dirty, DRY_RUN)).toMatchObject({ action: 'kept', clean: false });
     expect(only(clean, DRY_RUN)).toMatchObject({ action: 'would-remove', clean: true, pushed: true });
+  });
+});
+
+describe('cleanWorktrees: programs the worktree names (#2047)', () => {
+  it.each([
+    ['dry run', DRY_RUN],
+    ['apply', APPLY],
+  ])('refuses a worktree whose local config names a clean filter, without running it (%s)', (_mode, options) => {
+    const dir = addWorktree('octo-repo-40');
+    const { program, marker } = filterProgram('clean');
+    git(dir, ['config', 'filter.x.clean', program]);
+    attributeAll(dir, 'x');
+    touchTracked(dir);
+
+    expect(only(dir, options)).toMatchObject({
+      action: 'kept',
+      clean: null,
+      reason: 'repository config names a filter program git would run: filter.x.clean',
+    });
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.existsSync(dir)).toBe(true);
+    // The trap was armed: a plain status runs the program and still reports clean.
+    expect(git(dir, ['status', '--porcelain'])).toBe('');
+    expect(fs.existsSync(marker)).toBe(true);
+  });
+
+  it('refuses filter programs from include.path, includeIf, worktree config and an lfs extension', () => {
+    const dir = addWorktree('octo-repo-41');
+    const included = path.join(ctx.tmp, 'included.cfg');
+    fs.writeFileSync(included, `[filter "inc"]\n\tprocess = ${filterProgram('process').program}\n`);
+    git(dir, ['config', 'include.path', included]);
+    const conditional = path.join(ctx.tmp, 'conditional.cfg');
+    fs.writeFileSync(conditional, `[lfs "extension.ext"]\n\tclean = ${filterProgram('ext').program}\n`);
+    git(dir, ['config', `includeIf.gitdir:${ctx.clone}/**.path`, conditional]);
+    git(dir, ['config', 'extensions.worktreeConfig', 'true']);
+    git(dir, ['config', '--worktree', 'filter.wt.clean', filterProgram('wt').program]);
+
+    expect(only(dir, APPLY)).toMatchObject({
+      action: 'kept',
+      reason:
+        'repository config names a filter program git would run: filter.inc.process, lfs.extension.ext.clean, filter.wt.clean',
+    });
+    expect(fs.existsSync(dir)).toBe(true);
+  });
+
+  it.each([
+    ['remote.origin.promisor', 'true', 'dry run', DRY_RUN],
+    ['remote.origin.promisor', 'true', 'apply', APPLY],
+    ['extensions.partialClone', 'origin', 'apply', APPLY],
+    ['remote.origin.partialCloneFilter', 'blob:none', 'dry run', DRY_RUN],
+  ])('refuses a worktree whose config sets %s=%s, without fetching (%s)', (key, value, _mode, options) => {
+    const dir = addWorktree('octo-repo-44');
+    const marker = path.join(ctx.tmp, 'uploadpack.ran');
+    const program = path.join(ctx.tmp, 'uploadpack.sh');
+    fs.writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o755 });
+    git(ctx.clone, ['config', key, value]);
+    git(ctx.clone, ['config', 'remote.origin.uploadpack', program]);
+    // A remote-tracking ref to an object the clone lacks, which `--contains` fetches on some Git
+    // versions, and a missing HEAD tree, which `status` fetches on all of them.
+    fs.writeFileSync(path.join(ctx.clone, '.git', 'refs', 'remotes', 'origin', 'zz'), `${'deadbeef'.repeat(5)}\n`);
+    const tree = git(dir, ['rev-parse', 'HEAD^{tree}']).trim();
+    fs.rmSync(path.join(ctx.clone, '.git', 'objects', tree.slice(0, 2), tree.slice(2)));
+
+    expect(only(dir, options)).toMatchObject({
+      action: 'kept',
+      clean: null,
+      reason: `config names a promisor remote git would fetch from: ${key.toLowerCase()}`,
+    });
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.existsSync(dir)).toBe(true);
+    // The trap was armed: a plain status runs the program (which then fails the fetch).
+    expect(() => git(dir, ['status', '--porcelain'])).toThrow();
+    expect(fs.existsSync(marker)).toBe(true);
+  });
+
+  it("still removes a worktree when the filter driver is in the user's own global config", () => {
+    const dir = addWorktree('octo-repo-42');
+    const { program, marker } = filterProgram('global');
+    const globalConfig = path.join(ctx.tmp, 'global.gitconfig');
+    fs.writeFileSync(globalConfig, `[filter "users-own"]\n\tclean = ${program}\n`);
+    vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
+    // Not `lfs`: CI runners define `filter.lfs.process` in system config, which would win.
+    attributeAll(dir, 'users-own');
+    touchTracked(dir);
+
+    expect(only(dir, APPLY)).toMatchObject({ action: 'removed', clean: true, pushed: true });
+    expect(fs.existsSync(marker)).toBe(true);
+  });
+
+  it("refuses a worktree with a submodule, without running the submodule's filter", () => {
+    const inner = path.join(ctx.tmp, 'inner');
+    git(ctx.tmp, ['init', '-q', '-b', 'main', inner]);
+    commitFile(inner, 'a.txt', 'inner\n');
+    const dir = addWorktree('octo-repo-43');
+    git(dir, ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', inner, 'sub']);
+    git(dir, [...IDENTITY, 'commit', '-q', '-m', 'sub']);
+    git(dir, ['push', '-q', 'origin', 'HEAD:refs/heads/prep/sub']);
+    const sub = path.join(dir, 'sub');
+    const { program, marker } = filterProgram('sub');
+    git(sub, ['config', 'filter.x.clean', program]);
+    attributeAll(sub, 'x');
+    touchTracked(sub);
+
+    expect(only(dir, APPLY)).toMatchObject({
+      action: 'kept',
+      reason: 'contains submodules (git would run status under their config)',
+    });
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.existsSync(dir)).toBe(true);
   });
 });
 
