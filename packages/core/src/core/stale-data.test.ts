@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe('countStaleData (#2049)', () => {
-  it('counts every overnight worktree, and separately those idle past cleanup\'s threshold by their own mtime', () => {
+  it("counts every overnight worktree, and separately those idle past cleanup's threshold by their own mtime", () => {
     const root = path.join(ctx.dataDir, 'worktrees');
     const fresh = path.join(root, 'octo-repo-1');
     const old = path.join(root, 'octo-repo-2');
