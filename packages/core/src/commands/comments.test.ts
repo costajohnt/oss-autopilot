@@ -15,7 +15,7 @@ vi.mock('../core/index.js', () => ({
 }));
 
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
-import { runComments, runPost, runClaim } from './comments.js';
+import { runComments, runPost, runClaim, DEFAULT_CLAIM_MESSAGE } from './comments.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 const mockGetOctokit = vi.mocked(getOctokit);
@@ -646,6 +646,23 @@ describe('runClaim', () => {
       commentUrl: 'https://github.com/owner/repo/issues/10#issuecomment-1',
       issueUrl: TEST_ISSUE_URL,
     });
+  });
+
+  it('posts the default text for an empty message, as the MCP approval form shows it (#2054)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+    const mockCreateComment = vi.fn().mockResolvedValue({
+      data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
+    });
+    const mockIssuesGet = vi.fn().mockResolvedValue({ data: { title: 'Fix the thing', labels: [] } });
+    mockGetOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
+    } as any);
+    mockGetStateManager.mockReturnValue({ addIssue: vi.fn() } as any);
+
+    await runClaim({ issueUrl: TEST_ISSUE_URL, message: '' });
+
+    expect(mockCreateComment).toHaveBeenCalledWith(expect.objectContaining({ body: DEFAULT_CLAIM_MESSAGE }));
   });
 
   it('should fall back to (claimed) placeholder if issues.get fails', async () => {

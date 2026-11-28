@@ -264,6 +264,18 @@ describe('runGuidelinesStore review gates (#1929)', () => {
     );
   });
 
+  it('re-applies the text and its review stamp when the checkpoint re-applies after a Gist conflict (#2054)', async () => {
+    await runGuidelinesStore({ repo: 'owner/repo', content: '# rules', reviewed: true });
+    const reapply = mockMaybeCheckpoint.mock.calls[0][2] as () => void;
+    const stampedAt = mocks.markGuidelinesReviewed.mock.calls[0][2];
+    mockSetGuidelines.mockClear();
+    mocks.markGuidelinesReviewed.mockClear();
+    reapply();
+    expect(mockSetGuidelines).toHaveBeenCalledExactlyOnceWith('owner/repo', '# rules');
+    // The same stamp, so approved text does not read back as unreviewed on the state the recovery loaded.
+    expect(mocks.markGuidelinesReviewed).toHaveBeenCalledExactlyOnceWith('owner/repo', SHA_OF_RULES, stampedAt);
+  });
+
   it('view reports reviewedAt and labels the text approved when the stamp matches', async () => {
     mockGetGuidelines.mockReturnValue('# rules');
     mocks.getGuidelinesReview.mockReturnValue({ reviewedAt: '2026-11-19T10:00:00.000Z', sha256: SHA_OF_RULES });

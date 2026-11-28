@@ -13,6 +13,12 @@ export default defineConfig({
         branches: 65,
         functions: 75,
         lines: 75,
+        // Per-file floor for the approval gate and the MCP config refusals
+        // (#2054): the gate above is aggregate, so this file could lose its
+        // tests without tripping it. About 4 points under the value measured
+        // on 2026-11-27 (statements/branches/functions/lines):
+        //   trust-boundary.ts  98.73 / 95.45 / 100 / 100
+        'src/trust-boundary.ts': { statements: 94, branches: 91, functions: 96, lines: 96 },
       },
     },
   },
