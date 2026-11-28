@@ -1,13 +1,15 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeAll } from 'vitest';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { Client } from '@modelcontextprotocol/client';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { request } from 'node:http';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { ALLOW_UNCONFIRMED_ENV } from './trust-boundary.js';
 
 const MCP_SERVER_CWD = new URL('..', import.meta.url).pathname;
+const UNATTENDED_ENV = 'OSS_AUTOPILOT_UNATTENDED';
 
 /**
  * Run the server in-process under tsx's loader instead of via `npx tsx`.
@@ -122,10 +124,15 @@ function spawnHttpServer(args: string[], env: Record<string, string> = {}): Prom
     const tokenPath =
       env.OSS_AUTOPILOT_MCP_TOKEN_PATH ??
       path.join(os.tmpdir(), `oss-autopilot-mcp-test-${Date.now()}-${Math.random().toString(36).slice(2)}.token`);
+    // An attended run with no write opt-in, whatever the runner's own env says;
+    // a test that wants either passes it in `env`.
+    const inherited = { ...process.env };
+    delete inherited[UNATTENDED_ENV];
+    delete inherited[ALLOW_UNCONFIRMED_ENV];
     const proc = spawn(SERVER_COMMAND, [...SERVER_ARGS, ...args], {
       cwd: MCP_SERVER_CWD,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath, ...env },
+      env: { ...inherited, OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath, ...env },
     });
     spawned.add(proc);
 
@@ -413,6 +420,197 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
 
     expect(res.status).toBe(413);
     expect(res.body).toBe('Payload Too Large');
+  });
+});
+
+/** The JSON-RPC messages in a Streamable HTTP response, SSE or plain JSON. */
+function rpcMessages(body: string): Array<{ id?: number; result?: Record<string, unknown>; error?: unknown }> {
+  const dataLines = body
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => line.slice(6));
+  return (dataLines.length > 0 ? dataLines : [body]).map((line) => JSON.parse(line));
+}
+
+/**
+ * The approval gate as the shipped HTTP server runs it (#2054): one
+ * NodeStreamableHTTPServerTransport with no session per POST, so a tools/call
+ * reaches a server that never saw the host's initialize.
+ *
+ * The server runs with a fake token and a preload that replaces fetch (the
+ * transport Octokit uses) with a recorder that answers 401, so nothing here
+ * can reach GitHub, and "nothing was sent" is read from the recorder rather
+ * than inferred from a network failure. HOME is the suite's temp HOME.
+ */
+describe('approval gate over the HTTP transport (#2054)', { timeout: 30_000 }, () => {
+  const ISSUE = 'https://github.com/owner/repo/issues/1';
+  const WRITERS: Array<[name: string, args: Record<string, unknown>, cli: string]> = [
+    ['post', { url: ISSUE, message: 'Thanks, fixed in the last push.' }, 'oss-autopilot post '],
+    ['claim', { issueUrl: ISSUE }, 'oss-autopilot claim '],
+    ['guidelines-store', { repo: 'owner/repo', content: 'be nice', reviewed: true }, 'oss-autopilot guidelines store '],
+    ['guidelines-reset', { repo: 'owner/repo' }, 'oss-autopilot guidelines reset '],
+  ];
+  const NO_FORM = 'cannot show the user an approval form';
+
+  let dir: string;
+  let preload: string;
+  let fetchLog: string;
+  let serverHandle: HttpServerHandle | undefined;
+
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oa-mcp-http-gate-'));
+    preload = path.join(dir, 'record-fetch.mjs');
+    fs.writeFileSync(
+      preload,
+      [
+        "import { appendFileSync } from 'node:fs';",
+        'globalThis.fetch = async (input, init) => {',
+        "  const url = typeof input === 'string' ? input : (input.href ?? input.url);",
+        "  const method = init?.method ?? input.method ?? 'GET';",
+        '  appendFileSync(process.env.OA_TEST_FETCH_LOG, `${method} ${url}\\n`);',
+        "  return new Response('{\"message\":\"Bad credentials\"}', {",
+        '    status: 401,',
+        "    headers: { 'content-type': 'application/json' },",
+        '  });',
+        '};',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  afterEach(async () => {
+    if (serverHandle) {
+      const handle = serverHandle;
+      serverHandle = undefined;
+      await handle.close();
+    }
+  });
+
+  afterAll(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function startServer(env: Record<string, string> = {}): Promise<HttpServerHandle> {
+    fetchLog = path.join(dir, `fetch-${Date.now()}-${Math.random().toString(36).slice(2)}.log`);
+    fs.writeFileSync(fetchLog, '');
+    serverHandle = await spawnHttpServerOnFreePort({
+      GITHUB_TOKEN: 'ghp_fake_token_for_tests_only',
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import "${preload}"`.trim(),
+      OA_TEST_FETCH_LOG: fetchLog,
+      ...env,
+    });
+    return serverHandle;
+  }
+
+  function fetched(): string[] {
+    return fs.readFileSync(fetchLog, 'utf8').split('\n').filter(Boolean);
+  }
+
+  async function post(handle: HttpServerHandle, message: Record<string, unknown>) {
+    const res = await httpRequest(handle.port, 'POST', '/mcp', JSON.stringify({ jsonrpc: '2.0', ...message }), {
+      Authorization: `Bearer ${handle.token}`,
+    });
+    expect(res.status).toBe(200);
+    return rpcMessages(res.body);
+  }
+
+  async function callTool(handle: HttpServerHandle, name: string, args: Record<string, unknown>) {
+    const [reply] = await post(handle, { id: 2, method: 'tools/call', params: { name, arguments: args } });
+    expect(reply.id).toBe(2);
+    return reply.result as { isError?: boolean; content: Array<{ text: string }> };
+  }
+
+  it.each(WRITERS)('%s is refused and sends nothing', async (name, args, cli) => {
+    const handle = await startServer();
+    const result = await callTool(handle, name, args);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(NO_FORM);
+    expect(result.content[0].text).toContain(cli);
+    expect(fetched()).toEqual([]);
+  });
+
+  it('is refused even when the host declared a form in an earlier initialize', async () => {
+    // The initialize and the call are separate POSTs, each served by a fresh server.
+    const handle = await startServer();
+    const [init] = await post(handle, {
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: { elicitation: {} },
+        clientInfo: { name: 'test-client', version: '1.0.0' },
+      },
+    });
+    expect(init.result).toBeDefined();
+    const result = await callTool(handle, 'post', WRITERS[0][1]);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(NO_FORM);
+    expect(fetched()).toEqual([]);
+  });
+
+  it('the recorder sees the write once the user opts in, so an empty record means nothing was sent', async () => {
+    const handle = await startServer({ [ALLOW_UNCONFIRMED_ENV]: '1' });
+    const result = await callTool(handle, 'post', WRITERS[0][1]);
+    // The recorder answers 401, so the write itself fails.
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).not.toContain(NO_FORM);
+    expect(fetched()).toContain('POST https://api.github.com/repos/owner/repo/issues/1/comments');
+  });
+
+  it('PROBE a 2026-era host with a form gets the form and nothing is sent', async () => {
+    const handle = await startServer();
+    const client = new Client(
+      { name: 'test-client', version: '1.0.0' },
+      {
+        capabilities: { elicitation: {} },
+        versionNegotiation: { mode: { pin: '2026-07-28' } },
+        inputRequired: { autoFulfill: false },
+      },
+    );
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
+      }),
+    );
+    try {
+      const first = await client.callTool(
+        { name: 'post', arguments: WRITERS[0][1] },
+        { allowInputRequired: true },
+      );
+      console.log('PROBE2026', JSON.stringify(first));
+      const noForm = new Client(
+        { name: 'test-client', version: '1.0.0' },
+        { versionNegotiation: { mode: { pin: '2026-07-28' } }, inputRequired: { autoFulfill: false } },
+      );
+      await noForm.connect(
+        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
+          requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
+        }),
+      );
+      const second = await noForm.callTool(
+        { name: 'post', arguments: WRITERS[0][1] },
+        { allowInputRequired: true },
+      );
+      console.log('PROBE2026-noform', JSON.stringify(second));
+      await noForm.close();
+      // A legacy SDK client that declares a form
+      const legacy = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: { elicitation: {} } });
+      legacy.setRequestHandler('elicitation/create', async () => {
+        console.log('PROBE-legacy elicitation asked');
+        return { action: 'decline' } as never;
+      });
+      await legacy.connect(
+        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), {
+          requestInit: { headers: { Authorization: `Bearer ${handle.token}` } },
+        }),
+      );
+      const third = await legacy.callTool({ name: 'post', arguments: WRITERS[0][1] });
+      console.log('PROBE-legacy', JSON.stringify(third));
+      await legacy.close();
+    } finally {
+      await client.close();
+    }
+    console.log('PROBE fetched', JSON.stringify(fetched()));
   });
 });
 
