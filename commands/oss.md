@@ -165,13 +165,13 @@ Then run **Auto-extract learnings** (below), check for auto-detected welcome, fi
 
 **If `data.daily.pendingLearnings` is present**, the CLI found recently merged PRs whose review feedback has not been distilled into per-repo guidelines, and `autoExtractLearnings` is on. Start the extraction now, in the background, and keep going; never ask first. The extraction only **proposes**: guidelines are distilled from other people's PR comments and later read back by agents, so nothing is stored until the user has read the exact text and approved it (#1929). `workflows/extract-learnings.md` is the procedure; this section adds only what the background run needs.
 
-**Which repos.** Take `pendingLearnings.repos`, keeping only names that match `^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`. For each, compute the proposal path yourself, `~/.oss-autopilot/tmp/guidelines-<owner>--<repo>.md`, and check that exact path (`find "<path>" -mtime +14` prints it when it is older than 14 days):
+**Which repos.** `pendingLearnings.proposals` has one entry per pending repo (#2041); use only entries whose `repo` matches `^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`, and use each entry's `proposalPath` as that repo's proposal path:
 
-- no file: dispatch this repo;
-- file older than 14 days: delete it (`rm -- "<path>"`) and dispatch this repo;
-- newer file: a proposal is waiting for review. Do not extract again; count it among the proposals below.
+- `proposalAgeDays` is null: dispatch this repo;
+- `proposalOnThisMachine` is true: a proposal is waiting for review at `proposalPath`. Do not extract again; count it among the proposals below;
+- otherwise another machine holds a proposal for these PRs. Do not extract; show `{repo}: guideline proposal waiting for review on another machine ({proposalAgeDays} days old)` once and move on.
 
-Never list the directory to find work, never derive a repo or a path from a file name, and leave every other file there alone. A proposal for a repo that is not pending is never read.
+The CLI expires old proposals; never delete one to get a repo re-extracted. Never compute a path yourself, never list the directory to find work, never derive a repo or a path from a file name, and leave every other file there alone. A proposal for a repo that is not pending is never read.
 
 If any repo is left to dispatch, print one line and dispatch per Steps 2 to 4 of the workflow with `run_in_background: true`:
 
@@ -181,7 +181,7 @@ Drafting guidelines from {prCount} merged PR(s) in {repos.join(", ")} in the bac
 
 One agent, repos sequential: this respects the host's subagent cap and keeps the token cost bounded. Do not dispatch a second extraction agent while one is running.
 
-When the agent's result arrives (it lands as a task notification while you are doing other things), handle the report as the workflow says: write each dispatched repo's proposal to its computed path, and run `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines mark-extracted --repo <repo> --json` for each dispatched repo that reported `no signal`, and for no other repo. Then show a single line and continue whatever you were doing:
+When the agent's result arrives (it lands as a task notification while you are doing other things), handle the report as the workflow says: write each dispatched repo's proposal to its `proposalPath` and then run `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines mark-proposed --repo <repo> --json` for it, so other machines do not extract it again, and run `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines mark-extracted --repo <repo> --json` for each dispatched repo that reported `no signal`, and for no other repo. Then show a single line and continue whatever you were doing:
 
 ```
 Proposed guidelines ready for review: {repos with a proposal} ({total PRs}).
