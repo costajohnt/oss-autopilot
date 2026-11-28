@@ -235,6 +235,8 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 ```bash
 # Serve interactive dashboard SPA
 <prefix> dashboard serve --port 3000 [--no-open]
+# Start it in the background, or reuse the running one (replaces an older-version server)
+<prefix> dashboard launch [--port 3000] --json
 ```
 
 ### Configuration
@@ -296,7 +298,7 @@ rejected with a did-you-mean suggestion.
 |---|---|---|
 | `--json` | all | Emit a structured `{success, data?, error?, timestamp}` envelope. Preferred for agent / programmatic consumption. |
 | `--compact` | `daily`, `startup` | Reduce payload size by omitting `summary`, `repoGroups`, and full `failures` details. Retains `failureCount` + `warnings`. |
-| `--port <n>` | `dashboard serve` | TCP port for the interactive SPA (default 3000). |
+| `--port <n>` | `dashboard serve`, `dashboard launch` | TCP port for the interactive SPA (default 3000). |
 | `--no-open` | `dashboard serve` | Skip auto-opening the dashboard in the default browser (auto-open is the default). |
 | `--bots` | `comments` | Include bot authors in the comment listing (default filters them out). |
 | `--base <branch>` | `pr-preflight` | Branch the PR will target (default: the upstream default branch). |
