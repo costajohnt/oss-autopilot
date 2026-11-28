@@ -226,9 +226,9 @@ function fenceRowLabels(obj: Record<string, unknown>, labels: unknown[], label: 
 
 /**
  * Fence every non-empty PR/issue title and branch-ref string anywhere in an
- * MCP tool result (#1931), and each label of an issue or PR row (#2046). Tool results reach an arbitrary MCP host LLM
- * that never sees the "Prompt Injection Awareness" block, the same reason
- * {@link fenceFetchedPRTitles} exists for resources and prompts, but tool
+ * MCP tool result (#1931), and each label of an issue or PR row (#2046).
+ * Tool results reach an arbitrary MCP host LLM that never sees the "Prompt
+ * Injection Awareness" block, the same reason {@link fenceFetchedPRTitles} exists for resources and prompts, but tool
  * payloads have no single shape, so this walks the whole value and matches
  * by key. Field names and types are unchanged; only the string values gain
  * the fence. Never skips a value that already looks fenced: an attacker can

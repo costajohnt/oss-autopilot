@@ -118,9 +118,9 @@ export type ScoutCandidate = Awaited<ReturnType<Awaited<ReturnType<typeof create
 /**
  * Scout's vetting result as vet and vet-list print it: without
  * `contributionGuidelines.rawContent` (#2046). That field is the target repo's
- * whole CONTRIBUTING file, written by the repo and unfenced; vet only reads it
- * here, through {@link vetPolicy}, and reports the parsed fields and the fenced
- * policy `source` quotes instead. Returns a copy; never mutates.
+ * whole CONTRIBUTING file, written by the repo and unfenced. Vet reads it only
+ * through {@link vetPolicy}; the output keeps scout's parsed fields and the
+ * derived `policy`. Returns a copy; never mutates.
  */
 export function publicVettingResult(result: ScoutCandidate['vettingResult']): ScoutCandidate['vettingResult'] {
   if (result.contributionGuidelines?.rawContent === undefined) return result;
