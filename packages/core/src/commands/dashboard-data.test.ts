@@ -1028,16 +1028,19 @@ describe('fetchDashboardData', () => {
     it.each([
       ['3 of 124, the stranded-history case', 3, 124],
       ['299 of 400, one under the ceiling', 299, 400],
-    ])('drops the watermark for a full backfill when the ledger trails the merged count: %s', async (_l, stored, total) => {
-      mockGetMergedPRs.mockReturnValue(mergedRows(stored));
-      mockFetchUserMergedPRCounts.mockResolvedValue({ ...makePRCountsResult(), totalCount: total });
+    ])(
+      'drops the watermark for a full backfill when the ledger trails the merged count: %s',
+      async (_l, stored, total) => {
+        mockGetMergedPRs.mockReturnValue(mergedRows(stored));
+        mockFetchUserMergedPRCounts.mockResolvedValue({ ...makePRCountsResult(), totalCount: total });
 
-      await fetchDashboardData('test-token');
+        await fetchDashboardData('test-token');
 
-      // since-arg (3rd) must be undefined → full backfill, NOT the recent watermark.
-      expect(mockFetchMergedPRsSince).toHaveBeenCalledTimes(1);
-      expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBeUndefined();
-    });
+        // since-arg (3rd) must be undefined → full backfill, NOT the recent watermark.
+        expect(mockFetchMergedPRsSince).toHaveBeenCalledTimes(1);
+        expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBeUndefined();
+      },
+    );
 
     it.each([
       ['at the ceiling: 300 of 400', 300, 400],
@@ -1085,7 +1088,13 @@ describe('fetchDashboardData', () => {
       mockGetMergedPRWatermark.mockReturnValue('2026-06-15T00:00:00Z');
       mockFetchMergedPRsSince.mockResolvedValue({ prs: [], truncated: true });
       mockFetchRecentlyMergedPRs.mockResolvedValue([
-        { url: 'https://github.com/o/r/pull/9', repo: 'o/r', number: 9, title: 'recent', mergedAt: '2026-06-20T00:00:00Z' },
+        {
+          url: 'https://github.com/o/r/pull/9',
+          repo: 'o/r',
+          number: 9,
+          title: 'recent',
+          mergedAt: '2026-06-20T00:00:00Z',
+        },
       ]);
 
       const result = await fetchDashboardData('test-token');
@@ -1098,7 +1107,13 @@ describe('fetchDashboardData', () => {
       mockGetState.mockReturnValue(makeDefaultState({ lastDigest: null }));
       mockFetchClosedPRsSince.mockResolvedValue({ prs: [], truncated: true });
       mockFetchRecentlyClosedPRs.mockResolvedValue([
-        { url: 'https://github.com/o/r/pull/8', repo: 'o/r', number: 8, title: 'recent', closedAt: '2026-06-20T00:00:00Z' },
+        {
+          url: 'https://github.com/o/r/pull/8',
+          repo: 'o/r',
+          number: 8,
+          title: 'recent',
+          closedAt: '2026-06-20T00:00:00Z',
+        },
       ]);
 
       const result = await fetchDashboardData('test-token');
@@ -1109,10 +1124,22 @@ describe('fetchDashboardData', () => {
 
     it('stores the recent lists with a whole gap, as the daily run does (#2038)', async () => {
       mockFetchRecentlyMergedPRs.mockResolvedValue([
-        { url: 'https://github.com/o/r/pull/9', repo: 'o/r', number: 9, title: 'recent', mergedAt: '2026-06-20T00:00:00Z' },
+        {
+          url: 'https://github.com/o/r/pull/9',
+          repo: 'o/r',
+          number: 9,
+          title: 'recent',
+          mergedAt: '2026-06-20T00:00:00Z',
+        },
       ]);
       mockFetchRecentlyClosedPRs.mockResolvedValue([
-        { url: 'https://github.com/o/r/pull/8', repo: 'o/r', number: 8, title: 'recent', closedAt: '2026-06-20T00:00:00Z' },
+        {
+          url: 'https://github.com/o/r/pull/8',
+          repo: 'o/r',
+          number: 8,
+          title: 'recent',
+          closedAt: '2026-06-20T00:00:00Z',
+        },
       ]);
 
       await fetchDashboardData('test-token');
