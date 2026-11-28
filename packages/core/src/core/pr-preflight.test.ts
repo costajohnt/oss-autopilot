@@ -662,7 +662,12 @@ describe('checkRepoPolicy (#1953)', () => {
       for (const label of ['status: accepted', 'Status/Accepted', 'status-accepted']) {
         expect(statusFor('bug', label), label).toBe('pass');
       }
-      const ready = policy({ prGate: 'maintainer-label', source: [{ file: 'CONTRIBUTING.md', quotedLine: 'Issues labeled as ready can be picked up before opening a PR.' }] });
+      const ready = policy({
+        prGate: 'maintainer-label',
+        source: [
+          { file: 'CONTRIBUTING.md', quotedLine: 'Issues labeled as ready can be picked up before opening a PR.' },
+        ],
+      });
       expect(checkRepoPolicy({ ...gated, policy: ready, issueLabels: ['ready'] }).status).toBe('pass');
     });
 
@@ -698,14 +703,19 @@ describe('checkRepoPolicy (#1953)', () => {
       expect(checkRepoPolicy({ ...gated, issueLabels: ['status: accepted', 'wontfix'] }).summary).toContain(
         'the issue carries "wontfix"',
       );
-      const bugRule = policy({ prGate: 'maintainer-label', source: [{ file: 'CONTRIBUTING.md', quotedLine: 'Label the bug as accepted before opening a PR.' }] });
+      const bugRule = policy({
+        prGate: 'maintainer-label',
+        source: [{ file: 'CONTRIBUTING.md', quotedLine: 'Label the bug as accepted before opening a PR.' }],
+      });
       expect(checkRepoPolicy({ ...gated, policy: bugRule, issueLabels: ['bug'] }).status).toBe('warn');
     });
 
     it('warns when no label is the gate label, with the labels fenced', () => {
       const result = checkRepoPolicy({ ...gated, issueLabels: ['bug', 'needs-triage', 'not approved'] });
       expect(result.status).toBe('warn');
-      expect(result.summary).toContain("none of the issue's labels (details.issueLabels) is the one the recorded rule names");
+      expect(result.summary).toContain(
+        "none of the issue's labels (details.issueLabels) is the one the recorded rule names",
+      );
       const fenced = String(result.details?.issueLabels);
       expect(fenced).toMatch(/^<github-content /);
       expect(extractFromFence(fenced)).toBe('bug\nneeds-triage\nnot approved');

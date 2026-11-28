@@ -383,7 +383,10 @@ function disclosureAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string):
 
 /** Lowercase words only, so `status: accepted`, `status/accepted` and `Status-Accepted` compare equal. */
 function words(text: string): string {
-  return ` ${text.toLowerCase().replaceAll(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+  return ` ${text
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()} `;
 }
 
 /**
