@@ -6,8 +6,9 @@
  * first" is a request, not a control. The two rules here are enforced in the
  * server instead:
  *
- *   1. Settings whose stored value a later workflow runs as a command cannot
- *      be written through MCP. A person types them into the CLI.
+ *   1. Settings above the `preference` trust tier (a command a later workflow
+ *      runs, a path read as the user's own file, the AI-policy ban list)
+ *      cannot be written through MCP. A person types them into the CLI.
  *   2. A tool that writes to GitHub under the user's identity asks the user
  *      through the host (MCP elicitation) before it runs.
  */
@@ -15,38 +16,60 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createRequestStateCodec, inputRequired, inputResponse } from '@modelcontextprotocol/server';
 import type { ClientCapabilities, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
-import { assertAttended, errorMessage } from '@oss-autopilot/core';
+import { CONFIG_KEY_REGISTRY, assertAttended, errorMessage, getKeyTrust } from '@oss-autopilot/core';
+import type { ConfigTrust } from '@oss-autopilot/core';
 
-// ── 1. Settings an agent may not write (#1934) ────────────────────────
+// ── 1. Settings an agent may not write (#1934, #2035, #2036) ──────────
 
-/** Keys refused over MCP whatever the value. */
-const CLI_ONLY_KEYS: ReadonlySet<string> = new Set(['diffToolCustomCommand']);
-/** Values refused over MCP for an otherwise settable key. */
-const CLI_ONLY_VALUES: ReadonlyMap<string, readonly string[]> = new Map([['diffTool', ['custom']]]);
+/**
+ * Why each trust tier above `preference` is refused (see `ConfigTrust` in
+ * core's config-registry, where every key is classified).
+ */
+const REFUSAL_REASON: Readonly<Record<Exclude<ConfigTrust, 'preference'>, string>> = {
+  command: 'its value decides which command a later review runs',
+  path: 'the tool treats the files it names as ones the user chose, without checking whose checkout they are in',
+  safeguard: 'it is the AI-policy ban list, and removing an entry lifts a ban',
+};
 
-/** The config keys the MCP `config` tool accepts: every known key except the CLI-only ones. */
+/** The config keys the MCP `config` tool accepts: every given key whose trust tier is `preference`. */
 export function mcpSettableKeys(keys: readonly string[]): string[] {
-  return keys.filter((key) => !CLI_ONLY_KEYS.has(key));
+  return keys.filter((key) => getKeyTrust(key) === 'preference');
 }
 
 /**
- * Throw when `key=value` is a setting only the CLI may write.
+ * Throw when `key=value` is a setting only the CLI may write: any write whose
+ * trust tier is not `preference`.
  *
- * `diffToolCustomCommand` is a command line the pre-commit review runs, and
- * `diffTool=custom` is the switch that makes it run. Either one written by an
- * injected tool call turns a config write into command execution on every
- * machine that shares the synced state.
+ * A `command` value written by an injected tool call turns a config write into
+ * command execution on every machine that shares the synced state. A `path`
+ * written that way makes a file from a cloned repository the user's own issue
+ * list. A `safeguard` write can empty the AI-policy ban list.
  */
 export function assertMcpSettable(key: string, value: string | undefined): void {
-  const isCliOnlyKey = CLI_ONLY_KEYS.has(key);
-  const isCliOnlyValue = value !== undefined && (CLI_ONLY_VALUES.get(key) ?? []).includes(value);
-  if (!isCliOnlyKey && !isCliOnlyValue) return;
-  const setting = isCliOnlyKey ? key : `${key}=${value}`;
-  const example = isCliOnlyKey ? `${key}="<command>"` : setting;
+  const trust = getKeyTrust(key, value);
+  if (trust === 'preference') return;
+  const isValueOnly = getKeyTrust(key) === 'preference';
+  const setting = isValueOnly ? `${key}=${value}` : key;
+  const placeholder = trust === 'command' ? '"<command>"' : '<value>';
+  const example = isValueOnly ? setting : `${key}=${placeholder}`;
   throw new Error(
-    `${setting} cannot be set through the MCP server: its value decides which command a later review runs. ` +
+    `${setting} cannot be set through the MCP server: ${REFUSAL_REASON[trust]}. ` +
       `The user sets it in a terminal: oss-autopilot setup --set ${example}`,
   );
+}
+
+/** The settings {@link assertMcpSettable} refuses, as `key` or `key=value`, for tool descriptions. */
+export function mcpRefusedSettings(): string[] {
+  const refused: string[] = [];
+  for (const def of CONFIG_KEY_REGISTRY) {
+    if (def.settableVia === 'auto') continue;
+    if (getKeyTrust(def.key) === 'preference') {
+      refused.push(...(def.commandValues ?? []).map((value) => `${def.key}=${value}`));
+    } else {
+      refused.push(def.key);
+    }
+  }
+  return refused;
 }
 
 /** {@link assertMcpSettable} for the `key=value` pairs of the `setup` tool, split the way `runSetup` splits them. */
@@ -62,9 +85,12 @@ export function assertMcpSettablePairs(pairs: readonly string[] = []): void {
 const APPROVAL_KEY = 'approval';
 /** Opt-in for hosts that cannot show a form: their own permission prompt becomes the only approval. */
 export const ALLOW_UNCONFIRMED_ENV = 'OSS_AUTOPILOT_MCP_ALLOW_UNCONFIRMED_WRITES';
-const approvalSchema = z.object({
-  approve: z.boolean().describe('Send this under my GitHub account'),
-});
+/** The checkbox label for a GitHub write; actions that write elsewhere pass their own. */
+export const SEND_LABEL = 'Send this under my GitHub account';
+/** The approval form: one checkbox, labelled with what ticking it allows. */
+function approvalSchema(label: string) {
+  return z.object({ approve: z.boolean().describe(label) });
+}
 
 /**
  * Characters a form cannot show faithfully: every format character (\p{Cf}:
@@ -209,6 +235,7 @@ function canShowForm(capabilities: ClientCapabilities | undefined): boolean {
  * An unattended run is refused before anything is asked.
  *
  * `hostCapabilities` returns what the connected host declared, read per call.
+ * `approveLabel` is the checkbox text: say what ticking it allows.
  */
 export function requireApproval<A, R>(
   hostCapabilities: () => ClientCapabilities | undefined,
@@ -216,6 +243,7 @@ export function requireApproval<A, R>(
   cli: string,
   preview: (args: A) => string,
   handler: (args: A) => Promise<R>,
+  approveLabel = SEND_LABEL,
 ): (args: A, ctx: ServerContext) => Promise<R | InputRequiredResult | ReturnType<typeof refusal>> {
   return async (args, ctx) => {
     try {
@@ -245,7 +273,7 @@ export function requireApproval<A, R>(
     if (answer.kind === 'missing') {
       return inputRequired({
         inputRequests: {
-          [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema }),
+          [APPROVAL_KEY]: inputRequired.elicit({ message: shown, requestedSchema: approvalSchema(approveLabel) }),
         },
         requestState: await approvalState.mint({ args: approvedArgs(action, args), id: randomUUID() }),
       });
