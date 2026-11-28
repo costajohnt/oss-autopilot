@@ -304,8 +304,11 @@ jobs:
 
   # The Claude plugin directory submission tracks the `directory` branch, a
   # plugin-only tree (no pnpm workspace config, which the directory's
-  # validator blocks). Append one commit per core or MCP release (an MCP-only
-  # release still re-pins .mcp.json); never force-push.
+  # validator blocks). Append one commit per core or MCP release; never
+  # force-push. The tree ships an MCP server bundle built here from the
+  # release commit, so it inlines the same core as the CLI from npm. It used
+  # to launch the npm package at the .mcp.json pin, which on a core-only
+  # release was the previous MCP release on the previous core (#2037).
   publish-directory-branch:
     name: Update the plugin directory branch
     needs: [release-please, publish-npm, publish-mcp-npm]
@@ -322,19 +325,39 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Read the released core version
         id: core
         run: echo "version=$(node -p "require('./.release-please-manifest.json')['.']")" >> "$GITHUB_OUTPUT"
 
+      # Same build as publish-mcp-npm, from this commit, whose core is the
+      # released one. Packed only; nothing here publishes it.
+      - name: Build and pack the MCP server for the tree
+        run: |
+          pnpm --filter @oss-autopilot/core run build
+          pnpm --filter @oss-autopilot/mcp run prepublishOnly
+          pnpm --filter @oss-autopilot/mcp pack --pack-destination "$RUNNER_TEMP/pkg-mcp"
+
       - name: Assemble the plugin tree
         env:
           VERSION: ${{ steps.core.outputs.version }}
-        run: scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/directory"
+        run: scripts/build-directory-branch.sh "$VERSION" "$RUNNER_TEMP/directory" "$RUNNER_TEMP"/pkg-mcp/*.tgz
+
+      # The checks PR CI runs on its tree: every prompt path exists, the CLI
+      # answers each command, and the MCP server runs from the tree on the
+      # CLI's core and completes initialize.
+      - name: Check the plugin tree
+        run: node scripts/check-plugin-tree.mjs "$RUNNER_TEMP/directory"
 
       - name: Commit and push to the directory branch
         env:

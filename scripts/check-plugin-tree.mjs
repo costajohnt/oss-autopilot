@@ -12,13 +12,18 @@
  *    invoke (after `cli.bundle.cjs` or the `<prefix>` shorthand). Commander
  *    prints the program help for an unknown command, so the usage line must
  *    name the command itself.
+ * 3. The tree's .mcp.json launches its MCP server from a file inside the
+ *    tree (not `npx <package>@<pin>`), that bundle was built against the
+ *    same core version as the CLI bundle, and it answers an MCP
+ *    `initialize` over stdio (#2037). A CLI and an MCP server on different
+ *    cores share one state file.
  *
  * packages/core/src/agents-contract.test.ts validates full command paths and
  * flags against the source registry; this checks the shipped bundle.
  * Reads only the tree. The CLI runs with an empty HOME and no GitHub token.
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -32,6 +37,13 @@ const PLUGIN_PATH = /\$\{?CLAUDE_PLUGIN_ROOT\}?\/([^\s"'`)\]<>\\]+)/g;
 // `[a-z]`; some names are camelCase (`checkSetup`).
 const INVOCATION = /(?:cli\.bundle\.cjs["']?|<prefix>)[\t ]+([a-z][\dA-Za-z-]*)/g;
 const TRAILING_PUNCTUATION = new Set(['.', ',', ':', ';']);
+const ROOT_VAR = '${CLAUDE_PLUGIN_ROOT}';
+const MCP_INIT = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'check-plugin-tree', version: '0' } },
+});
 
 function markdownFiles(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -65,10 +77,15 @@ function collectReferences(root, files) {
   return { paths, commands };
 }
 
-function makeRunner(bundle, home) {
+function cleanEnv(home) {
   const env = { ...process.env, HOME: home };
   delete env.GITHUB_TOKEN;
   delete env.GH_TOKEN;
+  return env;
+}
+
+function makeRunner(bundle, home) {
+  const env = cleanEnv(home);
   return (args) => {
     try {
       return { ok: true, out: execFileSync(process.execPath, [bundle, ...args], { env, encoding: 'utf8', timeout: 30_000 }) };
@@ -100,6 +117,55 @@ function checkBundle(runCli, commands) {
   return problems;
 }
 
+/**
+ * Each server in the tree's .mcp.json must run a file shipped in the tree:
+ * `node ${CLAUDE_PLUGIN_ROOT}/<bundle>`. Claude Code expands the variable in
+ * a stdio server's command and args. The bundle must carry the CLI's core
+ * version, which scripts/bundle.mjs inlines as a string literal.
+ */
+function checkMcpServers(root, home, coreVersion) {
+  const configPath = path.join(root, '.mcp.json');
+  let servers;
+  try {
+    servers = JSON.parse(fs.readFileSync(configPath, 'utf8')).mcpServers;
+  } catch (error) {
+    return [`.mcp.json is missing or unreadable: ${error.message}`];
+  }
+  if (!servers || Object.keys(servers).length === 0) return ['.mcp.json declares no MCP servers'];
+  const problems = [];
+  for (const [name, server] of Object.entries(servers)) {
+    const [entry, ...rest] = Array.isArray(server.args) ? server.args : [];
+    if (server.command !== 'node' || typeof entry !== 'string' || !entry.startsWith(`${ROOT_VAR}/`)) {
+      problems.push(
+        `.mcp.json server "${name}" runs ${JSON.stringify([server.command, ...(server.args ?? [])].join(' '))}, ` +
+          `not node ${ROOT_VAR}/<bundle>: the tree must ship the MCP server built with its CLI`,
+      );
+      continue;
+    }
+    const rel = entry.slice(ROOT_VAR.length + 1);
+    const bundle = path.join(root, rel);
+    if (!fs.existsSync(bundle)) {
+      problems.push(`.mcp.json server "${name}": ${rel} is not in the tree`);
+      continue;
+    }
+    if (coreVersion && !fs.readFileSync(bundle, 'utf8').includes(JSON.stringify(coreVersion))) {
+      problems.push(`.mcp.json server "${name}": ${rel} was not built against core ${coreVersion}, the CLI's version`);
+    }
+    const run = spawnSync(process.execPath, [bundle, ...rest.map((arg) => arg.replaceAll(ROOT_VAR, root))], {
+      env: { ...cleanEnv(home), CLAUDE_PLUGIN_ROOT: root },
+      input: `${MCP_INIT}\n`,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    if (!String(run.stdout).includes('"serverInfo"')) {
+      problems.push(
+        `.mcp.json server "${name}" did not answer initialize: ${`${run.stderr ?? ''}`.trim() || run.error || `exit ${run.status}`}`,
+      );
+    }
+  }
+  return problems;
+}
+
 function checkTree(root) {
   const files = PROMPT_DIRS.flatMap((dir) => markdownFiles(path.join(root, dir)));
   if (files.length === 0) return { problems: [`No prompt markdown under ${root}`] };
@@ -112,7 +178,10 @@ function checkTree(root) {
   if (fs.existsSync(bundle)) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'check-plugin-tree-home-'));
     try {
-      problems.push(...checkBundle(makeRunner(bundle, home), commands));
+      const runCli = makeRunner(bundle, home);
+      problems.push(...checkBundle(runCli, commands));
+      const version = runCli(['--version']);
+      problems.push(...checkMcpServers(root, home, version.ok ? version.out.trim() : ''));
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }
@@ -134,7 +203,8 @@ function main(tree) {
     return 1;
   }
   console.log(
-    `Plugin tree ${root}: ${paths.size} \${CLAUDE_PLUGIN_ROOT} paths present, ${commands.size} CLI commands answer --help`,
+    `Plugin tree ${root}: ${paths.size} \${CLAUDE_PLUGIN_ROOT} paths present, ${commands.size} CLI commands answer --help, ` +
+      'MCP server runs from the tree on the same core',
   );
   return 0;
 }
