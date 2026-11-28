@@ -722,6 +722,19 @@ describe('fetchUserOpenPRs with unknown mergeability', () => {
     expect(failures).toEqual([{ prUrl, error: 'rate limited' }]);
   });
 
+  it("REST: any other re-query failure keeps the PR and reuses the previous run's conflict", async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(restPullResponse(null, 'unknown'))
+      .mockRejectedValueOnce(Object.assign(new Error('Bad Gateway'), { status: 502 }));
+
+    const { prs, failures } = await fetchWith(restMocks(get), conflictedLastRun);
+
+    expect(failures).toEqual([]);
+    expect(prs).toHaveLength(1);
+    expect(prs[0].hasMergeConflict).toBe(true);
+  });
+
   it("GraphQL: still UNKNOWN after the re-query reuses the previous run's conflict", async () => {
     const graphql = vi.fn().mockResolvedValue(graphqlNode('UNKNOWN'));
 
