@@ -297,7 +297,8 @@ describe('unattended write guard (#1945)', () => {
   it('fails an allowlisted call that appears more or fewer times than allowed', () => {
     const write = 'await client.gists.update({});';
     const allowed = { 'x.ts gists.update': { count: 1 } };
-    const findings = (calls: number) => scanSource('x.ts', inFunction(Array.from({ length: calls }, () => write).join('\n')));
+    const findings = (calls: number) =>
+      scanSource('x.ts', inFunction(Array.from({ length: calls }, () => write).join('\n')));
     expect(allowlistViolations(findings(1), allowed)).toEqual([]);
     expect(allowlistViolations(findings(2), allowed)).toEqual([
       'x.ts gists.update: 2 unguarded, 1 allowed (lines 2, 3)',
