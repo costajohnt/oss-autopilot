@@ -149,6 +149,20 @@ describe('runDismiss', () => {
       expect(result.warning).not.toContain(typedUrl);
     });
 
+    it('warns for the /issues/N form of an open PR already dismissed as /pull/N (#2048)', async () => {
+      mockDismissIssue.mockReturnValue(true);
+      mockGetState.mockReturnValue({
+        ...digestWithOpenPRs(TEST_PR_URL),
+        config: { dismissedIssues: { [TEST_PR_URL]: '2026-11-01T00:00:00.000Z' } },
+      });
+      const issueForm = 'https://github.com/owner/repo/issues/42';
+
+      const result = await runDismiss({ url: issueForm });
+
+      expect(mockDismissIssue).toHaveBeenCalledWith(issueForm, expect.any(String), { refresh: true });
+      expect(result.warning).toContain(`move ${TEST_PR_URL} waiting`);
+    });
+
     it('gives no warning for a PR URL that is not an open PR in the last digest (merged or unknown)', async () => {
       mockDismissIssue.mockReturnValue(true);
       mockGetState.mockReturnValue(digestWithOpenPRs('https://github.com/owner/repo/pull/7'));

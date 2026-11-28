@@ -133,6 +133,7 @@ const STATUS_TO_FRACTION: Record<ComplianceCheckStatus, number> = {
 // (#1252). Re-exported so existing consumers of compliance-score
 // (tests, agent prompts) keep working without touching their imports.
 import { TITLE_LENGTH_BUDGET, FOCUSED_CHANGES_THRESHOLDS } from './pr-quality-rubric.js';
+import { findClosingRefs } from './urls.js';
 
 /** Title byte budget — Conventional Commits style fits comfortably under 72. */
 export { TITLE_LENGTH_BUDGET } from './pr-quality-rubric.js';
@@ -148,11 +149,10 @@ export const RATING_CUTOFFS = {
 } as const;
 
 /**
- * Detect a closing or referencing keyword in the PR body. GitHub's own
- * auto-close keyword set: close, closes, closed, fix, fixes, fixed,
- * resolve, resolves, resolved.
+ * Detect a referencing keyword in the PR body. Closing keywords (GitHub's
+ * close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved) are
+ * {@link findClosingRefs}.
  */
-const CLOSING_KEYWORDS = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+/i;
 const REFERENCE_KEYWORDS = /\b(?:relates?\s+to|see|refs?|references?)\s+#\d+/i;
 const ISSUE_URL = /https?:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/i;
 
@@ -235,7 +235,8 @@ function evaluateLinkedIssues(weight: number, linkedIssues: LinkedIssueInfo[]): 
 
 function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): ComplianceCheckResult {
   const weight = WEIGHTS.issueReference;
-  const hasClosing = CLOSING_KEYWORDS.test(meta.body);
+  // A closing keyword in a code span or HTML comment (a template example) links nothing on GitHub.
+  const hasClosing = findClosingRefs(meta.body, { markdown: true }).length > 0;
   // The parser's `linkedIssues` already captures cross-repo (`owner/repo#N`)
   // and direct-URL references that the same-repo regex misses. Treat any
   // parsed reference as "a reference exists" so cross-repo links don't

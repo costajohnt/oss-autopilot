@@ -21,7 +21,7 @@
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
-import { findRefKey } from '../core/urls.js';
+import { findRefKey, issueRefKey } from '../core/urls.js';
 import {
   ISSUE_OR_PR_URL_PATTERN,
   PR_URL_PATTERN,
@@ -52,14 +52,15 @@ export interface DismissOutput {
  * when the PR is shelved: `daily` keeps shelved PRs in `openPRs` but out of
  * Needs Attention, and `move <pr-url> waiting` would unshelve one.
  *
- * URL validation accepts any owner/repo casing while `openPRs` holds GitHub's,
- * so the match is case-insensitive and the suggested `move` command uses the
- * stored URL, which is the one `daily` checks against the shelf.
+ * URL validation accepts any owner/repo casing, and the `/issues/N` form of a
+ * PR already dismissed as `/pull/N`, while `openPRs` holds GitHub's URL, so
+ * the match is by {@link issueRefKey} and the suggested `move` command uses
+ * the stored URL, which is the one `daily` checks against the shelf.
  */
 function openPRDismissWarning(stateManager: ReturnType<typeof getStateManager>, url: string): string | undefined {
   const openPRs = stateManager.getState().lastDigest?.openPRs ?? [];
-  const wanted = url.toLowerCase();
-  const openPR = openPRs.find((pr) => pr.url.toLowerCase() === wanted);
+  const wanted = issueRefKey(url);
+  const openPR = wanted === null ? undefined : openPRs.find((pr) => issueRefKey(pr.url) === wanted);
   if (!openPR || stateManager.isPRShelved(openPR.url)) return undefined;
   return (
     `${openPR.url} is one of your open PRs. dismiss records it but does not clear the PR from Needs Attention; ` +

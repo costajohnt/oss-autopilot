@@ -12,7 +12,7 @@ import type { IssueAvailabilityVerdict, IssueVerification } from './issue-verifi
 import type { RepoCapStatus } from './repo-cap.js';
 import { banNote, fencePolicyText, quote, summarizePolicy, type RepoPolicy } from './repo-policy.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
-import { isOwnRepo, splitRepo } from './urls.js';
+import { findClosingRefs, isOwnRepo, splitRepo } from './urls.js';
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 export type PreflightVerdict = 'pass' | 'warn' | 'fail';
@@ -533,19 +533,14 @@ export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
 }
 
 const AUTO_SUBJECT = /^(?:Revert "|Reapply "|(?:fixup|squash|amend)! )/;
-/** A GitHub closing keyword, on the same line as `#12`, `owner/repo#12` or an issue URL. */
-const CLOSING_KEYWORD = String.raw`\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?[ \t]+`;
-const CLOSING_REFS: readonly RegExp[] = [
-  new RegExp(String.raw`${CLOSING_KEYWORD}\S*#\d+`, 'i'),
-  new RegExp(String.raw`${CLOSING_KEYWORD}https?://github\.com/[^/\s]+/[^/\s]+/issues/\d+`, 'i'),
-];
 
 /** Per commit rule id: true when a commit message breaks it. An id this release does not know is not checked. */
 const COMMIT_RULE_BROKEN: Record<string, (message: string) => boolean> = {
   // Reverts and autosquash commits keep the subject Git wrote.
   'conventional-commits': (m) => !AUTO_SUBJECT.test(m) && !/^\w+(?:\([^)\n]*\))?!?: \S/.test(m),
   'dco-signoff': (m) => !/^Signed-off-by: .+ <[^>\n]+>\s*$/im.test(m),
-  'no-closing-keyword-in-commit': (m) => CLOSING_REFS.some((re) => re.test(m)),
+  // Plain text, the way a CI bot reads a commit message: backticks do not hide a keyword.
+  'no-closing-keyword-in-commit': (m) => findClosingRefs(m).length > 0,
 };
 
 const MAX_LISTED_VIOLATIONS = 10;
