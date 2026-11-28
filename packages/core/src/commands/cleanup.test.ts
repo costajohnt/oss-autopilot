@@ -363,9 +363,10 @@ describe('cleanWorktrees: programs the worktree names (#2047)', () => {
     const dir = addWorktree('octo-repo-42');
     const { program, marker } = filterProgram('global');
     const globalConfig = path.join(ctx.tmp, 'global.gitconfig');
-    fs.writeFileSync(globalConfig, `[filter "lfs"]\n\tclean = ${program}\n`);
+    fs.writeFileSync(globalConfig, `[filter "users-own"]\n\tclean = ${program}\n`);
     vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
-    attributeAll(dir, 'lfs');
+    // Not `lfs`: CI runners define `filter.lfs.process` in system config, which would win.
+    attributeAll(dir, 'users-own');
     touchTracked(dir);
 
     expect(only(dir, APPLY)).toMatchObject({ action: 'removed', clean: true, pushed: true });
