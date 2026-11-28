@@ -171,7 +171,7 @@ Post only when the answer contains one of "Post this comment", "post it", "optio
 <prefix> compliance-score <pr-url> --json
 
 # View comments on a PR
-<prefix> comments <pr-url> --json [--bots] [--include-own]
+<prefix> comments <pr-url> --json [--bots] [--include-own]   # --include-own also keeps reviews with no body (verdict only)
 
 # Post a comment to an issue or PR, from an approved draft file (see "Draft Files" above).
 # Never pass the message as a shell argument: backticks and $(...) in it would run as commands (#1930).

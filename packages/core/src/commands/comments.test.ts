@@ -190,7 +190,11 @@ describe('runComments', () => {
       ],
     });
     const mockListReviews = vi.fn().mockResolvedValue({
-      data: [{ user: own, state: 'COMMENTED', body: 'My review', submitted_at: '2026-01-14T10:00:00Z' }],
+      data: [
+        { user: own, state: 'COMMENTED', body: 'My review', submitted_at: '2026-01-14T10:00:00Z' },
+        // A verdict-only review: no body, still the user's earlier word on the PR.
+        { user: own, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' },
+      ],
     });
 
     mockGetOctokit.mockReturnValue({
@@ -205,8 +209,20 @@ describe('runComments', () => {
       '<github-content label="owner/repo#42" author="testuser" source="pr-issue-comment">Closing: no longer reproduces</github-content>',
     );
     expect(result.reviewComments.map((c) => c.user)).toEqual(['testuser']);
-    expect(result.reviews.map((r) => r.user)).toEqual(['testuser']);
-    expect(result.summary).toEqual({ reviewCount: 1, inlineCommentCount: 1, discussionCommentCount: 2 });
+    expect(result.reviews.map((r) => [r.state, r.submittedAt])).toEqual([
+      ['APPROVED', '2026-01-14T12:00:00Z'],
+      ['COMMENTED', '2026-01-14T10:00:00Z'],
+    ]);
+    expect(result.reviews[0].body).toBe(
+      '<github-content label="owner/repo#42" author="testuser" source="pr-review"></github-content>',
+    );
+    expect(result.summary).toEqual({ reviewCount: 2, inlineCommentCount: 1, discussionCommentCount: 2 });
+
+    // Without includeOwn, a bodiless review from someone else is still left out.
+    mockListReviews.mockResolvedValueOnce({
+      data: [{ user: { login: 'other', type: 'User' }, state: 'APPROVED', body: '', submitted_at: '2026-01-14T12:00:00Z' }],
+    });
+    expect((await runComments({ prUrl: TEST_PR_URL })).reviews).toEqual([]);
   });
 
   it('should surface a warning when comment pagination truncates (#1456)', async () => {

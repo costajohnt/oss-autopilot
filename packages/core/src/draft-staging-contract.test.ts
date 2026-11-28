@@ -172,17 +172,29 @@ describe('prompt files do not put text to post or store on a command line (#1930
 });
 
 describe('prompt files read GitHub threads through the fenced commands (#2046)', () => {
-  /** `gh issue view` / `gh pr view` with `--comments` in the same code span or line: its output is not fenced. */
-  const RAW_THREAD = /\bgh\s+(?:issue|pr)\s+view\b[^\n`]*?\s--comments\b/g;
+  /**
+   * `gh issue view` / `gh pr view` (also `gh issue -R o/r view`) asking for the
+   * comments with `--comments`, `-c` or a `--json` list naming `comments`, in
+   * the same code span or line (a backslash continues the line): its output
+   * is not fenced.
+   */
+  const RAW_THREAD =
+    /\bgh\s+(?:issue|pr)\s+(?:(?:-R|--repo)[\s=]+\S+\s+)?view\b(?:[^\n`]|\\\n)*?\s(?:--comments\b|-c(?![\w-])|--json[\s=]+["']?[\w,]*\bcomments\b)/g;
 
   it('the pattern matches a raw thread read and skips the fenced commands', () => {
     const sample = [
       '`gh pr view {prUrl} --comments`',
       '`gh issue view {issueUrl} --repo o/r --comments`',
+      '`gh pr view 7 -c`',
+      '`gh issue view 7 -R o/r --json state,comments,body`',
+      '`gh pr view 7 --json=comments`',
+      '`gh issue -R o/r view 7 --comments`',
+      'gh pr view 7 \\\n  --repo o/r --comments',
       '`gh pr view {prUrl} --json commits` and `comments {prUrl} --comments`',
+      '`gh issue view 7 -R o/r --json state,assignees`, `gh pr view 7 --json commits,-c-x`',
       '`issue-thread {issueUrl} --json`, raw `gh issue view` output is not fenced',
     ].join('\n');
-    expect(sample.match(RAW_THREAD)).toHaveLength(2);
+    expect(sample.match(RAW_THREAD)).toHaveLength(7);
   });
 
   it('no prompt file reads a thread with raw `gh issue view --comments` or `gh pr view --comments`', () => {
