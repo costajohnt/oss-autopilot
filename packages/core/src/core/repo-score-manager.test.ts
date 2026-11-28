@@ -14,6 +14,8 @@ import {
   renameRepo,
   evictClosedPRs,
   evictExcludedRepos,
+  snapshotOutcomes,
+  restoreUnchangedEvaluations,
 } from './repo-score-manager.js';
 import { makeAgentState, makeRepoScore } from './test-utils.js';
 
@@ -436,6 +438,66 @@ describe('getLowScoringRepos', () => {
     expect(getLowScoringRepos(state)).toEqual(['b/good']);
     expect(warnSpy).toHaveBeenCalledWith('scoring', expect.stringContaining('invalid-date'));
     warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapshotOutcomes / restoreUnchangedEvaluations (#2045)
+// ---------------------------------------------------------------------------
+
+describe('restoreUnchangedEvaluations (#2045)', () => {
+  const EVALUATED = daysAgo(40);
+
+  /** One repo with 5 merged and 2 closed PRs, last evaluated 40 days ago. */
+  function makeState() {
+    return makeAgentState({
+      config: { minRepoScoreThreshold: 10 },
+      repoScores: {
+        'a/repo': makeRepoScore({
+          repo: 'a/repo',
+          mergedPRCount: 5,
+          closedWithoutMergeCount: 2,
+          lastEvaluatedAt: EVALUATED,
+        }),
+      },
+    });
+  }
+
+  it('keeps the old time when a count is lowered and raised back to where it was', () => {
+    const state = makeState();
+    const snapshot = snapshotOutcomes(state);
+
+    // The stale reset (or a capped search count), then the ledger raise.
+    updateRepoScore(state, 'a/repo', { mergedPRCount: 0, closedWithoutMergeCount: 0 });
+    updateRepoScore(state, 'a/repo', { mergedPRCount: 5, closedWithoutMergeCount: 2 });
+    expect(state.repoScores['a/repo'].lastEvaluatedAt).not.toBe(EVALUATED);
+
+    expect(restoreUnchangedEvaluations(state, snapshot)).toBe(1);
+    expect(state.repoScores['a/repo'].lastEvaluatedAt).toBe(EVALUATED);
+    // So a low score evaluated 40 days ago still expires.
+    expect(getLowScoringRepos(state)).toEqual([]);
+  });
+
+  it('keeps the new time when the outcome evidence did change', () => {
+    const state = makeState();
+    const snapshot = snapshotOutcomes(state);
+
+    updateRepoScore(state, 'a/repo', { mergedPRCount: 0 });
+    updateRepoScore(state, 'a/repo', { mergedPRCount: 6 });
+
+    expect(restoreUnchangedEvaluations(state, snapshot)).toBe(0);
+    expect(state.repoScores['a/repo'].lastEvaluatedAt).not.toBe(EVALUATED);
+  });
+
+  it('leaves repos created after the snapshot, and removed ones, alone', () => {
+    const state = makeState();
+    const snapshot = snapshotOutcomes(state);
+    delete state.repoScores['a/repo'];
+    updateRepoScore(state, 'b/new', { mergedPRCount: 1 });
+    const created = state.repoScores['b/new'].lastEvaluatedAt;
+
+    expect(restoreUnchangedEvaluations(state, snapshot)).toBe(0);
+    expect(state.repoScores['b/new'].lastEvaluatedAt).toBe(created);
   });
 });
 

@@ -132,6 +132,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `list-move-tier` | `list-move-tier.ts` | Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107) |
 | `list-mark-done` | `list-mark-done.ts` | Mark a curated-list issue line done with strikethrough + Done sub-bullet (#1299) |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
+| `dashboard launch` | `dashboard-lifecycle.ts` | Start the dashboard server in the background or reuse the running one, stopping an older-version server first (`/oss-dashboard` calls it) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto (the `shelve`/`unshelve` and `override`/`clear-override` aliases were retired in #1466) |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications, or a PR's merged-notes / review follow-up nudge (auto-resurfaces on new activity) |
 | `work claim` / `finish` / `release` / `list` | `work.ts` | Record which items are being worked on across sessions and machines: background implementations (cap `maxConcurrentImplementations`, one per worktree) and PRs under Tier 2 work; rules in `core/work-claims.ts` (#1856, #1852) |

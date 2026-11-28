@@ -45,6 +45,8 @@ export interface AssemblyReview {
   submitted_at?: string | null;
   state?: string | null;
   id?: number;
+  /** The head commit the review was submitted against. */
+  commit_id?: string | null;
 }
 
 /**

@@ -690,15 +690,22 @@ export const LEDGER_BACKFILL_CEILING = 300;
 /**
  * The watermark a ledger gap fetch starts from: undefined (all time) when the
  * ledger holds `stored` rows, fewer than `allTimeCount` and under
- * {@link LEDGER_BACKFILL_CEILING}; otherwise `watermark`. An unknown count
+ * {@link LEDGER_BACKFILL_CEILING}, and the whole history fits in one gap fetch
+ * ({@link LEDGER_GAP_MAX_RESULTS}); otherwise `watermark`. An unknown count
  * keeps the watermark.
+ *
+ * A history larger than one fetch would come back truncated with no rows, and
+ * the caller then stores nothing, the recent list included, on every run. So
+ * that ledger keeps growing from its watermark and the count warning points
+ * at `ledger-backfill`, which fetches without a limit.
  */
 export function gapFetchWatermark(
   watermark: string | undefined,
   stored: number,
   allTimeCount: number | undefined,
 ): string | undefined {
-  return stored < (allTimeCount ?? 0) && stored < LEDGER_BACKFILL_CEILING ? undefined : watermark;
+  const total = allTimeCount ?? 0;
+  return stored < total && stored < LEDGER_BACKFILL_CEILING && total <= LEDGER_GAP_MAX_RESULTS ? undefined : watermark;
 }
 
 /** How far before the watermark a gap fetch starts: covers clock skew and search indexing lag. */

@@ -96,6 +96,8 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => {
     // Return a small known-set so the MCP schema validates against real keys.
     getSetupKeys: () => ['username', 'languages', 'minStars'],
     getConfigKeys: () => ['username', 'add-label', 'remove-label'],
+    getKeyTrust: actual.getKeyTrust,
+    CONFIG_KEY_REGISTRY: actual.CONFIG_KEY_REGISTRY,
     // Error classes referenced by wrapTool's concurrency/config carve-outs
     // (#1439/#1441) — the whole module is mocked, so instanceof checks in
     // tools.ts run against these.
