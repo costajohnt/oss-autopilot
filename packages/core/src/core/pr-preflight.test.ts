@@ -813,7 +813,8 @@ describe('checkCommitRules (#2013)', () => {
     ['fix: the #1 crash', false],
     ['fix: prefixes #4 handling', false],
     ['fix: x\n\nCloses https://github.com/up/proj/issues/9', true],
-    ['fix: handle the fixes\n#4 is the issue', false],
+    // One grammar with the ledger (#2048): a line break between keyword and ref still closes.
+    ['fix: handle the fixes\n#4 is the issue', true],
   ])('no-closing-keyword-in-commit on %j: broken=%s', (message, broken) => {
     const result = checkCommitRules({
       ...READY,

@@ -11,7 +11,7 @@ import { AgentState } from './types.js';
 import { AgentStateSchema, NEWER_WRITER_HINT, malformedWorkClaimCount, unknownStateKeys } from './state-schema.js';
 import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
-import { pruneRejectedCopies } from './stale-data.js';
+import { preserveRejected } from './stale-data.js';
 import { errorMessage, ConcurrencyError, NewerStateVersionError, StateLockTimeoutError } from './errors.js';
 import { debug, warn } from './logger.js';
 
@@ -561,10 +561,8 @@ export interface LoadStateResult {
  */
 function preserveRejectedStateFile(statePath: string): string | null {
   try {
-    const rejectedPath = statePath + '.rejected-' + Date.now();
-    fs.copyFileSync(statePath, rejectedPath);
+    const rejectedPath = preserveRejected(statePath, 'copy');
     warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
-    pruneRejectedCopies(path.dirname(rejectedPath));
     return rejectedPath;
   } catch (preserveErr) {
     warn(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);

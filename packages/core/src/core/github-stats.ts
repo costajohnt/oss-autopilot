@@ -4,7 +4,15 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import { extractOwnerRepo, parseGitHubUrl, isOwnRepo, isUntrackedOrg } from './urls.js';
+import {
+  extractOwnerRepo,
+  findClosingRefs,
+  MAX_BODY_CHARS,
+  parseGitHubUrl,
+  isOwnRepo,
+  isUntrackedOrg,
+  stripNonProse,
+} from './urls.js';
 import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { describeError } from './errors.js';
@@ -23,15 +31,6 @@ export const PR_COUNTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  */
 const MAX_PAGINATION_PAGES = 3;
 
-const CLOSING_KEYWORD_RE =
-  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|([\w.-]+\/[\w.-]+)?#(\d+))\b/i;
-
-/** HTML comments and code: where PR templates keep example `Fixes #123` lines. */
-const NON_PROSE_RE = /<!--[\s\S]*?-->|```[\s\S]*?```|(`+)[^`]*\1/g;
-
-/** GitHub's PR body limit; also bounds NON_PROSE_RE's scan on an unclosed `<!--`. */
-const MAX_BODY_CHARS = 65_536;
-
 /**
  * Issue URL a PR closes, from the first GitHub closing keyword in its body
  * (#1824): `Fixes #12`, `closes owner/repo#12`, or `resolves <issue url>`.
@@ -41,12 +40,12 @@ const MAX_BODY_CHARS = 65_536;
  * first. Switch to GraphQL `closingIssuesReferences` if that ever matters.
  */
 export function closingIssueUrl(body: string | null | undefined, prUrl: string): string | undefined {
-  const m = body?.slice(0, MAX_BODY_CHARS).replace(NON_PROSE_RE, ' ').match(CLOSING_KEYWORD_RE);
-  if (!m) return undefined;
+  const [ref] = body ? findClosingRefs(body, { markdown: true }) : [];
+  if (!ref) return undefined;
   const own = extractOwnerRepo(prUrl);
   // A bare `#12` refers to the PR's own repo.
-  const target = m[1] ?? m[3] ?? (own && `${own.owner}/${own.repo}`);
-  return target ? `https://github.com/${target}/issues/${m[2] ?? m[4]}` : undefined;
+  const target = ref.repo ?? (own && `${own.owner}/${own.repo}`);
+  return target ? `https://github.com/${target}/issues/${ref.number}` : undefined;
 }
 
 /**
@@ -79,9 +78,10 @@ export function mentionedIssueUrls(
   prUrl: string,
 ): string[] {
   const own = extractOwnerRepo(prUrl);
-  const text = `${title ?? ''}\n${body?.slice(0, MAX_BODY_CHARS) ?? ''}`
-    .replaceAll(NON_PROSE_RE, ' ')
-    .replaceAll(ISSUE_URL_RE, ' $1#$2 ');
+  const text = stripNonProse(`${title ?? ''}\n${body?.slice(0, MAX_BODY_CHARS) ?? ''}`).replaceAll(
+    ISSUE_URL_RE,
+    ' $1#$2 ',
+  );
   const urls = new Set<string>();
   for (const m of text.matchAll(ISSUE_MENTION_RE)) {
     const target = m[1] ?? (own && `${own.owner}/${own.repo}`);

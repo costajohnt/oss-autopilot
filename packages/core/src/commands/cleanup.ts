@@ -9,7 +9,10 @@
  *
  * 1. it is a direct child of `worktrees/`, a real directory (not a symlink)
  *    with a name the preparer creates, and it resolves inside the data dir;
- * 2. it is the root of a linked Git worktree (`.git` is a file);
+ * 2. it is the root of a linked Git worktree (`.git` is a file), its own
+ *    config names no clean or process filter, no config names a promisor
+ *    remote, and it holds no submodule, so the checks below neither run a
+ *    filter the worktree chose nor fetch (#2047);
  * 3. `git status --porcelain --untracked-files=all` is empty: no modified and
  *    no untracked files, whatever `status.showUntrackedFiles` says;
  * 4. HEAD is contained in a remote-tracking ref, so no commit lives only here;
@@ -50,7 +53,7 @@ import {
   staleRejectedCopies,
 } from '../core/stale-data.js';
 import type { PruneResult } from '../core/stale-data.js';
-import { git } from './overnight-push-prep.js';
+import { GIT_TIMEOUT_MS, git } from './overnight-push-prep.js';
 
 export { WORKTREE_MIN_AGE_DAYS };
 
@@ -62,6 +65,9 @@ export const BUILD_OUTPUT = new Set(['node_modules', 'dist', 'build', 'target', 
 // always count (`worktree remove` runs its own status and would otherwise
 // honour `status.showUntrackedFiles=no` and delete them).
 const SAFE_GIT = ['--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'status.showUntrackedFiles=all'];
+// The environment form of `--no-lazy-fetch`, which Git before 2.44 rejects as
+// an unknown option; older Git ignores the variable.
+const NO_LAZY_FETCH = { GIT_NO_LAZY_FETCH: '1' };
 const IN_PROGRESS = [
   'rebase-merge',
   'rebase-apply',
@@ -109,7 +115,7 @@ export interface CleanupOptions {
 const COMMIT_MESSAGE_SUFFIX = '.commit-msg.txt';
 
 function gitOut(worktree: string, args: string[]): string {
-  return git(worktree, [...SAFE_GIT, ...args]).trim();
+  return git(worktree, [...SAFE_GIT, ...args], GIT_TIMEOUT_MS, NO_LAZY_FETCH).trim();
 }
 
 function gitDirOf(dir: string): string {
@@ -129,7 +135,69 @@ function refusal(dataDir: string, dir: string): string | null {
   if (!fs.existsSync(dotGit) || !fs.lstatSync(dotGit).isFile()) return 'not a linked git worktree';
   const toplevel = gitOut(dir, ['rev-parse', '--show-toplevel']);
   if (fs.realpathSync(toplevel) !== fs.realpathSync(dir)) return 'not the root of its git worktree';
-  return null;
+  return programsInRepoConfig(dir) ?? lazyFetch(dir) ?? submodules(dir);
+}
+
+/** `[scope, key]` for every config key matching `pattern`, includes followed. Reads no objects. */
+function configKeys(dir: string, pattern: string): [string, string][] {
+  let entries: string[];
+  try {
+    entries = gitOut(dir, ['config', '--show-scope', '--name-only', '-z', '--get-regexp', pattern]).split('\0');
+  } catch (err) {
+    // Exit 1: no key matched.
+    if ((err as { status?: unknown })?.status === 1) return [];
+    throw err;
+  }
+  const keys: [string, string][] = [];
+  for (let i = 0; i + 1 < entries.length; i += 2) keys.push([entries[i], entries[i + 1]]);
+  return keys;
+}
+
+const FILTER_PROGRAM = String.raw`^(filter\..+\.(clean|process)|lfs\.extension\..+\.(clean|smudge))$`;
+
+/**
+ * A clean or process filter defined in the repository's own config (#2047).
+ * `status`, and the one `worktree remove` runs, re-hash a file whose stat data
+ * changed through its filter, so a tick that wrote `filter.<x>.clean` and a
+ * matching `info/attributes` line would run its program here while the
+ * worktree still reports clean. Only the local and worktree scopes count
+ * (includes they pull in report as local): a driver from the user's own global
+ * or system config, such as Git LFS, is theirs; an `lfs.extension` program in
+ * the repository's config, which that driver may run, is not.
+ */
+function programsInRepoConfig(dir: string): string | null {
+  const keys = configKeys(dir, FILTER_PROGRAM)
+    .filter(([scope]) => scope === 'local' || scope === 'worktree')
+    .map(([, key]) => key);
+  return keys.length > 0 ? `repository config names a filter program git would run: ${keys.join(', ')}` : null;
+}
+
+const LAZY_FETCH = String.raw`^(extensions\.partialclone|remote\..+\.(promisor|partialclonefilter))$`;
+
+/**
+ * A promisor remote (#2047): `extensions.partialClone`,
+ * `remote.<name>.promisor` or `remote.<name>.partialCloneFilter`, each of
+ * which makes one on its own. Any command that finds an object missing (a
+ * dangling remote-tracking ref for `for-each-ref --contains`, a reflog entry,
+ * the HEAD tree for `status`) fetches it from that remote, which runs the
+ * remote's `uploadpack`, `core.sshCommand` or credential helper: programs the
+ * repository's config chooses. Every scope counts, since the promisor flag
+ * can sit in the user's config while the program comes from the repository's.
+ * `GIT_NO_LAZY_FETCH` on every call is a second layer, not relied on.
+ */
+function lazyFetch(dir: string): string | null {
+  const keys = configKeys(dir, LAZY_FETCH).map(([, key]) => key);
+  return keys.length > 0 ? `config names a promisor remote git would fetch from: ${keys.join(', ')}` : null;
+}
+
+/**
+ * `status` runs inside each submodule, under that submodule's own config,
+ * which the check above does not read. `worktree remove` refuses a worktree
+ * with submodules anyway, so refusing first loses nothing.
+ */
+function submodules(dir: string): string | null {
+  const hasGitlink = /^160000 /m.test(gitOut(dir, ['ls-files', '--stage']));
+  return hasGitlink ? 'contains submodules (git would run status under their config)' : null;
 }
 
 /** Whole days since the directory itself or the worktree's index last changed. */
@@ -231,7 +299,7 @@ function removalFailure(err: unknown): string {
 /** Judged removable and then not removed: an error, not a keep. */
 function remove(report: WorktreeReport): Outcome {
   try {
-    git(report.path, [...SAFE_GIT, 'worktree', 'remove', report.path], REMOVE_TIMEOUT_MS);
+    git(report.path, [...SAFE_GIT, 'worktree', 'remove', report.path], REMOVE_TIMEOUT_MS, NO_LAZY_FETCH);
   } catch (err) {
     const reason = removalFailure(err);
     return { report: { ...report, action: 'kept', reason }, error: `${report.path}: ${reason}` };

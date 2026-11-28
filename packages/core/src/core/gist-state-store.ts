@@ -53,10 +53,9 @@
  */
 
 import * as fs from 'node:fs';
-import path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema, NEWER_WRITER_HINT, unknownStateKeys } from './state-schema.js';
-import { pruneRejectedCopies } from './stale-data.js';
+import { preserveRejected } from './stale-data.js';
 import { serializeState } from './state-prune.js';
 import {
   assertNotNewerVersion,
@@ -97,17 +96,14 @@ function extractEtag(headers: Record<string, string | undefined> | undefined): s
 
 /**
  * Preserve corrupt Gist content for user recovery. Returns the path written,
- * or null if the preservation itself failed (logged at warn). Mirrors the
- * pattern in state-persistence.ts:401-407 for the local-state path.
+ * or null if the preservation itself failed (logged at warn). Shares
+ * {@link preserveRejected} with the local-state path.
  *
  * See {@link GistCorruptError} and issue #1201.
  */
 function preserveRejectedGistContent(raw: string, gistId: string): string | null {
   try {
-    const rejectedPath = `${getStateCachePath()}.rejected-${Date.now()}`;
-    fs.writeFileSync(rejectedPath, raw, { encoding: 'utf8', mode: 0o600 });
-    pruneRejectedCopies(path.dirname(rejectedPath));
-    return rejectedPath;
+    return preserveRejected(getStateCachePath(), { content: raw });
   } catch (err) {
     warn(
       MODULE,

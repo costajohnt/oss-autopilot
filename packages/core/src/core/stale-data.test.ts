@@ -9,6 +9,7 @@ import {
   REJECTED_MIN_AGE_DAYS,
   WORKTREE_MIN_AGE_DAYS,
   countStaleData,
+  preserveRejected,
   pruneRejectedCopies,
   isInside,
   staleRejectedCopies,
@@ -221,6 +222,60 @@ describe('pruneRejectedCopies', () => {
     expect(result.errors).toHaveLength(1);
     expect(fs.existsSync(old)).toBe(true);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not delete rejected state copy'));
+  });
+});
+
+/** A data file of a kind the retention pattern does not name. */
+function live(): string {
+  return path.join(ctx.dataDir, 'future.json');
+}
+
+describe('preserveRejected (#2048)', () => {
+  it('copies the file beside itself as <name>.rejected-<ms>, keeping its mode', () => {
+    fs.writeFileSync(live(), 'bad', { mode: 0o640 });
+    fs.chmodSync(live(), 0o640);
+    const before = Date.now();
+
+    const copy = preserveRejected(live(), 'copy');
+
+    const ts = Number(/\.json\.rejected-(\d+)$/.exec(copy)?.[1]);
+    expect(path.dirname(copy)).toBe(ctx.dataDir);
+    expect(path.basename(copy)).toBe(`future.json.rejected-${ts}`);
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(fs.readFileSync(copy, 'utf8')).toBe('bad');
+    expect(fs.statSync(copy).mode & 0o777).toBe(0o640);
+    expect(fs.readFileSync(live(), 'utf8')).toBe('bad');
+  });
+
+  it('moves the file out of the way', () => {
+    fs.writeFileSync(live(), 'bad');
+    const copy = preserveRejected(live(), 'move');
+    expect(fs.readFileSync(copy, 'utf8')).toBe('bad');
+    expect(fs.existsSync(live())).toBe(false);
+  });
+
+  it('writes content that was never on disk owner-only', () => {
+    const copy = preserveRejected(live(), { content: 'from the gist' });
+    expect(fs.readFileSync(copy, 'utf8')).toBe('from the gist');
+    expect(fs.statSync(copy).mode & 0o777).toBe(0o600);
+    expect(fs.existsSync(live())).toBe(false);
+  });
+
+  it('prunes copies of a kind no pattern names, by the same retention', () => {
+    const kept = [writeCopy('future.json', 90)];
+    for (let i = 0; i < REJECTED_KEEP - 1; i++) kept.push(writeCopy('future.json', OLD_DAYS + i));
+    const stale = [writeCopy('future.json', OLD_DAYS + REJECTED_KEEP), writeCopy('future.json', 60)];
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    kept.push(preserveRejected(live(), { content: '{}' }));
+
+    expect(stale.some((file) => fs.existsSync(file))).toBe(false);
+    expect(kept.every((file) => fs.existsSync(file))).toBe(true);
+  });
+
+  it('throws when the copy cannot be made, so the caller reports it', () => {
+    expect(() => preserveRejected(live(), 'copy')).toThrow();
+    expect(() => preserveRejected(live(), 'move')).toThrow();
   });
 });
 

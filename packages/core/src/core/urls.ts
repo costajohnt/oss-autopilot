@@ -162,3 +162,91 @@ export function isUntrackedOrg(owner: string, untrackedOrgs: readonly string[] =
   const ownerLower = owner.toLowerCase();
   return untrackedOrgs.some((org) => org.toLowerCase() === ownerLower);
 }
+
+/** GitHub's PR body limit. */
+export const MAX_BODY_CHARS = 65_536;
+
+/** Whether a closer can still follow: false once a search for one came back empty. */
+interface Closers {
+  comment: boolean;
+  fence: boolean;
+}
+
+function commentEnd(text: string, i: number, closers: Closers): number {
+  if (!closers.comment || !text.startsWith('<!--', i)) return -1;
+  const close = text.indexOf('-->', i + 4);
+  if (close === -1) closers.comment = false;
+  return close === -1 ? -1 : close + 3;
+}
+
+function fenceEnd(text: string, i: number, closers: Closers): number {
+  if (!closers.fence || !text.startsWith('```', i)) return -1;
+  const close = text.indexOf('```', i + 3);
+  if (close === -1) closers.fence = false;
+  return close === -1 ? -1 : close + 3;
+}
+
+/** A run of N backticks closed by the next N; failing that, half the run closes the other half. */
+function codeSpanEnd(text: string, i: number): number {
+  let run = 0;
+  while (text[i + run] === '`') run++;
+  if (run === 0) return -1;
+  const close = text.indexOf('`', i + run);
+  if (close !== -1 && text.startsWith('`'.repeat(run), close)) return close + run;
+  return run >= 2 ? i + 2 * Math.floor(run / 2) : -1;
+}
+
+/**
+ * Markdown with its HTML comments and code (fenced and inline) blanked out:
+ * the text GitHub links refs in, and where PR templates keep example
+ * `Fixes #123` lines. Each match of
+ * `/<!--[\s\S]*?-->|```[\s\S]*?```|(`+)[^`]*\1/g` becomes one space, but in
+ * linear time: that regex rescans to the end from every unclosed opener.
+ */
+export function stripNonProse(markdown: string): string {
+  const closers = { comment: true, fence: true };
+  let out = '';
+  let prose = 0;
+  let i = 0;
+  while (i < markdown.length) {
+    const end = Math.max(commentEnd(markdown, i, closers), fenceEnd(markdown, i, closers));
+    const span = end === -1 ? codeSpanEnd(markdown, i) : end;
+    if (span === -1) {
+      i++;
+    } else {
+      out += `${markdown.slice(prose, i)} `;
+      prose = span;
+      i = span;
+    }
+  }
+  return out + markdown.slice(prose);
+}
+
+/**
+ * GitHub's closing keyword (close, closes, closed, fix, fixes, fixed, resolve,
+ * resolves, resolved; any case), an optional colon, then one ref: `#12`,
+ * `owner/repo#12` or an issue URL. Each ref needs its own keyword, as on
+ * GitHub, so `Fixes #1, #2` closes only #1.
+ */
+const CLOSING_REF_RE =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|([\w.-]+\/[\w.-]+)?#(\d+))\b/gi;
+
+/** One closing reference: `repo` is the `owner/repo` the text names, null for a bare `#N`. */
+export interface ClosingRef {
+  repo: string | null;
+  number: number;
+}
+
+/**
+ * Issues `text` closes with a GitHub closing keyword (#2048), in order of
+ * appearance. With `markdown` (a PR body), HTML comments and code are
+ * skipped and only the first {@link MAX_BODY_CHARS} characters are read, as
+ * GitHub links nothing there; without it (a commit message) every line counts.
+ */
+export function findClosingRefs(text: string, options: { markdown?: boolean } = {}): ClosingRef[] {
+  const scanned = options.markdown ? stripNonProse(text.slice(0, MAX_BODY_CHARS)) : text;
+  return Array.from(scanned.matchAll(CLOSING_REF_RE), (m) => ({
+    repo: m[1] ?? m[3] ?? null,
+    number: Number(m[2] ?? m[4]),
+  }));
+}
