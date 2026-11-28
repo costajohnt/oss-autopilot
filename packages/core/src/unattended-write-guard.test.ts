@@ -18,8 +18,9 @@
  * misses a client that is neither named `*octokit` nor called with a
  * create/update/delete-style method, a destructured method, computed member
  * access, a route or method held in a variable (including `{ method }`
- * shorthand, also in `fetch`), `octokit.paginate('POST ...')`, a `gh` or `git push` built from
- * non-literal arguments, a shell-string `exec`, and writes made by dependencies.
+ * shorthand, in `fetch` too), `octokit.paginate('POST ...')`, a `gh` or
+ * `git push` built from non-literal arguments, a shell-string `exec`, and
+ * writes made by dependencies.
  *
  * A second gate (#1936) covers the MCP tools: a tool that reaches a command
  * guarded this way must ask the user through `requireApproval`, or be exempt
@@ -54,7 +55,7 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   },
   'core/src/core/gist-state-store.ts gists.create': {
     count: 2,
-    why: "creates the user's own private state Gist on first use (and again when it is missing); state sync, not a contribution",
+    why: "creates the user's own private state Gist on first use (createGist) or on migration from local state (createGistFromState); state sync, not a contribution",
   },
   'core/src/commands/startup.ts fetch POST': {
     count: 1,
@@ -96,14 +97,10 @@ const WRITE_VERBS = [
 const WRITE_METHOD = new RegExp(String.raw`\.(\w+)\.((?:${WRITE_VERBS.join('|')})(?:[A-Z]\w*)?)\(`, 'g');
 /**
  * True when the match at `index` is inside the arguments of a raw `fetch(`
- * call: the nearest `fetch(` before it, with no `;` in between.
+ * call: a `fetch(` before it, with no `;` in between.
  */
-function insideFetch(source: string, index: number): boolean {
-  const before = source.slice(Math.max(0, index - 500), index);
-  const starts = [...before.matchAll(/\bfetch\(/g)];
-  const last = starts.at(-1);
-  return last !== undefined && !before.slice(last.index).includes(';');
-}
+const isInsideFetch = (source: string, index: number): boolean =>
+  /\bfetch\([^;]*$/.test(source.slice(Math.max(0, index - 500), index));
 
 const DETECTORS: Detector[] = [
   // Octokit REST on a client named *octokit or built by getOctokit(...): anything that is not a read.
@@ -119,7 +116,7 @@ const DETECTORS: Detector[] = [
   // allowlisted fetch to a local server never covers a request to GitHub.
   {
     re: /method:\s*[`'"](POST|PUT|PATCH|DELETE)\b/gi,
-    call: (m, source) => `${insideFetch(source, m.index) ? 'fetch' : 'method'} ${m[1].toUpperCase()}`,
+    call: (m, source) => `${isInsideFetch(source, m.index) ? 'fetch' : 'method'} ${m[1].toUpperCase()}`,
   },
   // Pushes: any literal 'push' argument, wherever the process is spawned.
   { re: /[`'"]push[`'"]|[`'"]git\s+push\b/g, call: () => 'git push' },
@@ -192,17 +189,20 @@ function sourceFiles(root: string): { file: string; raw: string }[] {
 function allowlistViolations(unguarded: Finding[], allowed: Record<string, { count: number }>): string[] {
   const lines = new Map<string, number[]>();
   for (const finding of unguarded) lines.set(finding.key, [...(lines.get(finding.key) ?? []), finding.line]);
-  const keys = new Set([...lines.keys(), ...Object.keys(allowed)]);
-  return [...keys].flatMap((key) => {
+  const keys = new Set(Object.keys(allowed));
+  for (const key of lines.keys()) keys.add(key);
+  const violations: string[] = [];
+  for (const key of keys) {
     const found = lines.get(key) ?? [];
     const expected = allowed[key]?.count ?? 0;
-    if (found.length === expected) return [];
+    if (found.length === expected) continue;
     const where = found.length > 0 ? ` (lines ${found.join(', ')})` : '';
-    return [`${key}: ${found.length} unguarded, ${expected} allowed${where}`];
-  });
+    violations.push(`${key}: ${found.length} unguarded, ${expected} allowed${where}`);
+  }
+  return violations;
 }
 
-const FINDINGS = SCAN_ROOTS.flatMap(sourceFiles).flatMap(({ file, raw }) => scanSource(file, raw));
+const FINDINGS = SCAN_ROOTS.flatMap((root) => sourceFiles(root)).flatMap(({ file, raw }) => scanSource(file, raw));
 const UNGUARDED = FINDINGS.filter((finding) => !finding.guarded);
 
 // ── MCP approval gate (#1936) ─────────────────────────────────────────
@@ -213,9 +213,11 @@ const UNGUARDED = FINDINGS.filter((finding) => !finding.guarded);
 /** Guarded commands an MCP tool may call without `requireApproval`. Value: why. */
 const MCP_APPROVAL_EXEMPT: Record<string, string> = {};
 
-/** `export [async] function f(` or `export const f = [async] (...) =>` / `= function`. */
-const EXPORTED_FUNCTION =
-  /^export (?:async )?function (\w+)\b|^export const (\w+)(?::[^=]+)? = (?:async )?(?:function\b|\(|\w+ =>)/;
+/** `export [async] function f(`, or `export const f = [async] (...) =>` / `= function`. */
+const EXPORTED_FUNCTION = [
+  /^export (?:async )?function (\w+)\b/,
+  /^export const (\w+)(?::[^=]+)? = (?:async )?(?:function\b|\(|\w+ =>)/,
+];
 
 /**
  * Exported top-level functions that refuse unattended: an ATTENDED_GUARD line
@@ -223,14 +225,15 @@ const EXPORTED_FUNCTION =
  */
 function attendedOnlyFunctions(raw: string): string[] {
   const lines = raw.split('\n');
-  return lines.flatMap((line, index) => {
-    const match = EXPORTED_FUNCTION.exec(line);
-    const name = match?.[1] ?? match?.[2];
-    if (name === undefined) return [];
+  const names: string[] = [];
+  for (const [index, line] of lines.entries()) {
+    const name = EXPORTED_FUNCTION.map((re) => re.exec(line)?.[1]).find((found) => found !== undefined);
+    if (name === undefined) continue;
     const length = lines.slice(index + 1).findIndex((bodyLine) => bodyLine.startsWith('}'));
-    const body = lines.slice(index + 1, length === -1 ? undefined : index + 1 + length);
-    return body.some((bodyLine) => ATTENDED_GUARD.test(bodyLine)) ? [name] : [];
-  });
+    const end = length === -1 ? lines.length : index + 1 + length;
+    if (lines.slice(index + 1, end).some((bodyLine) => ATTENDED_GUARD.test(bodyLine))) names.push(name);
+  }
+  return names;
 }
 
 /**
@@ -258,7 +261,7 @@ function ungatedToolCommands(toolsSource: string, attendedOnly: string[]): strin
 }
 
 const ATTENDED_ONLY = ['core/src/commands', 'core/src/core']
-  .flatMap(sourceFiles)
+  .flatMap((root) => sourceFiles(root))
   .flatMap(({ raw }) => attendedOnlyFunctions(raw));
 const MCP_EXEMPT_NAMES = new Set(Object.keys(MCP_APPROVAL_EXEMPT));
 const UNGATED_TOOL_COMMANDS = ungatedToolCommands(
@@ -294,7 +297,7 @@ describe('unattended write guard (#1945)', () => {
   it('fails an allowlisted call that appears more or fewer times than allowed', () => {
     const write = 'await client.gists.update({});';
     const allowed = { 'x.ts gists.update': { count: 1 } };
-    const findings = (calls: number) => scanSource('x.ts', inFunction(Array(calls).fill(write).join('\n')));
+    const findings = (calls: number) => scanSource('x.ts', inFunction(Array.from({ length: calls }, () => write).join('\n')));
     expect(allowlistViolations(findings(1), allowed)).toEqual([]);
     expect(allowlistViolations(findings(2), allowed)).toEqual([
       'x.ts gists.update: 2 unguarded, 1 allowed (lines 2, 3)',
