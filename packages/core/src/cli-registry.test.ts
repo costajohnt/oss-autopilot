@@ -269,6 +269,7 @@ const mockGuidelinesView = vi.fn();
 const mockGuidelinesStore = vi.fn();
 const mockGuidelinesReset = vi.fn();
 const mockFetchCorpus = vi.fn();
+const mockMarkProposed = vi.fn();
 const mockPolicyGet = vi.fn();
 const mockPolicySet = vi.fn();
 const mockPolicyReset = vi.fn();
@@ -284,6 +285,7 @@ vi.mock('./commands/guidelines.js', () => ({
   runGuidelinesStore: mockGuidelinesStore,
   runGuidelinesReset: mockGuidelinesReset,
   runFetchCorpus: mockFetchCorpus,
+  runMarkProposed: mockMarkProposed,
 }));
 
 const mockReadApprovedDraft = vi.fn();
@@ -2542,6 +2544,7 @@ describe('pr-preflight command (#1952)', () => {
       base: undefined,
       fetch: false,
       local: false,
+      bodyFile: undefined,
     });
     expect(mockPrintPrPreflight).toHaveBeenCalledWith(data);
     expect(mockOutputJsonValidated).not.toHaveBeenCalled();
@@ -2571,10 +2574,25 @@ describe('pr-preflight command (#1952)', () => {
       base: 'develop',
       fetch: true,
       local: false,
+      bodyFile: undefined,
     });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(PrPreflightOutputSchema, data);
     expect(mockPrintPrPreflight).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--body-file is passed through (#2040)', async () => {
+    mockRunPrPreflight.mockResolvedValue(data);
+
+    await buildProgram('pr-preflight').parseAsync([
+      'node',
+      'cli',
+      'pr-preflight',
+      '--body-file',
+      'oss-o-r-7-pr-body.md',
+    ]);
+
+    expect(mockRunPrPreflight).toHaveBeenCalledWith(expect.objectContaining({ bodyFile: 'oss-o-r-7-pr-body.md' }));
   });
 
   it('--local is passed through', async () => {
@@ -2935,6 +2953,15 @@ describe('guidelines subcommands', () => {
     expect(mockFetchCorpus).toHaveBeenCalledWith({ repo: REPO, limit: 7, forceRefetch: true });
     expect(consoleLogSpy).toHaveBeenCalledWith(`Fetched 3 PR comment bundle(s) for ${REPO}.`);
     expect(consoleLogSpy).toHaveBeenCalledWith('  Skipped 2 PR(s) already processed (use --force to re-fetch).');
+  });
+
+  it('mark-proposed passes the repo and prints the count and path (#2041)', async () => {
+    mockMarkProposed.mockResolvedValue({ repo: REPO, path: '/d/guidelines-p.md', marked: 2 });
+
+    await buildProgram('guidelines').parseAsync(['node', 'cli', 'guidelines', 'mark-proposed', '--repo', REPO]);
+
+    expect(mockMarkProposed).toHaveBeenCalledWith({ repo: REPO });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Marked 2 PR(s) in ${REPO} as proposed (/d/guidelines-p.md).`);
   });
 
   it('fetch-corpus omits the skipped line when nothing was skipped', async () => {
@@ -3488,6 +3515,22 @@ describe('policy subcommands', () => {
     expect(consoleLogSpy).toHaveBeenCalledWith(
       '  Banned by aiPolicyBlocklist; set --ai-policy to another value to take it off the list.',
     );
+  });
+
+  it('set passes --gate-label through and prints the recorded gate label (#2040)', async () => {
+    mockPolicySet.mockResolvedValue({ repo: REPO, policy: { ...POLICY, gateLabel: 'status: accepted' } });
+    await buildProgram('policy').parseAsync([
+      'node',
+      'cli',
+      'policy',
+      'set',
+      '--repo',
+      REPO,
+      '--gate-label',
+      'status: accepted',
+    ]);
+    expect(mockPolicySet).toHaveBeenCalledWith(expect.objectContaining({ repo: REPO, gateLabel: 'status: accepted' }));
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Gate label: status: accepted');
   });
 
   it('set says when it changed aiPolicyBlocklist', async () => {

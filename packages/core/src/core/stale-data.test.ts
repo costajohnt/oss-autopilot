@@ -7,6 +7,8 @@ import {
   DAY_MS,
   REJECTED_KEEP,
   REJECTED_MIN_AGE_DAYS,
+  WORKTREE_MIN_AGE_DAYS,
+  countStaleData,
   pruneRejectedCopies,
   isInside,
   staleRejectedCopies,
@@ -35,6 +37,26 @@ beforeEach(() => {
 afterEach(() => {
   fs.rmSync(ctx.tmp, { recursive: true, force: true });
   vi.restoreAllMocks();
+});
+
+describe('countStaleData (#2049)', () => {
+  it("counts every overnight worktree, and separately those idle past cleanup's threshold by their own mtime", () => {
+    const root = path.join(ctx.dataDir, 'worktrees');
+    const fresh = path.join(root, 'octo-repo-1');
+    const old = path.join(root, 'octo-repo-2');
+    fs.mkdirSync(fresh, { recursive: true });
+    fs.mkdirSync(old);
+    const freshSec = (NOW - DAY_MS) / 1000;
+    const oldSec = (NOW - (WORKTREE_MIN_AGE_DAYS + 1) * DAY_MS) / 1000;
+    fs.utimesSync(fresh, freshSec, freshSec);
+    fs.utimesSync(old, oldSec, oldSec);
+
+    expect(countStaleData(ctx.dataDir, NOW)).toEqual({ worktrees: 2, oldWorktrees: 1, rejected: 0 });
+  });
+
+  it('is all zeros with no worktrees directory', () => {
+    expect(countStaleData(ctx.dataDir, NOW)).toEqual({ worktrees: 0, oldWorktrees: 0, rejected: 0 });
+  });
 });
 
 describe('staleRejectedCopies', () => {

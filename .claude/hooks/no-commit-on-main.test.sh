@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Test harness for no-commit-on-main.sh's git-target-dir resolution.
 #
-# `.claude/hooks/` is a local, gitignored-settings hook (not wired into CI —
-# see `.claude/settings.json`, which is gitignored). Run manually via:
+# The hook is wired up through the gitignored `.claude/settings.json`; this
+# test runs in CI with the other *.test.sh files (#2057). Run locally via:
 #   bash .claude/hooks/no-commit-on-main.test.sh
-# Exits 0 on success, 1 on first failure.
+# Exits 0 when every case passes, 1 otherwise.
 
 set -u
 

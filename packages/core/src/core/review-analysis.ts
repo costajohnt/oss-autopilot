@@ -91,10 +91,32 @@ export function getStandingApprovalDate(reviews: VerdictReview[], login: string 
 }
 
 /**
- * Get the date of the latest CHANGES_REQUESTED review (from any human reviewer).
- * Used to detect needs_changes status when review feedback is in inline comments.
+ * The latest CHANGES_REQUESTED review (from any human reviewer).
  * Bot reviews are skipped (#1840): a bot re-reviewing every push would otherwise
  * move the date past the author's fix commit.
+ */
+function getLatestChangesRequestedReview<
+  T extends {
+    state?: string | null;
+    submitted_at?: string | null;
+    user?: { login?: string; type?: string | null } | null;
+  },
+>(reviews: T[]): T | undefined {
+  let latest: T | undefined;
+  let latestAt: string | undefined;
+  for (const review of reviews) {
+    if (review.state !== 'CHANGES_REQUESTED' || isBotReview(review)) continue;
+    if (review.submitted_at && (!latestAt || review.submitted_at > latestAt)) {
+      latest = review;
+      latestAt = review.submitted_at;
+    }
+  }
+  return latest;
+}
+
+/**
+ * Get the date of the latest CHANGES_REQUESTED review (from any human reviewer).
+ * Used to detect needs_changes status when review feedback is in inline comments.
  */
 export function getLatestChangesRequestedDate(
   reviews: Array<{
@@ -103,14 +125,24 @@ export function getLatestChangesRequestedDate(
     user?: { login?: string; type?: string | null } | null;
   }>,
 ): string | undefined {
-  let latest: string | undefined;
-  for (const review of reviews) {
-    if (review.state !== 'CHANGES_REQUESTED' || isBotReview(review)) continue;
-    if (review.submitted_at && (!latest || review.submitted_at > latest)) {
-      latest = review.submitted_at;
-    }
-  }
-  return latest;
+  return getLatestChangesRequestedReview(reviews)?.submitted_at ?? undefined;
+}
+
+/**
+ * The head commit the latest CHANGES_REQUESTED review (from any human
+ * reviewer) was submitted against. A head moved onto a new parent since then
+ * was rebased, not amended, so its new committer date says nothing about the
+ * review (#2042).
+ */
+export function getChangesRequestedCommitSha(
+  reviews: Array<{
+    state?: string | null;
+    submitted_at?: string | null;
+    user?: { login?: string; type?: string | null } | null;
+    commit_id?: string | null;
+  }>,
+): string | undefined {
+  return getLatestChangesRequestedReview(reviews)?.commit_id ?? undefined;
 }
 
 /**

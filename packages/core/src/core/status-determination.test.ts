@@ -119,6 +119,35 @@ describe('determineStatus changes_addressed detection', () => {
     ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
   });
 
+  it('labels a comment answered by a commit and then approved by its author pending_merge (#2044)', () => {
+    // Reviewer comments at T1, the contributor pushes at T2 without replying,
+    // the same reviewer approves with no body at T3: approved and awaiting
+    // merge, not awaiting re-review.
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'approved',
+        ciStatus: 'passing',
+        lastMaintainerCommentDate: '2026-02-05T10:00:00Z',
+        latestCommitDate: '2026-02-06T10:00:00Z',
+        unansweredComments: [{ createdAt: '2026-02-05T10:00:00Z', authorApprovalDate: '2026-02-07T10:00:00Z' }],
+      }),
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
+  });
+
+  it('keeps changes_addressed for a commit-answered comment its author has not approved since (#2044)', () => {
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'approved',
+        ciStatus: 'passing',
+        lastMaintainerCommentDate: '2026-02-05T10:00:00Z',
+        latestCommitDate: '2026-02-06T10:00:00Z',
+        unansweredComments: [{ createdAt: '2026-02-05T10:00:00Z', authorApprovalDate: undefined }],
+      }),
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
+  });
+
   it('still flags needs_response for a non-approved PR with a later comment (#1507 guard is scoped)', () => {
     // The carve-out must not leak to review_required PRs: an unresponded comment
     // there is still a genuine action item.

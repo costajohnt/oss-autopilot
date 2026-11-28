@@ -46,6 +46,8 @@ vi.mock('@oss-autopilot/core', () => ({
   ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
   getSetupKeys: () => ['username', 'languages', 'minStars'],
   getConfigKeys: () => ['username', 'add-label', 'remove-label'],
+  getKeyTrust: () => 'preference',
+  CONFIG_KEY_REGISTRY: [],
 }));
 
 // Mock StdioServerTransport — must use function() not arrow to support `new`

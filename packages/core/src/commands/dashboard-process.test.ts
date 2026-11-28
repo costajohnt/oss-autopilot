@@ -175,6 +175,8 @@ describe('liveness probe (#1927)', () => {
     ['a JSON null body', 'null'],
     ['a non-JSON body', '<html>some other app</html>'],
     ['an oversized body', 'x'.repeat(5000)],
+    // Parses as ours if read to the end: only the size guard turns it away.
+    ['an oversized body that names the recorded PID', JSON.stringify({ pid: otherPid, pad: 'x'.repeat(5000) })],
     ['a connection error', null],
   ])('does not take a reply with %s for our server, and never signals the PID', async (_label, body) => {
     stubProbe(body);

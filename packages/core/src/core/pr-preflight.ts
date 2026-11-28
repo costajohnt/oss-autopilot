@@ -81,6 +81,12 @@ export interface PreflightFacts {
   policy: RepoPolicy | null;
   /** The user has no merged PR in the repo. */
   isFirstContribution: boolean;
+  /** The staged PR body (`--body-file`); null when none was given. */
+  prBody: string | null;
+  /** The issue's label names, read only for a `maintainer-label` gate; null when not read. */
+  issueLabels: string[] | null;
+  /** Why the label read failed. */
+  labelsError: string | null;
 }
 
 /** Past this many commits behind, the drift check warns even when no upstream commit touches the branch's files. */
@@ -303,10 +309,7 @@ function policyAsks(facts: PreflightFacts, policy: RepoPolicy, repo: string): st
   const login = facts.login?.toLowerCase();
   const isAssigned = (facts.issue?.assignees ?? []).some((a) => a.toLowerCase() === login);
   const rules: Array<[boolean, string]> = [
-    [
-      policy.aiPolicy === 'disclosure-required',
-      `${repo} requires an AI-use disclosure: add the line in details.disclosureText to the PR body`,
-    ],
+    ...disclosureAsk(facts, policy, repo),
     [
       isFirst && policy.aiPolicy === 'unknown',
       `${repo}'s AI policy is unknown and this is your first PR there: read its CONTRIBUTING and README, then record it with policy set --repo ${repo} --ai-policy <value>`,
@@ -315,15 +318,148 @@ function policyAsks(facts: PreflightFacts, policy: RepoPolicy, repo: string): st
       !isAssigned && policy.prGate === 'claim-first',
       `${repo} wants the issue claimed first: comment on it and get assigned before opening the PR`,
     ],
-    [
-      policy.prGate === 'maintainer-label',
-      `${repo} wants a maintainer to accept the issue first: confirm it carries their approval label`,
-    ],
+    ...maintainerLabelAsk(facts, policy, repo),
     [isFirst && policy.cla === 'required', `${repo} requires a signed CLA: sign it when the CLA bot asks on the PR`],
     [policy.prGate === 'collaborators-only' && facts.github?.canPush !== true, collaboratorsAsk(facts, policy, repo)],
     ...maxOpenAsk(facts, policy, repo),
   ];
   return rules.filter(([applies]) => applies).map(([, ask]) => ask);
+}
+
+/** Text compared case-insensitively with whitespace collapsed, as {@link quote} stores the recorded line. */
+function normalized(text: string): string {
+  return text.replaceAll(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** HTML comments (a closed one, or an unclosed one to the end) and unchecked task-list lines: template text, not a statement. */
+const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
+// A list item (bullet or number), also inside a blockquote, whose box is not ticked.
+const UNCHECKED_TASK = /^[\s>]*(?:[-*+]|\d{1,9}[.)])\s+\[ \]/;
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
+
+/** `wanted` occurs in `text` with no letter or digit right before it, nor right after unless `isOpenEnded`. */
+function hasWholeMatch(text: string, wanted: string, isOpenEnded: boolean): boolean {
+  for (let at = text.indexOf(wanted); at !== -1; at = text.indexOf(wanted, at + 1)) {
+    const before = text[at - 1] ?? ' ';
+    const after = text[at + wanted.length] ?? ' ';
+    if (!WORD_CHAR.test(before) && (isOpenEnded || !WORD_CHAR.test(after))) return true;
+  }
+  return false;
+}
+
+/**
+ * The body states the recorded line: outside HTML comments and unchecked
+ * boxes (a PR template keeps both), on word boundaries. A line {@link quote}
+ * cut short is matched up to the cut.
+ */
+function hasDisclosure(body: string, line: string): boolean {
+  const isCut = line.endsWith('…');
+  const wanted = normalized(isCut ? line.slice(0, -1) : line);
+  if (wanted === '') return false;
+  const lines = body.replaceAll(HTML_COMMENT, ' ').split('\n');
+  const stated = normalized(lines.filter((l) => !UNCHECKED_TASK.test(l)).join('\n'));
+  return hasWholeMatch(stated, wanted, isCut);
+}
+
+/**
+ * The disclosure a `disclosure-required` repo asks for (#2040). Met when the
+ * staged body (`--body-file`) contains the line the user recorded. With no
+ * recorded line there is nothing to match: the agent writes one from the rule
+ * quoted in `details.sources`, and recording it lets the next run check it.
+ */
+function disclosureAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string): Array<[boolean, string]> {
+  if (policy.aiPolicy !== 'disclosure-required') return [];
+  const required = `${repo} requires an AI-use disclosure`;
+  const line = policy.disclosureText;
+  if (line === undefined) {
+    const record = `policy set --repo ${repo} --ai-policy disclosure-required --disclosure-text <line>`;
+    return [
+      [
+        true,
+        `${required}: write one in the PR body that meets the rule quoted in details.sources, then record the line with ${record} so preflight can check the body for it`,
+      ],
+    ];
+  }
+  if (facts.prBody === null) {
+    return [[true, `${required}: add the line in details.disclosureText to the PR body and pass it with --body-file`]];
+  }
+  return [
+    [
+      !hasDisclosure(facts.prBody, line),
+      `${required}: the PR body does not contain the line in details.disclosureText`,
+    ],
+  ];
+}
+
+/** Lowercase words only, so `status: accepted`, `status/accepted` and `Status-Accepted` compare equal. */
+function words(text: string): string {
+  return ` ${text
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()} `;
+}
+
+/**
+ * Labels that look like acceptance, that say it is not one yet, and that close
+ * the question. Tested against {@link words}: lowercase words between spaces.
+ * They only shape the warn text; they never decide the verdict.
+ */
+const LOOKS_ACCEPTED = / (?:accepted|approved|ready|triaged|confirmed|help ?wanted|good first issue) /;
+const NOT_YET = / (?:not|no|needs?|awaiting|pending|waiting|un\w+) /;
+const REJECTED = / (?:wont ?fix|won t fix|invalid|duplicate|not planned|rejected|declined|stale) /;
+
+function isSameLabel(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** A hint for the warn: a label that looks like acceptance. Never changes the verdict. */
+function lookalikeHint(labels: readonly string[]): string {
+  const lookalike = labels.find((label) => LOOKS_ACCEPTED.test(words(label)) && !NOT_YET.test(words(label)));
+  return lookalike ? ` (label ${JSON.stringify(quote(lookalike))} looks like acceptance)` : '';
+}
+
+/** Why the label gate is not met, or null when it is. */
+function labelProblem(labels: readonly string[], policy: RepoPolicy, repo: string): string | null {
+  const gate = policy.reviewedByUser ? policy.gateLabel : undefined;
+  if (gate === undefined) {
+    // An unreviewed record needs --ai-policy too: policy set refuses to approve the AI reading by accident.
+    const aiFlag = policy.reviewedByUser ? '' : ' --ai-policy <value>';
+    const record = `policy set --repo ${repo}${aiFlag} --gate-label "<name>"`;
+    return `no gate label is recorded: check the issue's labels (details.issueLabels) against the rule in details.sources, then record the label once with ${record}${lookalikeHint(labels)}`;
+  }
+  if (labels.length === 0) return 'the issue has no labels';
+  const hasGate = labels.some((label) => isSameLabel(label, gate));
+  if (!hasGate) {
+    return `the issue does not carry the recorded gate label (details.gateLabel)${lookalikeHint(labels)}`;
+  }
+  const closing = labels.find((label) => REJECTED.test(words(label)));
+  return closing ? `the issue also carries ${JSON.stringify(quote(closing))}` : null;
+}
+
+/**
+ * The `maintainer-label` gate (#2040): met only when the issue carries the
+ * label the user recorded with `policy set --gate-label`, compared exactly
+ * (case-insensitive, trimmed). Which label is the gate is never read from repo
+ * text: a false pass skips the question and gets the PR closed, a false warn
+ * costs one question.
+ */
+function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string): Array<[boolean, string]> {
+  if (policy.prGate !== 'maintainer-label') return [];
+  const wants = `${repo} wants a maintainer to accept the issue first`;
+  if (!facts.issueUrl) {
+    return [
+      [true, `${wants}: pass the issue so preflight can read its labels, or confirm it carries their approval label`],
+    ];
+  }
+  const labels = facts.issueLabels;
+  if (labels === null) {
+    const why = skipReason(facts, facts.labelsError, 'the labels were not read');
+    return [
+      [true, `${wants} and the issue's labels could not be read (${why}): confirm it carries their approval label`],
+    ];
+  }
+  const problem = labelProblem(labels, policy, repo);
+  return [[problem !== null, `${wants} and ${problem}: confirm a maintainer accepted it before opening the PR`]];
 }
 
 /** The open AI-PR limit when it cannot fail: the count is unknown, or the limit was read from the docs and not reviewed. */
@@ -381,7 +517,14 @@ export function checkRepoPolicy(facts: PreflightFacts): PreflightCheck {
   const { repo, policy } = facts;
   if (!repo) return check(id, 'skipped', 'no upstream repository');
   if (!policy) return noPolicyCheck(id, repo, facts.isFirstContribution);
-  const details = { ...summarizePolicy(policy), ...fencePolicyText(repo, policy) };
+  const labels = facts.issueLabels;
+  const details = {
+    ...summarizePolicy(policy),
+    ...fencePolicyText(repo, policy),
+    // Label names are set in someone else's repository: fenced like the quoted lines.
+    ...(labels !== null &&
+      labels.length > 0 && { issueLabels: wrapUntrustedContent(labels.join('\n'), 'issue-labels') }),
+  };
   const stop = policyStop(facts, policy, repo);
   if (stop) return check(id, 'fail', stop, details);
   const asks = policyAsks(facts, policy, repo);

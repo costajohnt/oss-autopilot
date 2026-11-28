@@ -102,6 +102,10 @@ describe('runVetList: repo contribution policy (#2013)', () => {
       expect.objectContaining({ prGate: 'claim-first', reviewedByUser: false }),
     );
     expect(result.results.find((r) => r.issue.repo === 'new/repo')?.policy).toMatchObject({ prGate: 'claim-first' });
+    // The CONTRIBUTING text is read for the policy but not printed (#2046).
+    expect(result.results.find((r) => r.issue.repo === 'new/repo')?.vettingResult).toEqual({
+      contributionGuidelines: {},
+    });
     // The row shows the stored reading it kept, not the narrower one it did not record.
     expect(result.results.find((r) => r.issue.repo === 'kept/repo')?.policy).toMatchObject({
       prGate: 'maintainer-label',

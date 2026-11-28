@@ -30,6 +30,7 @@ interface PrPreflightCliOptions {
   base?: string;
   fetch?: boolean;
   local?: boolean;
+  bodyFile?: string;
 }
 
 /** Options commander parses for `policy set`. */
@@ -38,6 +39,7 @@ interface PolicySetCliOptions {
   repo: string;
   aiPolicy?: string;
   disclosureText?: string;
+  gateLabel?: string;
   cla?: string;
   prGate?: string;
   commitRules?: string;
@@ -101,8 +103,8 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, ledger-backfill, eval, track, comments,
- *    startup, dismiss, undismiss, stats, policy reset, and the five
- *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
+ *    startup, dismiss, undismiss, stats, policy reset, and the
+ *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted/mark-proposed).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
  * (`draft path` / `draft show` have neither: their shapes are pinned by `commands/draft.test.ts`.)
@@ -991,11 +993,17 @@ export const commands: CLICommandDef[] = [
         .command('comments <pr-url>')
         .description('Show all comments on a PR')
         .option('--bots', 'Include bot comments')
+        .option('--include-own', 'Include your own comments and reviews')
         .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
+        .action((prUrl: string, options: { bots?: boolean; includeOwn?: boolean; json?: boolean }) =>
           executeAction(
             options,
-            async () => (await import('./commands/comments.js')).runComments({ prUrl, showBots: options.bots }),
+            async () =>
+              (await import('./commands/comments.js')).runComments({
+                prUrl,
+                showBots: options.bots,
+                includeOwn: options.includeOwn,
+              }),
             async (data) => {
               const { formatRelativeTime } = await import('./core/dates.js');
               // Bodies arrive `<github-content>`-fenced for agent consumers
@@ -1862,6 +1870,10 @@ export const commands: CLICommandDef[] = [
         .option('--base <branch>', 'Branch the PR will target (default: the upstream default branch)')
         .option('--fetch', 'Fetch the upstream target branch first instead of reporting a stale ref')
         .option('--local', 'Skip every GitHub read: local checks and numbers only')
+        .option(
+          '--body-file <path>',
+          'Staged PR body (a file in the draft directory) to check the disclosure rule against',
+        )
         .option('--json', 'Output as JSON')
         .action(async (issue: string | undefined, options: PrPreflightCliOptions) => {
           const { PrPreflightOutputSchema } = await import('./formatters/json.js');
@@ -1873,6 +1885,7 @@ export const commands: CLICommandDef[] = [
               base: options.base,
               fetch: options.fetch === true,
               local: options.local === true,
+              bodyFile: options.bodyFile,
             });
             // A caller that only sees the exit code still stops on a failed gate; the output prints in full.
             if (data.verdict === 'fail') process.exitCode = 1;
@@ -2358,6 +2371,26 @@ Load it with:
         });
 
       group
+        .command('mark-proposed')
+        .description(
+          'Record that the guideline proposal file for a repo waits for review on this machine, so other machines do not re-extract it (#2041)',
+        )
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options: { repo: string; json?: boolean }) => {
+          await executeAction(
+            options,
+            async () => {
+              const { runMarkProposed } = await import('./commands/guidelines.js');
+              return runMarkProposed({ repo: options.repo });
+            },
+            (data) => {
+              console.log(`Marked ${data.marked} PR(s) in ${data.repo} as proposed (${data.path}).`);
+            },
+          );
+        });
+
+      group
         .command('reset')
         .description('Tombstone the guidelines file for a repo (subsequent reads return null)')
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
@@ -2431,9 +2464,16 @@ Load it with:
         .description('Record the policy you confirmed for a repo (merged over what is stored; refused when unattended)')
         .requiredOption('--repo <owner/repo>', 'Repository identifier')
         .option('--ai-policy <value>', 'allowed | disclosure-required | banned | unknown')
-        .option('--disclosure-text <text>', 'The disclosure line the repo asks for')
+        .option(
+          '--disclosure-text <text>',
+          'The disclosure line to put in the PR body; pr-preflight checks the body for it',
+        )
         .option('--cla <value>', 'none | required | unknown')
         .option('--pr-gate <value>', 'none | claim-first | maintainer-label | collaborators-only | unknown')
+        .option(
+          '--gate-label <name>',
+          'The issue label a maintainer-label gate waits for; pr-preflight passes only on this exact label ("" clears)',
+        )
         .option(
           '--commit-rules <ids>',
           'Comma-separated: conventional-commits, dco-signoff, no-closing-keyword-in-commit ("" clears)',
@@ -2549,6 +2589,7 @@ function printPolicy(data: import('./commands/policy.js').PolicyGetOutput): void
   if (policy.commitRules.length > 0) console.log(`  Commit rules: ${policy.commitRules.join(', ')}`);
   if (policy.maxOpenAiPRs !== undefined) console.log(`  Max open AI-assisted PRs: ${policy.maxOpenAiPRs}`);
   if (policy.disclosureText) console.log(`  Disclosure: ${policy.disclosureText}`);
+  if (policy.gateLabel) console.log(`  Gate label: ${policy.gateLabel}`);
   if (policy.sources) console.log(`  Sources: ${policy.sources}`);
 }
 

@@ -39,6 +39,7 @@ import { runRepoCap } from './repo-cap.js';
 import { effectivePolicy } from '../core/repo-policy.js';
 import { isFirstInRepo } from '../core/pick-snapshot.js';
 import { BRANCH_NAME_PATTERN, ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+import { readDraft } from './draft.js';
 
 export interface PrPreflightOptions {
   /** Local clone or worktree; defaults to the current directory. */
@@ -51,6 +52,8 @@ export interface PrPreflightOptions {
   fetch: boolean;
   /** Skip every GitHub read; for callers that only want the local numbers. */
   local: boolean;
+  /** The staged PR body, a file in the draft directory; the disclosure rule is checked against it. */
+  bodyFile?: string;
 }
 
 export interface PrPreflightOutput {
@@ -149,11 +152,27 @@ async function fetchGitHubFacts(
 type TargetFacts = Pick<PreflightFacts, 'repo' | 'remote' | 'remoteRepo' | 'issueUrl'>;
 type NetworkFacts = Pick<
   PreflightFacts,
-  'networkSkip' | 'github' | 'issue' | 'cap' | 'githubError' | 'issueError' | 'capError'
+  'networkSkip' | 'github' | 'issue' | 'cap' | 'githubError' | 'issueError' | 'capError' | 'issueLabels' | 'labelsError'
 >;
 
 function offline(networkSkip: string): NetworkFacts {
-  return { networkSkip, github: null, issue: null, cap: null, githubError: null, issueError: null, capError: null };
+  return {
+    networkSkip,
+    github: null,
+    issue: null,
+    cap: null,
+    githubError: null,
+    issueError: null,
+    capError: null,
+    issueLabels: null,
+    labelsError: null,
+  };
+}
+
+/** The issue's label names, for a `maintainer-label` gate. */
+async function fetchIssueLabels(octokit: Octokit, issue: { owner: string; repo: string; number: number }) {
+  const { data } = await octokit.issues.get({ owner: issue.owner, repo: issue.repo, issue_number: issue.number });
+  return data.labels.map((label) => (typeof label === 'string' ? label : (label.name ?? ''))).filter((n) => n !== '');
 }
 
 interface Attempt<T> {
@@ -177,6 +196,7 @@ async function gatherNetworkFacts(
   target: TargetFacts,
   options: PrPreflightOptions,
   login: string | null,
+  shouldReadLabels: boolean,
 ): Promise<NetworkFacts> {
   const { repo, issueUrl } = target;
   if (options.local) return offline('local mode (--local)');
@@ -191,6 +211,9 @@ async function gatherNetworkFacts(
     : NOT_RUN;
   // The cap gates a new PR, so it runs only for an issue; its search needs the username.
   const cap: Attempt<RepoCapStatus> = parsed && login ? await attempt(() => runRepoCap({ repo })) : NOT_RUN;
+  // One more read only where the recorded policy waits for a maintainer's label (#2040).
+  const labels: Attempt<string[]> =
+    parsed && shouldReadLabels ? await attempt(() => fetchIssueLabels(octokit, parsed)) : NOT_RUN;
   return {
     networkSkip: null,
     github: github.value,
@@ -199,6 +222,8 @@ async function gatherNetworkFacts(
     issueError: issue.error,
     cap: cap.value,
     capError: cap.error,
+    issueLabels: labels.value,
+    labelsError: labels.error,
   };
 }
 
@@ -342,12 +367,16 @@ export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPre
   if (options.base !== undefined && !BRANCH_NAME_PATTERN.test(options.base)) {
     throw new ValidationError(`Invalid base branch name: ${options.base}`);
   }
+  // Read before anything else, so a bad path fails before any GitHub read.
+  const prBody = options.bodyFile === undefined ? null : readDraft(options.bodyFile).content;
   const dir = repoRoot(options.dir ?? process.cwd());
   const remotes = parseRemotesOutput(git(dir, ['remote', '-v']));
   const target = resolveTarget(remotes, options.issue);
   const sm = getStateManager();
   const login = sm.getState().config.githubUsername || null;
-  const network = await gatherNetworkFacts(target, options, login);
+  const policy = policyFacts(sm.getState(), target.repo);
+  const shouldReadLabels = policy.policy?.prGate === 'maintainer-label';
+  const network = await gatherNetworkFacts(target, options, login, shouldReadLabels);
   const localDefault = localDefaultBranch(dir, target.remote);
   const base = options.base ?? network.github?.defaultBranch ?? localDefault;
   const facts: PreflightFacts = {
@@ -357,7 +386,8 @@ export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPre
     ...gatherDriftFacts(dir, target.remote, base, options.fetch ? 'fetch' : 'no-fetch'),
     base,
     localDefault,
-    ...policyFacts(sm.getState(), target.repo),
+    ...policy,
+    prBody,
   };
   const { repo, remote, issueUrl, branch, mergeBase, ahead, behind } = facts;
   const result = runPreflightChecks(facts);
