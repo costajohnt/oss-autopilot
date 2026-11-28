@@ -760,8 +760,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     'config',
     {
-      description:
-        `Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value. ${MCP_REFUSED_SETTINGS} cannot be set here: the user sets them in a terminal.`,
+      description: `Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value. ${MCP_REFUSED_SETTINGS} cannot be set here: the user sets them in a terminal.`,
       inputSchema: z.object({
         key: configKeySchema
           .optional()
@@ -818,8 +817,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     'setup',
     {
-      description:
-        `Run OSS Autopilot setup to configure preferences like languages, interests, and contribution goals. ${MCP_REFUSED_SETTINGS} cannot be set here: the user sets them in a terminal.`,
+      description: `Run OSS Autopilot setup to configure preferences like languages, interests, and contribution goals. ${MCP_REFUSED_SETTINGS} cannot be set here: the user sets them in a terminal.`,
       inputSchema: z.object({
         reset: z.boolean().optional().describe('If true, reset all preferences to defaults before running setup'),
         set: z
