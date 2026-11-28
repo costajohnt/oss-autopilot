@@ -210,10 +210,25 @@ function titleLabel(obj: Record<string, unknown>): string {
 }
 
 /**
+ * The `labels` of an issue or PR row (an object with a numeric `number` and a
+ * string `url`): set by the repo's maintainers, so fenced like titles (#2046).
+ * Rows without both keys are left alone, so the user's own configured
+ * `labels` (config, setup) stay raw.
+ */
+function fenceRowLabels(obj: Record<string, unknown>, labels: unknown[], label: string): unknown[] {
+  if (typeof obj.number !== 'number' || typeof obj.url !== 'string') return labels.map((l) => fenceTitlesDeep(l));
+  return labels.map((name) =>
+    typeof name === 'string' && name !== ''
+      ? wrapUntrustedContent(name, label, { source: 'issue-label' })
+      : fenceTitlesDeep(name),
+  );
+}
+
+/**
  * Fence every non-empty PR/issue title and branch-ref string anywhere in an
- * MCP tool result (#1931). Tool results reach an arbitrary MCP host LLM
- * that never sees the "Prompt Injection Awareness" block, the same reason
- * {@link fenceFetchedPRTitles} exists for resources and prompts, but tool
+ * MCP tool result (#1931), and each label of an issue or PR row (#2046).
+ * Tool results reach an arbitrary MCP host LLM that never sees the "Prompt
+ * Injection Awareness" block, the same reason {@link fenceFetchedPRTitles} exists for resources and prompts, but tool
  * payloads have no single shape, so this walks the whole value and matches
  * by key. Field names and types are unchanged; only the string values gain
  * the fence. Never skips a value that already looks fenced: an attacker can
@@ -231,13 +246,18 @@ export function fenceTitlesDeep<T>(value: T): T {
   const label = titleLabel(obj);
   const out: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(obj)) {
-    const source = TITLE_KEY_SOURCES.get(key);
-    out[key] =
-      source !== undefined && typeof field === 'string' && field !== ''
-        ? wrapUntrustedContent(field, label, { source })
-        : fenceTitlesDeep(field);
+    out[key] = fenceEntry(obj, key, field, label);
   }
   return out as T;
+}
+
+/** One entry of a result object `obj`, fenced by {@link fenceTitlesDeep}'s rules. */
+function fenceEntry(obj: Record<string, unknown>, key: string, field: unknown, label: string): unknown {
+  if (key === 'labels' && Array.isArray(field)) return fenceRowLabels(obj, field, label);
+  const source = TITLE_KEY_SOURCES.get(key);
+  return source !== undefined && typeof field === 'string' && field !== ''
+    ? wrapUntrustedContent(field, label, { source })
+    : fenceTitlesDeep(field);
 }
 
 /**
