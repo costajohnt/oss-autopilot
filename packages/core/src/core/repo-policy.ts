@@ -371,8 +371,9 @@ export function isUnreadable(state: PolicyState, repo: string): boolean {
 function withoutDerivedDisclosure(policy: RepoPolicy): RepoPolicy {
   const { disclosureText, ...rest } = policy;
   if (disclosureText === undefined) return policy;
+  if (!policy.reviewedByUser) return rest;
   const isExcerpt = policy.source.some((s) => s.file !== 'user' && s.quotedLine === disclosureText);
-  return policy.reviewedByUser && !isExcerpt ? policy : rest;
+  return isExcerpt ? rest : policy;
 }
 
 /**

@@ -576,7 +576,7 @@ describe('checkRepoPolicy (#1953)', () => {
     const disclosureText = 'Assisted-by: <tool>';
     const result = checkRepoPolicy({
       ...READY,
-      policy: policy({ aiPolicy: 'disclosure-required', disclosureText, reviewedByUser: true }),
+      policy: policy({ aiPolicy: 'disclosure-required', reviewedByUser: true, disclosureText }),
     });
     expect(result.status).toBe('warn');
     expect(result.summary).toContain(

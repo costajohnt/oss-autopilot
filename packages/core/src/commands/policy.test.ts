@@ -141,7 +141,8 @@ describe('policy set', () => {
     fake.state.repoPolicies = {
       [REPO]: vetPolicy({ aiPolicy: 'disclosure-required', disclosureText: excerpt, source }),
     };
-    expect((await runPolicyGet({ repo: REPO })).policy?.disclosureText).toBeUndefined();
+    const before = await runPolicyGet({ repo: REPO });
+    expect(before.policy?.disclosureText).toBeUndefined();
 
     const out = await runPolicySet({ repo: REPO, aiPolicy: 'disclosure-required' });
     expect(out.policy?.disclosureText).toBeUndefined();

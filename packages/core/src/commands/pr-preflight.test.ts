@@ -595,12 +595,14 @@ function withPolicy(overrides: Record<string, unknown>): void {
   });
 }
 
+/** Write `text` as the staged PR body in the draft directory and return its path. */
+function stageBody(text: string): string {
+  const file = runDraftPath({ name: 'oss-up-proj-7-pr-body.md' }).path;
+  fs.writeFileSync(file, text, { mode: 0o600 });
+  return file;
+}
+
 describe('runPrPreflight: the staged body and the issue labels (#2040)', () => {
-  function stageBody(text: string): string {
-    const file = runDraftPath({ name: 'oss-up-proj-7-pr-body.md' }).path;
-    fs.writeFileSync(file, text, { mode: 0o600 });
-    return file;
-  }
 
   afterEach(() => {
     fs.rmSync(path.join(os.homedir(), '.oss-autopilot'), { recursive: true, force: true });

@@ -367,13 +367,16 @@ function disclosureAsk(facts: PreflightFacts, policy: RepoPolicy, repo: string):
   ];
 }
 
-/** A label that reads as a maintainer's acceptance, and words that say it is not one yet. */
-const APPROVAL_LABEL =
-  /\b(?:accepted|approved|ready|triaged|confirmed|help[\s_-]?wanted|good[\s_-]first[\s_-]issue|up[\s_-]for[\s_-]grabs|(?:contributions?|prs?)[\s_-]welcome)\b/i;
+/** Labels that read as a maintainer's acceptance, and words that say a label is not one yet. */
+const APPROVAL_LABELS: readonly RegExp[] = [
+  /\b(?:accepted|approved|ready|triaged|confirmed)\b/i,
+  /\b(?:help[\s_-]?wanted|good[\s_-]first[\s_-]issue|up[\s_-]for[\s_-]grabs)\b/i,
+  /\b(?:contributions?|prs?)[\s_-]welcome\b/i,
+];
 const NOT_YET = /\b(?:not|needs?|awaiting|pending|waiting|un\w+)\b/i;
 
 function isApprovalLabel(label: string): boolean {
-  return APPROVAL_LABEL.test(label) && !NOT_YET.test(label);
+  return APPROVAL_LABELS.some((re) => re.test(label)) && !NOT_YET.test(label);
 }
 
 /** The `maintainer-label` gate, met when the issue carries a label that reads as acceptance (#2040). */
@@ -395,7 +398,7 @@ function maintainerLabelAsk(facts: PreflightFacts, policy: RepoPolicy, repo: str
   const found =
     labels.length === 0 ? 'the issue has no labels' : "none of the issue's labels (details.issueLabels) reads as one";
   return [
-    [!labels.some(isApprovalLabel), `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`],
+    [!labels.some((label) => isApprovalLabel(label)), `${wants} and ${found}: confirm a maintainer accepted it before opening the PR`],
   ];
 }
 

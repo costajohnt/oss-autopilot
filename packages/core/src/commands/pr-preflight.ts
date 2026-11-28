@@ -197,7 +197,7 @@ async function gatherNetworkFacts(
   target: TargetFacts,
   options: PrPreflightOptions,
   login: string | null,
-  needsLabels: boolean,
+  shouldReadLabels: boolean,
 ): Promise<NetworkFacts> {
   const { repo, issueUrl } = target;
   if (options.local) return offline('local mode (--local)');
@@ -214,7 +214,7 @@ async function gatherNetworkFacts(
   const cap: Attempt<RepoCapStatus> = parsed && login ? await attempt(() => runRepoCap({ repo })) : NOT_RUN;
   // One more read only where the recorded policy waits for a maintainer's label (#2040).
   const labels: Attempt<string[]> =
-    parsed && needsLabels ? await attempt(() => fetchIssueLabels(octokit, parsed)) : NOT_RUN;
+    parsed && shouldReadLabels ? await attempt(() => fetchIssueLabels(octokit, parsed)) : NOT_RUN;
   return {
     networkSkip: null,
     github: github.value,
@@ -376,8 +376,8 @@ export async function runPrPreflight(options: PrPreflightOptions): Promise<PrPre
   const sm = getStateManager();
   const login = sm.getState().config.githubUsername || null;
   const policy = policyFacts(sm.getState(), target.repo);
-  const needsLabels = policy.policy?.prGate === 'maintainer-label';
-  const network = await gatherNetworkFacts(target, options, login, needsLabels);
+  const shouldReadLabels = policy.policy?.prGate === 'maintainer-label';
+  const network = await gatherNetworkFacts(target, options, login, shouldReadLabels);
   const localDefault = localDefaultBranch(dir, target.remote);
   const base = options.base ?? network.github?.defaultBranch ?? localDefault;
   const facts: PreflightFacts = {
